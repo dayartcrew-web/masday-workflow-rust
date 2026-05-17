@@ -2,8 +2,8 @@ import { test as base, expect } from '@playwright/test';
 import { APIServer } from '../src/index';
 import { EventBus, HealthChecker, getMetrics } from '@mcp-rebuild/core';
 import type { MemoryType } from '@mcp-rebuild/core';
-import { SkillRegistry } from '@mcp-rebuild/core';
 import { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
+import type { ISkillRegistry } from '@mcp-rebuild/workflow-engine';
 import { JsonBackend, WorkflowStore, TaskResultStore, PersistenceListener } from '@mcp-rebuild/store';
 import { MemoryStore } from '@mcp-rebuild/memory';
 import * as policyTools from '@mcp-rebuild/policy';
@@ -55,7 +55,11 @@ let serverInstance: APIServer | null = null;
 
 export async function startTestServer(): Promise<void> {
   const eventBus = new EventBus();
-  const skillRegistry = new SkillRegistry(eventBus);
+  const skillRegistry: ISkillRegistry = {
+    async execute(skill: string, input: unknown): Promise<unknown> { throw new Error("Not available: " + skill); },
+    has(skill: string): boolean { return false; },
+    getAll(): Array<{ name: string; description: string }> { return []; },
+  };
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-api-'));
   const backend = new JsonBackend(path.join(tmpDir, 'store.json'));

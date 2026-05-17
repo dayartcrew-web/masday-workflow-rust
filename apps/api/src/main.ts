@@ -12,8 +12,8 @@ import net from 'net';
 import path from 'path';
 import { EventBus, createLogger, getMetrics, HealthChecker } from '@mcp-rebuild/core';
 import type { MemoryType } from '@mcp-rebuild/core';
-import { SkillRegistry } from '@mcp-rebuild/core';
 import { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
+import type { ISkillRegistry } from '@mcp-rebuild/workflow-engine';
 import {
   JsonBackend,
   WorkflowStore,
@@ -121,7 +121,11 @@ async function main(): Promise<void> {
 
   // --- Core runtime plumbing (EventBus + persistence + workflow engine) ---
   const eventBus = new EventBus();
-  const skillRegistry = new SkillRegistry(eventBus);
+  const skillRegistry: ISkillRegistry = {
+    async execute(skill: string, input: unknown): Promise<unknown> { throw new Error("Not available: " + skill); },
+    has(skill: string): boolean { return false; },
+    getAll(): Array<{ name: string; description: string }> { return []; },
+  };
 
   const storePath = resolveStorePath();
   const backend = new JsonBackend(storePath);
