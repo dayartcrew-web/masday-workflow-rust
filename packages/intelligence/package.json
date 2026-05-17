@@ -1,0 +1,29 @@
+{
+  "name": "@mcp-rebuild/intelligence",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@mcp-rebuild/core": "workspace:*",
+    "@mcp-rebuild/store": "workspace:*",
+    "@mcp-rebuild/memory": "workspace:*",
+    "@mcp-rebuild/llm": "workspace:*",
+    "uuid": "^9.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^9.0.7"
+  }
+}

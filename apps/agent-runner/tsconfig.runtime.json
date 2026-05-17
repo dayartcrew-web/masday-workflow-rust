@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": [
+    "src/runtime/**/*",
+    "src/cli/**/*",
+    "src/hooks/**/*",
+    "src/chains.ts",
+    "src/detection.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

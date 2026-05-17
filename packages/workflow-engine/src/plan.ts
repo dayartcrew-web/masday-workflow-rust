@@ -1,0 +1,56 @@
+/**
+ * Plan creation (msd-mcp business logic)
+ */
+
+import { prisma } from "@mcp-rebuild/db";
+import type { PlanContent } from "@mcp-rebuild/core";
+
+export async function createPlan(input: {
+  workflowId: string;
+  summary: string;
+  content: PlanContent;
+  createdByAgent: string;
+}) {
+  const existingCount = await prisma.plan.count({
+    where: { workflowId: input.workflowId },
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const plan = await tx.plan.create({
+      data: {
+        workflowId: input.workflowId,
+        version: existingCount + 1,
+        status: "active",
+        summary: input.summary,
+        content: input.content as never,
+        createdByAgent: input.createdByAgent,
+      },
+    });
+
+    for (const task of input.content.tasks) {
+      await tx.task.create({
+        data: {
+          workflowId: input.workflowId,
+          planId: plan.id,
+          title: task.title,
+          status: "todo",
+          priority: task.priority,
+          ownerAgent: task.ownerAgent,
+          acceptanceCriteria: task.acceptanceCriteria ?? [],
+          requiredContext: task.requiredContext ?? [],
+          verificationSteps: task.verificationSteps ?? [],
+        },
+      });
+    }
+
+    await tx.workflow.update({
+      where: { id: input.workflowId },
+      data: {
+        currentPlanId: plan.id,
+        status: "ready",
+      },
+    });
+
+    return plan;
+  });
+}

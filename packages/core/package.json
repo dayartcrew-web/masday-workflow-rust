@@ -1,0 +1,25 @@
+{
+  "name": "@mcp-rebuild/core",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.1",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  }
+}

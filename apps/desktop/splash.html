@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Masday Workflow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .logo {
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(90deg, #4fc3f7, #7c4dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid #4fc3f7;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    .status {
+      margin-top: 1rem;
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.6);
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="logo">Masday Workflow</div>
+  <div class="spinner"></div>
+  <div class="status" id="status">Starting services...</div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const messages = [
+      'Starting API server...',
+      'Connecting to workflow engine...',
+      'Loading dashboard...',
+    ];
+    let idx = 0;
+    setInterval(() => {
+      idx = (idx + 1) % messages.length;
+      if (statusEl) statusEl.textContent = messages[idx];
+    }, 1500);
+  </script>
+</body>
+</html>
