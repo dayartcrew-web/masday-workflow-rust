@@ -6,6 +6,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       'apps/dashboard/**',
+      '**/e2e/**',
     ],
   },
 });
