@@ -4,11 +4,12 @@ import { join } from 'node:path'
 
 const ROOT = join(__dirname, '..')
 const registryPath = join(ROOT, '.claude', 'registry.json')
+const registryExists = existsSync(registryPath)
+const registry = registryExists
+  ? JSON.parse(readFileSync(registryPath, 'utf-8'))
+  : { components: { agents: [], skills: [], hooks: [], mcpServers: [] } }
 
-describe.skipIf(!existsSync(registryPath))('Registry consistency', () => {
-  const registry = JSON.parse(
-    readFileSync(registryPath, 'utf-8')
-  )
+describe.skipIf(!registryExists)('Registry consistency', () => {
 
   it('all registered agents exist as files', () => {
     for (const agent of registry.components.agents) {
