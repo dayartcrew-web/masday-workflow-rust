@@ -1,0 +1,28 @@
+{
+  "name": "masday-workflow-rebuild",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run typecheck",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
+    "db:push": "prisma db push --schema packages/db/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema packages/db/prisma/schema.prisma",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "turbo": "^2.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.5",
+    "zod": "^3.23.8"
+  }
+}

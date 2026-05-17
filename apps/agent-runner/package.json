@@ -1,0 +1,25 @@
+{
+  "name": "@mcp-rebuild/agent-runner",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "masday": "./dist/runtime/mcp.js"
+  },
+  "scripts": {
+    "dev": "tsx src/runtime/mcp.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/runtime/mcp.js"
+  },
+  "dependencies": {
+    "@mcp-rebuild/core": "workspace:*",
+    "@mcp-rebuild/store": "workspace:*",
+    "@mcp-rebuild/workflow-engine": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

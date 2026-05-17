@@ -1,0 +1,27 @@
+{
+  "name": "@mcp-rebuild/workflow-engine",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mcp-rebuild/core": "workspace:*",
+    "@mcp-rebuild/db": "workspace:*",
+    "@mcp-rebuild/shared-utils": "workspace:*",
+    "@mcp-rebuild/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  }
+}

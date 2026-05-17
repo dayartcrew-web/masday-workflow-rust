@@ -1,0 +1,279 @@
+// Prisma Schema for Unified Masday Workflow Platform
+// Requires pgvector extension for embedding support.
+// Run sql/pgvector.sql after first migration to add vector columns.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Prisma reads .env from CWD by default.
+// For monorepo: run prisma commands from project root, or set DATABASE_URL explicitly.
+// Root .env is the single source of truth.
+
+// ============================================================
+// Core Workflow Models (from msd-mcp)
+// ============================================================
+
+model Workflow {
+  id            String   @id @default(uuid())
+  name          String
+  status        String
+  projectPath   String?
+  currentPlanId String?
+  currentTaskId String?
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  plans        Plan[]
+  tasks        Task[]
+  contexts     ContextDocument[]
+  memories     Memory[]
+  reviews      ReviewDecision[]
+  progressLogs TaskProgressLog[]
+
+  @@index([currentPlanId])
+  @@index([currentTaskId])
+  @@index([projectPath])
+}
+
+model Plan {
+  id             String   @id @default(uuid())
+  workflowId     String
+  version        Int
+  status         String
+  summary        String
+  content        Json
+  createdByAgent String
+  createdAt      DateTime @default(now())
+
+  workflow Workflow @relation(fields: [workflowId], references: [id])
+  tasks    Task[]
+
+  @@index([workflowId])
+}
+
+model Task {
+  id                  String   @id @default(uuid())
+  workflowId          String
+  planId              String
+  title               String
+  status              String
+  priority            String?
+  ownerAgent          String?
+  acceptanceCriteria  Json     @default("[]")
+  requiredContext     Json     @default("[]")
+  verificationSteps   Json     @default("[]")
+  contextFingerprint  String?
+  progressPercent     Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workflow     Workflow          @relation(fields: [workflowId], references: [id])
+  plan        Plan              @relation(fields: [planId], references: [id])
+  progressLogs TaskProgressLog[]
+  reviews     ReviewDecision[]
+
+  @@index([workflowId])
+  @@index([planId])
+}
+
+model TaskProgressLog {
+  id            String   @id @default(uuid())
+  workflowId    String
+  taskId        String
+  agentName     String
+  statusBefore  String?
+  statusAfter   String?
+  progressNote  String
+  evidence      Json     @default("[]")
+  createdAt     DateTime @default(now())
+
+  workflow Workflow @relation(fields: [workflowId], references: [id])
+  task     Task     @relation(fields: [taskId], references: [id])
+
+  @@index([workflowId])
+  @@index([taskId])
+}
+
+model ReviewDecision {
+  id            String   @id @default(uuid())
+  workflowId    String
+  taskId        String
+  reviewerAgent String
+  decision      String
+  notes         String
+  gaps          Json     @default("[]")
+  createdAt     DateTime @default(now())
+
+  workflow Workflow @relation(fields: [workflowId], references: [id])
+  task     Task     @relation(fields: [taskId], references: [id])
+
+  @@index([workflowId])
+  @@index([taskId])
+}
+
+model SessionState {
+  id                 String   @id @default(uuid())
+  sessionKey         String   @unique
+  workflowId         String?
+  planId             String?
+  taskId             String?
+  workflowLoaded     Boolean  @default(false)
+  planLoaded         Boolean  @default(false)
+  taskLoaded         Boolean  @default(false)
+  contextLoaded      Boolean  @default(false)
+  reviewApproved     Boolean  @default(false)
+  contextFingerprint String?
+  executionMode      String?
+  activeBranchIds    Json     @default("[]")
+  synthesisReady     Boolean  @default(false)
+  verificationReady  Boolean  @default(false)
+  lastCommand        String?
+  metadata           Json     @default("{}")
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  @@index([workflowId])
+}
+
+model ParallelBranch {
+  id         String   @id @default(uuid())
+  workflowId String
+  taskId     String
+  branchKey  String
+  role       String
+  status     String
+  input      Json
+  output     Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([workflowId])
+  @@index([taskId])
+}
+
+model RetrievalLog {
+  id          String   @id @default(uuid())
+  workflowId  String?
+  taskId      String?
+  agentName   String
+  query       String
+  source      String
+  results     Json     @default("[]")
+  createdAt   DateTime @default(now())
+
+  @@index([workflowId])
+}
+
+// ============================================================
+// Memory Models (from msd-mcp + enhanced with agentic-llm-mem)
+// ============================================================
+
+model Memory {
+  id              String   @id @default(uuid())
+  workflowId      String?
+  taskId          String?
+  memoryType      String
+  summary         String
+  content         String
+  importanceScore Float    @default(0.5)
+  createdByAgent  String
+  tags            String[]
+  source          String?
+  embedding       Unsupported("vector(768)")?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  accessedAt      DateTime?
+  accessCount     Int      @default(0)
+  version         Int      @default(1)
+
+  workflow Workflow? @relation(fields: [workflowId], references: [id])
+
+  @@index([workflowId])
+  @@index([memoryType])
+  @@index([importanceScore])
+}
+
+model ContextDocument {
+  id          String   @id @default(uuid())
+  workflowId  String?
+  sourceType  String
+  sourceRef   String?
+  title       String?
+  content     String
+  metadata    Json     @default("{}")
+  fingerprint String?
+  embedding   Unsupported("vector(768)")?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workflow Workflow? @relation(fields: [workflowId], references: [id])
+
+  @@index([workflowId])
+}
+
+// ============================================================
+// Knowledge Graph Models (from agentic-llm-mem)
+// ============================================================
+
+model GraphNode {
+  id         String   @id @default(uuid())
+  nodeType   String
+  name       String
+  properties Json?
+  createdAt  DateTime @default(now())
+
+  @@index([nodeType])
+  @@index([name])
+}
+
+model GraphEdge {
+  id           String   @id @default(uuid())
+  sourceNodeId String
+  targetNodeId String
+  relationType String
+  weight       Float    @default(1.0)
+  bidirectional Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([sourceNodeId])
+  @@index([targetNodeId])
+  @@index([relationType])
+}
+
+// ============================================================
+// Episodic Memory (from agentic-llm-mem)
+// ============================================================
+
+model EpisodicMemory {
+  id            String   @id @default(uuid())
+  sessionId     String
+  role          String
+  content       String
+  sequenceOrder Int
+  createdAt     DateTime @default(now())
+
+  @@index([sessionId, sequenceOrder])
+}
+
+// ============================================================
+// LLM Provider Configuration (from agentic-llm-mem)
+// ============================================================
+
+model LlmProviderConfig {
+  id           String   @id @default(uuid())
+  providerName String   @unique
+  baseUrl      String
+  apiKeyEnvVar String
+  models       Json
+  isDefault    Boolean  @default(false)
+  priority     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
