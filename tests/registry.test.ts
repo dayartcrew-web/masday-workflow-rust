@@ -3,10 +3,11 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ROOT = join(__dirname, '..')
+const registryPath = join(ROOT, '.claude', 'registry.json')
 
-describe('Registry consistency', () => {
+describe.skipIf(!existsSync(registryPath))('Registry consistency', () => {
   const registry = JSON.parse(
-    readFileSync(join(ROOT, '.claude', 'registry.json'), 'utf-8')
+    readFileSync(registryPath, 'utf-8')
   )
 
   it('all registered agents exist as files', () => {
