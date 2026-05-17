@@ -68,6 +68,8 @@ jobs:
 
       - run: pnpm db:generate
 
+      - run: pnpm build --filter=!@masday-workflow-reborn/desktop
+
       - run: pnpm test
         env:
           DATABASE_URL: postgresql://USER:PASS@localhost:5432/masday_test
