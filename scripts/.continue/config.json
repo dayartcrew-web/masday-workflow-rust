@@ -8,8 +8,11 @@
   ],
   "mcpServers": {
     "masday": {
-      "command": "npx",
-      "args": ["tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "C:/Users/AQR STD/Documents/GitHub/vibe-masday-workflow/masday-workflow-rebuild/apps/agent-runner/dist/runtime/mcp.js"
+      ]
     }
   }
 }
