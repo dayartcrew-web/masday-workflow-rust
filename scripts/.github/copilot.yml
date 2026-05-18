@@ -5,7 +5,6 @@ copilot:
   mcp:
     servers:
       masday:
-        command: npx
+        command: node
         args:
-          - tsx
-          - apps/agent-runner/src/runtime/mcp.ts
+          - C:/Users/AQR STD/Documents/GitHub/vibe-masday-workflow/masday-workflow-rebuild/apps/agent-runner/dist/runtime/mcp.js
