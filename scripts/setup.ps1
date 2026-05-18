@@ -7,54 +7,49 @@ $HomeClaude = Join-Path $env:USERPROFILE ".claude"
 Write-Host "=== masday-workflow-rebuild Setup ===" -ForegroundColor Cyan
 
 # 1. Install dependencies
-Write-Host "[1/7] Installing dependencies..." -ForegroundColor Yellow
+Write-Host "[1/6] Installing dependencies..." -ForegroundColor Yellow
 pnpm install
 
 # 2. Generate Prisma client
-Write-Host "[2/7] Generating Prisma client..." -ForegroundColor Yellow
+Write-Host "[2/6] Generating Prisma client..." -ForegroundColor Yellow
 pnpm db:generate
 
 # 3. Build all packages
-Write-Host "[3/7] Building all packages..." -ForegroundColor Yellow
+Write-Host "[3/6] Building all packages..." -ForegroundColor Yellow
 pnpm build
 
 # 4. Build agent-runner MCP server
-Write-Host "[4/7] Building agent-runner MCP server..." -ForegroundColor Yellow
+Write-Host "[4/6] Building agent-runner MCP server..." -ForegroundColor Yellow
 pnpm --filter @mcp-rebuild/agent-runner build
 
-# 5. Sync commands into .claude/commands/ from .agents/commands/
-Write-Host "[5/7] Syncing commands to .claude/commands/..." -ForegroundColor Yellow
-$claudeCommandsDir = Join-Path $RootDir ".claude\commands"
-New-Item -ItemType Directory -Force -Path $claudeCommandsDir | Out-Null
-Copy-Item -Path "$RootDir\.agents\commands\*" -Destination $claudeCommandsDir -Recurse -Force -ErrorAction SilentlyContinue
+# 5. Sync masday-* skills to local platform directories
+Write-Host "[5/6] Syncing masday-* skills to local platform directories..." -ForegroundColor Yellow
 
-# 6. Sync to local platform directories
-Write-Host "[6/7] Syncing to local platform directories..." -ForegroundColor Yellow
+# Collect masday-* skill names once
+$masdaySkills = Get-ChildItem -Path "$RootDir\.claude\skills" -Directory -Filter "masday-*"
+
 $platforms = @(
-    @{Dest = ".agents\agents"; Src = ".claude\agents" },
-    @{Dest = ".agents\skills"; Src = ".claude\skills" },
-    @{Dest = ".agents\commands"; Src = ".claude\commands" },
-    @{Dest = ".gemini\agents"; Src = ".claude\agents" },
-    @{Dest = ".gemini\skills"; Src = ".claude\skills" },
-    @{Dest = ".gemini\commands"; Src = ".claude\commands" },
-    @{Dest = ".continue\agents"; Src = ".claude\agents" },
-    @{Dest = ".continue\skills"; Src = ".claude\skills" },
-    @{Dest = ".continue\commands"; Src = ".claude\commands" }
+    @{Dest = ".agents"; Agents = ".agents\agents"; Skills = ".agents\skills" },
+    @{Dest = ".gemini"; Agents = ".gemini\agents"; Skills = ".gemini\skills" },
+    @{Dest = ".continue"; Agents = ".continue\agents"; Skills = ".continue\skills" }
 )
 foreach ($p in $platforms) {
-    New-Item -ItemType Directory -Force -Path $p.Dest | Out-Null
-    Copy-Item -Path "$($p.Src)\*" -Destination $p.Dest -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $p.Agents | Out-Null
+    New-Item -ItemType Directory -Force -Path $p.Skills | Out-Null
+    Copy-Item -Path "$RootDir\.claude\agents\*" -Destination $p.Agents -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($skill in $masdaySkills) {
+        Copy-Item -Path $skill.FullName -Destination $p.Skills -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# 7. Install masday-* skills to global ~/.claude/skills/
-Write-Host "[7/7] Installing masday-* skills to global $HomeClaude\skills\..." -ForegroundColor Yellow
+# 6. Install masday-* skills to global ~/.claude/skills/
+Write-Host "[6/6] Installing masday-* skills to global $HomeClaude\skills\..." -ForegroundColor Yellow
 
 $globalSkillsDir = Join-Path $HomeClaude "skills"
 New-Item -ItemType Directory -Force -Path $globalSkillsDir | Out-Null
 
-$projectSkills = Get-ChildItem -Path "$RootDir\.claude\skills" -Directory -Filter "masday-*"
 $copiedSkills = 0
-foreach ($skill in $projectSkills) {
+foreach ($skill in $masdaySkills) {
     $dest = Join-Path $globalSkillsDir $skill.Name
     if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
     Copy-Item -Path $skill.FullName -Destination $dest -Recurse -Force
