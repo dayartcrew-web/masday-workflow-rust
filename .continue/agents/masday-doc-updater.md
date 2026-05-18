@@ -16,7 +16,7 @@ tools:
   - filesystem.write
   - git.status
   - git.diff
-  - search.code_search
+  - semantic-search.code_search
 ---
 
 # Documentation Updater Agent

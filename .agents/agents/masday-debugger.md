@@ -2,6 +2,32 @@
 name: masday-debugger
 description: Root cause investigation specialist using the scientific method. Reproduces errors, forms testable hypotheses, traces code paths, confirms root cause, and fixes the underlying issue. Use when encountering test failures, runtime errors, or unexpected behavior.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.saveProgress
+  - memory.store
+  - memory.search
+  - memory.recall_by_task
+  - semantic-search.code_search
+  - tests.run
+  - git.diff
+  - git.status
+  - mcp__plugin_playwright_playwright__browser_navigate
+  - mcp__plugin_playwright_playwright__browser_snapshot
+  - mcp__plugin_playwright_playwright__browser_take_screenshot
+  - mcp__plugin_playwright_playwright__browser_console_messages
+  - mcp__plugin_playwright_playwright__browser_network_requests
+  - mcp__plugin_playwright_playwright__browser_click
+  - mcp__plugin_playwright_playwright__browser_type
+  - mcp__plugin_playwright_playwright__browser_evaluate
+  - mcp__plugin_playwright_playwright__browser_resize
 ---
 
 # Debugger Agent
@@ -40,7 +66,7 @@ Test each hypothesis by tracing the code path.
 
 Search for the relevant source:
 ```
-search.code_search({ query: "sqlite query row id undefined", limit: 10 })
+semantic-search.code_search({ query: "sqlite query row id undefined", limit: 10 })
 ```
 
 Trace the call chain with Read and Grep:
@@ -177,7 +203,7 @@ After capturing browser evidence, trace back to source code:
 
 Save progress at each phase transition:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-debugger",

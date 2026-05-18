@@ -8,8 +8,8 @@ allowed-tools:
   - workflow.list
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
-  - workflow.get_current_task
+  - workflow.listTasks
+  - workflow.getCurrentTask
   - memory.stats
   - memory.recall_recent
 ---
@@ -26,8 +26,8 @@ Show a dashboard of workflow progress and system state.
 
 2. **Get details for active workflows**
    - For each non-completed workflow, call `workflow.getStatus` for detailed state
-   - Call `workflow.list_tasks` to see task breakdown and completion percentages
-   - Call `workflow.get_current_task` to identify the active task
+   - Call `workflow.listTasks` to see task breakdown and completion percentages
+   - Call `workflow.getCurrentTask` to identify the active task
 
 3. **Get memory statistics**
    - Call `memory.stats` to show total memories, breakdown by type, and average importance

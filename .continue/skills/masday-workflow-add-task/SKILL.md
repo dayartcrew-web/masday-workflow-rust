@@ -7,7 +7,7 @@ description: >
 allowed-tools:
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
+  - workflow.listTasks
   - workflow.addTask
   - capability.match_agent
   - capability.list_agents
@@ -28,7 +28,7 @@ Add a new task to an existing workflow.
    - If the workflow is already completed, inform the user and suggest creating a new one
 
 2. **Review current tasks**
-   - Call `workflow.list_tasks` to see existing tasks and their statuses
+   - Call `workflow.listTasks` to see existing tasks and their statuses
    - Identify the last task in the sequence to determine where to insert the new task
    - Note any tasks already in progress or completed that might be dependencies
 
@@ -46,7 +46,7 @@ Add a new task to an existing workflow.
 
 6. **Determine dependencies**
    - Based on the task description, determine which existing tasks must complete first
-   - Reference task IDs from the `workflow.list_tasks` result
+   - Reference task IDs from the `workflow.listTasks` result
    - If the task is independent, set dependencies to an empty array
 
 7. **Add the task**

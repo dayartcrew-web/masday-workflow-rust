@@ -64,9 +64,9 @@ describe.skipIf(!registryExists)('Registry consistency', () => {
 
   it('registry has correct component counts', () => {
     expect(registry.components.agents.length).toBe(26)
-    expect(registry.components.skills.length).toBe(32)
-    expect(registry.components.hooks.length).toBe(9)
-    expect(registry.components.mcpServers.length).toBe(6)
+    expect(registry.components.skills.length).toBe(34)
+    expect(registry.components.hooks.length).toBe(14)
+    expect(registry.components.mcpServers.length).toBe(4)
   })
 
   it('every agent has required fields', () => {

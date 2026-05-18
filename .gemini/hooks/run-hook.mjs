@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -8,10 +8,13 @@ const hookModules = {
   'pre-tool-use': './pre-tool-use.js',
   'tdd-guard': './tdd-guard.js',
   'tool-name-guard': './tool-name-guard.js',
+  'pre-build-skill': './pre-build-skill.js',
+  'workflow-lock': './workflow-lock.js',
   'post-tool-use': './post-tool-use.js',
   'on-notification': './on-notification.js',
   'on-stop': './on-stop.js',
   'agentic-mem-context': './agentic-mem-context.js',
+  'pre-task-complete': './pre-task-complete.js',
 };
 
 async function readStdin() {
@@ -44,7 +47,7 @@ async function main() {
   }
 
   try {
-    const mod = await import(join(__dirname, modulePath));
+    const mod = await import(pathToFileURL(join(__dirname, modulePath)).href);
     const handler = mod.default || mod;
     const result = await handler(context);
 

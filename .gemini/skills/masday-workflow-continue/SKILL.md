@@ -6,20 +6,20 @@ description: |
   and you need to pick up exactly where the last task stopped.
   Handles: paused workflows, failed tasks with retry budget, partially completed plans.
 allowed-tools:
-  - workflow.get_active
-  - workflow.get_current_task
-  - workflow.get_plan
-  - workflow.list_tasks
-  - workflow.start_task
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.listTasks
+  - workflow.startTask
   - workflow.execute
-  - workflow.save_progress
-  - workflow.complete_task
+  - workflow.saveProgress
+  - workflow.completeTask
   - review.get_latest
   - memory.recall_recent
   - memory.recall_by_task
   - memory.recall_documents
-  - search.hybrid_context_pack
-  - search.context_fingerprint
+  - semantic-search.search_hybrid_context_pack
+  - semantic-search.search_context_fingerprint
   - policy.validate_execution
   - tests.run
 ---
@@ -46,7 +46,7 @@ Resume an interrupted workflow. Detects the last known state and picks up from t
 ### 1. Detect Active Workflow
 
 ```
-Call: workflow.get_active({ cwd: process.cwd() })
+Call: workflow.getActive({ cwd: process.cwd() })
 
 If no active workflow:
   Call: workflow.list({ status: "executing" })
@@ -63,9 +63,9 @@ Record: workflowId, workflow status
 ### 2. Load Full State
 
 ```
-Call: workflow.get_plan({ workflow_id: workflowId })
-Call: workflow.list_tasks({ workflow_id: workflowId })
-Call: workflow.get_current_task({ workflow_id: workflowId })
+Call: workflow.getPlan({ workflow_id: workflowId })
+Call: workflow.listTasks({ workflow_id: workflowId })
+Call: workflow.getCurrentTask({ workflow_id: workflowId })
 
 Record: plan, all tasks with statuses, current task (if any)
 ```
@@ -93,14 +93,14 @@ Call: memory.recall_by_task({ task_id: taskId, limit: 10 })
 Call: review.get_latest({ workflow_id: workflowId, task_id: taskId })
 
 # Check fingerprint for context freshness
-Call: search.context_fingerprint({
+Call: semantic-search.search_context_fingerprint({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: taskId
 })
 
 # Build fresh context pack
-Call: search.hybrid_context_pack({
+Call: semantic-search.search_hybrid_context_pack({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: taskId
@@ -114,7 +114,7 @@ Call: policy.validate_execution({
 })
 
 # Re-start the task
-Call: workflow.start_task({
+Call: workflow.startTask({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: "<from task ownerAgent>"
@@ -132,7 +132,7 @@ For each pending task (in plan order):
   If yes: that's the next task
   If no: skip, check next
 
-Call: workflow.start_task({
+Call: workflow.startTask({
   workflow_id: workflowId,
   task_id: nextTaskId,
   agent_name: "<from task ownerAgent>"
@@ -148,7 +148,7 @@ Call: workflow.start_task({
 Call: review.get_latest({ workflow_id: workflowId, task_id: lastTaskId })
 
 If review is APPROVED:
-  Call: workflow.complete_task({ workflow_id: workflowId, task_id: lastTaskId })
+  Call: workflow.completeTask({ workflow_id: workflowId, task_id: lastTaskId })
   Report: "Workflow complete! All tasks done."
 
 If review is REWORK_REQUIRED:
@@ -172,7 +172,7 @@ Then follow the task execution loop.
 ```
 After every significant action, save progress:
 
-Call: workflow.save_progress({
+Call: workflow.saveProgress({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: "masday-continue",

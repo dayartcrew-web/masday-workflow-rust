@@ -7,6 +7,30 @@ description: >
   pipeline failures. Use when creating or modifying .github/workflows/ files,
   debugging build failures, or optimizing pipeline performance.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - cicd.pipeline_status
+  - cicd.pipeline_trigger
+  - cicd.runs_view
+  - github.pr_list
+  - github.issue_list
+  - github.pr_create
+  - git.status
+  - git.diff
+  - git.commit
+  - filesystem.read
+  - filesystem.write
+  - filesystem.list
+  - memory.store
+  - memory.recall_recent
+  - memory.search
+  - workflow.saveProgress
+  - semantic-search.code_search
 ---
 
 # CI/CD Pipeline Specialist
@@ -465,7 +489,7 @@ on:
 ### Phase 6: Save Progress
 
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<id>",
   task_id: "<task_id>",
   agent_name: "masday-ci-cd-pipeline",

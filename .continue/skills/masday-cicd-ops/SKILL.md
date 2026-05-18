@@ -23,7 +23,7 @@ allowed-tools:
   - memory.store
   - memory.recall_recent
   - memory.search
-  - workflow.save_progress
+  - workflow.saveProgress
 ---
 
 # Masday CI/CD Ops
@@ -182,5 +182,6 @@ PRs:
 - Never store sensitive pipeline secrets in memory
 - Never skip security audit when adding new dependencies
 - Never commit workflow changes without YAML validation first
+- Always call `workflow.saveProgress` after completing pipeline operations to persist results
 - Never expose secrets in workflow files or memory
 - Never run `pnpm audit` with `--audit-level=low` in CI (too noisy, use moderate+)

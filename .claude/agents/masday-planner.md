@@ -9,14 +9,14 @@ tools:
   - Bash
   - TodoWrite
   - workflow.create_plan
-  - workflow.get_plan
-  - workflow.list_tasks
-  - workflow.get_active
-  - workflow.get_current_task
+  - workflow.getPlan
+  - workflow.listTasks
+  - workflow.getActive
+  - workflow.getCurrentTask
   - capability.list_agents
   - capability.match_agent
   - capability.list_skills
-  - search.code_search
+  - semantic-search.code_search
   - memory.search
   - memory.recall_documents
   - memory.store
@@ -33,12 +33,12 @@ You are a task decomposition and implementation planning specialist. You analyze
 Understand the requirement by reading the active workflow and any existing context.
 
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
 ```
 
 Search for relevant existing patterns:
 ```
-search.code_search({ query: "authentication middleware JWT", limit: 10 })
+semantic-search.code_search({ query: "authentication middleware JWT", limit: 10 })
 ```
 
 Check past decisions that may constrain the plan:
@@ -52,7 +52,7 @@ Never assume architecture. Use Read, Grep, and Glob to verify:
 
 1. Locate integration points:
    ```
-   search.code_search({ query: "route handler registration", language: "typescript" })
+   semantic-search.code_search({ query: "route handler registration", language: "typescript" })
    ```
 
 2. Find existing patterns to follow:
@@ -194,7 +194,7 @@ Maximum 12 tasks per plan. If more are needed, split into phases and create sepa
 
 | Error | Cause | Recovery |
 |-------|-------|----------|
-| `workflow not found` | Invalid workflow_id | Call `workflow.get_active` or `workflow.list` |
+| `workflow not found` | Invalid workflow_id | Call `workflow.getActive` or `workflow.list` |
 | `agent not found` | Unknown agent name in ownerAgent | Call `capability.list_agents` for valid names |
 | `code search empty` | Query too specific or no indexed code | Broaden query, use Grep as fallback |
 | `circular dependency` | Tasks reference each other | Reorder tasks, break cycles by splitting |

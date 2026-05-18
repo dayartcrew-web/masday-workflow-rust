@@ -6,6 +6,23 @@ description: >
   React/Vue components, pages, CSS modules, client-side logic, or scaffolding
   frontend patterns.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - filesystem.read
+  - filesystem.write
+  - filesystem.list
+  - filesystem.stat
+  - npm.run
+  - tests.run
+  - npm.install
+  - git.status
+  - git.diff
+  - semantic-search.code_search
 ---
 
 # Frontend Agent

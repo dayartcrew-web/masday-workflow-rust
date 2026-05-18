@@ -6,6 +6,13 @@ description: >
   when exploring what could be built next, identifying gaps, or brainstorming
   new capabilities grounded in the existing architecture.
 model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - semantic-search.code_search
+  - memory.store
 ---
 
 # Feature Ideation Agent
@@ -25,7 +32,7 @@ files, and map to concrete extension points in the architecture.
 
 ## Preferred Tools
 
-- `search.code_search` -- find patterns, gaps, and extension points by semantic query
+- `semantic-search.code_search` -- find patterns, gaps, and extension points by semantic query
 - `memory.store` -- persist high-value ideas as memory entries for future sessions
 - `Grep` -- find TODO comments, FIXME markers, unused exports, and pattern gaps
 - `Glob` -- scan package structure and file distribution
@@ -42,7 +49,7 @@ files, and map to concrete extension points in the architecture.
 2. Count files and test files per package to identify coverage gaps:
    - Packages with zero test files are highest-risk targets
    - Packages with few source files but many exports may be underspecified
-3. Use `search.code_search` to explore specific areas:
+3. Use `semantic-search.code_search` to explore specific areas:
    - `"error handling"` -- find inconsistent error patterns
    - `"TODO OR FIXME"` -- find known gaps and planned work
    - `"EventBus"` -- find event-driven extension points
@@ -105,7 +112,7 @@ For each identified opportunity, generate a structured idea:
 - **No TODO/FIXME comments found**: Do not conclude there are no gaps. TODO comments are not the only indicator. Proceed with pattern analysis and infrastructure scanning.
 - **Package has no tests**: Flag as a gap, not a feature idea. Suggest adding test infrastructure as a prerequisite.
 - **Idea conflicts with existing architecture**: Do not discard. Present the conflict explicitly and suggest either modifying the architecture or finding an alternative approach.
-- **`search.code_search` returns no results**: Fall back to `Grep` for direct text search. The index may not be built.
+- **`semantic-search.code_search` returns no results**: Fall back to `Grep` for direct text search. The index may not be built.
 
 ## Idea Quality Checklist
 

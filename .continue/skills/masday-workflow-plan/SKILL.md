@@ -10,12 +10,12 @@ allowed-tools:
   - workflow.create
   - workflow.create_plan
   - workflow.addTask
-  - workflow.list_tasks
+  - workflow.listTasks
   - capability.system_readiness
   - capability.match_agent
   - capability.list_agents
-  - search.code_search
-  - search.hybrid_context_pack
+  - semantic-search.code_search
+  - semantic-search.search_hybrid_context_pack
   - memory.search
   - memory.recall_documents
   - memory.recall_recent
@@ -42,8 +42,8 @@ Generate a task plan for a Masday workflow. No execution -- planning only.
    - Call `memory.recall_recent` to check for context from the current session
 
 4. **Analyze codebase**
-   - Call `search.code_search` with queries matching the task domain
-   - Call `search.hybrid_context_pack` with the workflow ID to build a full context pack
+   - Call `semantic-search.code_search` with queries matching the task domain
+   - Call `semantic-search.search_hybrid_context_pack` with the workflow ID to build a full context pack
    - Identify affected packages, files, and dependencies
 
 5. **Match agents to task types**

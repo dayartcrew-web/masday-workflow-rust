@@ -24,7 +24,7 @@ tools:
   - docker.build
   - npm.install
   - docker.run
-  - search.code_search
+  - semantic-search.code_search
 ---
 
 # Backend Agent

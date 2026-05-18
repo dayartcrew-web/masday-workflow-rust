@@ -7,8 +7,8 @@ description: >
   "look up", "find online", "research this", or "search the web".
 allowed-tools:
   - WebSearch
-  - search.hybrid_context_pack
-  - search.code_search
+  - semantic-search.search_hybrid_context_pack
+  - semantic-search.code_search
   - memory.store_research
   - memory.search
   - memory.recall_documents
@@ -36,8 +36,8 @@ Web research with storage and codebase cross-referencing.
    - Collect the top results with titles, URLs, and snippets
 
 4. **Cross-reference with codebase**
-   - Call `search.code_search` with related queries
-   - Call `search.hybrid_context_pack` for deeper context
+   - Call `semantic-search.code_search` with related queries
+   - Call `semantic-search.search_hybrid_context_pack` for deeper context
    - Identify where external findings relate to existing code
 
 5. **Synthesize findings**

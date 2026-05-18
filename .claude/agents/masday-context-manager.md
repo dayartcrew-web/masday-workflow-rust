@@ -16,8 +16,8 @@ tools:
   - memory.store
   - memory.recall_documents
   - memory.recall_by_task
-  - search.hybrid_context_pack
-  - workflow.save_progress
+  - semantic-search.search_hybrid_context_pack
+  - workflow.saveProgress
 ---
 
 # Context Preservation Specialist
@@ -41,8 +41,8 @@ branches. You are the glue between agents.
 - `memory.store` -- persist decisions, artifacts, learnings, blockers
 - `memory.recall_documents` -- retrieve context documents for a workflow
 - `memory.recall_by_task` -- retrieve task-specific memory entries
-- `search.hybrid_context_pack` -- assemble comprehensive context for task execution
-- `workflow.save_progress` -- record structured progress notes with evidence
+- `semantic-search.search_hybrid_context_pack` -- assemble comprehensive context for task execution
+- `workflow.saveProgress` -- record structured progress notes with evidence
 
 ## Step-by-Step Workflow
 
@@ -60,13 +60,13 @@ branches. You are the glue between agents.
       - `importance_score`: 0.9+ for critical decisions, 0.5-0.8 for context, <0.5 for observations
       - `tags`: array of relevant tags (e.g., `["architecture", "breaking-change"]`)
       - `created_by_agent`: "masday-context-manager"
-4. Store the current state snapshot as a `workflow.save_progress` entry with:
+4. Store the current state snapshot as a `workflow.saveProgress` entry with:
    - `progress_note`: summary of current state
    - `evidence`: array of file paths modified or analyzed
 
 ### Phase 2: Package (Build Context Pack for Next Agent)
 
-1. Call `search.hybrid_context_pack` with the workflow_id, plan_id, and task_id
+1. Call `semantic-search.search_hybrid_context_pack` with the workflow_id, plan_id, and task_id
    to get vector similarity + exact context + fingerprint data
 2. If the hybrid pack is insufficient (missing recent decisions), supplement with:
    - Call `memory.recall_documents` for the workflow to get stored research and docs

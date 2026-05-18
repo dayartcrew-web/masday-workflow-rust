@@ -6,6 +6,14 @@ description: >
   writing code that handles user input, authentication, payments, or sensitive
   data, and before every commit to shared branches.
 model: sonnet
+tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - npm.run
+  - git.diff
+  - filesystem.read
 ---
 
 # Security Agent

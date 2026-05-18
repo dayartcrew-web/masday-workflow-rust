@@ -6,6 +6,17 @@ description: >
   designing schemas, writing migrations, optimizing queries, or planning
   database-backed features.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - filesystem.read
+  - filesystem.write
+  - tests.run
+  - semantic-search.code_search
 ---
 
 # Database Architecture Agent

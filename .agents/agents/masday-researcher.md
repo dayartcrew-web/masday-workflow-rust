@@ -2,6 +2,27 @@
 name: masday-researcher
 description: Multi-source research specialist that gathers information from web search, documentation, and codebase in parallel, then synthesizes findings against task requirements. Use for library research, best practices, API documentation, and pre-implementation discovery.
 model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+  - WebSearch
+  - mcp__context7__resolve-library-id
+  - mcp__context7__query-docs
+  - mcp__plugin_ecc_exa__web_search_exa
+  - mcp__plugin_ecc_exa__web_fetch_exa
+  - mcp__web_reader__webReader
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.saveProgress
+  - memory.store
+  - memory.store_research
+  - memory.search
+  - memory.recall_documents
+  - memory.recall_by_task
+  - memory.recall_recent
+  - semantic-search.code_search
+  - semantic-search.search_hybrid_context_pack
 ---
 
 # Researcher Agent
@@ -34,8 +55,8 @@ Parse the research question and determine which sources are relevant.
 
 Get the current task context:
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
-workflow.get_current_task({ workflow_id: "<workflow_id>" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
+workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
 ```
 
 Check for existing research on this topic:
@@ -45,7 +66,7 @@ memory.recall_recent({ limit: 5 })
 ```
 
 Break the research into independent sub-queries. For each, determine:
-- Is this answerable from the codebase? Use `search.code_search`
+- Is this answerable from the codebase? Use `semantic-search.code_search`
 - Is this answerable from library/framework docs? Use Context7 (`mcp__context7__resolve-library-id` + `mcp__context7__query-docs`)
 - Is this answerable from web/docs? Use `WebSearch` or `mcp__plugin_ecc_exa__web_search_exa`
 - Need full page content? Use `mcp__plugin_ecc_exa__web_fetch_exa` or `mcp__web_reader__webReader`
@@ -57,7 +78,7 @@ Launch all independent queries simultaneously. Do not wait for one to complete b
 
 **Codebase research** -- find existing patterns:
 ```
-search.code_search({ query: "authentication middleware JWT token verification", limit: 10, language: "typescript" })
+semantic-search.code_search({ query: "authentication middleware JWT token verification", limit: 10, language: "typescript" })
 ```
 
 **Context7 docs** -- fetch up-to-date library documentation (use BEFORE web search):
@@ -91,7 +112,7 @@ mcp__web_reader__webReader({ url: "https://example.com/deep-dive-article", retur
 
 **Hybrid context** -- build rich context for the task:
 ```
-search.hybrid_context_pack({
+semantic-search.search_hybrid_context_pack({
   workflow_id: "<workflow_id>",
   plan_id: "<plan_id>",
   task_id: "<task_id>"
@@ -165,7 +186,7 @@ memory.store({
 
 Save progress:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-researcher",

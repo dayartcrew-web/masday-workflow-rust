@@ -7,8 +7,8 @@ description: >
   or "look into".
 allowed-tools:
   - WebSearch
-  - search.code_search
-  - search.hybrid_context_pack
+  - semantic-search.code_search
+  - semantic-search.search_hybrid_context_pack
   - memory.store_research
   - memory.search
   - memory.recall_documents
@@ -38,8 +38,8 @@ Multi-source parallel research synthesized against codebase and task.
    - Collect URLs for deep reading
 
 4. **Search the codebase**
-   - Call `search.code_search` with queries matching the research topic
-   - Call `search.hybrid_context_pack` for deep context on related code
+   - Call `semantic-search.code_search` with queries matching the research topic
+   - Call `semantic-search.search_hybrid_context_pack` for deep context on related code
    - Identify existing implementations, patterns, and gaps
 
 5. **Synthesize findings**
@@ -50,10 +50,10 @@ Multi-source parallel research synthesized against codebase and task.
 
 6. **Persist findings**
    - Call `memory.store_research` with:
-     - `topic`: the research topic
-     - `findings`: synthesized key findings
-     - `source`: URLs and code references used
-     - `relevance_score`: 0.0-1.0 based on how relevant to the current task
+     - `workflow_id`: current workflow ID (if in workflow context)
+     - `summary`: brief research summary (1-2 sentences)
+     - `content`: full research findings with sources
+     - `created_by_agent`: "masday-researcher"
 
 7. **Report**
    ```

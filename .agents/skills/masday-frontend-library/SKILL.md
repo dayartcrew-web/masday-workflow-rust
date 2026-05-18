@@ -2,7 +2,7 @@
 name: masday-frontend-library
 description: Read design references from visual screenshots (.png/.jpg) and markdown design.md files, extract design tokens, then build pixel-accurate frontend components matching the design system.
 disable-model-invocation: false
-allowed-tools: Read Write Edit Bash Glob Grep Agent
+allowed-tools: Read Write Edit Bash Glob Grep Agent memory.store filesystem.write
 context: fork
 ---
 

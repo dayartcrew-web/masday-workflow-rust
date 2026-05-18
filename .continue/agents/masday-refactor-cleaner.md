@@ -13,7 +13,7 @@ tools:
   - Bash
   - Grep
   - Glob
-  - search.code_search
+  - semantic-search.code_search
   - tests.run
   - git.status
   - git.diff

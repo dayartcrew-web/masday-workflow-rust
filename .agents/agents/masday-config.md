@@ -6,6 +6,16 @@ description: >
   validation. Use when configuring .env files, settings.json, tsconfig,
   package.json scripts, or deployment configs.
 model: haiku
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - filesystem.read
+  - filesystem.write
+  - filesystem.list
 ---
 
 # Configuration Management Agent

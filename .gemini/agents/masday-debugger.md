@@ -9,13 +9,13 @@ tools:
   - Bash
   - Grep
   - Glob
-  - workflow.get_active
-  - workflow.get_current_task
-  - workflow.save_progress
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.saveProgress
   - memory.store
   - memory.search
   - memory.recall_by_task
-  - search.code_search
+  - semantic-search.code_search
   - tests.run
   - git.diff
   - git.status
@@ -66,7 +66,7 @@ Test each hypothesis by tracing the code path.
 
 Search for the relevant source:
 ```
-search.code_search({ query: "sqlite query row id undefined", limit: 10 })
+semantic-search.code_search({ query: "sqlite query row id undefined", limit: 10 })
 ```
 
 Trace the call chain with Read and Grep:
@@ -203,7 +203,7 @@ After capturing browser evidence, trace back to source code:
 
 Save progress at each phase transition:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-debugger",

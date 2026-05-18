@@ -1,54 +1,55 @@
 /**
  * pre-build-skill — Validates .claude/skills/ and .claude/agents/ files on edit.
  * Checks: tools list against MCP registry, anti-patterns, param gaps.
+ * SYNC: Must match apps/agent-runner/src/runtime/mcp.ts — the single source of truth.
  */
 
 const MCP_TOOLS = new Set([
-  // workflow
+  // workflow (19+4 stubs)
   'workflow.create', 'workflow.execute', 'workflow.getStatus', 'workflow.get',
-  'workflow.list', 'workflow.addTask', 'workflow.start_task', 'workflow.complete_task',
-  'workflow.save_progress', 'workflow.list_tasks', 'workflow.get_current_task',
-  'workflow.get_plan', 'workflow.get_active', 'workflow.delete', 'workflow.ping',
-  'workflow.create_parallel_branches', 'workflow.complete_parallel_branch',
-  'workflow.list_parallel_branches', 'workflow.set_execution_mode',
-  'workflow.mark_synthesis_ready', 'workflow.mark_verification_ready',
-  'workflow.resume_suggestion',
-  // review
+  'workflow.list', 'workflow.addTask', 'workflow.startTask', 'workflow.completeTask',
+  'workflow.saveProgress', 'workflow.listTasks', 'workflow.getCurrentTask',
+  'workflow.getPlan', 'workflow.getActive', 'workflow.createPlan',
+  'workflow.createParallelBranches', 'workflow.completeParallelBranch',
+  'workflow.listParallelBranches', 'workflow.delete', 'workflow.ping',
+  'workflow.set_execution_mode', 'workflow.mark_synthesis_ready',
+  'workflow.mark_verification_ready', 'workflow.resume_suggestion',
+  // review (2 stubs)
   'review.submit', 'review.get_latest',
-  // session
+  // session (3 stubs)
   'session.get_state', 'session.patch_state', 'session.init_context',
-  // local
+  // local (4 stubs)
   'local.init', 'local.sync', 'local.push', 'local.save_artifact',
-  // memory
+  // memory (11)
   'memory.store', 'memory.store_research', 'memory.recall_recent',
   'memory.recall_documents', 'memory.recall_document_by_type', 'memory.recall_by_task',
   'memory.update', 'memory.delete', 'memory.delete_by_workflow', 'memory.search',
   'memory.stats',
-  // search
-  'search.hybrid_context_pack', 'search.context_fingerprint', 'search.code_search',
-  // policy
+  // semantic-search (3) — NOT search.*
+  'semantic-search.search_hybrid_context_pack', 'semantic-search.search_context_fingerprint', 'semantic-search.code_search',
+  // policy (6)
   'policy.check_session_readiness', 'policy.validate_execution',
   'policy.validate_completion', 'policy.validate_parallel_completion',
   'policy.detect_scope_drift', 'policy.require_context_refresh',
-  // capability
+  // capability (11)
   'capability.ping', 'capability.list_agents', 'capability.list_skills',
   'capability.list_templates', 'capability.match_agent', 'capability.system_readiness',
   'capability.workflow_audit', 'capability.create_agent', 'capability.create_skill',
   'capability.scaffold_feature', 'capability.scaffold_mcp_server',
-  // filesystem
+  // filesystem (5)
   'filesystem.read', 'filesystem.write', 'filesystem.list', 'filesystem.delete',
   'filesystem.stat',
-  // git
+  // git (3 stubs)
   'git.status', 'git.diff', 'git.commit',
-  // npm
+  // npm (2 stubs)
   'npm.install', 'npm.run',
-  // docker
+  // docker (3 stubs)
   'docker.build', 'docker.run', 'docker.ps',
-  // cicd
+  // cicd (3 stubs)
   'cicd.pipeline_status', 'cicd.pipeline_trigger', 'cicd.runs_view',
-  // github
+  // github (3 stubs)
   'github.pr_create', 'github.pr_list', 'github.issue_list',
-  // tests
+  // tests (1 stub)
   'tests.run',
 ]);
 

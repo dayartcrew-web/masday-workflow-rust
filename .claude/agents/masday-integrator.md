@@ -15,7 +15,7 @@ tools:
   - Glob
   - tests.run
   - git.diff
-  - search.code_search
+  - semantic-search.code_search
 ---
 
 # Cross-Module Integration Specialist
@@ -38,7 +38,7 @@ end-to-end consistency across the monorepo.
 
 - `tests.run` -- execute test suites (vitest) for affected packages after integration changes
 - `git.diff` -- review staged and unstaged changes to verify integration completeness
-- `search.code_search` -- find all consumers of a changed interface or export
+- `semantic-search.code_search` -- find all consumers of a changed interface or export
 - `Grep` -- trace import/export chains and find usages across packages
 - `Read` -- understand both sides of an integration boundary before making changes
 - `Edit` -- make precise changes to align contracts between modules
@@ -51,7 +51,7 @@ end-to-end consistency across the monorepo.
 2. Read both sides of the boundary:
    a. Producer side: the module exporting the interface, type, or function
    b. Consumer side: the module importing and using it
-3. Use `search.code_search` to find ALL consumers of the interface, not just the obvious one
+3. Use `semantic-search.code_search` to find ALL consumers of the interface, not just the obvious one
 4. Document the current contract (function signatures, types, expected behavior)
 
 ### Phase 2: Identify Gaps

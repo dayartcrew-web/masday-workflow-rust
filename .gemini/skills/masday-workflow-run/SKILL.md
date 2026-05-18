@@ -9,13 +9,13 @@ allowed-tools:
   - workflow.get
   - workflow.execute
   - workflow.getStatus
-  - workflow.get_current_task
-  - workflow.start_task
-  - workflow.complete_task
-  - workflow.save_progress
-  - workflow.list_tasks
-  - workflow.create_parallel_branches
-  - workflow.complete_parallel_branch
+  - workflow.getCurrentTask
+  - workflow.startTask
+  - workflow.completeTask
+  - workflow.saveProgress
+  - workflow.listTasks
+  - workflow.createParallelBranches
+  - workflow.completeParallelBranch
   - policy.validate_execution
   - policy.validate_completion
   - policy.validate_parallel_completion
@@ -40,7 +40,7 @@ Execute a Masday workflow that has been planned and is ready to run.
    - If the workflow is not ready, report the current state and stop
 
 2. **List and review tasks**
-   - Call `workflow.list_tasks` to see all planned tasks and their statuses
+   - Call `workflow.listTasks` to see all planned tasks and their statuses
    - Confirm the task order and dependencies make sense
    - Report the task summary to the user before starting
 
@@ -50,20 +50,20 @@ Execute a Masday workflow that has been planned and is ready to run.
 
 4. **Monitor task execution**
    - Loop through tasks as they execute:
-     - Call `workflow.get_current_task` to identify the active task
+     - Call `workflow.getCurrentTask` to identify the active task
      - Call `policy.validate_execution` before each task starts
      - Call `memory.recall_by_task` to load context for the current task
      - Perform the task work using appropriate tools
      - Call `policy.detect_scope_drift` to check for deviations from the plan
-     - Call `workflow.save_progress` with a progress note and evidence
+     - Call `workflow.saveProgress` with a progress note and evidence
      - Call `policy.validate_completion` after each task completes
-     - Call `workflow.complete_task` to mark it done
+     - Call `workflow.completeTask` to mark it done
 
 5. **Handle parallel branches** (if applicable)
-   - Call `workflow.create_parallel_branches` for independent tasks
+   - Call `workflow.createParallelBranches` for independent tasks
    - Monitor each branch independently
    - Call `policy.validate_parallel_completion` when all branches finish
-   - Call `workflow.complete_parallel_branch` for each completed branch
+   - Call `workflow.completeParallelBranch` for each completed branch
 
 6. **Store execution artifacts**
    - Call `memory.store` with `memory_type: "artifact"` for key outputs

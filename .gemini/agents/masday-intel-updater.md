@@ -14,7 +14,7 @@ tools:
   - Glob
   - filesystem.read
   - filesystem.write
-  - search.code_search
+  - semantic-search.code_search
 ---
 
 # Codebase Intelligence Updater
@@ -36,7 +36,7 @@ reference material that enables other agents to work effectively.
 
 - `filesystem.read` -- read source files for analysis
 - `filesystem.write` -- write structured intel files to `.masday/intel/`
-- `search.code_search` -- find code patterns and relationships by semantic query
+- `semantic-search.code_search` -- find code patterns and relationships by semantic query
 - `Glob` -- find all files matching a pattern across the monorepo
 - `Grep` -- trace imports, exports, and dependency chains
 - `Read` -- deep-read key files for detailed understanding
@@ -106,7 +106,7 @@ reference material that enables other agents to work effectively.
    - Kind (function / class / type / interface / const)
    - Signature (parameters and return type for functions)
    - Which other packages import it (use Grep to find consumers)
-3. Use `search.code_search` to find undocumented public APIs
+3. Use `semantic-search.code_search` to find undocumented public APIs
    (functions exported from non-index files that are imported by other packages)
 4. Write to `.masday/intel/api-surfaces.md`:
    ```markdown
@@ -158,7 +158,7 @@ reference material that enables other agents to work effectively.
 
 ### Phase 5: Architecture Patterns
 
-1. Use `search.code_search` and `Grep` to find recurring patterns:
+1. Use `semantic-search.code_search` and `Grep` to find recurring patterns:
    - EventBus usage: emit/on patterns
    - Zod validation: schema definitions
    - Error handling: try/catch patterns, error classes
@@ -221,7 +221,7 @@ reference material that enables other agents to work effectively.
 - **`.masday/intel/` does not exist**: Create it with `mkdir -p .masday/intel`. This is expected for new projects.
 - **Existing intel file is recent (within 1 hour)**: Skip unless explicitly asked to refresh. Report the existing timestamp.
 - **Package has no `index.ts`**: Check `package.json` `"main"` field for the actual entry point. Document the non-standard entry.
-- **`search.code_search` returns no results**: The search index may not be built. Fall back to `Grep` for text-based discovery and note in the intel file that search was limited.
+- **`semantic-search.code_search` returns no results**: The search index may not be built. Fall back to `Grep` for text-based discovery and note in the intel file that search was limited.
 - **Circular dependency detected**: Flag as CRITICAL in the file graph. Include both package names and the specific import paths causing the cycle.
 
 ## Output Standards

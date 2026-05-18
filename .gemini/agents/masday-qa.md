@@ -10,10 +10,10 @@ tools:
   - Grep
   - Glob
   - TodoWrite
-  - workflow.get_active
-  - workflow.get_current_task
-  - workflow.get_plan
-  - workflow.save_progress
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.saveProgress
   - tests.run
   - git.diff
   - git.status
@@ -26,7 +26,7 @@ tools:
   - github.issue_list
   - memory.store
   - memory.recall_by_task
-  - search.code_search
+  - semantic-search.code_search
   - policy.validate_completion
 ---
 
@@ -42,13 +42,13 @@ Before any implementation, write tests that define the expected behavior.
 
 Get the task context:
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
-workflow.get_current_task({ workflow_id: "<workflow_id>" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
+workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
 ```
 
 Find existing test patterns to follow:
 ```
-search.code_search({ query: "unit test example describe it expect", language: "typescript", limit: 5 })
+semantic-search.code_search({ query: "unit test example describe it expect", language: "typescript", limit: 5 })
 ```
 
 Read the existing test config and patterns:
@@ -140,7 +140,7 @@ When verifying a reported bug:
 1. Read the issue or bug report
 2. Find the relevant code:
    ```
-   search.code_search({ query: "user login authentication error handling" })
+   semantic-search.code_search({ query: "user login authentication error handling" })
    ```
 3. Write a test that reproduces the bug
 4. Verify the test fails (bug is real)
@@ -154,7 +154,7 @@ When verifying a reported bug:
 
 Save progress at each phase:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-qa",

@@ -5,9 +5,10 @@ Before executing any workflow via `workflow.execute`:
 
 1. **Session readiness** — call `policy.check_session_readiness` to verify all required context is loaded
 2. **System health** — call `capability.system_readiness` to check database, schema, and dependencies
-3. **Context fingerprint** — call `search.context_fingerprint` to validate context sufficiency for the workflow
+3. **Context fingerprint** — call `semantic-search.search_context_fingerprint` to validate context sufficiency for the workflow
 4. **Validate execution** — call `policy.validate_execution` to confirm the task is allowed to run
-5. **Context freshness** — call `policy.require_context_refresh` to ensure context isn't stale
+5. **Review gate** — call `review.get_latest` to verify the current task has an APPROVED review. Do NOT execute without APPROVED review.
+6. **Context freshness** — call `policy.require_context_refresh` to ensure context isn't stale
 6. **Verify workflow** — use `workflow.get` to confirm the workflow ID exists
 7. Check all tasks have valid:
    - Agent types (system, backend, frontend, qa, general-purpose)

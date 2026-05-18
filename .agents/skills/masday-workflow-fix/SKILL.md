@@ -8,20 +8,20 @@ description: >
 allowed-tools:
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
-  - workflow.start_task
-  - workflow.complete_task
+  - workflow.listTasks
+  - workflow.startTask
+  - workflow.completeTask
   - workflow.execute
   - workflow.addTask
-  - workflow.save_progress
+  - workflow.saveProgress
   - policy.validate_execution
   - policy.validate_completion
   - policy.detect_scope_drift
   - memory.store
   - memory.recall_by_task
   - memory.search
-  - search.code_search
-  - search.hybrid_context_pack
+  - semantic-search.code_search
+  - semantic-search.search_hybrid_context_pack
   - tests.run
   - npm.install
   - npm.run
@@ -36,7 +36,7 @@ Diagnose and fix issues in a failed or incomplete workflow.
 1. **Get workflow state**
    - Call `workflow.get` with the workflow ID
    - Call `workflow.getStatus` to see current state (BLOCKED, EXECUTE with failures)
-   - Call `workflow.list_tasks` to identify all failed or incomplete tasks
+   - Call `workflow.listTasks` to identify all failed or incomplete tasks
 
 2. **Diagnose each failure**
    - For each task with status FAILED or BLOCKED:
@@ -45,13 +45,13 @@ Diagnose and fix issues in a failed or incomplete workflow.
      - Categorize the failure: configuration error, code bug, dependency issue, or agent timeout
 
 3. **Search for solutions**
-   - Call `search.code_search` with queries related to the error
-   - Call `search.hybrid_context_pack` to get broader codebase context
+   - Call `semantic-search.code_search` with queries related to the error
+   - Call `semantic-search.search_hybrid_context_pack` to get broader codebase context
    - Call `memory.search` for similar failures encountered in past workflows
 
 4. **Determine fix approach**
    - **Configuration error**: Fix the task parameters and call `workflow.addTask` with corrected config
-   - **Code bug**: Analyze the code, fix the issue, then call `workflow.start_task` to retry
+   - **Code bug**: Analyze the code, fix the issue, then call `workflow.startTask` to retry
    - **Dependency issue**: Adjust task dependency ordering, re-add tasks with corrected deps
    - **Agent timeout**: Consider splitting the task into smaller subtasks
 
@@ -62,8 +62,8 @@ Diagnose and fix issues in a failed or incomplete workflow.
 6. **Re-execute the workflow**
    - Call `workflow.execute` with the workflow ID to resume
    - Monitor the re-execution:
-     - Call `workflow.list_tasks` to track progress
-     - Call `workflow.save_progress` at each milestone
+     - Call `workflow.listTasks` to track progress
+     - Call `workflow.saveProgress` at each milestone
      - Call `policy.validate_completion` after each task completes
 
 7. **Store the fix**
