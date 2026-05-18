@@ -4,7 +4,8 @@
   "type": "module",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "build": "turbo run build",
+    "build": "turbo run build --filter=\"!@masday-workflow-reborn/*\"",
+    "build:apps": "turbo run build --filter=\"@masday-workflow-reborn/*\"",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run typecheck",
     "typecheck": "turbo run typecheck",
