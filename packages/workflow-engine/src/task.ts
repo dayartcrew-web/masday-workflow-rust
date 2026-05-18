@@ -3,12 +3,13 @@
  */
 
 import { prisma } from "@mcp-rebuild/db";
+import type { Prisma } from "@prisma/client";
 
 export async function startTask(input: {
   workflowId: string;
   taskId: string;
 }) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const task = await tx.task.findUniqueOrThrow({
       where: { id: input.taskId },
     });
@@ -46,7 +47,7 @@ export async function completeTask(input: {
   workflowId: string;
   taskId: string;
 }) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const task = await tx.task.findUniqueOrThrow({
       where: { id: input.taskId },
     });
@@ -64,7 +65,7 @@ export async function completeTask(input: {
         where: { planId: task.planId },
       });
       const allDone =
-        allTasks.length > 0 && allTasks.every((t) => t.status === "done");
+        allTasks.length > 0 && allTasks.every((t: { status: string }) => t.status === "done");
 
       if (allDone) {
         await tx.plan.update({
