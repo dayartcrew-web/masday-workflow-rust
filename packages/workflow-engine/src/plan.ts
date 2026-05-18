@@ -2,7 +2,7 @@
  * Plan creation (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 import type { PlanContent } from "@mcp-rebuild/core";
 import type { Prisma } from "@prisma/client";
 
@@ -12,11 +12,11 @@ export async function createPlan(input: {
   content: PlanContent;
   createdByAgent: string;
 }) {
-  const existingCount = await prisma.plan.count({
+  const existingCount = await (await import("@mcp-rebuild/db")).prisma.plan.count({
     where: { workflowId: input.workflowId },
   });
 
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  return (await import("@mcp-rebuild/db")).prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const plan = await tx.plan.create({
       data: {
         workflowId: input.workflowId,

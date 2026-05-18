@@ -93,6 +93,11 @@ export function createEmbeddingProvider(
   const p = provider ?? env.EMBEDDING_PROVIDER;
 
   switch (p) {
+    case "ollama":
+      return new OpenAIEmbeddingProvider({
+        apiKey: "ollama",
+        baseUrl: env.OLLAMA_BASE_URL + "/v1",
+      });
     case "openai":
       return new OpenAIEmbeddingProvider();
     case "mock":

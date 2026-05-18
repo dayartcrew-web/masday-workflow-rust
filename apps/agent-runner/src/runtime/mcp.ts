@@ -2,8 +2,46 @@
 
 /**
  * Masday Workflow MCP Server (Local-First)
- * Uses official @modelcontextprotocol/sdk with JsonBackend storage.
- * No PostgreSQL or Docker required.
+ *
+ * AUTHORITY: This file is the SINGLE SOURCE OF TRUTH for all MCP tool registrations.
+ * Server name: "masday" → all tools are prefixed mcp__masday__* by the MCP SDK.
+ * DO NOT add tool registrations in any other file.
+ *
+ * NAMING CONVENTIONS:
+ *   - Tool names use dot.namespaces with camelCase methods: workflow.getActive, memory.store
+ *   - MCP SDK transforms: dots → underscores, preserves case: workflow.getActive → mcp__masday__workflow_getActive
+ *   - In .md skill/agent docs, reference as: workflow.getActive (logical name)
+ *   - In mcp__masday__* prefixed calls, use: mcp__masday__workflow_getActive (SDK-resolved name)
+ *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive
+ *
+ * TOTAL TOOLS: 83 (54 original + 29 stubs)
+ *
+ * Namespaces & tools:
+ *   workflow (23): create, execute, getStatus, get, list, addTask, startTask, completeTask,
+ *                  saveProgress, listTasks, getCurrentTask, getPlan, getActive, createPlan,
+ *                  createParallelBranches, completeParallelBranch, listParallelBranches, delete, ping,
+ *                  set_execution_mode, mark_synthesis_ready, mark_verification_ready,
+ *                  resume_suggestion [last 4 are STUBS]
+ *   memory (11): store, store_research, recall_recent, recall_documents, recall_document_by_type,
+ *                recall_by_task, update, delete, delete_by_workflow, search, stats
+ *   semantic-search (3): search_hybrid_context_pack, search_context_fingerprint, code_search
+ *   policy (6): check_session_readiness, validate_execution, validate_completion,
+ *               validate_parallel_completion, detect_scope_drift, require_context_refresh
+ *   capability (11): list_agents, list_skills, list_templates, match_agent, system_readiness,
+ *                    workflow_audit, create_agent, create_skill, scaffold_feature, scaffold_mcp_server, ping
+ *   filesystem (5): read, write, list, delete, stat
+ *   review (2): submit, get_latest [STUB]
+ *   session (3): get_state, patch_state, init_context [STUB]
+ *   local (4): init, sync, push, save_artifact [STUB]
+ *   git (3): status, diff, commit [STUB]
+ *   npm (2): install, run [STUB]
+ *   docker (3): build, run, ps [STUB]
+ *   cicd (3): pipeline_status, pipeline_trigger, runs_view [STUB]
+ *   github (3): pr_create, pr_list, issue_list [STUB]
+ *   tests (1): run [STUB]
+ *
+ * SYNC: pre-build-skill.js MCP_TOOLS set must match this list exactly.
+ * SYNC: All masday skill and agent .md files must use camelCase tool names.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -82,6 +120,10 @@ server.registerTool("workflow.completeParallelBranch", { description: "Complete 
 server.registerTool("workflow.listParallelBranches", { description: "List branches", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.metadata.parallelBranches ?? []); });
 server.registerTool("workflow.delete", { description: "Delete workflow", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => ok({ deleted: engine.deleteWorkflow(workflow_id) }));
 server.registerTool("workflow.ping", { description: "Health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType }));
+server.registerTool("workflow.set_execution_mode", { description: "Set execution mode", inputSchema: { session_key: z.string(), mode: z.string() } }, async ({ session_key, mode }) => ok({ sessionKey: session_key, mode }));
+server.registerTool("workflow.mark_synthesis_ready", { description: "Mark synthesis ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => ok({ sessionKey: session_key, synthesisReady: ready }));
+server.registerTool("workflow.mark_verification_ready", { description: "Mark verification ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => ok({ sessionKey: session_key, verificationReady: ready }));
+server.registerTool("workflow.resume_suggestion", { description: "Get resume suggestion", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => ok({ workflowId: workflow_id, suggestion: "continue" }));
 
 server.registerTool("memory.store", { description: "Store memory", inputSchema: { workflow_id: z.string().optional(), task_id: z.string().optional(), memory_type: z.string(), summary: z.string(), content: z.string(), created_by_agent: z.string(), importance_score: z.number().optional(), tags: z.array(z.string()).optional() } }, async (a) => { const m = loadMem(); const r: MemRec = { id: nid(), type: a.memory_type, content: a.content, summary: a.summary, source: a.created_by_agent, importance: a.importance_score ?? 0.5, tags: [...(a.tags ?? []), a.workflow_id, a.task_id].filter(Boolean) as string[], createdAt: Date.now() }; m.push(r); saveMem(m); return ok(r); });
 server.registerTool("memory.store_research", { description: "Store research", inputSchema: { workflow_id: z.string().optional(), summary: z.string(), content: z.string(), created_by_agent: z.string() } }, async (a) => { const m = loadMem(); const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now() }; m.push(r); saveMem(m); return ok(r); });
@@ -122,6 +164,55 @@ server.registerTool("filesystem.write", { description: "Write file", inputSchema
 server.registerTool("filesystem.list", { description: "List dir", inputSchema: { path: z.string() } }, async ({ path: fp }) => ok(fs.readdirSync(fp, { withFileTypes: true }).map(e => ({ name: e.name, type: e.isDirectory() ? "dir" : "file" }))));
 server.registerTool("filesystem.delete", { description: "Delete file", inputSchema: { path: z.string() } }, async ({ path: fp }) => { fs.unlinkSync(fp); return ok({ ok: true }); });
 server.registerTool("filesystem.stat", { description: "File stat", inputSchema: { path: z.string() } }, async ({ path: fp }) => { const s = fs.statSync(fp); return ok({ size: s.size, isFile: s.isFile() }); });
+
+// --- STUB TOOLS (28) ---
+// These tools are referenced by skills/agents but need real implementations.
+// Each returns a minimal valid response.
+
+// review (2)
+server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional() } }, async (a) => ok({ submitted: true, ...a }));
+server.registerTool("review.get_latest", { description: "Get latest review", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async (a) => ok({ review: null, ...a }));
+
+// session (3)
+server.registerTool("session.get_state", { description: "Get session state", inputSchema: { session_key: z.string() } }, async ({ session_key }) => ok({ sessionKey: session_key, state: {} }));
+server.registerTool("session.patch_state", { description: "Patch session state", inputSchema: { session_key: z.string(), patch: z.record(z.any()) } }, async ({ session_key, patch }) => ok({ sessionKey: session_key, patched: true, patch }));
+server.registerTool("session.init_context", { description: "Init session context", inputSchema: { cwd: z.string() } }, async ({ cwd }) => ok({ initialized: true, cwd }));
+
+// local (4)
+server.registerTool("local.init", { description: "Init local state dir", inputSchema: { cwd: z.string() } }, async ({ cwd }) => { const p = path.join(cwd, ".masday"); if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); return ok({ initialized: true, path: p }); });
+server.registerTool("local.sync", { description: "Sync local state from DB", inputSchema: { cwd: z.string(), workflow_id: z.string() } }, async (a) => ok({ synced: true, ...a }));
+server.registerTool("local.push", { description: "Push local state to DB", inputSchema: { cwd: z.string(), workflow_id: z.string() } }, async (a) => ok({ pushed: true, ...a }));
+server.registerTool("local.save_artifact", { description: "Save artifact file locally", inputSchema: { cwd: z.string(), category: z.string(), filename: z.string(), content: z.string() } }, async ({ cwd, category, filename, content }) => { const d = path.join(cwd, ".masday", category); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, filename), content); return ok({ saved: true, path: path.join(d, filename) }); });
+
+// git (3)
+server.registerTool("git.status", { description: "Git status", inputSchema: {} }, async () => ok({ stdout: "", stderr: "", exitCode: 0 }));
+server.registerTool("git.diff", { description: "Git diff", inputSchema: {} }, async () => ok({ stdout: "", stderr: "", exitCode: 0 }));
+server.registerTool("git.commit", { description: "Git commit", inputSchema: { message: z.string() } }, async ({ message }) => ok({ stdout: "", stderr: "", exitCode: 0, message }));
+
+// npm (2)
+server.registerTool("npm.install", { description: "NPM install", inputSchema: { packages: z.array(z.string()).optional() } }, async ({ packages }) => ok({ stdout: "", stderr: "", exitCode: 0, packages: packages ?? [] }));
+server.registerTool("npm.run", { description: "NPM run script", inputSchema: { script: z.string() } }, async ({ script }) => ok({ stdout: "", stderr: "", exitCode: 0, script }));
+
+// docker (3)
+server.registerTool("docker.build", { description: "Docker build", inputSchema: { tag: z.string().optional() } }, async ({ tag }) => ok({ stdout: "", stderr: "", exitCode: 0, tag }));
+server.registerTool("docker.run", { description: "Docker run", inputSchema: { image: z.string() } }, async ({ image }) => ok({ stdout: "", stderr: "", exitCode: 0, image }));
+server.registerTool("docker.ps", { description: "Docker ps", inputSchema: {} }, async () => ok({ stdout: "", stderr: "", exitCode: 0 }));
+
+// cicd (3)
+server.registerTool("cicd.pipeline_status", { description: "CI/CD pipeline status", inputSchema: {} }, async () => ok({ pipelines: [] }));
+server.registerTool("cicd.pipeline_trigger", { description: "Trigger CI/CD pipeline", inputSchema: { pipeline: z.string() } }, async ({ pipeline }) => ok({ triggered: true, pipeline }));
+server.registerTool("cicd.runs_view", { description: "View CI/CD runs", inputSchema: {} }, async () => ok({ runs: [] }));
+
+// github (3)
+server.registerTool("github.pr_create", { description: "Create GitHub PR", inputSchema: { title: z.string(), body: z.string().optional() } }, async ({ title, body }) => ok({ created: true, title, body }));
+server.registerTool("github.pr_list", { description: "List GitHub PRs", inputSchema: {} }, async () => ok({ prs: [] }));
+server.registerTool("github.issue_list", { description: "List GitHub issues", inputSchema: {} }, async () => ok({ issues: [] }));
+
+// tests (1)
+server.registerTool("tests.run", { description: "Run tests", inputSchema: { pattern: z.string().optional() } }, async ({ pattern }) => ok({ stdout: "", stderr: "", exitCode: 0, pattern }));
+
+// capability.ping (1) — missing from original capability namespace
+server.registerTool("capability.ping", { description: "Capability health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType }));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

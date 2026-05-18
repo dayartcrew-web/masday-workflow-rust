@@ -22,10 +22,10 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
-      const result = await chatApi.complete({ message }) as { response: string; memoryContext?: MemoryEntry[] };
+      const result = await chatApi.complete({ message }) as { text?: string; response?: string; error?: string; ok?: boolean; memoryContext?: MemoryEntry[] };
       const assistantMsg: ChatMessage = {
         role: 'assistant',
-        content: result.response || 'No response received',
+        content: result.error ? `Error: ${result.error}` : (result.text || result.response || 'No response received'),
         timestamp: new Date().toISOString(),
         memoryContext: result.memoryContext,
       };

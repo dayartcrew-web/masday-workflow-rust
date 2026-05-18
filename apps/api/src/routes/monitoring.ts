@@ -10,6 +10,7 @@ export interface MonitoringServiceProvider {
   getHealth(): Promise<unknown>;
   getMetrics(): unknown;
   getStats(): unknown;
+  getTokenUsage?(params: { groupBy?: string; from?: string; to?: string; route?: string; model?: string }): Promise<unknown>;
 }
 
 export function createMonitoringRoutes(provider: MonitoringServiceProvider): RouteDefinition[] {
@@ -40,6 +41,27 @@ export function createMonitoringRoutes(provider: MonitoringServiceProvider): Rou
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
         const result = provider.getStats();
+        sendJson(res, 200, result);
+      },
+    },
+    // GET /api/token-usage — Token usage aggregation
+    {
+      method: 'GET',
+      pattern: '/api/token-usage',
+      authRequired: true,
+      handler: async (req: IncomingMessage, res: ServerResponse) => {
+        if (!provider.getTokenUsage) {
+          sendJson(res, 501, { error: 'Token usage aggregation not available' });
+          return;
+        }
+        const url = new URL(req.url || '', `http://localhost`);
+        const result = await provider.getTokenUsage({
+          groupBy: url.searchParams.get('groupBy') ?? undefined,
+          from: url.searchParams.get('from') ?? undefined,
+          to: url.searchParams.get('to') ?? undefined,
+          route: url.searchParams.get('route') ?? undefined,
+          model: url.searchParams.get('model') ?? undefined,
+        });
         sendJson(res, 200, result);
       },
     },

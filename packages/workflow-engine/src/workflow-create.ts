@@ -2,13 +2,12 @@
  * Workflow creation (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
-
 export async function createWorkflow(input: {
   name: string;
   projectPath?: string;
   metadata?: Record<string, unknown>;
 }) {
+  const { prisma } = await import("@mcp-rebuild/db");
   return prisma.workflow.create({
     data: {
       name: input.name,

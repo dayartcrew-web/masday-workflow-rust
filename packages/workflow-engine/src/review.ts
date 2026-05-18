@@ -2,7 +2,7 @@
  * Review operations (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 import type { MsdReviewDecision } from "@mcp-rebuild/core";
 import { completeTask } from "./task.js";
 
@@ -14,7 +14,7 @@ export async function submitReview(input: {
   notes: string;
   gaps?: string[];
 }) {
-  const row = await prisma.reviewDecision.create({
+  const row = await (await import("@mcp-rebuild/db")).prisma.reviewDecision.create({
     data: {
       workflowId: input.workflowId,
       taskId: input.taskId,
@@ -33,19 +33,19 @@ export async function submitReview(input: {
   }
 
   if (input.decision === "REWORK_REQUIRED") {
-    await prisma.task.update({
+    await (await import("@mcp-rebuild/db")).prisma.task.update({
       where: { id: input.taskId },
       data: { status: "in_progress" },
     });
   }
 
   if (input.decision === "BLOCKED") {
-    await prisma.task.update({
+    await (await import("@mcp-rebuild/db")).prisma.task.update({
       where: { id: input.taskId },
       data: { status: "blocked" },
     });
 
-    await prisma.workflow.update({
+    await (await import("@mcp-rebuild/db")).prisma.workflow.update({
       where: { id: input.workflowId },
       data: { status: "blocked" },
     });
@@ -55,7 +55,7 @@ export async function submitReview(input: {
 }
 
 export async function getLatestReview(workflowId: string, taskId: string) {
-  return prisma.reviewDecision.findFirst({
+  return (await import("@mcp-rebuild/db")).prisma.reviewDecision.findFirst({
     where: { workflowId, taskId },
     orderBy: { createdAt: "desc" },
   });

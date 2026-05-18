@@ -10,7 +10,7 @@
 import fs from 'fs';
 import net from 'net';
 import path from 'path';
-import { EventBus, createLogger, getMetrics, HealthChecker } from '@mcp-rebuild/core';
+import { EventBus, createLogger, getMetrics, HealthChecker, getRouteTokenBreakdown, trackLLMTokens, setPrismaClient } from '@mcp-rebuild/core';
 import type { MemoryType } from '@mcp-rebuild/core';
 import { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
 import type { ISkillRegistry } from '@mcp-rebuild/workflow-engine';
@@ -19,6 +19,12 @@ import {
   WorkflowStore,
   TaskResultStore,
   PersistenceListener,
+  DualWriteWorkflowStore,
+  DualWriteTaskResultStore,
+  setDualWritePrisma,
+  setDualWriteMemoryPrisma,
+  replicateMemory,
+  replicateMemoryDelete,
 } from '@mcp-rebuild/store';
 import { MemoryStore } from '@mcp-rebuild/memory';
 import * as policyTools from '@mcp-rebuild/policy';
@@ -94,8 +100,8 @@ function resolveStorePath(): string {
   const repoRoot = resolveRepoRootFromDistDirname();
 
   const defaultPath = repoRoot
-    ? path.join(repoRoot, '.msd', 'state', 'store.json')
-    : path.resolve(process.cwd(), '.msd', 'state', 'store.json');
+    ? path.join(repoRoot, '.masday', 'state', 'masday.json')
+    : path.resolve(process.cwd(), '.masday', 'state', 'masday.json');
 
   const rawPath = envPath && envPath.length > 0 ? envPath : defaultPath;
   const absPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), rawPath);
@@ -121,6 +127,18 @@ async function main(): Promise<void> {
 
   // --- Core runtime plumbing (EventBus + persistence + workflow engine) ---
   const eventBus = new EventBus();
+
+  // Wire Prisma client for token usage persistence and dual-write sync
+  try {
+    const { prisma } = await import('@mcp-rebuild/db');
+    setPrismaClient(prisma);
+    setDualWritePrisma(prisma);
+    setDualWriteMemoryPrisma(prisma);
+    logger.info('Token usage persistence + dual-write sync: PostgreSQL connected');
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'Token usage persistence: falling back to in-memory (DB unavailable)');
+  }
+
   const skillRegistry: ISkillRegistry = {
     async execute(skill: string, input: unknown): Promise<unknown> { throw new Error("Not available: " + skill); },
     has(skill: string): boolean { return false; },
@@ -131,8 +149,8 @@ async function main(): Promise<void> {
   const backend = new JsonBackend(storePath);
   backend.initialize();
 
-  const workflowStore = new WorkflowStore(backend);
-  const taskResultStore = new TaskResultStore(backend);
+  const workflowStore = new DualWriteWorkflowStore(new WorkflowStore(backend));
+  const taskResultStore = new DualWriteTaskResultStore(new TaskResultStore(backend));
   const persistenceListener = new PersistenceListener(eventBus, workflowStore, taskResultStore);
   persistenceListener.start();
 
@@ -174,6 +192,17 @@ async function main(): Promise<void> {
         source: 'api',
       });
       await memoryStore.save();
+      replicateMemory({
+        id: record.id,
+        memoryType: type,
+        summary: entry.content.slice(0, 200),
+        content: entry.content,
+        importanceScore: entry.importance,
+        createdByAgent: 'api',
+        tags,
+        workflowId: entry.workflowId,
+        taskId: entry.taskId,
+      });
       return { id: record.id };
     },
     storeResearch: async (entry) => {
@@ -184,10 +213,19 @@ async function main(): Promise<void> {
         source: 'api',
       });
       await memoryStore.save();
+      replicateMemory({
+        id: record.id,
+        memoryType: 'research',
+        summary: entry.query,
+        content: entry.findings,
+        importanceScore: 0.6,
+        createdByAgent: 'api',
+        tags: ['research', entry.workflowId],
+        workflowId: entry.workflowId,
+      });
       return { id: record.id };
     },
     recallDocuments: async (workflowId, limit) => {
-      // "documents" here means anything tagged with the workflowId.
       const results = await memoryStore.search(workflowId, { limit: limit ?? 10, threshold: 0.0 });
       return results.map(r => r.memory);
     },
@@ -215,11 +253,22 @@ async function main(): Promise<void> {
       });
       if (!updated) return { updated: false };
       await memoryStore.save();
+      if (typeof updates.content === 'string') {
+        replicateMemory({
+          id,
+          memoryType: typeof updates.type === 'string' ? updates.type : 'fact',
+          summary: updates.content.slice(0, 200),
+          content: updates.content,
+          importanceScore: typeof updates.importance === 'number' ? updates.importance : undefined,
+          createdByAgent: 'api',
+        });
+      }
       return { updated: true };
     },
     delete: async (id) => {
       const deleted = memoryStore.delete(id);
       if (deleted) await memoryStore.save();
+      replicateMemoryDelete(id);
       return { deleted };
     },
   };
@@ -332,17 +381,90 @@ async function main(): Promise<void> {
       try {
         const { createLLM } = await import('@mcp-rebuild/llm');
         const llm = createLLM();
-        return llm.complete(input.message, {
+        const result = await llm.complete(input.message, {
           model: input.model,
           temperature: input.temperature,
         });
+        if (result.tokensUsed) {
+          getMetrics().increment('llm.tokens_used', result.tokensUsed);
+          trackLLMTokens({
+            route: '/api/chat',
+            model: result.model,
+            promptTokens: result.promptTokens ?? 0,
+            completionTokens: result.completionTokens ?? 0,
+            totalTokens: result.tokensUsed,
+            latencyMs: result.latencyMs,
+          });
+        }
+        return result;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message, ok: false };
       }
     },
     react: async (input) => {
-      return { ok: false, error: 'ReAct execution not wired in API bootstrap', goal: input.goal };
+      try {
+        const { createLLM } = await import('@mcp-rebuild/llm');
+        const { ReActAgent } = await import('@mcp-rebuild/intelligence');
+        const rawLlm = createLLM();
+        // Wrap LLM to track token usage across all ReAct steps
+        const llm = {
+          complete: async (prompt: string, opts?: Record<string, unknown>) => {
+            const result = await rawLlm.complete(prompt, opts as import('@mcp-rebuild/llm').LLMOptions);
+            if (result.tokensUsed) {
+              getMetrics().increment('llm.tokens_used', result.tokensUsed);
+              trackLLMTokens({
+                route: '/api/chat/react',
+                model: result.model,
+                promptTokens: result.promptTokens ?? 0,
+                completionTokens: result.completionTokens ?? 0,
+                totalTokens: result.tokensUsed,
+                latencyMs: result.latencyMs,
+              });
+            }
+            return result;
+          },
+          chat: async (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>, opts?: Record<string, unknown>) => {
+            const result = await rawLlm.chat(messages, opts as import('@mcp-rebuild/llm').LLMOptions);
+            if (result.tokensUsed) {
+              getMetrics().increment('llm.tokens_used', result.tokensUsed);
+              trackLLMTokens({
+                route: '/api/chat/react',
+                model: result.model,
+                promptTokens: result.promptTokens ?? 0,
+                completionTokens: result.completionTokens ?? 0,
+                totalTokens: result.tokensUsed,
+                latencyMs: result.latencyMs,
+              });
+            }
+            return result;
+          },
+        };
+        const agent = new ReActAgent({
+          llm,
+          memory: {
+            search: async (query, opts) => memoryStore.search(query, { limit: opts?.limit ?? 5 }),
+            add: async (content, opts) => memoryStore.add(content, {
+              type: (opts?.type as MemoryType) ?? 'fact',
+              importance: opts?.importance,
+              source: opts?.source,
+            }),
+          },
+          maxSteps: input.maxIterations ?? 5,
+        });
+        const result = await agent.run(input.goal);
+        const steps = result.traces.map((t) => ({
+          step: t.step,
+          thought: t.thought,
+          action: t.action,
+          observation: t.observation,
+          timestamp: t.timestamp,
+        }));
+        return { ok: true, steps, result: result.answer };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: message, goal: input.goal };
+      }
     },
   };
 
@@ -379,10 +501,96 @@ async function main(): Promise<void> {
   const monitoringProvider: MonitoringServiceProvider = {
     getHealth: async () => healthChecker.check(),
     getMetrics: () => ({ points: getMetrics().getPoints() }),
-    getStats: () => ({
-      engine: { workflows: engine.listWorkflows().length },
-      api: apiServer ? apiServer.getStats() : { started: false },
-    }),
+    getStats: () => {
+      const allWorkflows = engine.listWorkflows();
+      const workflowsDone = allWorkflows.filter((w) => w.state === 'DONE').length;
+      const workflowsFailed = allWorkflows.filter((w) => w.state === 'FAILED').length;
+      const workflowsActive = allWorkflows.length - workflowsDone - workflowsFailed;
+      const allTasks = allWorkflows.flatMap((w) => w.tasks ?? []);
+      const tasksCompleted = allTasks.filter((t) => t.state === 'done').length;
+      const tasksFailed = allTasks.filter((t) => t.state === 'failed').length;
+      const allMemories = memoryStore.getAll();
+      return {
+        engine: {
+          workflows: allWorkflows.length,
+          workflowsActive,
+          workflowsDone,
+          workflowsFailed,
+          tasksTotal: allTasks.length,
+          tasksCompleted,
+          tasksFailed,
+          memoriesTotal: allMemories.length,
+          tokensUsed: getMetrics().getCounter('llm.tokens_used').sum,
+          tokenBreakdown: Object.fromEntries(getRouteTokenBreakdown()),
+        },
+        api: apiServer ? apiServer.getStats() : { started: false },
+      };
+    },
+    getTokenUsage: async (params) => {
+      try {
+        const { prisma } = await import('@mcp-rebuild/db');
+        const where: Record<string, unknown> = {};
+        if (params.from || params.to) {
+          const createdAt: Record<string, Date> = {};
+          if (params.from) createdAt.gte = new Date(params.from);
+          if (params.to) createdAt.lte = new Date(params.to);
+          where.createdAt = createdAt;
+        }
+        if (params.route) where.route = params.route;
+        if (params.model) where.model = params.model;
+
+        const groupBy = params.groupBy ?? 'route';
+        const records = await prisma.tokenUsage.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take: 1000,
+        });
+
+        if (groupBy === 'model') {
+          const buckets = new Map<string, { totalTokens: number; promptTokens: number; completionTokens: number; count: number }>();
+          for (const r of records) {
+            const key = r.model ?? 'unknown';
+            const b = buckets.get(key) ?? { totalTokens: 0, promptTokens: 0, completionTokens: 0, count: 0 };
+            b.totalTokens += r.totalTokens;
+            b.promptTokens += r.promptTokens;
+            b.completionTokens += r.completionTokens;
+            b.count += 1;
+            buckets.set(key, b);
+          }
+          return { groupBy: 'model', buckets: Object.fromEntries(buckets), totalRecords: records.length };
+        }
+
+        if (groupBy === 'day') {
+          const buckets = new Map<string, { totalTokens: number; promptTokens: number; completionTokens: number; count: number }>();
+          for (const r of records) {
+            const key = r.createdAt.toISOString().slice(0, 10);
+            const b = buckets.get(key) ?? { totalTokens: 0, promptTokens: 0, completionTokens: 0, count: 0 };
+            b.totalTokens += r.totalTokens;
+            b.promptTokens += r.promptTokens;
+            b.completionTokens += r.completionTokens;
+            b.count += 1;
+            buckets.set(key, b);
+          }
+          return { groupBy: 'day', buckets: Object.fromEntries(buckets), totalRecords: records.length };
+        }
+
+        // Default: group by route
+        const buckets = new Map<string, { totalTokens: number; promptTokens: number; completionTokens: number; count: number }>();
+        for (const r of records) {
+          const key = r.route;
+          const b = buckets.get(key) ?? { totalTokens: 0, promptTokens: 0, completionTokens: 0, count: 0 };
+          b.totalTokens += r.totalTokens;
+          b.promptTokens += r.promptTokens;
+          b.completionTokens += r.completionTokens;
+          b.count += 1;
+          buckets.set(key, b);
+        }
+        return { groupBy: 'route', buckets: Object.fromEntries(buckets), totalRecords: records.length };
+      } catch (err) {
+        logger.warn({ err: String(err) }, 'Token usage aggregation failed');
+        return { error: 'Token usage aggregation unavailable', buckets: {}, totalRecords: 0 };
+      }
+    },
   };
 
   apiServer = new APIServer(

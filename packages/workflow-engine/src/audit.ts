@@ -2,7 +2,7 @@
  * Audit/retrieval logging (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 
 export async function logRetrieval(input: {
   workflowId?: string;
@@ -12,7 +12,7 @@ export async function logRetrieval(input: {
   source: string;
   results: Record<string, unknown>;
 }) {
-  return prisma.retrievalLog.create({
+  return (await import("@mcp-rebuild/db")).prisma.retrievalLog.create({
     data: {
       workflowId: input.workflowId,
       taskId: input.taskId,

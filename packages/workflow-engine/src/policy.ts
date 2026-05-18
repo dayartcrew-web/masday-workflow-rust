@@ -2,7 +2,7 @@
  * Policy validation (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 import { detectScopeDrift } from "./drift-detector.js";
 
 export async function validateExecution(input: {
@@ -10,11 +10,11 @@ export async function validateExecution(input: {
   taskId: string;
   sessionKey: string;
 }) {
-  const workflow = await prisma.workflow.findUniqueOrThrow({
+  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
     where: { id: input.workflowId },
   });
 
-  const session = await prisma.sessionState.findUnique({
+  const session = await (await import("@mcp-rebuild/db")).prisma.sessionState.findUnique({
     where: { sessionKey: input.sessionKey },
   });
 
@@ -39,7 +39,7 @@ export async function validateCompletion(
   taskId: string,
   outputText?: string,
 ) {
-  const review = await prisma.reviewDecision.findFirst({
+  const review = await (await import("@mcp-rebuild/db")).prisma.reviewDecision.findFirst({
     where: { workflowId, taskId },
     orderBy: { createdAt: "desc" },
   });
@@ -49,7 +49,7 @@ export async function validateCompletion(
   }
 
   if (outputText) {
-    const task = await prisma.task.findUniqueOrThrow({
+    const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
       where: { id: taskId },
     });
 
@@ -74,7 +74,7 @@ export async function validateParallelCompletion(input: {
   sessionKey: string;
   outputText?: string;
 }) {
-  const session = await prisma.sessionState.findUniqueOrThrow({
+  const session = await (await import("@mcp-rebuild/db")).prisma.sessionState.findUniqueOrThrow({
     where: { sessionKey: input.sessionKey },
   });
 
@@ -82,7 +82,7 @@ export async function validateParallelCompletion(input: {
     return { ok: true, skipped: true };
   }
 
-  const branches = await prisma.parallelBranch.findMany({
+  const branches = await (await import("@mcp-rebuild/db")).prisma.parallelBranch.findMany({
     where: {
       workflowId: input.workflowId,
       taskId: input.taskId,
@@ -108,7 +108,7 @@ export async function validateParallelCompletion(input: {
     );
   }
 
-  const review = await prisma.reviewDecision.findFirst({
+  const review = await (await import("@mcp-rebuild/db")).prisma.reviewDecision.findFirst({
     where: {
       workflowId: input.workflowId,
       taskId: input.taskId,
@@ -123,7 +123,7 @@ export async function validateParallelCompletion(input: {
   }
 
   if (input.outputText) {
-    const task = await prisma.task.findUniqueOrThrow({
+    const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
       where: { id: input.taskId },
     });
 

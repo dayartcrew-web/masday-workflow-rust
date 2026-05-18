@@ -32,7 +32,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ isLoading: true });
     try {
       const result = await providerApi.list();
-      set({ providers: result.providers || [], isLoading: false });
+      const rawProviders = result.providers || [];
+      // API may return string[] or ProviderInfo[] — normalize to ProviderInfo[]
+      const providers: ProviderInfo[] = rawProviders.map((p) =>
+        typeof p === 'string'
+          ? { name: p, type: p, models: [], status: 'available' as const, circuitState: 'closed' as const }
+          : p,
+      );
+      set({ providers, isLoading: false });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to fetch providers', isLoading: false });
     }

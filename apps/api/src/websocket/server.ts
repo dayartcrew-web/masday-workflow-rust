@@ -178,14 +178,14 @@ export class WebSocketAPIServer {
       if (action === 'subscribe') {
         const channel = message.channel as string;
         client.channels.add(channel);
-        this.sendToClient(ws, { type: 'system.subscribed', data: { channel } });
+        this.sendToClient(ws, { type: 'system.subscribed', data: { channel }, timestamp: new Date().toISOString() });
       } else if (action === 'unsubscribe') {
         const channel = message.channel as string;
         client.channels.delete(channel);
-        this.sendToClient(ws, { type: 'system.unsubscribed', data: { channel } });
+        this.sendToClient(ws, { type: 'system.unsubscribed', data: { channel }, timestamp: new Date().toISOString() });
       }
     } catch {
-      this.sendToClient(ws, { type: 'system.error', data: { error: 'Invalid message format' } });
+      this.sendToClient(ws, { type: 'system.error', data: { error: 'Invalid message format' }, timestamp: new Date().toISOString() });
     }
   }
 
