@@ -16,7 +16,7 @@ tools:
   - filesystem.read
   - filesystem.write
   - tests.run
-  - search.code_search
+  - semantic-search.code_search
 ---
 
 # Database Architecture Agent

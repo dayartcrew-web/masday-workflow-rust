@@ -22,7 +22,7 @@ tools:
   - npm.install
   - git.status
   - git.diff
-  - search.code_search
+  - semantic-search.code_search
 ---
 
 # Frontend Agent

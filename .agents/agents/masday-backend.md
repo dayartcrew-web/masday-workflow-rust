@@ -6,6 +6,25 @@ description: >
   REST/graphQL endpoints, middleware, database queries, Docker configs, or
   Node.js/TypeScript server logic.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - filesystem.read
+  - filesystem.write
+  - filesystem.list
+  - git.diff
+  - git.status
+  - npm.run
+  - tests.run
+  - docker.ps
+  - docker.build
+  - npm.install
+  - docker.run
+  - semantic-search.code_search
 ---
 
 # Backend Agent

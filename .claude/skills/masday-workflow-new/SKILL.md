@@ -12,19 +12,19 @@ allowed-tools:
   - workflow.execute
   - workflow.create_plan
   - workflow.addTask
-  - workflow.list_tasks
-  - workflow.start_task
-  - workflow.complete_task
-  - workflow.save_progress
-  - workflow.get_current_task
+  - workflow.listTasks
+  - workflow.startTask
+  - workflow.completeTask
+  - workflow.saveProgress
+  - workflow.getCurrentTask
   - capability.system_readiness
   - capability.match_agent
   - capability.list_agents
   - policy.validate_execution
   - policy.validate_completion
   - policy.detect_scope_drift
-  - search.code_search
-  - search.hybrid_context_pack
+  - semantic-search.code_search
+  - semantic-search.search_hybrid_context_pack
   - memory.search
   - memory.recall_recent
   - memory.recall_documents
@@ -48,14 +48,14 @@ Create and execute a workflow end-to-end in a single session.
 2. **Search context**
    - Call `memory.search` for related past workflows
    - Call `memory.recall_recent` for session context
-   - Call `search.code_search` to find related code
+   - Call `semantic-search.code_search` to find related code
 
 3. **Create the workflow**
    - Call `workflow.create` with name and description
    - Record the workflow ID
 
 4. **Build context pack**
-   - Call `search.hybrid_context_pack` with the workflow ID
+   - Call `semantic-search.search_hybrid_context_pack` with the workflow ID
    - Call `memory.recall_documents` for stored research
 
 5. **Plan tasks**
@@ -69,13 +69,13 @@ Create and execute a workflow end-to-end in a single session.
    - Call `workflow.execute` with the workflow ID
    - For each task:
      - Call `policy.validate_execution` before starting
-     - Call `workflow.get_current_task` to track progress
+     - Call `workflow.getCurrentTask` to track progress
      - Call `memory.recall_by_task` to load task context
      - Perform the work
      - Call `policy.detect_scope_drift` to check for deviations
-     - Call `workflow.save_progress` with notes and evidence
+     - Call `workflow.saveProgress` with notes and evidence
      - Call `policy.validate_completion` after completing
-     - Call `workflow.complete_task` to mark done
+     - Call `workflow.completeTask` to mark done
 
 7. **Store artifacts**
    - Call `memory.store` with key decisions and outputs

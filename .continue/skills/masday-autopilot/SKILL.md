@@ -5,17 +5,17 @@ description: >
   Dispatches executor agents, runs review gates, and completes tasks automatically.
   Use when the user says "autopilot", "run all tasks", "auto execute", or "fly through the plan".
 allowed-tools:
-  - workflow.get_active
-  - workflow.get_plan
-  - workflow.list_tasks
-  - workflow.start_task
-  - workflow.complete_task
-  - workflow.save_progress
+  - workflow.getActive
+  - workflow.getPlan
+  - workflow.listTasks
+  - workflow.startTask
+  - workflow.completeTask
+  - workflow.saveProgress
   - review.submit
   - review.get_latest
   - local.init
   - local.sync
-  - search.hybrid_context_pack
+  - semantic-search.search_hybrid_context_pack
   - memory.recall_by_task
   - memory.store
   - Agent
@@ -37,11 +37,11 @@ Step 0a — Init .masday/:
   mcp__masday__local_init({ cwd: process.cwd() })
 
 Step 0b — Get active workflow:
-  mcp__masday__workflow_get_active({ cwd: process.cwd() })
+  mcp__masday__workflow_getActive({ cwd: process.cwd() })
   If none: STOP — "No active workflow. Run /masday-workflow-new first."
 
 Step 0c — Get plan:
-  mcp__masday__workflow_get_plan({ workflow_id: workflowId })
+  mcp__masday__workflow_getPlan({ workflow_id: workflowId })
   If no plan: STOP — "No plan found. Run /masday-workflow-plan first."
 
 Step 0d — Count pending:
@@ -82,7 +82,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
   === TASK LOOP START ===
 
   STEP 1: Start task
-    mcp__masday__workflow_start_task({
+    mcp__masday__workflow_startTask({
       workflow_id: workflowId, task_id: task.id
     })
 
@@ -119,7 +119,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
     })
 
   STEP 3: Save progress
-    mcp__masday__workflow_save_progress({
+    mcp__masday__workflow_saveProgress({
       workflow_id: workflowId, task_id: task.id,
       agent_name: "masday-executor",
       progress_note: "<summary from executor>",
@@ -166,7 +166,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       STEP 6b: Handle verification
         IF PASS:
           Complete task:
-            mcp__masday__workflow_complete_task({ workflow_id: workflowId, task_id: task.id })
+            mcp__masday__workflow_completeTask({ workflow_id: workflowId, task_id: task.id })
 
           If worktree mode is .masday/worktrees/:
             Auto-commit uncommitted changes in worktree

@@ -2,7 +2,15 @@ import { readFile } from 'node:fs/promises';
 
 const MCP_TOOL_FILE = 'apps/agent-runner/src/runtime/mcp.ts';
 
-const CAMEL_CASE_TOOL_RE = /reg\("(?:workflow|memory|search|policy|capability|filesystem|git|npm|docker|cicd|github|tests)\.([a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*)"/g;
+// SYNC: Must match apps/agent-runner/src/runtime/mcp.ts — the single source of truth.
+// Naming convention: camelCase for core methods (startTask not start_task).
+// Some stubs use snake_case (set_execution_mode, pipeline_status, etc.) — that is valid.
+// This guard detects UNKNOWN namespace registrations in mcp.ts.
+const KNOWN_NAMESPACES = new Set([
+  'workflow', 'memory', 'semantic-search', 'policy', 'capability',
+  'filesystem', 'review', 'session', 'local',
+  'git', 'npm', 'docker', 'cicd', 'github', 'tests',
+]);
 
 export default async function toolNameGuard() {
   let content;
@@ -12,15 +20,19 @@ export default async function toolNameGuard() {
     return;
   }
 
-  const violations = [];
+  const TOOL_RE = /registerTool\("([^.]+)\.([^"]+)"/g;
+  const unknown = [];
   let match;
-  while ((match = CAMEL_CASE_TOOL_RE.exec(content)) !== null) {
-    violations.push(match[1]);
+  while ((match = TOOL_RE.exec(content)) !== null) {
+    const ns = match[1];
+    if (!KNOWN_NAMESPACES.has(ns)) {
+      unknown.push(`${ns}.${match[2]}`);
+    }
   }
 
-  if (violations.length > 0) {
+  if (unknown.length > 0) {
     return {
-      systemMessage: `MCP tool names should use snake_case, not camelCase. Found: ${violations.join(', ')}. Fix: use underscores (e.g. start_task not startTask).`,
+      systemMessage: `[tool-name-guard] Unknown MCP namespace(s): ${unknown.join(', ')}. Must be one of: ${[...KNOWN_NAMESPACES].join(', ')}.`,
     };
   }
 }

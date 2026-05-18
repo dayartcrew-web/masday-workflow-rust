@@ -27,13 +27,16 @@ try {
     process.exit(0)
   }
 
-  // Score memories: importance * recency decay (7-day half-life)
+  // Score memories: aligned with 4-layer memory spec weighting
+  // Spec: similarity*0.6 + recency*0.15 + importance*0.15 + usage*0.1
+  // Local file has no similarity/usage vectors, so redistribute:
+  //   importance*0.75 + recency*0.25 (preserves relative weight ratio from spec)
   const now = Date.now()
   const scored = memories.map(m => {
     const ageDays = (now - (m.updatedAt || m.createdAt || now)) / (86400000)
     const recency = Math.exp(-0.693 * ageDays / 7)
     const importance = m.importance ?? 0.5
-    return { ...m, score: importance * 0.7 + recency * 0.3 }
+    return { ...m, score: importance * 0.75 + recency * 0.25 }
   })
 
   // Sort by score, take top 15

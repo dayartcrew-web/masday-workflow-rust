@@ -15,8 +15,6 @@ allowed-tools:
   - filesystem.read
   - filesystem.write
   - filesystem.list
-  - filesystem.stat
-  - filesystem.delete
 ---
 
 # Masday Skill Builder

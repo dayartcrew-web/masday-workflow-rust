@@ -2,6 +2,20 @@
 name: masday-reviewer
 description: Quality gate code reviewer that examines implementation against acceptance criteria, checks for security vulnerabilities, and returns structured APPROVED/REWORK_REQUIRED/BLOCKED verdicts. Use after any code change before task completion.
 model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.saveProgress
+  - git.diff
+  - git.status
+  - memory.store
+  - memory.recall_by_task
+  - policy.detect_scope_drift
 ---
 
 # Reviewer Agent
@@ -14,13 +28,13 @@ You are a quality gate code reviewer. You examine code changes against acceptanc
 
 Get the active workflow and current task:
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
-workflow.get_current_task({ workflow_id: "<workflow_id>" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
+workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
 ```
 
 Get the plan to find acceptance criteria:
 ```
-workflow.get_plan({ workflow_id: "<workflow_id>" })
+workflow.getPlan({ workflow_id: "<workflow_id>" })
 ```
 
 Load task memories for prior context:
@@ -117,7 +131,7 @@ Based on findings, render one of three verdicts:
 
 Save the review as progress:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-reviewer",

@@ -8,11 +8,11 @@ description: >
 allowed-tools:
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
-  - workflow.get_current_task
-  - workflow.start_task
-  - workflow.complete_task
-  - workflow.save_progress
+  - workflow.listTasks
+  - workflow.getCurrentTask
+  - workflow.startTask
+  - workflow.completeTask
+  - workflow.saveProgress
   - policy.validate_execution
   - policy.validate_completion
   - policy.validate_parallel_completion
@@ -22,8 +22,8 @@ allowed-tools:
   - memory.store
   - memory.search
   - memory.recall_documents
-  - search.context_fingerprint
-  - search.code_search
+  - semantic-search.search_context_fingerprint
+  - semantic-search.code_search
 ---
 
 # Masday Workflow Discipline
@@ -35,7 +35,7 @@ Enforce policy, detect drift, and maintain workflow discipline.
 1. **Get current workflow state**
    - Call `workflow.get` to retrieve the workflow details
    - Call `workflow.getStatus` to see the current state machine position
-   - Call `workflow.list_tasks` to see all tasks and their statuses
+   - Call `workflow.listTasks` to see all tasks and their statuses
 
 2. **Check session readiness**
    - Call `policy.check_session_readiness` with the session key
@@ -48,7 +48,7 @@ Enforce policy, detect drift, and maintain workflow discipline.
    - If validation fails, report the specific policy violation
 
 4. **Check context freshness**
-   - Call `search.context_fingerprint` with workflow, plan, and task IDs
+   - Call `semantic-search.search_context_fingerprint` with workflow, plan, and task IDs
    - Call `policy.require_context_refresh` to check if context has changed since last load
    - If refresh is needed, flag it and recommend reloading context before proceeding
 

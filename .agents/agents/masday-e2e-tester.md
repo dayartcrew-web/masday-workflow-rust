@@ -6,6 +6,26 @@ description: >
   workflow creation through task completion. Use for testing critical user
   journeys and system-level integration.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - tests.run
+  - cicd.pipeline_status
+  - cicd.runs_view
+  - git.status
+  - mcp__plugin_playwright_playwright__browser_navigate
+  - mcp__plugin_playwright_playwright__browser_snapshot
+  - mcp__plugin_playwright_playwright__browser_take_screenshot
+  - mcp__plugin_playwright_playwright__browser_console_messages
+  - mcp__plugin_playwright_playwright__browser_network_requests
+  - mcp__plugin_playwright_playwright__browser_click
+  - mcp__plugin_playwright_playwright__browser_type
+  - mcp__plugin_playwright_playwright__browser_evaluate
+  - mcp__plugin_playwright_playwright__browser_resize
 ---
 
 # E2E Tester Agent

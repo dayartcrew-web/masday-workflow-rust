@@ -5,6 +5,19 @@ description: >
   leaks, render thrashing, bundle bloat, and algorithmic inefficiency. Use when
   profiling slow code, optimizing hot paths, or reducing resource consumption.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - npm.run
+  - tests.run
+  - npm.install
+  - git.status
+  - git.diff
+  - semantic-search.code_search
 ---
 
 # Performance Agent

@@ -23,17 +23,15 @@ Search and manage Masday workflow memory.
 
 1. **If type is specified** (e.g., "show decisions", "show artifacts")
    - Call `memory.recall_document_by_type` with:
-     - `source_type`: the type filter (e.g., "decision", "artifact", "research", "codebase")
      - `workflow_id`: if scoped to a specific workflow
+     - `source_type`: the type filter (e.g., "decision", "artifact", "research", "codebase")
+     - `limit`: max results (default: 10)
    - Return the filtered results
 
 2. **If a search query is provided**
    - Call `memory.search` with:
      - `query`: the search query (semantic similarity matching)
-     - `type`: optional type filter
-     - `tags`: optional tag filter
      - `limit`: max results (default: 10)
-     - `threshold`: minimum similarity score (default: 0.5)
    - Results are ranked by relevance score
 
 3. **If asking about recent activity**

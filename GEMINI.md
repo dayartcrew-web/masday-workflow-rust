@@ -19,8 +19,8 @@ This project uses **masday-workflow-rebuild** for workflow management.
 
 ## Workflow Pattern
 
-1. "workflow.get_active" -> "workflow.get_plan" -> "workflow.get_current_task"
-2. "search.hybrid_context_pack" to build task context
+1. "workflow.getActive" -> "workflow.getPlan" -> "workflow.getCurrentTask"
+2. "semantic-search.search_hybrid_context_pack" to build task context
 3. Execute / Research / Review
 4. "workflow.save_progress" -> "review.submit" -> "workflow.complete_task"
 
@@ -74,13 +74,10 @@ For ALL tasks, use msd-mcp commands and MCP tools.
 
 ## Key MCP Namespaces
 
-- `mcp__masday__workflow_*` — Workflow, plan, task, session, parallel (26 tools)
-- `mcp__masday__review_*` — Review submit, get latest
-- `mcp__masday__local_*` — Init, sync, push, save_artifact
-- `mcp__masday__session_*` — Init context, get/patch state
-- `mcp__masday__memory_*` — Store, recall, research memory (9 tools)
-- `mcp__masday__search_*` — Context packs, fingerprints (2 tools)
-- `mcp__masday__policy_*` — Validation, drift, readiness (6 tools)
-- `mcp__masday__capability_*` — Health, factory, scaffold (10 tools)
+- `mcp__workflow-orchestrator__*` — Workflow, plan, task, session, parallel, local (26 tools)
+- `mcp__memory__*` — Store, recall, research memory (9 tools)
+- `mcp__semantic-search__*` — Context packs, fingerprints (2 tools)
+- `mcp__policy__*` — Validation, drift, readiness (6 tools)
+- `mcp__capability__*` — Health, factory, scaffold (10 tools)
 
 <!-- msd-mcp-session-context -->

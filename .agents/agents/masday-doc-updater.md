@@ -6,6 +6,17 @@ description: >
   the live codebase. Use when updating CLAUDE.md, README, API docs, or
   generating documentation from source code.
 model: haiku
+tools:
+  - Read
+  - Write
+  - Edit
+  - Grep
+  - Glob
+  - filesystem.read
+  - filesystem.write
+  - git.status
+  - git.diff
+  - semantic-search.code_search
 ---
 
 # Documentation Updater Agent

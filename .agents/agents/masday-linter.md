@@ -5,6 +5,13 @@ description: >
   and project convention violations. Use after code is written or modified to
   clean up style issues before commit.
 model: haiku
+tools:
+  - Read
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - npm.run
 ---
 
 # Linter Agent

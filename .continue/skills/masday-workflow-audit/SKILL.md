@@ -8,7 +8,7 @@ allowed-tools:
   - workflow.list
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
+  - workflow.listTasks
   - capability.workflow_audit
   - memory.stats
   - memory.search
@@ -33,7 +33,7 @@ Audit workflows for issues and provide a health report.
    - For each non-completed workflow:
      - Call `workflow.get` for full details
      - Call `workflow.getStatus` for current state
-     - Call `workflow.list_tasks` to check individual task statuses
+     - Call `workflow.listTasks` to check individual task statuses
    - Identify: tasks stuck in EXECUTING for too long, tasks in FAILED state, missing reviews
 
 4. **Check memory health**

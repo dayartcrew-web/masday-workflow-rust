@@ -5,12 +5,11 @@ description: >
   search, builds context fingerprints, and identifies module relationships. Use when starting
   a new feature, debugging, or understanding the codebase before planning.
 allowed-tools:
-  - search.code_search
-  - search.hybrid_context_pack
+  - semantic-search.code_search
+  - semantic-search.search_hybrid_context_pack
   - filesystem.read
   - filesystem.list
   - filesystem.stat
-  - filesystem.delete
   - git.status
   - git.diff
 ---
@@ -35,12 +34,12 @@ Analyze codebase for Masday workflow context.
    - Identify the monorepo package layout (16 packages in this project)
 
 4. **Semantic search**
-   - Call `search.code_search` with queries related to the task domain
-   - Example: `search.code_search({ query: "workflow engine state machine" })`
+   - Call `semantic-search.code_search` with queries related to the task domain
+   - Example: `semantic-search.code_search({ query: "workflow engine state machine" })`
    - Identify related modules, shared types, and dependency chains
 
 5. **Build context fingerprint**
-   - Call `search.hybrid_context_pack` with the relevant workflow/task IDs
+   - Call `semantic-search.search_hybrid_context_pack` with the relevant workflow/task IDs
    - This generates a comprehensive context bundle for downstream tasks
 
 6. **Check git state**

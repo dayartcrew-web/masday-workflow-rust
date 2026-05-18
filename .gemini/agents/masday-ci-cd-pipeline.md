@@ -29,8 +29,8 @@ tools:
   - memory.store
   - memory.recall_recent
   - memory.search
-  - workflow.save_progress
-  - search.code_search
+  - workflow.saveProgress
+  - semantic-search.code_search
 ---
 
 # CI/CD Pipeline Specialist
@@ -489,7 +489,7 @@ on:
 ### Phase 6: Save Progress
 
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<id>",
   task_id: "<task_id>",
   agent_name: "masday-ci-cd-pipeline",

@@ -6,13 +6,14 @@ description: >
   Use when the user says "run in parallel", "parallel execution", "dispatch agents",
   "multiple tasks at once", or "fan-out execution".
 allowed-tools:
+  - Agent
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
-  - workflow.create_parallel_branches
-  - workflow.complete_parallel_branch
-  - workflow.list_parallel_branches
-  - workflow.save_progress
+  - workflow.listTasks
+  - workflow.createParallelBranches
+  - workflow.completeParallelBranch
+  - workflow.listParallelBranches
+  - workflow.saveProgress
   - memory.recall_documents
   - memory.store
 ---
@@ -24,7 +25,7 @@ Run independent subtasks in parallel using agent dispatch.
 ## Steps
 
 1. **Identify parallelizable tasks**
-   - Call `workflow.get` and `workflow.list_tasks` to see the current plan
+   - Call `workflow.get` and `workflow.listTasks` to see the current plan
    - Identify tasks with no dependencies on each other
    - Group independent tasks into parallel branches
 
@@ -33,7 +34,7 @@ Run independent subtasks in parallel using agent dispatch.
    - Ensure each branch has sufficient context to execute independently
 
 3. **Create parallel branches**
-   - Call `workflow.create_parallel_branches` with:
+   - Call `workflow.createParallelBranches` with:
      - `workflow_id`: the target workflow
      - `task_id`: the parent task that owns the branches
      - `branches`: array of branch definitions:
@@ -54,12 +55,12 @@ Run independent subtasks in parallel using agent dispatch.
    - Agents execute independently without shared mutable state
 
 5. **Monitor branch progress**
-   - Call `workflow.list_parallel_branches` to check branch statuses
-   - Call `workflow.save_progress` for each branch milestone
+   - Call `workflow.listParallelBranches` to check branch statuses
+   - Call `workflow.saveProgress` for each branch milestone
    - Do not wait for all branches -- process completions as they arrive
 
 6. **Complete each branch**
-   - As each agent finishes, call `workflow.complete_parallel_branch` with:
+   - As each agent finishes, call `workflow.completeParallelBranch` with:
      - `branch_id`: the completed branch ID
      - `output`: the branch results
      - `agent_name`: the agent that completed the work

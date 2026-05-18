@@ -8,7 +8,7 @@ description: >
 allowed-tools:
   - workflow.get
   - workflow.getStatus
-  - workflow.list_tasks
+  - workflow.listTasks
   - policy.validate_completion
   - policy.validate_parallel_completion
   - policy.detect_scope_drift
@@ -31,7 +31,7 @@ Verify that a completed workflow meets all acceptance criteria and quality stand
 1. **Get workflow state**
    - Call `workflow.get` with the workflow ID
    - Call `workflow.getStatus` to confirm it is in VERIFY or DONE state
-   - Call `workflow.list_tasks` to see all tasks and their statuses
+   - Call `workflow.listTasks` to see all tasks and their statuses
 
 2. **Check for failed or incomplete tasks**
    - Identify any tasks with status FAILED, BLOCKED, or PENDING

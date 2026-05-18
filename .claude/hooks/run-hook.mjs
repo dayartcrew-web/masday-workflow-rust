@@ -14,6 +14,7 @@ const hookModules = {
   'on-notification': './on-notification.js',
   'on-stop': './on-stop.js',
   'agentic-mem-context': './agentic-mem-context.js',
+  'pre-task-complete': './pre-task-complete.js',
 };
 
 async function readStdin() {

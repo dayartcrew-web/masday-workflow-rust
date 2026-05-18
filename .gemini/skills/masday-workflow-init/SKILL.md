@@ -9,7 +9,7 @@ allowed-tools:
   - workflow.create
   - workflow.get
   - capability.system_readiness
-  - search.code_search
+  - semantic-search.code_search
   - memory.search
   - memory.recall_recent
   - memory.recall_documents
@@ -42,7 +42,7 @@ Initialize a new Masday workflow from the user's prompt.
    - Call `memory.recall_documents` to find stored research or decisions
 
 4. **Scan relevant code**
-   - Call `search.code_search` with queries derived from the prompt
+   - Call `semantic-search.code_search` with queries derived from the prompt
    - Call `filesystem.list` to verify the project structure matches expectations
    - Call `filesystem.read` to inspect key configuration files (package.json, tsconfig)
    - Call `filesystem.stat` to check file sizes and modification dates

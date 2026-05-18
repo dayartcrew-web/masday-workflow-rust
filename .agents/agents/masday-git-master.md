@@ -6,6 +6,17 @@ description: >
   git operations, resolving merge conflicts, preparing PRs, or performing any
   version control workflow.
 model: sonnet
+tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - git.status
+  - git.diff
+  - git.commit
+  - github.pr_create
+  - github.pr_list
+  - github.issue_list
 ---
 
 # Git Operations Agent

@@ -47,10 +47,12 @@ Pre-flight checks before deployment.
    - Flag any: uncommitted changes, hardcoded values, debug statements
 
 5. **Type checking**
+   - Call `npm.run` with script `typecheck` (or `tsc --noEmit` via Bash)
    - Verify TypeScript compiles without errors
    - No `any` types, no implicit any, strict mode enforced
 
 6. **Lint**
+   - Call `npm.run` with script `lint` (or `eslint` via Bash)
    - Verify no critical lint issues
    - Check for: unused imports, missing return types, console.log statements
 

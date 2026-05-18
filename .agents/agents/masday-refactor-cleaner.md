@@ -6,6 +6,17 @@ description: >
   analysis before every removal. Use for code maintenance, cleanup sprints,
   and reducing technical debt.
 model: sonnet
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - semantic-search.code_search
+  - tests.run
+  - git.status
+  - git.diff
 ---
 
 # Refactor Cleaner Agent

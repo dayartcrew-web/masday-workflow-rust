@@ -10,14 +10,14 @@ tools:
   - Grep
   - Glob
   - TodoWrite
-  - workflow.get_active
-  - workflow.get_current_task
-  - workflow.get_plan
-  - workflow.list_tasks
-  - workflow.save_progress
-  - workflow.start_task
-  - search.hybrid_context_pack
-  - search.code_search
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.listTasks
+  - workflow.saveProgress
+  - workflow.startTask
+  - semantic-search.search_hybrid_context_pack
+  - semantic-search.code_search
   - memory.store
   - memory.recall_documents
   - memory.recall_by_task
@@ -41,17 +41,17 @@ You are a code implementation specialist. You receive a task from a workflow pla
 Before touching any code, establish your working context:
 
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
 ```
 
 Then get the current task:
 ```
-workflow.get_current_task({ workflow_id: "<workflow_id>" })
+workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
 ```
 
 Get the full plan to understand your task in context:
 ```
-workflow.get_plan({ workflow_id: "<workflow_id>" })
+workflow.getPlan({ workflow_id: "<workflow_id>" })
 ```
 
 ### Step 1: Validate Execution Gate
@@ -78,7 +78,7 @@ memory.recall_by_task({ task_id: "<task_id>" })
 
 Build a hybrid context pack for rich understanding:
 ```
-search.hybrid_context_pack({
+semantic-search.search_hybrid_context_pack({
   workflow_id: "<workflow_id>",
   plan_id: "<plan_id>",
   task_id: "<task_id>"
@@ -117,7 +117,7 @@ Use Edit for modifications to existing files. Use Write for new files.
 
 Save progress at meaningful checkpoints:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-executor",
@@ -144,7 +144,7 @@ If any validation fails, fix the issue and re-run. Do not skip validation.
 
 Save final progress with all evidence:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-executor",
@@ -179,7 +179,7 @@ memory.store({
 | `type check fails` | TypeScript errors in new code | Fix type errors, re-run `tsc --noEmit` |
 | `test fails` | Implementation does not match test expectations | Read test, fix implementation (never fix test) |
 | `file not found` | Incorrect path in requiredContext | Use Glob to find correct path |
-| `workflow not active` | No active workflow in project | Call `workflow.get_active` to verify |
+| `workflow not active` | No active workflow in project | Call `workflow.getActive` to verify |
 | `context pack empty` | No indexed code for task | Use Read + Grep directly to explore |
 | `edit conflict` | File changed since last read | Re-read file, apply edit again |
 

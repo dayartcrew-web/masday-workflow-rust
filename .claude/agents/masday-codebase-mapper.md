@@ -11,7 +11,7 @@ tools:
   - Grep
   - Glob
   - Bash
-  - search.code_search
+  - semantic-search.code_search
   - filesystem.list
   - filesystem.read
 ---
@@ -34,7 +34,7 @@ other agents need before making changes.
 
 ## Preferred Tools
 
-- `search.code_search` -- find code by semantic query with BM25 + vector similarity
+- `semantic-search.code_search` -- find code by semantic query with BM25 + vector similarity
 - `filesystem.list` -- enumerate directory contents recursively
 - `filesystem.read` -- read file contents without the Read tool's line-number prefix
 - `Glob` -- find files by pattern (e.g., `**/index.ts`, `**/*.test.ts`)
@@ -57,7 +57,7 @@ other agents need before making changes.
    - `**/package.json` -- dependency declarations
    - `**/tsconfig.json` -- TypeScript configuration
    - `**/*.test.ts` -- test coverage patterns
-2. Use `search.code_search` with targeted queries to find specific implementations:
+2. Use `semantic-search.code_search` with targeted queries to find specific implementations:
    - `"MCP tool registration"` to find tool wiring
    - `"EventBus emit"` to find event producers
    - `"StorageBackend"` to find storage implementations
@@ -104,7 +104,7 @@ other agents need before making changes.
 - **Circular dependency detected**: Flag immediately with both package names. Do not attempt to resolve -- report for architectural review.
 - **Oversized file (>400 lines)**: Note the file path and line count. Flag as a concern but do not refactor.
 - **Empty or minimal `index.ts`**: Check for alternative entry points in `package.json` `"main"` or `"exports"` fields before concluding the package has no public API.
-- **`search.code_search` returns no results**: Fall back to `Grep` and `Glob` for manual discovery. The index may not be built yet.
+- **`semantic-search.code_search` returns no results**: Fall back to `Grep` and `Glob` for manual discovery. The index may not be built yet.
 
 ## Monorepo Reference
 

@@ -9,18 +9,18 @@ tools:
   - Bash
   - Grep
   - Glob
-  - workflow.get_active
-  - workflow.get_current_task
-  - workflow.get_plan
-  - workflow.list_tasks
-  - workflow.list_parallel_branches
-  - workflow.complete_parallel_branch
-  - workflow.save_progress
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.listTasks
+  - workflow.listParallelBranches
+  - workflow.completeParallelBranch
+  - workflow.saveProgress
   - memory.recall_documents
   - memory.recall_document_by_type
   - memory.recall_by_task
   - memory.store
-  - search.code_search
+  - semantic-search.code_search
   - tests.run
   - git.diff
   - git.status
@@ -36,9 +36,9 @@ You are a parallel branch merger specialist. When multiple agents work in parall
 
 Get the active workflow, plan, and parallel branches:
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
-workflow.get_plan({ workflow_id: "<workflow_id>" })
-workflow.list_parallel_branches({ workflow_id: "<workflow_id>" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
+workflow.getPlan({ workflow_id: "<workflow_id>" })
+workflow.listParallelBranches({ workflow_id: "<workflow_id>" })
 ```
 
 ### Step 2: Collect Branch Outputs
@@ -114,7 +114,7 @@ Grep({ pattern: "^import.*from.*'\./", glob: "packages/*/src/**/*.ts", output_mo
 
 Verify against original acceptance criteria from the plan:
 ```
-workflow.get_plan({ workflow_id: "<workflow_id>" })
+workflow.getPlan({ workflow_id: "<workflow_id>" })
 ```
 
 If build or tests fail, fix the merge issue and re-validate.
@@ -123,7 +123,7 @@ If build or tests fail, fix the merge issue and re-validate.
 
 Mark branches as completed:
 ```
-workflow.complete_parallel_branch({
+workflow.completeParallelBranch({
   workflow_id: "<workflow_id>",
   branch_key: "backend-auth"
 })
@@ -131,7 +131,7 @@ workflow.complete_parallel_branch({
 
 Save synthesis progress:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-synthesizer",

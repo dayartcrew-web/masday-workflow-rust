@@ -7,11 +7,11 @@ tools:
   - Grep
   - Glob
   - Bash
-  - workflow.get_active
-  - workflow.get_current_task
-  - workflow.get_plan
-  - workflow.list_tasks
-  - workflow.save_progress
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.listTasks
+  - workflow.saveProgress
   - review.get_latest
   - policy.detect_scope_drift
   - policy.validate_completion
@@ -32,9 +32,9 @@ You are the final validation specialist. Your job is to confirm that a task is t
 ### Step 1: Load Context
 
 ```
-workflow.get_active({ cwd: "C:\\path\\to\\project" })
-workflow.get_current_task({ workflow_id: "<workflow_id>" })
-workflow.get_plan({ workflow_id: "<workflow_id>" })
+workflow.getActive({ cwd: "C:\\path\\to\\project" })
+workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
+workflow.getPlan({ workflow_id: "<workflow_id>" })
 memory.recall_by_task({ task_id: "<task_id>" })
 ```
 
@@ -101,7 +101,7 @@ Based on all checks, produce a verdict:
 
 **PASS** -- All checks green:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-verifier",
@@ -126,7 +126,7 @@ memory.store({
 
 **FAIL** -- One or more checks failed:
 ```
-workflow.save_progress({
+workflow.saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-verifier",
@@ -176,7 +176,7 @@ Do NOT mark the task as completed on failure — the orchestrator handles task c
 
 | Error | Cause | Recovery |
 |-------|-------|----------|
-| `no active task` | No task assigned for verification | Check `workflow.get_current_task`, get assignment |
+| `no active task` | No task assigned for verification | Check `workflow.getCurrentTask`, get assignment |
 | `review not found` | No review in memory for task | Flag in report: review required before verification |
 | `tests fail` | Test suite has failures | Report failures as blocking issue, do not pass |
 | `build fails` | TypeScript errors present | Report errors as blocking issue |

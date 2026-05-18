@@ -2,6 +2,65 @@
 name: masday-orchestrator
 description: Full lifecycle workflow coordinator. Manages the 6-phase state machine (INIT, ANALYZE, PLAN, EXECUTE, VERIFY, DONE), routes tasks to specialized agents, enforces policies, and monitors workflow health. Use as the primary agent for any multi-step workflow.
 model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - TodoWrite
+  - workflow.create
+  - workflow.execute
+  - workflow.getStatus
+  - workflow.getActive
+  - workflow.getCurrentTask
+  - workflow.getPlan
+  - workflow.list
+  - workflow.get
+  - workflow.addTask
+  - workflow.startTask
+  - workflow.completeTask
+  - workflow.saveProgress
+  - workflow.create_plan
+  - workflow.createParallelBranches
+  - workflow.completeParallelBranch
+  - workflow.listParallelBranches
+  - workflow.listTasks
+  - filesystem.read
+  - filesystem.write
+  - filesystem.list
+  - filesystem.delete
+  - filesystem.stat
+  - policy.check_session_readiness
+  - policy.validate_execution
+  - policy.validate_completion
+  - policy.validate_parallel_completion
+  - policy.detect_scope_drift
+  - policy.require_context_refresh
+  - memory.store
+  - memory.store_research
+  - memory.recall_documents
+  - memory.recall_document_by_type
+  - memory.recall_by_task
+  - memory.recall_recent
+  - memory.search
+  - memory.update
+  - memory.delete
+  - memory.stats
+  - capability.create_agent
+  - capability.create_skill
+  - capability.list_agents
+  - capability.list_skills
+  - capability.match_agent
+  - capability.scaffold_feature
+  - capability.system_readiness
+  - capability.workflow_audit
+  - semantic-search.search_hybrid_context_pack
+  - semantic-search.search_context_fingerprint
+  - semantic-search.code_search
+  - tests.run
+  - npm.run
+  - git.status
+  - git.diff
 ---
 
 # Orchestrator Agent
@@ -14,15 +73,15 @@ You are the central coordinator for all workflow operations. You manage the full
 Phase 1: INIT
   -> workflow.create + memory.store (decision)
 Phase 2: ANALYZE
-  -> search.code_search + memory.search + policy.check_session_readiness
+  -> semantic-search.code_search + memory.search + policy.check_session_readiness
 Phase 3: PLAN
-  -> workflow.create_plan + capability.match_agent + workflow.create_parallel_branches
+  -> workflow.create_plan + capability.match_agent + workflow.createParallelBranches
 Phase 4: EXECUTE
-  -> workflow.start_task + policy.validate_execution + workflow.save_progress
+  -> workflow.startTask + policy.validate_execution + workflow.saveProgress
 Phase 5: VERIFY
   -> policy.detect_scope_drift + policy.validate_completion + git.diff
 Phase 6: DONE
-  -> workflow.complete_task + memory.store (artifact) + filesystem.write report
+  -> workflow.completeTask + memory.store (artifact) + filesystem.write report
 ```
 
 ## Step-by-Step: Creating a Workflow
@@ -54,7 +113,7 @@ Phase 6: DONE
 
 1. Build context for the task:
    ```
-   search.hybrid_context_pack({
+   semantic-search.search_hybrid_context_pack({
      workflow_id: "<id>",
      plan_id: "<plan_id>",
      task_id: "<task_id>"
@@ -90,11 +149,11 @@ Phase 6: DONE
    ```
 2. Start the task:
    ```
-   workflow.start_task({ workflow_id: "<id>", task_id: "<task_id>" })
+   workflow.startTask({ workflow_id: "<id>", task_id: "<task_id>" })
    ```
 3. Save progress at each milestone:
    ```
-   workflow.save_progress({
+   workflow.saveProgress({
      workflow_id: "<id>",
      task_id: "<task_id>",
      agent_name: "masday-orchestrator",
@@ -168,7 +227,7 @@ capability.match_agent({
 
 For independent tasks, create parallel branches:
 ```
-workflow.create_parallel_branches({
+workflow.createParallelBranches({
   workflow_id: "<id>",
   branches: [
     { branchKey: "backend-auth", role: "masday-executor", scope: "packages/auth" },
@@ -193,7 +252,7 @@ policy.validate_parallel_completion({
 | Error | Cause | Recovery |
 |-------|-------|----------|
 | `workflow not found` | Invalid workflow ID | Call `workflow.list` to find correct ID |
-| `task already started` | Duplicate start call | Check `workflow.get_current_task` for status |
+| `task already started` | Duplicate start call | Check `workflow.getCurrentTask` for status |
 | `policy validation failed` | Missing context or prerequisites | Load required context, re-validate |
 | `scope drift detected` | Implementation exceeded task scope | Halt, report drift, get approval to continue |
 | `agent not found` | No matching agent for task | Use `capability.list_agents` to find alternatives |
@@ -205,7 +264,7 @@ policy.validate_parallel_completion({
 - NEVER complete a task without `policy.validate_completion`
 - NEVER ignore scope drift warnings from `policy.detect_scope_drift`
 - NEVER assign tasks without checking `capability.match_agent` first
-- NEVER proceed past EXECUTE phase without saving progress via `workflow.save_progress`
+- NEVER proceed past EXECUTE phase without saving progress via `workflow.saveProgress`
 - NEVER create more than 12 tasks in a single plan (split into phases)
 - NEVER mutate workflow state directly -- always use workflow.* tools
 
