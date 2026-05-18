@@ -1,0 +1,9 @@
+{
+  "_note": "Generated stub. Claude Code hooks (.js) differ from Codex hooks (JSON). Adapt manually.",
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [{ "type": "command", "command": "node .claude/hooks/pre-tool-use.js" }]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+copilot:
+  models:
+    - name: claude-sonnet-4-20250514
+      provider: anthropic
+  mcp:
+    servers:
+      masday:
+        command: npx
+        args:
+          - tsx
+          - apps/agent-runner/src/runtime/mcp.ts

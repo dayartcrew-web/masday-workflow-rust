@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "masday": {
+      "command": "npx",
+      "args": ["tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+    }
+  }
+}

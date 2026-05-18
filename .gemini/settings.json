@@ -1,0 +1,9 @@
+{
+  "context": "This project uses masday-workflow-rebuild MCP server for workflow management.",
+  "mcpServers": {
+    "masday": {
+      "command": "npx",
+      "args": ["tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+    }
+  }
+}
