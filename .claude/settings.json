@@ -1,0 +1,94 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs agentic-mem-context",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs pre-tool-use",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs pre-build-skill",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs tdd-guard",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs tool-name-guard",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs post-tool-use",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs on-notification",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs on-stop",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "name": "masday-backend",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-backend.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-ci-cd-pipeline",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-ci-cd-pipeline.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-codebase-mapper",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-codebase-mapper.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-config",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-config.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-context-manager",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-context-manager.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-database-arch",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-database-arch.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-debugger",
+      "role": "general",
+      "description": "Root cause investigation specialist using the scientific method. Reproduces errors, forms testable hypotheses, traces code paths, confirms root cause, and fixes the underlying issue. Use when encountering test failures, runtime errors, or unexpected behavior.",
+      "skills": [],
+      "file": "masday-debugger.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-doc-updater",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-doc-updater.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-e2e-tester",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-e2e-tester.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-executor",
+      "role": "general",
+      "description": "Implementation specialist that reads workflow context, implements code changes, validates results, and reports progress. Use for feature implementation, bug fixes, refactoring, and any code modification tasks.",
+      "skills": [],
+      "file": "masday-executor.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-frontend",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-frontend.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-git-master",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-git-master.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-ideation",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-ideation.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-integrator",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-integrator.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-intel-updater",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-intel-updater.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-linter",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-linter.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-orchestrator",
+      "role": "general",
+      "description": "Full lifecycle workflow coordinator. Manages the 6-phase state machine (INIT, ANALYZE, PLAN, EXECUTE, VERIFY, DONE), routes tasks to specialized agents, enforces policies, and monitors workflow health. Use as the primary agent for any multi-step workflow.",
+      "skills": [],
+      "file": "masday-orchestrator.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-performance",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-performance.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-planner",
+      "role": "general",
+      "description": "Task decomposition specialist that breaks complex features into structured implementation plans with dependency analysis, agent assignment, and acceptance criteria. Use before any implementation work to produce executable plans.",
+      "skills": [],
+      "file": "masday-planner.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-qa",
+      "role": "general",
+      "description": "Testing and QA specialist that writes tests using TDD methodology, runs test suites, analyzes coverage, integrates with CI/CD, and validates PR completeness. Use for test creation, coverage verification, bug verification, and CI/CD pipeline management.",
+      "skills": [],
+      "file": "masday-qa.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-refactor-cleaner",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-refactor-cleaner.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-researcher",
+      "role": "general",
+      "description": "Multi-source research specialist that gathers information from web search, documentation, and codebase in parallel, then synthesizes findings against task requirements. Use for library research, best practices, API documentation, and pre-implementation discovery.",
+      "skills": [],
+      "file": "masday-researcher.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-reviewer",
+      "role": "general",
+      "description": "Quality gate code reviewer that examines implementation against acceptance criteria, checks for security vulnerabilities, and returns structured APPROVED/REWORK_REQUIRED/BLOCKED verdicts. Use after any code change before task completion.",
+      "skills": [],
+      "file": "masday-reviewer.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-security",
+      "role": "general",
+      "description": ">",
+      "skills": [],
+      "file": "masday-security.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-synthesizer",
+      "role": "general",
+      "description": "Merges outputs from multiple parallel branches into one coherent result. Detects contradictions, removes duplication, and validates merged output against acceptance criteria. Use after parallel execution completes.",
+      "skills": [],
+      "file": "masday-synthesizer.md",
+      "status": "active"
+    },
+    {
+      "name": "masday-verifier",
+      "role": "general",
+      "description": "Final validation specialist that runs scope drift detection, checks review status, verifies evidence completeness, and validates against policy before task closure. Use as the last gate before completing any task.",
+      "skills": [],
+      "file": "masday-verifier.md",
+      "status": "active"
+    }
+  ],
+  "skills": [],
+  "commands": []
+}

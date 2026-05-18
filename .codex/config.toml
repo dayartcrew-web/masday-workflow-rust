@@ -1,0 +1,11 @@
+[model]
+name = "claude-sonnet-4-20250514"
+
+[agents]
+directory = ".agents/agents"
+
+[skills]
+directory = ".agents/skills"
+
+[mcp]
+servers = { workflow-orchestrator = { command = "npx", args = ["tsx", "apps/workflow-orchestrator-mcp/src/index.ts"] } }
