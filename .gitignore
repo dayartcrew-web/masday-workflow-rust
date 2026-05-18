@@ -9,3 +9,4 @@ coverage/
 .msd/
 .masday/
 .next/
+.playwright-mcp/
