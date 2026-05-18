@@ -20,9 +20,11 @@
     "@mcp-rebuild/core": "workspace:*",
     "@mcp-rebuild/db": "workspace:*",
     "@mcp-rebuild/shared-utils": "workspace:*",
-    "@mcp-rebuild/store": "workspace:*"
+    "@mcp-rebuild/store": "workspace:*",
+    "@prisma/client": "^5.22.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0"
+    "@types/node": "^20.11.0",
+    "prisma": "^5.22.0"
   }
 }

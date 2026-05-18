@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.masday.workflow",
   "build": {
-    "frontendDist": "../dashboard/out",
+    "frontendDist": "http://localhost:3002",
     "devUrl": "http://localhost:3002",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "beforeDevCommand": "pnpm -C ../dashboard dev",
+    "beforeBuildCommand": "pnpm -C ../dashboard build"
   },
   "app": {
     "windows": [
