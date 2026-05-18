@@ -7,3 +7,5 @@ export * from './trace-recorder.js';
 export * from './health-checker.js';
 export * from './tracing.js';
 export * from './metrics.js';
+export * from './token-estimator.js';
+export * from './token-tracker.js';

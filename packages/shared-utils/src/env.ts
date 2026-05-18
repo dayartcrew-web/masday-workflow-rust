@@ -20,13 +20,16 @@ export const env = z
     DB_NAME: z.string().default("claude_agent_platform"),
 
     // ── Embedding ──
-    EMBEDDING_PROVIDER: z.enum(["mock", "openai"]).default("mock"),
+    EMBEDDING_PROVIDER: z.enum(["mock", "openai", "ollama"]).default("mock"),
     EMBEDDING_DIMENSIONS: z.coerce.number().int().min(1).default(768),
     EMBEDDING_MODEL: z.string().default("nomic-embed-text"),
 
     // ── OpenAI-compatible API (used when EMBEDDING_PROVIDER=openai) ──
     OPENAI_API_KEY: z.string().default(""),
-    OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+    OPENAI_BASE_URL: z.string().default("https://api.openai.com/v1"),
+
+    // ── Ollama (used when EMBEDDING_PROVIDER=ollama) ──
+    OLLAMA_BASE_URL: z.string().default("http://localhost:11434"),
   })
   .parse(process.env);
 

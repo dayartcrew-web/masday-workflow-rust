@@ -5,10 +5,10 @@
  * getPlan, getCurrentTask, getResumeSuggestion.
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 
 export async function getActiveWorkflow(projectPath?: string) {
-  return prisma.workflow.findFirst({
+  return (await import("@mcp-rebuild/db")).prisma.workflow.findFirst({
     where: {
       projectPath: projectPath ?? null,
       status: { notIn: ["completed", "cancelled"] },
@@ -18,14 +18,14 @@ export async function getActiveWorkflow(projectPath?: string) {
 }
 
 export async function listWorkflows(status?: string) {
-  return prisma.workflow.findMany({
+  return (await import("@mcp-rebuild/db")).prisma.workflow.findMany({
     where: status ? { status } : undefined,
     orderBy: { updatedAt: "desc" },
   });
 }
 
 export async function getPlan(workflowId: string) {
-  const workflow = await prisma.workflow.findUniqueOrThrow({
+  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
     where: { id: workflowId },
   });
 
@@ -33,11 +33,11 @@ export async function getPlan(workflowId: string) {
     throw new Error("No active plan");
   }
 
-  const plan = await prisma.plan.findUniqueOrThrow({
+  const plan = await (await import("@mcp-rebuild/db")).prisma.plan.findUniqueOrThrow({
     where: { id: workflow.currentPlanId },
   });
 
-  const tasks = await prisma.task.findMany({
+  const tasks = await (await import("@mcp-rebuild/db")).prisma.task.findMany({
     where: { planId: plan.id },
     orderBy: { createdAt: "asc" },
   });
@@ -46,7 +46,7 @@ export async function getPlan(workflowId: string) {
 }
 
 export async function getCurrentTask(workflowId: string) {
-  const workflow = await prisma.workflow.findUniqueOrThrow({
+  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
     where: { id: workflowId },
   });
 
@@ -54,13 +54,13 @@ export async function getCurrentTask(workflowId: string) {
     throw new Error("No current task");
   }
 
-  return prisma.task.findUniqueOrThrow({
+  return (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
     where: { id: workflow.currentTaskId },
   });
 }
 
 export async function getResumeSuggestion(workflowId: string) {
-  const workflow = await prisma.workflow.findUniqueOrThrow({
+  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
     where: { id: workflowId },
   });
 
@@ -73,10 +73,10 @@ export async function getResumeSuggestion(workflowId: string) {
   }
 
   if (!workflow.currentTaskId) {
-    const plan = await prisma.plan.findUniqueOrThrow({
+    const plan = await (await import("@mcp-rebuild/db")).prisma.plan.findUniqueOrThrow({
       where: { id: workflow.currentPlanId },
     });
-    const nextTodo = await prisma.task.findFirst({
+    const nextTodo = await (await import("@mcp-rebuild/db")).prisma.task.findFirst({
       where: { planId: plan.id, status: "todo" },
       orderBy: { createdAt: "asc" },
     });
@@ -91,11 +91,11 @@ export async function getResumeSuggestion(workflowId: string) {
     };
   }
 
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
     where: { id: workflow.currentTaskId },
   });
 
-  const latestProgress = await prisma.taskProgressLog.findFirst({
+  const latestProgress = await (await import("@mcp-rebuild/db")).prisma.taskProgressLog.findFirst({
     where: { taskId: task.id },
     orderBy: { createdAt: "desc" },
   });

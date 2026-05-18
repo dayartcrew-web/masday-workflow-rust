@@ -2,14 +2,14 @@
  * Task operations (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 import type { Prisma } from "@prisma/client";
 
 export async function startTask(input: {
   workflowId: string;
   taskId: string;
 }) {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  return (await import("@mcp-rebuild/db")).prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const task = await tx.task.findUniqueOrThrow({
       where: { id: input.taskId },
     });
@@ -37,7 +37,7 @@ export async function startTask(input: {
 }
 
 export async function listTasks(workflowId: string) {
-  return prisma.task.findMany({
+  return (await import("@mcp-rebuild/db")).prisma.task.findMany({
     where: { workflowId },
     orderBy: { createdAt: "asc" },
   });
@@ -47,7 +47,7 @@ export async function completeTask(input: {
   workflowId: string;
   taskId: string;
 }) {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  return (await import("@mcp-rebuild/db")).prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const task = await tx.task.findUniqueOrThrow({
       where: { id: input.taskId },
     });

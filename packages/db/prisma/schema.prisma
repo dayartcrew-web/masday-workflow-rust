@@ -277,3 +277,25 @@ model LlmProviderConfig {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+// ============================================================
+// Token Usage Tracking (RTK-inspired)
+// ============================================================
+
+model TokenUsage {
+  id               String   @id @default(uuid())
+  source           String   // "llm" (real from API) or "estimated" (from middleware)
+  route            String   // API route or tool name
+  model            String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  latencyMs        Int      @default(0)
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  @@index([source])
+  @@index([route])
+  @@index([createdAt])
+  @@index([model])
+}

@@ -4,7 +4,7 @@
  * Uses pgvector for semantic similarity search on memories and context documents.
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 
 interface MemorySearchResult {
   id: string;
@@ -27,7 +27,7 @@ export async function vectorSearchMemories(input: {
 }): Promise<MemorySearchResult[]> {
   const vector = `[${input.embedding.join(",")}]`;
 
-  const rows = await prisma.$queryRawUnsafe(
+  const rows = await (await import("@mcp-rebuild/db")).prisma.$queryRawUnsafe(
     `
     select
       id,
@@ -55,7 +55,7 @@ export async function vectorSearchContext(input: {
 }): Promise<DocSearchResult[]> {
   const vector = `[${input.embedding.join(",")}]`;
 
-  const rows = await prisma.$queryRawUnsafe(
+  const rows = await (await import("@mcp-rebuild/db")).prisma.$queryRawUnsafe(
     `
     select
       id,

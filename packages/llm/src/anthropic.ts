@@ -95,23 +95,31 @@ export class AnthropicProvider implements ILLMProvider {
         });
       }
 
-      const data = (await response.json()) as {
-        content: Array<{ type: string; text: string }>;
-        usage: { input_tokens: number; output_tokens: number };
-        model: string;
-        stop_reason?: string;
-      };
+      const data = (await response.json()) as Record<string, unknown>;
 
-      const text = data.content
-        .filter((block) => block.type === 'text')
-        .map((block) => block.text)
-        .join('');
+      let text: string;
+      if (Array.isArray(data.content)) {
+        text = (data.content as Array<{ type: string; text: string }>)
+          .filter((block) => block.type === 'text')
+          .map((block) => block.text)
+          .join('');
+      } else if (typeof data.content === 'string') {
+        text = data.content;
+      } else if (Array.isArray((data as { choices?: unknown[] }).choices)) {
+        const choices = (data as { choices: Array<{ message?: { content?: string } }> }).choices;
+        text = choices[0]?.message?.content || '';
+      } else {
+        text = String(data.text ?? data.message ?? '');
+      }
 
-      const tokensUsed = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
+      const usage = data.usage as { input_tokens?: number; output_tokens?: number; total_tokens?: number } | undefined;
+      const tokensUsed = usage?.input_tokens ?? usage?.total_tokens ?? 0;
       const latencyMs = Date.now() - startTime;
+      const responseModel = typeof data.model === 'string' ? data.model : model;
+      const stopReason = data.stop_reason ?? data.finish_reason as string | undefined;
 
       logger.debug(
-        { model: data.model, tokensUsed, latencyMs, stopReason: data.stop_reason },
+        { model: responseModel, tokensUsed, latencyMs, stopReason },
         'Anthropic: response received',
       );
 
@@ -119,8 +127,8 @@ export class AnthropicProvider implements ILLMProvider {
         text,
         tokensUsed,
         latencyMs,
-        model: data.model,
-        finishReason: data.stop_reason,
+        model: responseModel,
+        finishReason: stopReason as string | undefined,
       };
     };
 

@@ -4,7 +4,7 @@
 // ============================================================
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { EventBus } from '@mcp-rebuild/core';
+import { EventBus, trackTokens, getRouteTokenBreakdown } from '@mcp-rebuild/core';
 import type { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
 import { RateLimiter } from './rate-limit';
 import { authenticateRequest } from './auth/jwt';
@@ -230,8 +230,30 @@ export class APIServer {
         body = parseJsonBody(raw);
       }
 
+      // Token tracking: intercept response to capture body for estimation
+      let responseBody: unknown = null;
+      const originalEnd = res.end.bind(res);
+
+      const resProxy = new Proxy(res, {
+        get(target, prop) {
+          if (prop === 'end') {
+            return (data: unknown) => {
+              if (typeof data === 'string') {
+                try { responseBody = JSON.parse(data); } catch { responseBody = data; }
+              }
+              return originalEnd(data);
+            };
+          }
+          const val = target[prop as keyof ServerResponse];
+          return typeof val === 'function' ? val.bind(target) : val;
+        },
+      });
+
       // Route handler signature: (req, res, params, body?, query?)
-      await route.handler(req, res, params, body, url.searchParams);
+      await route.handler(req, resProxy, params, body, url.searchParams);
+
+      // Estimate tokens for this route call
+      trackTokens(route.pattern, body, responseBody);
       return;
     }
 

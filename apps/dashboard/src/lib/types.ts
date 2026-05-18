@@ -123,6 +123,7 @@ export interface Metrics {
   tasksFailed: number;
   memoriesTotal: number;
   tokensUsed: number;
+  tokenBreakdown?: Record<string, number>;
 }
 
 export interface ChatMessage {

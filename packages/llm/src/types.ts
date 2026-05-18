@@ -31,6 +31,8 @@ export interface LLMOptions {
 export interface LLMResponse {
   text: string;
   tokensUsed: number;
+  promptTokens?: number;
+  completionTokens?: number;
   latencyMs: number;
   model: string;
   finishReason?: string;

@@ -2,7 +2,7 @@
  * Progress tracking (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 
 export async function saveProgress(input: {
   workflowId: string;
@@ -13,7 +13,7 @@ export async function saveProgress(input: {
   statusBefore?: string;
   statusAfter?: string;
 }) {
-  return prisma.taskProgressLog.create({
+  return (await import("@mcp-rebuild/db")).prisma.taskProgressLog.create({
     data: {
       workflowId: input.workflowId,
       taskId: input.taskId,

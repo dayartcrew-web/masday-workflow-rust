@@ -93,17 +93,21 @@ export class CustomProvider implements ILLMProvider {
       };
 
       const text = data.choices[0]?.message?.content || '';
-      const tokensUsed = data.usage?.total_tokens || 0;
+      const promptTokens = data.usage?.prompt_tokens || 0;
+      const completionTokens = data.usage?.completion_tokens || 0;
+      const tokensUsed = data.usage?.total_tokens || (promptTokens + completionTokens);
       const latencyMs = Date.now() - startTime;
 
       logger.debug(
-        { model: data.model, tokensUsed, latencyMs, finishReason: data.choices[0]?.finish_reason },
+        { model: data.model, tokensUsed, promptTokens, completionTokens, latencyMs, finishReason: data.choices[0]?.finish_reason },
         'Custom: response received',
       );
 
       return {
         text,
         tokensUsed,
+        promptTokens,
+        completionTokens,
         latencyMs,
         model: data.model,
         finishReason: data.choices[0]?.finish_reason,

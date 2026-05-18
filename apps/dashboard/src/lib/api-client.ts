@@ -51,6 +51,14 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  if (res.status === 401) {
+    localStorage.removeItem('auth_token');
+    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+      window.location.href = '/login';
+    }
+    throw new Error('Session expired. Please log in again.');
+  }
+
 
   // 204 No Content is a valid successful response with an empty body.
   if (res.status === 204) {
@@ -210,8 +218,15 @@ export const chatApi = {
   complete(input: { message: string; sessionId?: string; model?: string; temperature?: number }): Promise<unknown> {
     return request('POST', '/api/chat', input);
   },
-  react(input: { goal: string; maxIterations?: number; sessionId?: string }): Promise<{ steps: ReActStep[]; result: string }> {
-    return request('POST', '/api/chat/react', input);
+  async react(input: { goal: string; maxIterations?: number; sessionId?: string }): Promise<{ steps: ReActStep[]; result: string }> {
+    const raw = await request('POST', '/api/chat/react', input) as Record<string, unknown>;
+    if (raw.ok === false) {
+      throw new Error(String(raw.error ?? 'ReAct execution failed'));
+    }
+    return {
+      steps: Array.isArray(raw.steps) ? raw.steps as ReActStep[] : [],
+      result: String(raw.result ?? ''),
+    };
   },
 };
 
@@ -251,8 +266,19 @@ export const policyApi = {
   requireContextRefresh(input: { workflowId: string; planId: string; taskId: string }): Promise<unknown> {
     return request('POST', '/api/policy/fingerprint', input);
   },
-  auditWorkflow(workflowId: string): Promise<AuditResult> {
-    return request('GET', `/api/policy/audit/${workflowId}`);
+  async auditWorkflow(workflowId: string): Promise<AuditResult> {
+    const raw = await request('GET', `/api/policy/audit/${workflowId}`) as Record<string, unknown>;
+    const issues: Array<Record<string, unknown>> = Array.isArray(raw.issues) ? raw.issues as Array<Record<string, unknown>> : [];
+    const stuck = issues.filter((i) => i.type === 'stuck_task') as unknown as AuditResult['stuckTasks'];
+    const missing = issues.filter((i) => i.type === 'missing_review').map((i) => String(i.message ?? i));
+    const incomplete = issues.filter((i) => i.type === 'incomplete_progress').map((i) => String(i.message ?? i));
+    return {
+      workflowId: String(raw.workflowId ?? workflowId),
+      stuckTasks: Array.isArray(raw.stuckTasks) ? raw.stuckTasks as AuditResult['stuckTasks'] : stuck,
+      missingReviews: Array.isArray(raw.missingReviews) ? raw.missingReviews as string[] : missing,
+      incompleteProgress: Array.isArray(raw.incompleteProgress) ? raw.incompleteProgress as string[] : incomplete,
+      totalIssues: typeof raw.totalIssues === 'number' ? raw.totalIssues : issues.length,
+    };
   },
 };
 
@@ -296,14 +322,53 @@ export const capabilityApi = {
 // ============================================================
 
 export const monitoringApi = {
-  getHealth(): Promise<HealthStatus> {
-    return request('GET', '/api/health');
+  async getHealth(): Promise<HealthStatus> {
+    const raw = await request('GET', '/api/health') as Record<string, unknown>;
+    const checks: Record<string, { status: string; latencyMs: number }> = {};
+    if (Array.isArray(raw.checks)) {
+      for (const c of raw.checks as Array<Record<string, unknown>>) {
+        checks[String(c.name ?? 'unknown')] = {
+          status: String(c.status ?? 'unknown'),
+          latencyMs: typeof c.duration === 'number' ? c.duration : 0,
+        };
+      }
+    }
+    return {
+      status: (raw.status as HealthStatus['status']) ?? 'healthy',
+      uptimeMs: typeof raw.uptimeMs === 'number' ? raw.uptimeMs : 0,
+      version: String(raw.version ?? 'unknown'),
+      checks,
+    };
   },
-  getMetrics(): Promise<Metrics> {
-    return request('GET', '/api/metrics');
+  async getMetrics(): Promise<Metrics> {
+    const raw = await request('GET', '/api/stats') as Record<string, unknown>;
+    const engine = (raw.engine ?? {}) as Record<string, unknown>;
+    return {
+      workflowsTotal: typeof engine.workflows === 'number' ? engine.workflows : 0,
+      workflowsActive: typeof engine.workflowsActive === 'number' ? engine.workflowsActive : (typeof engine.workflows === 'number' ? engine.workflows : 0),
+      workflowsCompleted: typeof engine.workflowsCompleted === 'number' ? engine.workflowsCompleted : 0,
+      workflowsFailed: typeof engine.workflowsFailed === 'number' ? engine.workflowsFailed : 0,
+      tasksTotal: typeof engine.tasksTotal === 'number' ? engine.tasksTotal : 0,
+      tasksCompleted: typeof engine.tasksCompleted === 'number' ? engine.tasksCompleted : 0,
+      tasksFailed: typeof engine.tasksFailed === 'number' ? engine.tasksFailed : 0,
+      memoriesTotal: typeof engine.memoriesTotal === 'number' ? engine.memoriesTotal : 0,
+      tokensUsed: typeof engine.tokensUsed === 'number' ? engine.tokensUsed : 0,
+      tokenBreakdown: engine.tokenBreakdown && typeof engine.tokenBreakdown === 'object'
+        ? engine.tokenBreakdown as Record<string, number>
+        : undefined,
+    };
   },
-  getStats(): Promise<SystemStats> {
-    return request('GET', '/api/stats');
+  async getStats(): Promise<SystemStats> {
+    const raw = await request('GET', '/api/stats') as Record<string, unknown>;
+    const api = (raw.api ?? {}) as Record<string, unknown>;
+    return {
+      uptimeMs: typeof api.uptimeMs === 'number' ? api.uptimeMs : 0,
+      requestsTotal: typeof api.requestsTotal === 'number' ? api.requestsTotal : 0,
+      errorsTotal: typeof api.errorsTotal === 'number' ? api.errorsTotal : 0,
+      avgLatencyMs: typeof api.avgLatencyMs === 'number' ? api.avgLatencyMs : 0,
+      wsClients: typeof api.wsClients === 'number' ? api.wsClients : 0,
+      routes: typeof api.routes === 'number' ? api.routes : 0,
+    };
   },
 };
 

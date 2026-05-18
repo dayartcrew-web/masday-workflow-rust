@@ -2,7 +2,7 @@
  * Parallel execution branches (msd-mcp business logic)
  */
 
-import { prisma } from "@mcp-rebuild/db";
+
 
 /** JSON-compatible value that Prisma's Json field accepts */
 type JsonValue =
@@ -16,7 +16,7 @@ export async function setExecutionMode(
   sessionKey: string,
   mode: "sequential" | "parallel",
 ) {
-  return prisma.sessionState.update({
+  return (await import("@mcp-rebuild/db")).prisma.sessionState.update({
     where: { sessionKey },
     data: { executionMode: mode },
   });
@@ -32,7 +32,7 @@ export async function createParallelBranches(input: {
   }>;
 }) {
   for (const branch of input.branches) {
-    await prisma.parallelBranch.create({
+    await (await import("@mcp-rebuild/db")).prisma.parallelBranch.create({
       data: {
         workflowId: input.workflowId,
         taskId: input.taskId,
@@ -44,7 +44,7 @@ export async function createParallelBranches(input: {
     });
   }
 
-  return prisma.parallelBranch.findMany({
+  return (await import("@mcp-rebuild/db")).prisma.parallelBranch.findMany({
     where: {
       workflowId: input.workflowId,
       taskId: input.taskId,
@@ -57,7 +57,7 @@ export async function listParallelBranches(
   workflowId: string,
   taskId: string,
 ) {
-  return prisma.parallelBranch.findMany({
+  return (await import("@mcp-rebuild/db")).prisma.parallelBranch.findMany({
     where: { workflowId, taskId },
     orderBy: { createdAt: "asc" },
   });
@@ -67,7 +67,7 @@ export async function completeParallelBranch(input: {
   branchId: string;
   output: Record<string, unknown>;
 }) {
-  return prisma.parallelBranch.update({
+  return (await import("@mcp-rebuild/db")).prisma.parallelBranch.update({
     where: { id: input.branchId },
     data: {
       status: "completed",
@@ -80,7 +80,7 @@ export async function markSynthesisReady(
   sessionKey: string,
   ready: boolean,
 ) {
-  return prisma.sessionState.update({
+  return (await import("@mcp-rebuild/db")).prisma.sessionState.update({
     where: { sessionKey },
     data: { synthesisReady: ready },
   });
@@ -90,7 +90,7 @@ export async function markVerificationReady(
   sessionKey: string,
   ready: boolean,
 ) {
-  return prisma.sessionState.update({
+  return (await import("@mcp-rebuild/db")).prisma.sessionState.update({
     where: { sessionKey },
     data: { verificationReady: ready },
   });

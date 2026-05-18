@@ -69,6 +69,31 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Token Breakdown by Route */}
+        {metrics?.tokenBreakdown && Object.keys(metrics.tokenBreakdown).length > 0 && (
+          <div className="rounded-[var(--radius-lg,16px)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card-depth,0_8px_40px_rgba(0,0,0,0.45))] backdrop-blur-[20px]">
+            <h3 className="text-[14px] font-medium text-[var(--color-text-secondary)] mb-4 uppercase tracking-wider">Token Usage by Route</h3>
+            <div className="space-y-2">
+              {Object.entries(metrics.tokenBreakdown)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 8)
+                .map(([route, tokens]) => {
+                  const maxTokens = Math.max(...Object.values(metrics.tokenBreakdown ?? {}));
+                  const pct = maxTokens > 0 ? (tokens / maxTokens) * 100 : 0;
+                  return (
+                    <div key={route} className="flex items-center gap-3">
+                      <span className="text-xs text-[var(--color-text-secondary)] w-48 truncate" title={route}>{route.replace('/api/', '')}</span>
+                      <div className="flex-1 h-2 rounded-full bg-[var(--color-surface-elevated)] overflow-hidden">
+                        <div className="h-full rounded-full bg-[var(--color-neon-blue)]" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-[var(--color-text)] tabular-nums w-16 text-right">{tokens.toLocaleString()}</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
         {/* Active Workflow + Live Events - Two-column glassmorphism grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Active Workflow */}
@@ -103,10 +128,10 @@ export default function DashboardPage() {
             <h3 className="text-[14px] font-medium text-[var(--color-text-secondary)] mb-4 uppercase tracking-wider">Live Events</h3>
             <div className="space-y-2 max-h-52 overflow-y-auto scrollbar-thin">
               {latestEvent ? (
-                <div className="text-xs p-3 rounded-lg bg-[var(--color-surface-elevated)] border-l-[3px] border-l-[var(--color-primary)]">
+                <div className="text-xs p-3 rounded-lg bg-[var(--color-surface-elevated)]">
                   <span className="text-[var(--color-secondary)] font-medium">{latestEvent.type}</span>
                   <span className="text-[var(--color-text-secondary)] ml-3">
-                    {new Date(latestEvent.timestamp).toLocaleTimeString()}
+                    {latestEvent.timestamp ? new Date(latestEvent.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString()}
                   </span>
                 </div>
               ) : (
