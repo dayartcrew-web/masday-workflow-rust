@@ -173,7 +173,7 @@ Real `execSync` calls to pnpm test runner.
 The MCP server runs on `OrchestratingEngine` with full agent dispatch enabled:
 
 - **VERIFY** phase checks for failed tasks before transitioning to DONE
-- **FIX** phase resets failed tasks to pending and retries execution (configurable `maxFixRetries`)
+- **FIX** phase resets failed tasks to PENDING and retries execution (configurable `maxFixRetries`)
 - **Task output piping** -- dependent tasks receive `dependencyOutputs` from completed prerequisites
 - **Agent routing** -- tasks dispatched through SkillRouter with 3-tier fallback to appropriate agent worker
 

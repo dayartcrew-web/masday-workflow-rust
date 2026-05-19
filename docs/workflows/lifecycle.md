@@ -41,7 +41,7 @@ The VERIFY phase is implemented in `EnhancedWorkflowEngine` and `OrchestratingEn
 The FIX phase implements configurable retry logic:
 
 1. Engine transitions to `FIX` state
-2. Failed tasks are reset to `pending` status
+2. Failed tasks are reset to PENDING status
 3. Tasks are re-executed through the DAG executor
 4. `workflow.fixing` event is emitted with `{ workflow, retryCount }`
 5. If all retries pass VERIFY, workflow transitions to DONE

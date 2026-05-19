@@ -10,11 +10,28 @@ pnpm build
 cd apps/agent-runner && pnpm start:mcp
 ```
 
+### Database Setup
+
+The runtime requires PostgreSQL with pgvector for persistent state. DualWriteStore replicates all workflow, task, and memory operations to PostgreSQL in real-time via Prisma, with JSON cache fallback when the database is unavailable.
+
+```bash
+# Start PostgreSQL with pgvector
+docker-compose up -d
+
+# Generate Prisma client
+pnpm db:generate
+
+# Push schema to database
+pnpm db:push
+```
+
 ## What this starts
 
 - The local MCP stdio server from `apps/agent-runner`
+- **83 MCP tools** across 14 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests)
 - Workflow orchestration via OrchestratingEngine with full agent dispatch
-- SQLite-backed runtime state for workflows, tasks, and config
+- **PostgreSQL-backed runtime state via DualWriteStore** -- all 14 Prisma tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge)
+- DualWrite pattern: PostgreSQL primary + JSON cache fallback for resilience
 - Project-local `.masday/` artifacts for cached research, plans, and notes
 - 4 default agent workers: backend, frontend, qa, general-purpose
 
@@ -25,11 +42,11 @@ cd apps/agent-runner && pnpm start:mcp
 3. [Local development](./workflows/local-development.md) - local-first commands and expectations
 4. [MCP tools reference](./reference/mcp-tools.md) - tool surface summary
 5. [CLI commands reference](./reference/cli-commands.md) - Claude/CLI command map
-6. [State model](./reference/state-model.md) - SQLite vs `.masday` responsibilities
+6. [State model](./reference/state-model.md) - PostgreSQL vs `.masday` responsibilities
 
 ## Runtime profiles
 
-- **Local** - default and primary supported path
+- **Local** - default and primary supported path; uses PostgreSQL via DualWriteStore with JSON cache fallback
 - **Docker** - optional profile for isolation or parity testing
 - **Remote** - future/advanced profile documented as a planned direction
 
@@ -42,8 +59,6 @@ export MASDAY_RUNTIME_PROFILE=remote
 ```
 
 > Note: Only the **local** profile is currently implemented by the runtime in this repository. Selecting `docker` or `remote` will fail fast.
-
-
 
 See also:
 

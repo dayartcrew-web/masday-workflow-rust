@@ -1,16 +1,16 @@
 # Masday Workflow - Architecture
 
-> **Status note:** This document should describe actual runtime behavior in this repository, not the full aspirational surface accumulated across phase docs. Treat the local-first MCP path as the canonical runtime. Docker is optional. Agent/intelligence subsystems should be read with feature maturity in mind rather than assumed universal runtime exposure.
+> **Status note:** This document describes the actual runtime behavior in this repository. The local-first MCP path is the canonical runtime. PostgreSQL via DualWriteStore is the operational source of truth for all workflow, task, memory, and session state.
 
 ## Overview
 
-Masday Workflow is an AI-agent workflow project built on the Model Context Protocol (MCP). The repository contains an active local-first runtime path, supporting workflow documentation, and a wider set of experimental or phase-specific materials that should not be read as equally mature production behavior.
+Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 12 packages and a single unified MCP server app exposing 83 tools.
 
 ## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Claude Code / AI Client                  │
+│                     Claude Code / AI Client                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ .claude/      │  │ Slash        │  │ Auto-loaded  │      │
 │  │ skills/       │  │ Commands     │  │ agents/      │      │
@@ -20,30 +20,30 @@ Masday Workflow is an AI-agent workflow project built on the Model Context Proto
                              │ MCP Protocol (stdio)
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     MCP Server Layer                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Server       │  │ Registry     │  │ Schema       │      │
-│  │ (stdio)      │  │ (Skill DB)   │  │ (Zod/Valid.) │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                     MCP Server Layer                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ Server       │  │ Registry     │  │ Schema       │       │
+│  │ (stdio)      │  │ (Skill DB)   │  │ (Zod/Valid.) │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 └────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Workflow Orchestrator                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ State        │  │ Workflow     │  │ Task Manager │      │
-│  │ Machine      │  │ Engine       │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ DAG Executor │  │ Planner      │  │ Task Queue   │      │
-│  │ (Parallel)   │  │ (Rule-based) │  │ (Priority)   │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ State        │  │ Workflow     │  │ Task Manager │       │
+│  │ Machine      │  │ Engine       │  │              │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ DAG Executor │  │ Planner      │  │ Task Queue   │       │
+│  │ (Parallel)   │  │ (Rule-based) │  │ (Priority)   │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 └────────────────────────────┬────────────────────────────────┘
                              │
                     ┌────────┴────────┐
                     ▼                 ▼
 ┌──────────────────────────┐  ┌──────────────────────────────┐
-│     Agent Layer          │  │   Intelligence Layer        │
+│     Agent Layer          │  │   Intelligence Layer         │
 │  ┌────────────────────┐  │  │  ┌────────────────────────┐  │
 │  │ Agent Coordinator  │  │  │  │ Code Indexer           │  │
 │  └────────────────────┘  │  │  └────────────────────────┘  │
@@ -63,9 +63,9 @@ Masday Workflow is an AI-agent workflow project built on the Model Context Proto
 ┌──────────────────────────┐  ┌──────────────────────────────┐
 │      Skill Layer         │  │   Persistence Layer          │
 │  ┌────────────────────┐  │  │  ┌────────────────────────┐  │
-│  │ filesystem.*       │  │  │  │ SQLite Store           │  │
-│  │ git.*              │  │  │  │ (workflow state, tasks,│  │
-│  │ code.*             │  │  │  │ runtime metadata)      │  │
+│  │ filesystem.*       │  │  │  │ DualWriteStore         │  │
+│  │ git.*              │  │  │  │ (PostgreSQL via Prisma │  │
+│  │ code.*             │  │  │  │  + JSON cache fallback)│  │
 │  │ tests.*            │  │  │  └────────────────────────┘  │
 │  │ npm.*              │  │  │  ┌────────────────────────┐  │
 │  │ docker.*           │  │  │  │ .masday/ (per-project) │  │
@@ -81,41 +81,47 @@ Masday Workflow is an AI-agent workflow project built on the Model Context Proto
 
 ## Tech Stack
 
-| Layer           | Technology                | Purpose                     |
-| --------------- | ------------------------- | --------------------------- |
-| Language        | TypeScript 5.3            | Strict typing, all packages |
-| Runtime         | Node.js 20+               | Server execution            |
-| Package Manager | pnpm (workspaces)         | Monorepo management         |
-| Protocol        | @modelcontextprotocol/sdk | MCP server/client           |
-| Validation      | Zod                       | Schema validation           |
-| Logging         | Pino                      | Structured logging          |
-| Events          | EventEmitter3             | Pub/sub event bus           |
-| Storage         | SQLite (better-sqlite3)   | Workflow state persistence  |
-| Module System   | CommonJS                  | Package output              |
-| Testing         | Vitest (v8 coverage)      | 1017+ tests across 82+ files |
+| Layer           | Technology                                    | Purpose                              |
+| --------------- | --------------------------------------------- | ------------------------------------ |
+| Language        | TypeScript 5.6                                | Strict typing, all packages          |
+| Runtime         | Node.js 20+                                   | Server execution                     |
+| Package Manager | pnpm (workspaces)                             | Monorepo management                  |
+| Build           | Turbo                                         | Parallel build orchestration         |
+| Protocol        | @modelcontextprotocol/sdk                     | MCP server/client (official McpServer) |
+| Validation      | Zod                                           | Schema validation                    |
+| Logging         | Pino                                          | Structured logging                   |
+| Events          | EventEmitter3                                 | Pub/sub event bus                    |
+| Storage         | DualWriteStore (PostgreSQL via Prisma + JSON/SQLite cache) | Workflow state persistence |
+| ORM             | Prisma                                        | Database access, schema, migrations  |
+| Semantic Search | pgvector                                      | Vector similarity in PostgreSQL      |
+| Module System   | ESM (`"type": "module"`, NodeNext resolution) | All packages use ESM                 |
+| Testing         | Vitest (globals enabled)                      | Unit, integration, benchmarks        |
 
 ## Monorepo Structure
 
 ```
-masday-workflow/
+masday-workflow-rebuild/
 ├── packages/
-│   ├── core/                  # Types, event bus, logger, task model
-│   ├── mcp-server/            # MCP server + skill registry
-│   ├── orchestrator/          # Workflow engine + state machine (3-tier hierarchy)
-│   ├── skills/                # Filesystem skills
-│   ├── code-skills/           # Git, tests, npm, code, docker, CI/CD, GitHub
-│   ├── store/                 # SQLite persistence (WorkflowStore, TaskResultStore, ConfigStore)
-│   ├── agents/                # Multi-agent coordination + skill routing
-│   ├── cli/                   # CLI binaries (masday-workflow, masday-init) + setup templates
-│   └── intelligence/          # Repository intelligence
+│   ├── core/                  # Shared types, logger, EventBus, tracing, metrics
+│   ├── shared-utils/          # Logger, IDs, hash, env utilities
+│   ├── db/                    # Prisma schema (14 models + pgvector), client singleton
+│   ├── store/                 # StorageBackend, SQLite, JSON, Prisma adapters
+│   ├── llm/                   # Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker
+│   ├── memory/                # 4-layer memory (working, episodic, long-term, graph), scoring, BM25
+│   ├── workflow-engine/       # Pure functions + state machine, DAG, session, review, parallel, drift
+│   ├── intelligence/          # SemanticSearcher, CodeIndexer, ReAct agent, Guardrails
+│   ├── policy/                # PolicyValidator, WorkflowAuditor, drift detection
+│   ├── capability/            # Registry, Scaffolder, SystemHealth
+│   ├── code-skills/           # Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod)
+│   └── cli/                   # CLI entry point + setup templates
 ├── apps/
-│   └── agent-runner/          # CLI + MCP server entry point
+│   └── agent-runner/          # Single unified MCP server (83 tools)
 ├── docs/                      # Documentation
 ├── .claude/                   # Claude Code integration (project-level)
-│   ├── skills/                # 8 workflow and builder skills
-│   ├── commands/              # 13 slash commands
-│   ├── agents/                # 5 agent definitions (backend, frontend, qa, orchestrator, researcher)
-│   └── hooks/                 # 3 validation hooks
+│   ├── skills/                # 25+ workflow and builder skills
+│   ├── commands/              # 9+ slash commands
+│   ├── agents/                # 22+ agent definitions
+│   └── hooks/                 # Validation hooks
 ├── .masday/                   # Project-local human-readable artifacts
 │   ├── research/              # Cached codebase analysis
 │   ├── context/               # Project context + summaries
@@ -130,41 +136,83 @@ masday-workflow/
 
 ### Global Setup (`~/.claude/`)
 
-| Component  | Location                          | Scope        |
-| ---------- | --------------------------------- | ------------ |
-| MCP Server | `settings.json` → mcpServers      | All projects |
-| Commands   | `~/.claude/commands/*.md` (13)    | All projects |
-| Skills     | `~/.claude/skills/*/SKILL.md` (8) | All projects |
-| Agents     | `~/.claude/agents/*.md` (5)       | All projects |
+| Component  | Location                              | Scope        |
+| ---------- | ------------------------------------- | ------------ |
+| MCP Server | `settings.json` -> mcpServers         | All projects |
+| Commands   | `~/.claude/commands/*.md` (9+)        | All projects |
+| Skills     | `~/.claude/skills/*/SKILL.md` (25+)   | All projects |
+| Agents     | `~/.claude/agents/*.md` (22+)         | All projects |
 
 ### Per-Project Setup
 
 When using masday-workflow in any project:
 
-1. `/masday-workflow-init` — creates `.masday/` data directory
-2. Auto-analyzes codebase → caches in `.masday/research/`
+1. `/masday-workflow-init` -- creates `.masday/` data directory
+2. Auto-analyzes codebase -> caches in `.masday/research/`
 3. All subsequent commands use cached context (60-80% token savings)
 
 ### Data Flow
 
 ```
 Claude Code Session
-  ├── Reads .masday/context/ → instant project knowledge (no scan)
-  ├── Calls MCP tools → workflow execution
+  ├── Reads .masday/context/ -> instant project knowledge (no scan)
+  ├── Calls MCP tools -> workflow execution
   └── Writes human-readable artifacts to .masday/ when commands or skills export summaries
 
-SQLite Store (MCP)     .masday/ (Local)
-  ├─ workflow state      ├─ research/ (analysis cache)
-  ├─ task results        ├─ context/ (project summary)
-  ├─ runtime metadata    ├─ plans/ (pre-execution plans)
-  └─ config              └─ notes/ (execution logs / summaries)
+DualWriteStore (PostgreSQL + JSON cache)     .masday/ (Local)
+  ├─ workflow state (Workflow table)           ├─ research/ (analysis cache)
+  ├─ task results (Task table)                 ├─ context/ (project summary)
+  ├─ runtime metadata (TaskProgressLog)        ├─ plans/ (pre-execution plans)
+  ├─ memory (Memory table)                     └─ notes/ (execution logs / summaries)
+  ├─ review decisions (ReviewDecision table)
+  ├─ session state (SessionState table)
+  ├─ parallel branches (ParallelBranch table)
+  ├─ context documents (ContextDocument table)
+  ├─ retrieval logs (RetrievalLog table)
+  ├─ token usage (TokenUsage table)
+  ├─ episodic memory (EpisodicMemory table)
+  └─ knowledge graph (GraphNode + GraphEdge tables)
 ```
 
 ### State Ownership
 
-- **SQLite is the operational source of truth** for active workflows, task state, task results, and runtime execution metadata.
-- **`.masday/` is the project-local artifact space** for human-readable outputs such as research snapshots, context summaries, plans, and notes.
-- If a command exports workflow information into `.masday/`, that export is a convenience artifact, not the authoritative runtime state store.
+- **PostgreSQL is the operational source of truth** for active workflows, task state, task results, memory, review decisions, session state, and all runtime execution metadata. All writes go through DualWriteStore which replicates to PostgreSQL in real-time via Prisma.
+- **JSON cache is the fallback** when PostgreSQL is unavailable. Memory operations use hybrid mode: Prisma first, JSON cache fallback.
+- **`.masday/` is the project-local artifact space** for human-readable outputs such as research snapshots, context summaries, plans, and notes. If a command exports workflow information into `.masday/`, that export is a convenience artifact, not the authoritative runtime state store.
+
+## Status Conventions
+
+All status values are stored in **UPPERCASE** in PostgreSQL:
+
+| Entity   | Valid Statuses                                                         |
+| -------- | ---------------------------------------------------------------------- |
+| Workflow | INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED       |
+| Task     | PENDING, RUNNING, DONE, FAILED                                         |
+| Plan     | ACTIVE, PENDING, READY, DONE                                           |
+| Review   | APPROVED, REWORK_REQUIRED, BLOCKED                                     |
+
+DualWriteStore maps in-memory lowercase `TaskState` values to UPPERCASE for Prisma persistence.
+
+## 14 Prisma Tables
+
+All 14 Prisma models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
+
+| Table             | Wired Via              | Trigger                                    |
+| ----------------- | ---------------------- | ------------------------------------------ |
+| Workflow          | DualWriteStore         | workflow.create, execute, delete            |
+| Task              | DualWriteStore         | addTask, startTask, completeTask            |
+| Plan              | DualWriteStore         | createPlan                                 |
+| Memory            | persistToPrisma()      | memory.store, store_research                |
+| ReviewDecision    | Prisma direct          | review.submit                              |
+| SessionState      | Prisma direct          | session.patch_state                        |
+| ParallelBranch    | Prisma direct          | workflow.createParallelBranches             |
+| ContextDocument   | Prisma direct          | memory.store_research                      |
+| TaskProgressLog   | saveProgressDb()       | workflow.saveProgress                      |
+| RetrievalLog      | logRetrieval()         | memory.search, semantic-search.code_search, search_hybrid_context_pack |
+| TokenUsage        | trackTokens()          | workflow.saveProgress, memory.store_research |
+| EpisodicMemory    | setEpisodicPrisma()    | EpisodicMemory.add()                       |
+| GraphNode         | setGraphPrisma()       | GraphStore.addNode()                       |
+| GraphEdge         | setGraphPrisma()       | GraphStore.addEdge()                       |
 
 ## Workflow States
 
@@ -199,7 +247,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
       ▼
  ┌─────────────┐                ┌─────────────────┐
  │   Client     │ ────────────► │   MCP Server     │
- │ (Dashboard/  │   stdio       │  (71 tools)      │
+ │ (Dashboard/  │   stdio       │  (83 tools)      │
  │  CLI/MCP)    │               └────────┬──────────┘
  └─────────────┘                         │
                                          ▼
@@ -207,7 +255,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
                              │    ORCHESTRATOR        │
                              │                       │
                              │  1. Working Memory     │── Session state (RAM)
-                             │  2. Episodic Memory    │── Chat history (10 msgs)
+                             │  2. Episodic Memory    │── Chat history
                              │  3. Memory Search      │── Top 10, importance >= 0.2
                              │  4. Context Builder    │── Assembles prompt
                              └───────────┬───────────┘
@@ -254,8 +302,9 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
                             │
   ┌──────────────────────────────────────────────────────────┐
   │                  EPISODIC MEMORY                         │
-  │            Last 10 messages per session                   │
+  │            Last N messages per session                    │
   │         Chat history -- recent conversation context        │
+  │         Persisted to EpisodicMemory table via Prisma      │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐
@@ -264,14 +313,15 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   │   Scoring: similarity*0.6 + recency*0.15                │
   │            + importance*0.15 + usage*0.1                 │
   │                                                          │
-  │   File Store (.masday/state/memories.json)               │
-  │   + Jaccard similarity (embedding-ready for pgvector)    │
+  │   Memory table (PostgreSQL via Prisma)                   │
+  │   + BM25 scoring (embedding-ready for pgvector)          │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐
   │                 KNOWLEDGE GRAPH                          │
   │             Nodes & edges, auto-linked                   │
   │        Traversal, subgraph, relationship queries         │
+  │        Persisted to GraphNode + GraphEdge tables         │
   └──────────────────────────────────────────────────────────┘
 ```
 
@@ -291,7 +341,7 @@ The MCP server uses `OrchestratingEngine` with `coordinator: true` and `enableSk
 
 When tasks fail during EXECUTE or VERIFY:
 1. Engine transitions to FIX state
-2. Failed tasks are reset to `pending` status
+2. Failed tasks are reset to PENDING status
 3. Tasks are re-executed up to `maxFixRetries` (configurable)
 4. `workflow.fixing` event emitted on each retry attempt
 5. If retries are exhausted, the workflow fails
@@ -329,5 +379,6 @@ DAGExecutor.executeTask()
 ### Additional Runtime Behaviors
 
 - **Auto-task creation**: `createPlan` auto-creates tasks from `plan.tasks[]` entries
-- **Memory persistence**: Memory store persists to file after each add (calls `save()`)
+- **Memory persistence**: Memory store persists to PostgreSQL after each add (calls `persistToPrisma()`), with JSON cache fallback
 - **Startup initialization**: Session, Review, and Parallel tables are initialized at startup
+- **DualWrite replication**: All workflow/task/plan operations replicate to PostgreSQL in real-time via DualWriteStore wrapping WorkflowStore
