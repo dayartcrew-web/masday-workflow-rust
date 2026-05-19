@@ -59,7 +59,7 @@ function deserializeTask(row: TaskRow): Task {
     name: row.name,
     agent: row.agent,
     skill: row.skill,
-    dependencies: JSON.parse(row.dependencies),
+    dependencies: row.dependencies ? JSON.parse(row.dependencies) : [],
     state: row.state as Task['state'],
     input: row.input !== null ? JSON.parse(row.input) : undefined,
     output: row.output !== null ? JSON.parse(row.output) : undefined,
