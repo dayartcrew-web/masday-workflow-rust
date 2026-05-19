@@ -67,9 +67,9 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
 
   const now = new Date();
 
-  // 1. Active workflows in EXECUTE with no recent progress
+  // 1. Active workflows in EXECUTE or FIX with no recent progress
   const activeWorkflows = await prisma.workflow.findMany({
-    where: { status: "EXECUTE" },
+    where: { status: { in: ["EXECUTE", "FIX"] } },
   }) as Array<{ id: string; name: string; status: string; updatedAt: Date; currentTaskId?: string }>;
 
   for (const wf of activeWorkflows) {
@@ -175,9 +175,18 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
     }
   }
 
-  // Persist new reminders to DB
+  // Persist new reminders to DB (skip if unacknowledged reminder already exists for same key)
   for (const reminder of reminders) {
     try {
+      const existing = await prisma.workflowReminder.findFirst({
+        where: {
+          workflowId: reminder.workflowId,
+          taskId: reminder.taskId ?? undefined,
+          type: reminder.type,
+          acknowledged: false,
+        },
+      });
+      if (existing) continue;
       await prisma.workflowReminder.create({
         data: {
           workflowId: reminder.workflowId,
