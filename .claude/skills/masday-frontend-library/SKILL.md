@@ -29,8 +29,8 @@ A manually-authored design system document with structured sections covering:
 - Tech stack recommendations
 - Component architecture tree
 
-defaults path: `~/library-design-md/*/*.md` (search for any design.md file in the library-design-md directory tree)
-Example path: `~/library-design-md/dashboard/Agent-Memory-Llm-01/agent_memory_llm_dashboard_design_md.md`
+defaults path: `.claude/skills/masday-frontend-library/library-design-md/*/*.md` (search for any design.md file in the library-design-md directory tree)
+Example path: `.claude/skills/masday-frontend-library/library-design-md/dashboard/Agent-Memory-Llm-01/agent_memory_llm_dashboard_design_md.md`
 
 ### Format 2: Auto-Extracted Design System (.md)
 
@@ -48,8 +48,8 @@ A tool-extracted design system from a live website, with sections like:
 
 Explore the CSS Custom Properties section for a comprehensive list of design tokens that can be directly used in development.
 
-defaults path: `~/library-design-md/*/DESIGN-*.md` (search for any design.md file in the library-design-md directory tree)
-Example path: `~/library-design-md/DESIGN-e1s5h4v3dhn1-d-space-z-ai.md`
+defaults path: `.claude/skills/masday-frontend-library/library-design-md/*/DESIGN-*.md` (search for any design.md file in the library-design-md directory tree)
+Example path: `.claude/skills/masday-frontend-library/library-design-md/DESIGN-e1s5h4v3dhn1-d-space-z-ai.md`
 
 ### Format 3: Visual Screenshot (.png/.jpg/.jpeg)
 
@@ -61,8 +61,8 @@ A design mockup screenshot that must be analyzed visually to extract:
 - Spacing patterns
 - Navigation structure
 
-defaults path: `~/library-design-md/*/*.{png,jpg,jpeg}` (search for any image file in the library-design-md directory tree)
-Example path: `~/library-design-md/dashboard/Agent-Memory-Llm-01/agent_memory_llm_dashboard_design.png`
+defaults path: `.claude/skills/masday-frontend-library/library-design-md/*/*.{png,jpg,jpeg}` (search for any image file in the library-design-md directory tree)
+Example path: `.claude/skills/masday-frontend-library/library-design-md/dashboard/Agent-Memory-Llm-01/agent_memory_llm_dashboard_design.png`
 
 ## Steps
 
@@ -80,7 +80,7 @@ Example path: `~/library-design-md/dashboard/Agent-Memory-Llm-01/agent_memory_ll
    - For image files: use the Read tool (Claude is multimodal and can analyze images)
    - For directories: load all `.md` and image files found
 
-4. **If no path provided**, scan the `library-design-md/` directory tree and list available designs for the user to choose from.
+4. **If no path provided**, scan the `.claude/skills/masday-frontend-library/library-design-md/` directory tree and list available designs for the user to choose from.
 
 ### Phase 2: Extract Design Tokens
 
@@ -143,6 +143,8 @@ For visual screenshots (Format 3), extract tokens by careful visual analysis.
 
 ### Phase 3: Clarify Requirements
 
+**Auto-detect first**: Read `package.json` (root and any `apps/` packages) to detect the framework and styling approach already in use. Check for `react`, `vue`, `svelte`, `next`, `nuxt`, `tailwindcss`, `styled-components`, `@emotion/react`, etc. Present detected stack as the recommended defaults before asking the user.
+
 Before building, confirm with the user:
 
 1. **Component scope** — Which component(s) to build?
@@ -154,6 +156,8 @@ Before building, confirm with the user:
 If the design.md includes a "Suggested Tech Stack" section, present those as the recommended defaults.
 
 ### Phase 4: Build Components
+
+**Implementation delegate**: If running inside a workflow, delegate component building to the `masday-frontend` agent. Pass extracted design tokens to the agent as context so it uses them as source of truth.
 
 1. **Create design token file** — Extract tokens into theme/constants.
 2. **Build layout shell** — Create the main layout matching the grid structure.
@@ -219,13 +223,13 @@ If the design.md includes a "Suggested Tech Stack" section, present those as the
 ## Library Path Convention
 
 ```
-library-design-md/
+.claude/skills/masday-frontend-library/library-design-md/
   <category>/
     <Design-Name>/
       <design-name>_design.png
       <design-name>_design_md.md
 
-DESIGN-<site-id>.md
+  DESIGN-<site-id>.md
 ```
 
 When the user says "build from design X", search both locations.
