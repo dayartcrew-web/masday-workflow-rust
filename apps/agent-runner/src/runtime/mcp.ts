@@ -116,6 +116,37 @@ let mic = 0;
 function nid() { return "mem_" + Date.now() + "_" + (++mic); }
 function ok(d: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(d) }] }; }
 
+const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER ?? "ollama";
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "nomic-embed-text";
+const EMBEDDING_DIMENSIONS = 768;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  try {
+    if (EMBEDDING_PROVIDER === "ollama") {
+      const res = await fetch(OLLAMA_BASE_URL + "/api/embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json() as { embedding: number[] };
+      return data.embedding ?? null;
+    }
+    if (!OPENAI_API_KEY) return null;
+    const url = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1") + "/embeddings";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: EMBEDDING_MODEL, input: text, dimensions: EMBEDDING_DIMENSIONS }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { data: Array<{ embedding: number[] }> };
+    return data.data[0]?.embedding ?? null;
+  } catch { return null; }
+}
+
 let prismaReady = false;
 async function initPrisma(): Promise<void> {
   try {
@@ -146,6 +177,7 @@ async function initPrisma(): Promise<void> {
 async function persistToPrisma(rec: MemRec, workflowId?: string, taskId?: string): Promise<void> {
   if (!prismaReady) return;
   try {
+    const embedding = await generateEmbedding(rec.content);
     await prisma.memory.upsert({
       where: { id: rec.id },
       update: { content: rec.content, summary: rec.summary, importanceScore: rec.importance, tags: rec.tags, accessedAt: new Date() },
@@ -155,6 +187,10 @@ async function persistToPrisma(rec: MemRec, workflowId?: string, taskId?: string
         workflowId: workflowId ?? null, taskId: taskId ?? null,
       },
     });
+    if (embedding) {
+      const vecStr = `[${embedding.join(",")}]`;
+      await prisma.$executeRaw`UPDATE "Memory" SET embedding = ${vecStr}::vector WHERE id = ${rec.id}`;
+    }
   } catch (err) {
     logger.warn("Prisma write failed: " + (err instanceof Error ? err.message : String(err)));
   }
@@ -198,7 +234,7 @@ server.registerTool("memory.store", { description: "Store memory", inputSchema: 
 server.registerTool("memory.store_research", { description: "Store research", inputSchema: { workflow_id: z.string().optional(), summary: z.string(), content: z.string(), created_by_agent: z.string() } }, async (a) => {
   const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now() };
   await persistToPrisma(r, a.workflow_id);
-  if (prismaReady) { try { await prisma.contextDocument.create({ data: { id: r.id, workflowId: a.workflow_id ?? null, sourceType: "research", title: a.summary, content: a.content, metadata: { agent: a.created_by_agent } } }); } catch (e) { logger.warn("ContextDocument write failed: " + (e instanceof Error ? e.message : String(e))); } }
+  if (prismaReady) { try { await prisma.contextDocument.create({ data: { id: r.id, workflowId: a.workflow_id ?? null, sourceType: "research", title: a.summary, content: a.content, metadata: { agent: a.created_by_agent } } }); const emb = await generateEmbedding(a.content); if (emb) { const vecStr = `[${emb.join(",")}]`; await prisma.$executeRaw`UPDATE "ContextDocument" SET embedding = ${vecStr}::vector WHERE id = ${r.id}`; } } catch (e) { logger.warn("ContextDocument write failed: " + (e instanceof Error ? e.message : String(e))); } }
   const m = loadMem(); m.push(r); saveMem(m);
   trackTokens("memory.store_research", a, r);
   return ok(r);
@@ -231,9 +267,21 @@ server.registerTool("memory.delete_by_workflow", { description: "Delete by workf
   if (prismaReady) { try { const r = await prisma.memory.deleteMany({ where: { workflowId: workflow_id } }); return ok({ deleted: r.count }); } catch { /* fall through to cache */ } }
   const m = loadMem(); const n = m.length; saveMem(m.filter(x => !x.tags.includes(workflow_id))); return ok({ deleted: n - m.filter(x => !x.tags.includes(workflow_id)).length });
 });
-server.registerTool("memory.search", { description: "Search memories", inputSchema: { query: z.string(), limit: z.number().optional() } }, async ({ query, limit }) => {
+server.registerTool("memory.search", { description: "Search memories with vector similarity", inputSchema: { query: z.string(), limit: z.number().optional() } }, async ({ query, limit }) => {
   if (prismaReady) { try { await logRetrieval({ agentName: "mcp", query, source: "memory.search", results: { limit: limit ?? 10 } }); } catch { /* non-critical */ } }
-  if (prismaReady) { try { const q = query.toLowerCase(); const words = q.split(/\s+/); const orClauses = words.flatMap(w => [{ summary: { contains: w, mode: "insensitive" as const } }, { content: { contains: w, mode: "insensitive" as const } }]); const rows = await prisma.memory.findMany({ where: { OR: orClauses }, orderBy: { importanceScore: "desc" }, take: limit ?? 10 }); if (rows.length > 0) return ok(rows); } catch { /* fall through to cache */ } }
+  if (prismaReady) {
+    try {
+      const queryEmb = await generateEmbedding(query);
+      if (queryEmb) {
+        const vecStr = "[" + queryEmb.join(",") + "]";
+        const rows = await prisma.$queryRawUnsafe(
+          `SELECT id, "memoryType", content, summary, "importanceScore", tags, "createdByAgent", "workflowId", "taskId", "createdAt", 1 - (embedding <=> '${vecStr}'::vector) as similarity FROM "Memory" WHERE embedding IS NOT NULL ORDER BY embedding <=> '${vecStr}'::vector LIMIT ${limit ?? 10}`
+        );
+        if (Array.isArray(rows) && rows.length > 0) return ok(rows);
+      }
+      const q = query.toLowerCase(); const words = q.split(/\s+/); const orClauses = words.flatMap(w => [{ summary: { contains: w, mode: "insensitive" as const } }, { content: { contains: w, mode: "insensitive" as const } }]); const rows = await prisma.memory.findMany({ where: { OR: orClauses }, orderBy: { importanceScore: "desc" }, take: limit ?? 10 }); if (rows.length > 0) return ok(rows);
+    } catch { /* fall through to cache */ }
+  }
   const q = query.toLowerCase(); return ok(loadMem().map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
 });
 server.registerTool("memory.stats", { description: "Memory stats", inputSchema: {} }, async () => {
