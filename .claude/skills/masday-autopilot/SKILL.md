@@ -34,14 +34,14 @@ Execute all pending tasks in the active workflow automatically. Dispatches execu
 
 ```
 Step 0a — Init .masday/:
-  mcp__masday__local_init({ cwd: process.cwd() })
+  local.init({ cwd: process.cwd() })
 
 Step 0b — Get active workflow:
-  mcp__masday__workflow_getActive({ cwd: process.cwd() })
+  workflow.getActive({ cwd: process.cwd() })
   If none: STOP — "No active workflow. Run /masday-workflow-new first."
 
 Step 0c — Get plan:
-  mcp__masday__workflow_getPlan({ workflow_id: workflowId })
+  workflow.getPlan({ workflow_id: workflowId })
   If no plan: STOP — "No plan found. Run /masday-workflow-plan first."
 
 Step 0d — Count pending:
@@ -82,7 +82,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
   === TASK LOOP START ===
 
   STEP 1: Start task
-    mcp__masday__workflow_startTask({
+    workflow.startTask({
       workflow_id: workflowId, task_id: task.id
     })
 
@@ -98,7 +98,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       worktreePath = "." (current directory)
 
   STEP 1c: Load context pack
-    mcp__masday__search_hybrid_context_pack({
+    semantic-search.search_hybrid_context_pack({
       workflow_id: workflowId, plan_id: planId,
       task_id: task.id, cwd: process.cwd()
     })
@@ -119,7 +119,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
     })
 
   STEP 3: Save progress
-    mcp__masday__workflow_saveProgress({
+    workflow.saveProgress({
       workflow_id: workflowId, task_id: task.id,
       agent_name: "masday-executor",
       progress_note: "<summary from executor>",
@@ -142,7 +142,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
 
   STEP 5: Submit review
     Extract decision from reviewer output.
-    mcp__masday__review_submit({
+    review.submit({
       workflow_id: workflowId, task_id: task.id,
       reviewer_agent: "masday-reviewer",
       decision: <extracted decision>,
@@ -166,7 +166,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       STEP 6b: Handle verification
         IF PASS:
           Complete task:
-            mcp__masday__workflow_completeTask({ workflow_id: workflowId, task_id: task.id })
+            workflow.completeTask({ workflow_id: workflowId, task_id: task.id })
 
           If worktree mode is .masday/worktrees/:
             Auto-commit uncommitted changes in worktree
@@ -200,7 +200,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       STOP
 
   STEP 7: Sync state
-    mcp__masday__local_sync({ cwd: process.cwd(), workflow_id: workflowId })
+    local.sync({ cwd: process.cwd(), workflow_id: workflowId })
 
   STEP 8: Print progress bar
 
