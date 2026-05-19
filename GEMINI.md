@@ -1,4 +1,4 @@
-<!-- mcp-rebuild-session-context -->
+<!-- masday-session-context -->
 # masday-workflow-rebuild Active Session
 
 This project uses **masday-workflow-rebuild** for workflow management.
@@ -19,18 +19,44 @@ This project uses **masday-workflow-rebuild** for workflow management.
 
 ## Workflow Pattern
 
-1. "workflow.getActive" -> "workflow.getPlan" -> "workflow.getCurrentTask"
-2. "semantic-search.search_hybrid_context_pack" to build task context
+1. `workflow.getActive` → `workflow.getPlan` → `workflow.getCurrentTask`
+2. `semantic-search.search_hybrid_context_pack` to build task context
 3. Execute / Research / Review
-4. "workflow.save_progress" -> "review.submit" -> "workflow.complete_task"
+4. `workflow.saveProgress` → `review.submit` → `workflow.completeTask`
 
-## Key MCP Namespaces
+## Key MCP Namespace
 
-- "mcp__masday__*" — Unified MCP server (83 tools): workflow.*, memory.*, search.*, policy.*, capability.*, local.*, review.*, session.*, filesystem.*, git.*, npm.*, docker.*, cicd.*, github.*, tests.*
+- `mcp__masday__*` — Unified MCP server (83 tools across 14 namespaces)
+
+## Tool Namespaces (83 tools)
+
+| Namespace | Count | Key Tools |
+|-----------|-------|-----------|
+| workflow | 23 | create, execute, getStatus, get, list, addTask, startTask, completeTask, saveProgress, listTasks, getCurrentTask, getPlan, getActive, createPlan, createParallelBranches, completeParallelBranch, listParallelBranches, delete, ping, set_execution_mode, mark_synthesis_ready, mark_verification_ready, resume_suggestion |
+| memory | 11 | store, store_research, recall_recent, recall_documents, recall_document_by_type, recall_by_task, update, delete, delete_by_workflow, search, stats |
+| semantic-search | 3 | search_hybrid_context_pack, search_context_fingerprint, code_search |
+| policy | 6 | check_session_readiness, validate_execution, validate_completion, validate_parallel_completion, detect_scope_drift, require_context_refresh |
+| capability | 11 | list_agents, list_skills, list_templates, match_agent, system_readiness, workflow_audit, create_agent, create_skill, scaffold_feature, scaffold_mcp_server, ping |
+| filesystem | 5 | read, write, list, delete, stat |
+| review | 2 | submit, get_latest |
+| session | 3 | get_state, patch_state, init_context |
+| local | 4 | init, sync, push, save_artifact |
+| git | 3 | status, diff, commit |
+| npm | 2 | install, run |
+| docker | 3 | build, run, ps |
+| cicd | 3 | pipeline_status, pipeline_trigger, runs_view |
+| github | 3 | pr_create, pr_list, issue_list |
+
+## Naming Convention
+
+- Tool names use **camelCase** dot-namespaced format: `workflow.getActive`, `memory.store`
+- MCP SDK resolves: dots → underscores → `mcp__masday__workflow_getActive`
+- In .md docs, always use the logical name: `workflow.getActive`
+- **NEVER** use snake_case: `workflow.get_active` is WRONG
 
 ## Package Scope
 
-All packages use "@mcp-rebuild/*" scope.
+All packages use `@mcp-rebuild/*` scope.
 
 ## Build
 
@@ -40,44 +66,4 @@ pnpm db:generate
 pnpm build
 ```
 
-<!-- mcp-rebuild-session-context -->
-
-
-<!-- msd-mcp-session-context -->
-# msd-mcp Active Session
-
-This project uses **msd-mcp** (Multi-Agent MCP Runtime) for workflow management.
-
-For ALL tasks, use msd-mcp commands and MCP tools.
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/msd-start-work` | Start new or load existing workflow |
-| `/msd-continue` | Resume active workflow |
-| `/msd-implement` | Execute current task with scope discipline |
-| `/msd-plan` | Create or refine implementation plan |
-| `/msd-review` | Quality gate against acceptance criteria |
-| `/msd-verify` | Pre-completion verification |
-| `/msd-status` | Read-only workflow diagnostic |
-| `/msd-doctor` | Deep diagnosis + auto-fix |
-| `/msd-health` | Quick infrastructure check |
-| `/msd-autopilot` | Auto-execute all tasks |
-
-## Workflow Pattern
-
-1. `workflow.get_active` → `workflow.get_plan` → `workflow.get_current_task`
-2. `search.hybrid_context_pack` to build task context
-3. Execute / Research / Review
-4. `workflow.save_progress` → `review.submit` → `workflow.complete_task`
-
-## Key MCP Namespaces
-
-- `mcp__workflow-orchestrator__*` — Workflow, plan, task, session, parallel, local (26 tools)
-- `mcp__memory__*` — Store, recall, research memory (9 tools)
-- `mcp__semantic-search__*` — Context packs, fingerprints (2 tools)
-- `mcp__policy__*` — Validation, drift, readiness (6 tools)
-- `mcp__capability__*` — Health, factory, scaffold (10 tools)
-
-<!-- msd-mcp-session-context -->
+<!-- masday-session-context -->

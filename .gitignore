@@ -10,3 +10,6 @@ coverage/
 .masday/
 .next/
 .playwright-mcp/
+.agents/
+.continue/
+.gemini/
