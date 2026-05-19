@@ -263,6 +263,25 @@ model EpisodicMemory {
 }
 
 // ============================================================
+// Workflow Reminders (state-change + time-based hooks)
+// ============================================================
+
+model WorkflowReminder {
+  id           String   @id @default(uuid())
+  workflowId   String
+  taskId       String?
+  type         String   // STALE_EXECUTION | STUCK_TASK | FAILED_WORKFLOW | FAILED_TASK | IDLE_EXECUTION
+  severity     String   // critical | warning | info
+  message      String
+  acknowledged Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([workflowId])
+  @@index([acknowledged])
+  @@index([severity])
+}
+
+// ============================================================
 // LLM Provider Configuration (from agentic-llm-mem)
 // ============================================================
 
