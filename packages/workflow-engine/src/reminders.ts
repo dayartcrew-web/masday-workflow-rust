@@ -236,11 +236,11 @@ export async function acknowledgeReminder(id: string): Promise<unknown> {
 export async function dismissWorkflowReminders(workflowId: string): Promise<{ count: number }> {
   if (!prisma) throw new Error("No Prisma client");
 
-  const result = await prisma.workflowReminder.update({
+  const result = await prisma.workflowReminder.updateMany({
     where: { workflowId },
     data: { acknowledged: true },
   });
-  return { count: Array.isArray(result) ? result.length : 1 };
+  return { count: result.count };
 }
 
 // ─── Reminder stats ───
