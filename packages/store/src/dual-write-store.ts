@@ -47,58 +47,70 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
     this.replicateDelete(id);
   }
 
-  private replicateWorkflow(workflow: Workflow): void {
+  private async replicateWorkflow(workflow: Workflow): Promise<void> {
     if (!prismaClient) return;
 
     const status = workflow.state ?? 'INIT';
+    const rawMeta = workflow.metadata ?? {};
+    let metaObj: Record<string, unknown> = {};
+    if (typeof rawMeta === 'string') {
+      try { metaObj = JSON.parse(rawMeta); } catch { metaObj = {}; }
+    } else if (typeof rawMeta === 'object' && rawMeta !== null) {
+      metaObj = rawMeta as Record<string, unknown>;
+    }
 
-    prismaClient.workflow.upsert({
-      where: { id: workflow.id },
-      update: {
-        name: workflow.name,
-        status,
-        metadata: workflow.metadata ?? {},
-        updatedAt: new Date(),
-      },
-      create: {
-        id: workflow.id,
-        name: workflow.name,
-        status,
-        metadata: {
-          description: workflow.description,
-          traceId: workflow.traceId,
-          ...workflow.metadata,
+    try {
+      await prismaClient.workflow.upsert({
+        where: { id: workflow.id },
+        update: {
+          name: workflow.name,
+          status,
+          metadata: { description: workflow.description, traceId: workflow.traceId, ...metaObj },
+          updatedAt: new Date(),
         },
-        createdAt: workflow.createdAt,
-        updatedAt: workflow.updatedAt,
-      },
-    }).catch((err: unknown) => {
+        create: {
+          id: workflow.id,
+          name: workflow.name,
+          status,
+          metadata: {
+            description: workflow.description,
+            traceId: workflow.traceId,
+            ...metaObj,
+          },
+          createdAt: typeof workflow.createdAt === 'string' ? new Date(workflow.createdAt) : workflow.createdAt,
+          updatedAt: typeof workflow.updatedAt === 'string' ? new Date(workflow.updatedAt) : workflow.updatedAt,
+        },
+      });
+    } catch (err: unknown) {
       logger.warn({ err: String(err), workflowId: workflow.id }, 'Failed to replicate workflow to PostgreSQL');
-    });
+      return;
+    }
 
     for (const task of workflow.tasks) {
       this.replicateTask(workflow.id, task);
     }
   }
 
-  private replicateTask(workflowId: string, task: Task): void {
+  private async replicateTask(workflowId: string, task: Task): Promise<void> {
     if (!prismaClient) return;
 
     const planId = `plan-default-${workflowId}`;
 
-    prismaClient.plan.upsert({
-      where: { id: planId },
-      update: {},
-      create: {
-        id: planId,
-        workflowId,
-        version: 1,
-        status: 'active',
-        summary: 'Default auto-created plan',
-        content: { tasks: [] },
-        createdByAgent: 'system',
-      },
-    }).catch(() => { /* ignore duplicate plan errors */ });
+    try {
+      await prismaClient.plan.upsert({
+        where: { id: planId },
+        update: {},
+        create: {
+          id: planId,
+          workflowId,
+          version: 1,
+          status: 'active',
+          summary: 'Default auto-created plan',
+          content: { tasks: [] },
+          createdByAgent: 'system',
+        },
+      });
+    } catch { /* plan may already exist */ }
 
     const status = task.state ?? 'pending';
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
@@ -121,7 +133,7 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
         acceptanceCriteria: [],
         requiredContext: [],
         verificationSteps: [],
-        createdAt: task.createdAt ?? new Date(),
+        createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
         updatedAt: new Date(),
       },
     }).catch((err: unknown) => {
@@ -133,6 +145,7 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
     if (!prismaClient) return;
 
     prismaClient.task.deleteMany({ where: { workflowId } })
+      .then(() => prismaClient.plan.deleteMany({ where: { workflowId } }))
       .then(() => prismaClient.workflow.deleteMany({ where: { id: workflowId } }))
       .catch((err: unknown) => {
         logger.warn({ err: String(err), workflowId }, 'Failed to replicate workflow deletion to PostgreSQL');
@@ -198,7 +211,7 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
         acceptanceCriteria: [],
         requiredContext: [],
         verificationSteps: [],
-        createdAt: task.createdAt ?? new Date(),
+        createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
         updatedAt: new Date(),
       },
     }).catch((err: unknown) => {
