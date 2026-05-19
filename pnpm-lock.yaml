@@ -52,6 +52,9 @@ importers:
       '@mcp-rebuild/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@mcp-rebuild/project-rules':
+        specifier: workspace:*
+        version: link:../../packages/project-rules
       '@mcp-rebuild/store':
         specifier: workspace:*
         version: link:../../packages/store
@@ -405,6 +408,19 @@ importers:
       '@mcp-rebuild/workflow-engine':
         specifier: workspace:*
         version: link:../workflow-engine
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.41
+
+  packages/project-rules:
+    dependencies:
+      '@mcp-rebuild/shared-utils':
+        specifier: workspace:*
+        version: link:../shared-utils
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20.11.0

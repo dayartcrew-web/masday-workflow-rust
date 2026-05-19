@@ -14,7 +14,7 @@
  *   - In mcp__masday__* prefixed calls, use: mcp__masday__workflow_getActive (SDK-resolved name)
  *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive
  *
- * TOTAL TOOLS: 86 (all real implementations)
+ * TOTAL TOOLS: 87 (all real implementations)
  *
  * Persistence:
  *   - DualWriteWorkflowStore: all workflow operations replicate to PostgreSQL in real-time via Prisma
@@ -602,6 +602,23 @@ server.registerTool("reminder.acknowledge", {
       return ok({ acknowledged: true, id, result });
     }
     return ok({ error: "Provide either id or workflowId" });
+  } catch (e) { return ok({ error: String(e) }); }
+});
+
+// ── Project Rules ──────────────────────────────────────────────
+import { validateProject, formatReport, getFailedCritical } from "@mcp-rebuild/project-rules";
+
+server.registerTool("projectRules.check", {
+  description: "Validate project against refactor rules and conventions. Returns a report of passed/failed checks.",
+  inputSchema: {
+    projectRoot: z.string().optional().describe("Project root path (defaults to cwd)"),
+  },
+}, async ({ projectRoot }) => {
+  try {
+    const root = projectRoot ?? process.cwd();
+    const report = validateProject(root);
+    const critical = getFailedCritical(report);
+    return ok({ ...report, formatted: formatReport(report), criticalCount: critical.length });
   } catch (e) { return ok({ error: String(e) }); }
 });
 

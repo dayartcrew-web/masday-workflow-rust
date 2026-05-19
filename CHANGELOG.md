@@ -2,6 +2,24 @@
 
 All notable changes to masday-workflow-rebuild.
 
+## [0.3.0] - 2026-05-19
+
+### Added
+- **Reminder hooks**: Workflow lifecycle reminder engine detecting stale, stuck, and failed workflows/tasks
+  - `reminder.check` — Detect STALE_EXECUTION, STUCK_TASK, FAILED_WORKFLOW, FAILED_TASK, IDLE_EXECUTION
+  - `reminder.list` — List reminders with filtering (workflowId, acknowledged, limit)
+  - `reminder.acknowledge` — Acknowledge or dismiss reminders
+- **WorkflowReminder Prisma model**: 15th database table for persisting reminder state (type, severity, message, acknowledged)
+- **ReminderEngine module** (`packages/workflow-engine/src/reminders.ts`): Time-based and state-change detection with configurable thresholds
+
+### Changed
+- **86 MCP tools** (was 83) across 16 namespaces (was 15) with new `reminder` namespace
+- **15 Prisma tables actively populated** (was 14) — added WorkflowReminder
+- Fixed AnthropicProvider `tokensUsed` calculation to correctly sum input + output tokens
+
+### Documentation
+- Updated all docs: CLAUDE.md, GEMINI.md, AGENTS.md, README.md, docs/* to reflect 86 tools, 15 tables, reminder namespace
+
 ## [0.2.0] - 2026-05-19
 
 ### Changed

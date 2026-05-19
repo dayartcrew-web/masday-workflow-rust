@@ -28,9 +28,9 @@ pnpm db:push
 ## What this starts
 
 - The local MCP stdio server from `apps/agent-runner`
-- **83 MCP tools** across 14 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests)
+- **86 MCP tools** across 16 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests, reminder)
 - Workflow orchestration via OrchestratingEngine with full agent dispatch
-- **PostgreSQL-backed runtime state via DualWriteStore** -- all 14 Prisma tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge)
+- **PostgreSQL-backed runtime state via DualWriteStore** -- all 15 Prisma tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder)
 - DualWrite pattern: PostgreSQL primary + JSON cache fallback for resilience
 - Project-local `.masday/` artifacts for cached research, plans, and notes
 - 4 default agent workers: backend, frontend, qa, general-purpose

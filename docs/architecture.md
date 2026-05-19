@@ -4,7 +4,7 @@
 
 ## Overview
 
-Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 12 packages and a single unified MCP server app exposing 83 tools.
+Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 12 packages and a single unified MCP server app exposing 86 tools.
 
 ## System Architecture
 
@@ -104,7 +104,7 @@ masday-workflow-rebuild/
 ├── packages/
 │   ├── core/                  # Shared types, logger, EventBus, tracing, metrics
 │   ├── shared-utils/          # Logger, IDs, hash, env utilities
-│   ├── db/                    # Prisma schema (14 models + pgvector), client singleton
+│   ├── db/                    # Prisma schema (15 models + pgvector), client singleton
 │   ├── store/                 # StorageBackend, SQLite, JSON, Prisma adapters
 │   ├── llm/                   # Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker
 │   ├── memory/                # 4-layer memory (working, episodic, long-term, graph), scoring, BM25
@@ -115,7 +115,7 @@ masday-workflow-rebuild/
 │   ├── code-skills/           # Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod)
 │   └── cli/                   # CLI entry point + setup templates
 ├── apps/
-│   └── agent-runner/          # Single unified MCP server (83 tools)
+│   └── agent-runner/          # Single unified MCP server (86 tools)
 ├── docs/                      # Documentation
 ├── .claude/                   # Claude Code integration (project-level)
 │   ├── skills/                # 25+ workflow and builder skills
@@ -193,9 +193,9 @@ All status values are stored in **UPPERCASE** in PostgreSQL:
 
 DualWriteStore maps in-memory lowercase `TaskState` values to UPPERCASE for Prisma persistence.
 
-## 14 Prisma Tables
+## 15 Prisma Tables
 
-All 14 Prisma models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
+All 15 Prisma models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
 
 | Table             | Wired Via              | Trigger                                    |
 | ----------------- | ---------------------- | ------------------------------------------ |
@@ -213,6 +213,7 @@ All 14 Prisma models are actively populated by the MCP server. Each table is wir
 | EpisodicMemory    | setEpisodicPrisma()    | EpisodicMemory.add()                       |
 | GraphNode         | setGraphPrisma()       | GraphStore.addNode()                       |
 | GraphEdge         | setGraphPrisma()       | GraphStore.addEdge()                       |
+| WorkflowReminder  | setReminderPrisma()    | reminder.check                             |
 
 ## Workflow States
 
@@ -247,7 +248,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
       ▼
  ┌──────────────┐                ┌──────────────────┐
  │   Client     │ ────────────►  │   MCP Server     │
- │ (Dashboard/  │   stdio        │  (83 tools)      │
+ │ (Dashboard/  │   stdio        │  (86 tools)      │
  │  CLI/MCP)    │                └────────┬─────────┘
  └──────────────┘                         │
                                           ▼
