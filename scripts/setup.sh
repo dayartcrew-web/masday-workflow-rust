@@ -13,9 +13,13 @@ echo "=== masday-workflow-rebuild Setup ==="
 echo "[1/8] Installing dependencies..."
 pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
-# 2. Generate Prisma client
+# 2. Generate Prisma client (skip if client exists and MCP server may be running)
 echo "[2/8] Generating Prisma client..."
-pnpm db:generate
+if [ -f "node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client/index.js" ]; then
+  echo "  Prisma client already exists, skipping (run 'pnpm db:generate' manually to update)"
+else
+  pnpm db:generate
+fi
 
 # 3. Build all packages
 echo "[3/8] Building all packages..."
@@ -90,7 +94,7 @@ done
 # Summary
 echo ""
 echo "=== Setup complete ==="
-echo "MCP server: masday (83 tools, 14 namespaces)"
+echo "MCP server: masday (87 tools, 16 namespaces)"
 echo "  Agents:  $(ls .claude/agents/*.md 2>/dev/null | wc -l) registered"
 echo "  Hooks:   $(ls .claude/hooks/*.js .claude/hooks/*.mjs 2>/dev/null | wc -l) executable + $(ls .claude/hooks/*.md 2>/dev/null | wc -l) advisory"
 echo "  Skills:  ${copied} masday-* skills -> ${HOME_CLAUDE}/skills/"

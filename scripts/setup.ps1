@@ -11,9 +11,14 @@ Write-Host "=== masday-workflow-rebuild Setup ===" -ForegroundColor Cyan
 Write-Host "[1/8] Installing dependencies..." -ForegroundColor Yellow
 pnpm install
 
-# 2. Generate Prisma client
+# 2. Generate Prisma client (skip if client exists and MCP server may be running)
 Write-Host "[2/8] Generating Prisma client..." -ForegroundColor Yellow
-pnpm db:generate
+$prismaClient = Get-ChildItem -Path "$RootDir\node_modules\.pnpm\@prisma+client*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($prismaClient -and (Test-Path (Join-Path $prismaClient.FullName "node_modules\.prisma\client\index.js"))) {
+    Write-Host "  Prisma client already exists, skipping (run 'pnpm db:generate' manually to update)" -ForegroundColor Gray
+} else {
+    pnpm db:generate
+}
 
 # 3. Build all packages
 Write-Host "[3/8] Building all packages..." -ForegroundColor Yellow
@@ -82,7 +87,7 @@ foreach ($skill in $masdaySkills) {
 # Summary
 Write-Host ""
 Write-Host "=== Setup complete ===" -ForegroundColor Green
-Write-Host "MCP server: masday (83 tools, 14 namespaces)"
+Write-Host "MCP server: masday (87 tools, 16 namespaces)"
 $agents = (Get-ChildItem "$RootDir\.claude\agents\*.md" -ErrorAction SilentlyContinue).Count
 $jsHooks = (Get-ChildItem "$RootDir\.claude\hooks\*.js" -ErrorAction SilentlyContinue).Count
 $mjsHooks = (Get-ChildItem "$RootDir\.claude\hooks\*.mjs" -ErrorAction SilentlyContinue).Count
