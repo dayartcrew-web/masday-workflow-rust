@@ -4,7 +4,7 @@ This page captures the runtime state ownership model and the workflow engine arc
 
 ## Ownership model
 
-- **SQLite** (or other runtime persistence) owns operational workflow/task state.
+- **PostgreSQL** (via DualWriteStore + Prisma) owns operational workflow/task state. JSON cache is fallback.
 - **`.masday/`** owns project-local, human-readable artifacts such as research notes, plans, context summaries, and execution notes.
 
 ## `.masday/` contents
@@ -19,15 +19,45 @@ This page captures the runtime state ownership model and the workflow engine arc
 
 ## Runtime persistence
 
-The SQLite store manages:
+The DualWriteStore manages operational state with PostgreSQL as primary and JSON cache as fallback:
 
-| Store            | Contents                                          |
-| ---------------- | ------------------------------------------------- |
-| WorkflowStore    | Active workflows, state transitions               |
-| TaskResultStore  | Task status, execution metadata, outputs           |
-| ConfigStore      | Runtime configuration                             |
+| Store                      | Contents                                                |
+| -------------------------- | ------------------------------------------------------- |
+| DualWriteWorkflowStore     | Active workflows, state transitions (PostgreSQL + JSON) |
+| DualWriteTaskResultStore   | Task status, execution metadata (PostgreSQL + JSON)     |
+| MemoryStore                | Memories (Prisma first, JSON fallback)                  |
 
-Database location defaults to `./data/masday-workflow.db` (overridable via `MASDAY_DB_PATH`).
+## 14 Prisma tables
+
+All 14 Prisma models are actively populated. Each table is wired to the MCP tools that trigger writes.
+
+| Table             | Wired Via            | Trigger                                              |
+| ----------------- | -------------------- | ---------------------------------------------------- |
+| Workflow          | DualWriteStore       | workflow.create, execute, delete                     |
+| Task              | DualWriteStore       | addTask, startTask, completeTask                     |
+| Plan              | DualWriteStore       | createPlan                                           |
+| Memory            | persistToPrisma()    | memory.store, store_research                         |
+| ReviewDecision    | Prisma direct        | review.submit                                        |
+| SessionState      | Prisma direct        | session.patch_state                                  |
+| ParallelBranch    | Prisma direct        | workflow.createParallelBranches                      |
+| ContextDocument   | Prisma direct        | memory.store_research                                |
+| TaskProgressLog   | saveProgressDb()     | workflow.saveProgress                                |
+| RetrievalLog      | logRetrieval()       | memory.search, semantic-search.*                     |
+| TokenUsage        | trackTokens()        | workflow.saveProgress, memory.store_research         |
+| EpisodicMemory    | setEpisodicPrisma()  | EpisodicMemory.add()                                 |
+| GraphNode         | setGraphPrisma()     | GraphStore.addNode()                                 |
+| GraphEdge         | setGraphPrisma()     | GraphStore.addEdge()                                 |
+
+## Status conventions
+
+All status values are UPPERCASE in PostgreSQL:
+
+- **Workflow:** INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
+- **Task:** PENDING, RUNNING, DONE, FAILED
+- **Plan:** ACTIVE, PENDING, READY, DONE
+- **Review:** APPROVED, REWORK_REQUIRED, BLOCKED
+
+DualWriteStore maps in-memory lowercase TaskState to UPPERCASE for Prisma.
 
 ## Engine hierarchy
 
@@ -60,23 +90,23 @@ INIT → ANALYZE → PLAN → EXECUTE → VERIFY → DONE
 ```
 
 - **VERIFY** — Checks for failed tasks. If all passed, transitions to DONE. If failures found, transitions to FIX.
-- **FIX** — Resets failed tasks to pending, re-executes up to `maxFixRetries`. Emits `workflow.fixing` event. Can also transition directly to DONE or FAILED.
+- **FIX** — Failed tasks are reset to PENDING, re-executes up to `maxFixRetries`. Emits `workflow.fixing` event. Can also transition directly to DONE or FAILED.
 - **PAUSED** — Execution suspended (e.g., waiting on external input). Can resume back to EXECUTE.
 - **FAILED** — Unrecoverable error. Any state can transition to FAILED.
 - **StateMachine** emits `workflow.state.transition` events on every state change.
 
 ## Task execution features
 
-| Feature           | Description                                                       |
-| ----------------- | ----------------------------------------------------------------- |
-| DAG execution     | Tasks with dependency ordering, parallel where possible            |
-| Timeout           | AbortController-based (default 5 min), configurable via `taskTimeout` |
-| Output piping     | Dependent tasks receive `dependencyOutputs` from prerequisites     |
-| Auto-task creation| `createPlan` auto-creates tasks from `plan.tasks[]` entries        |
-| Priority queue    | OrchestratingEngine uses TaskQueue with agent-type priorities      |
-| Agent dispatch    | Tasks routed through SkillRouter to appropriate agent workers      |
-| Memory persistence| Memory store persists to file after each add (calls `save()`)      |
-| Startup init      | Session, Review, and Parallel tables are initialized at startup    |
+| Feature            | Description                                                       |
+| ------------------ | ----------------------------------------------------------------- |
+| DAG execution      | Tasks with dependency ordering, parallel where possible            |
+| Timeout            | AbortController-based (default 5 min), configurable via `taskTimeout` |
+| Output piping      | Dependent tasks receive `dependencyOutputs` from prerequisites     |
+| Auto-task creation | `createPlan` auto-creates tasks from `plan.tasks[]` entries        |
+| Priority queue     | OrchestratingEngine uses TaskQueue with agent-type priorities      |
+| Agent dispatch     | Tasks routed through SkillRouter to appropriate agent workers      |
+| Memory persistence | Memory persists to PostgreSQL (Prisma first) with JSON cache fallback |
+| Startup init       | Session, Review, and Parallel tables are initialized at startup    |
 
 ## Why this matters
 

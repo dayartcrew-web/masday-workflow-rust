@@ -12,7 +12,7 @@ Merges the best of two projects:
 - **msd-mcp** -- Official MCP SDK, 5 domain servers, Prisma/PostgreSQL persistence
 - **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
 
-The result is a modular monorepo of 12 packages and 6 MCP server apps, exposing 70+ tools over stdio to any MCP-compatible client.
+The result is a modular monorepo of 12 packages and a single unified MCP server exposing 83 tools over stdio to any MCP-compatible client.
 
 ---
 
@@ -28,8 +28,8 @@ pnpm db:generate
 # Build all packages (Turbo)
 pnpm build
 
-# Start the unified MCP server (all 70 tools)
-npx tsx apps/unified-mcp/src/index.ts
+# Start the unified MCP server (all 83 tools)
+npx tsx apps/agent-runner/src/runtime/mcp.ts
 ```
 
 ### Docker (PostgreSQL + pgvector)
@@ -50,7 +50,7 @@ This starts a PostgreSQL 16 instance with pgvector on port 5432. See [Configurat
       v
  +-------------+                +------------------+
  |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (70+ tools)      |
+ | (Dashboard/  |   stdio       |  (83 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                          v
@@ -131,47 +131,84 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 ---
 
-## MCP Server Apps (6)
+## MCP Server
 
 | App | Tools | Description |
 |-----|-------|-------------|
-| `apps/unified-mcp` | 70 | All tools in one server + code skills |
-| `apps/workflow-orchestrator-mcp` | 26 | Workflow CRUD, plans, tasks, sessions, reviews, parallel, progress |
-| `apps/memory-mcp` | 9 | Memory CRUD, research storage, recall, search |
-| `apps/semantic-search-mcp` | 2 | Hybrid context pack, fingerprinting |
-| `apps/policy-mcp` | 6 | Session readiness, execution/completion validation, drift detection |
-| `apps/capability-mcp` | 10 | Agent/skill/command registry, scaffolding, health check |
+| `apps/agent-runner` | 83 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
+
+### Tool Namespaces (83 tools)
+
+| Namespace | Tools | Implementation |
+|-----------|-------|----------------|
+| workflow | 23 | DualWriteStore + OrchestratingEngine (PostgreSQL real-time replication) |
+| memory | 11 | Prisma-first with JSON cache fallback (hybrid mode) |
+| semantic-search | 3 | Context pack, fingerprinting, code search |
+| policy | 6 | Real Prisma validation (workflow status, review decisions, branch status, fingerprints) |
+| capability | 11 | Real `.claude/` directory reads with frontmatter parsing |
+| filesystem | 5 | Real fs.readFileSync / writeFileSync / readdirSync / unlinkSync / statSync |
+| review | 2 | Real Prisma writes to ReviewDecision table |
+| session | 3 | Real Prisma reads/writes to SessionState table |
+| local | 4 | File-based `.masday/` state dir + Prisma sync/push |
+| git | 3 | Real `execSync` calls to git CLI |
+| npm | 2 | Real `execSync` calls to pnpm CLI |
+| docker | 3 | Real `execSync` calls to docker CLI |
+| cicd | 3 | Real `execSync` calls to `gh` CLI |
+| github | 3 | Real `execSync` calls to `gh` CLI |
+| tests | 1 | Real `execSync` calls to pnpm test runner |
 
 ### MCP Pattern
 
-All servers use the official `McpServer` from `@modelcontextprotocol/sdk`:
+Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore for PostgreSQL persistence:
 
 ```typescript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
+import { setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
+import { setEpisodicPrisma, setGraphPrisma } from "@mcp-rebuild/memory";
+import { saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
 
-const server = new McpServer({ name: "my-server", version: "1.0.0" });
-
-server.tool("tool_name", "Description", { param: z.string() }, async (args) => ({
-  content: [{ type: "text", text: JSON.stringify(result) }]
-}));
-
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const server = new McpServer({ name: "masday", version: "0.1.0" });
+// After Prisma connects:
+setDualWritePrisma(prisma);
+setTokenPrisma(prisma);
+setEpisodicPrisma(prisma);
+setGraphPrisma(prisma);
 ```
 
-### Starting Individual Servers
+### Persistence
+
+All 14 Prisma tables are actively populated via DualWriteStore pattern:
+
+| Table | Wired Via | Trigger |
+|-------|-----------|---------|
+| Workflow | DualWriteStore | workflow.create, execute, delete |
+| Task | DualWriteStore | addTask, startTask, completeTask |
+| Plan | DualWriteStore | createPlan |
+| Memory | persistToPrisma() | memory.store, store_research |
+| ReviewDecision | Prisma direct | review.submit |
+| SessionState | Prisma direct | session.patch_state |
+| ParallelBranch | Prisma direct | workflow.createParallelBranches |
+| ContextDocument | Prisma direct | memory.store_research |
+| TaskProgressLog | saveProgressDb() | workflow.saveProgress |
+| RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
+| TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
+| EpisodicMemory | setEpisodicPrisma() | EpisodicMemory.add() |
+| GraphNode | setGraphPrisma() | GraphStore.addNode() |
+| GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
+
+Status values are ALL UPPERCASE in PostgreSQL:
+- Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
+- Task: PENDING, RUNNING, DONE, FAILED
+- Plan: ACTIVE, PENDING, READY, DONE
+- Review: APPROVED, REWORK_REQUIRED, BLOCKED
+
+### Starting the Server
 
 ```bash
-# Unified (all tools)
-npx tsx apps/unified-mcp/src/index.ts
-
-# Domain servers
-npx tsx apps/workflow-orchestrator-mcp/src/index.ts
-npx tsx apps/memory-mcp/src/index.ts
-npx tsx apps/semantic-search-mcp/src/index.ts
-npx tsx apps/policy-mcp/src/index.ts
-npx tsx apps/capability-mcp/src/index.ts
+# Unified MCP server (all 83 tools)
+npx tsx apps/agent-runner/src/runtime/mcp.ts
 ```
 
 ---
@@ -248,6 +285,21 @@ pnpm db:migrate
 
 ---
 
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | TypeScript (strict mode, ESM modules) |
+| Runtime | Node.js with `tsx` for TypeScript execution |
+| Database | PostgreSQL 16 + pgvector (via Prisma ORM) |
+| Protocol | Model Context Protocol (MCP) over stdio |
+| Validation | Zod schemas for all inputs |
+| Logging | Pino structured logging |
+| Build | Turborepo with pnpm workspaces |
+| Testing | Vitest with globals enabled |
+
+---
+
 ## Contributing
 
 1. Fork the repository
@@ -273,6 +325,10 @@ pnpm db:migrate
 - **Data**: Immutable patterns (spread operators, never mutate)
 - **Tools**: Handler format `async (args) => ({content: [{type: "text", text: JSON.stringify(result)}]})`
 - **Code skills**: Plain async functions (not class-based)
+- **Naming**: Tool names use camelCase dot-namespaced format: `workflow.getActive`, `memory.store`
+- **MCP SDK**: Resolves dots to underscores: `mcp__masday__workflow_getActive`
+- **Status**: ALL UPPERCASE in PostgreSQL
+- **Package scope**: All packages use `@mcp-rebuild/*`
 
 ---
 
