@@ -42,7 +42,7 @@ you create is typed, tested, and ready for integration.
 
 1. Run `filesystem.list` on the target directory to map
    existing structure and naming conventions.
-2. Use `semanticsearch_code.search` with a query
+2. Use `semantic-search.code_search` with a query
    describing the component to find similar existing patterns.
 3. Read 2-3 existing components with `Read` to internalize the project's style:
    - Import conventions (named vs default)
@@ -52,6 +52,8 @@ you create is typed, tested, and ready for integration.
    - Testing patterns (test file location, test utilities)
 
 ### Phase 2: Implementation (build to match)
+
+**Design token source**: If the task was initiated by `masday-frontend-library` skill, use the extracted design tokens as the source of truth for colors, typography, spacing, and components. Load tokens from the skill's output before writing any component code.
 
 4. Write the component file using `Write` (new) or `Edit` (existing):
    - Define TypeScript interface for all props (no implicit `any`)
@@ -77,11 +79,21 @@ you create is typed, tested, and ready for integration.
 9. Run `filesystem.stat` on created files to confirm they
    exist and have non-zero size.
 10. Verify the component integrates by checking imports in the barrel export.
+11. **Visual verification** — If a dev server is available:
+    - Start the dev server (`npm.run dev` or equivalent)
+    - Confirm the component renders without console errors
+    - Verify layout, spacing, and visual fidelity against the design reference
+    - Stop the dev server after verification
+12. **Responsive verification** — Check that the component handles breakpoints:
+    - Grep for `@media`, `breakpoint`, `sm:`, `md:`, `lg:` in the component CSS
+    - Verify no fixed widths that would break on smaller viewports
+    - If using Tailwind, confirm responsive prefixes are used (sm:, md:, lg:, xl:)
+    - Report any missing responsive handling
 
 ## Error Handling
 
 - **Build fails with type error**: Read the error message. Run
-  `semanticsearch_code.search` for the correct type
+  `semantic-search.code_search` for the correct type
   definition. Fix the type, rebuild.
 - **Test fails with render error**: The component likely depends on a missing
   provider or context. Search for the provider with `Grep`, add it to the test
