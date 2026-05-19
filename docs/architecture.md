@@ -11,11 +11,11 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Claude Code / AI Client                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ .claude/      │  │ Slash        │  │ Auto-loaded  │      │
-│  │ skills/       │  │ Commands     │  │ agents/      │      │
-│  │ commands/     │  │ /masday-*    │  │ hooks/       │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ .claude/     │  │ Slash        │  │ Auto-loaded  │       │
+│  │ skills/      │  │ Commands     │  │ agents/      │       │
+│  │ commands/    │  │ /masday-*    │  │ hooks/       │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 └────────────────────────────┬────────────────────────────────┘
                              │ MCP Protocol (stdio)
                              ▼
@@ -186,7 +186,7 @@ All status values are stored in **UPPERCASE** in PostgreSQL:
 
 | Entity   | Valid Statuses                                                         |
 | -------- | ---------------------------------------------------------------------- |
-| Workflow | INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED       |
+| Workflow | INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED        |
 | Task     | PENDING, RUNNING, DONE, FAILED                                         |
 | Plan     | ACTIVE, PENDING, READY, DONE                                           |
 | Review   | APPROVED, REWORK_REQUIRED, BLOCKED                                     |
@@ -199,13 +199,13 @@ All 14 Prisma models are actively populated by the MCP server. Each table is wir
 
 | Table             | Wired Via              | Trigger                                    |
 | ----------------- | ---------------------- | ------------------------------------------ |
-| Workflow          | DualWriteStore         | workflow.create, execute, delete            |
-| Task              | DualWriteStore         | addTask, startTask, completeTask            |
+| Workflow          | DualWriteStore         | workflow.create, execute, delete           |
+| Task              | DualWriteStore         | addTask, startTask, completeTask           |
 | Plan              | DualWriteStore         | createPlan                                 |
-| Memory            | persistToPrisma()      | memory.store, store_research                |
+| Memory            | persistToPrisma()      | memory.store, store_research               |
 | ReviewDecision    | Prisma direct          | review.submit                              |
 | SessionState      | Prisma direct          | session.patch_state                        |
-| ParallelBranch    | Prisma direct          | workflow.createParallelBranches             |
+| ParallelBranch    | Prisma direct          | workflow.createParallelBranches            |
 | ContextDocument   | Prisma direct          | memory.store_research                      |
 | TaskProgressLog   | saveProgressDb()       | workflow.saveProgress                      |
 | RetrievalLog      | logRetrieval()         | memory.search, semantic-search.code_search, search_hybrid_context_pack |
@@ -224,7 +224,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
                        └──> FAILED    │
                                       └──> FAILED
                                          FIX ──> DONE
-                                         FIX ──> FAILED
+                                         FIX <──> FAILED
 ```
 
 | State   | Purpose                                               |
@@ -245,24 +245,24 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   User Input
       │
       ▼
- ┌─────────────┐                ┌─────────────────┐
- │   Client     │ ────────────► │   MCP Server     │
- │ (Dashboard/  │   stdio       │  (83 tools)      │
- │  CLI/MCP)    │               └────────┬──────────┘
- └─────────────┘                         │
-                                         ▼
-                             ┌───────────────────────┐
+ ┌──────────────┐                ┌──────────────────┐
+ │   Client     │ ────────────►  │   MCP Server     │
+ │ (Dashboard/  │   stdio        │  (83 tools)      │
+ │  CLI/MCP)    │                └────────┬─────────┘
+ └──────────────┘                         │
+                                          ▼
+                             ┌────────────────────────┐
                              │    ORCHESTRATOR        │
-                             │                       │
+                             │                        │
                              │  1. Working Memory     │── Session state (RAM)
                              │  2. Episodic Memory    │── Chat history
                              │  3. Memory Search      │── Top 10, importance >= 0.2
                              │  4. Context Builder    │── Assembles prompt
-                             └───────────┬───────────┘
+                             └───────────┬────────────┘
                                          │
                              ┌───────────┴───────────┐
-                             │    AGENT ROUTER        │
-                             │  scoring-based match   │
+                             │    AGENT ROUTER       │
+                             │  scoring-based match  │
                              └───┬───────────────┬───┘
                                  │               │
                     ┌────────────▼───┐   ┌───────▼────────────┐
@@ -287,7 +287,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
                                         ▼
                              ┌───────────────────────┐
                              │    EVENT BUS          │
-                             │  (Pino + EventEmitter) │── Subscribers
+                             │  (Pino + EventEmitter)│── Subscribers
                              └───────────────────────┘
 ```
 
@@ -296,21 +296,21 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
 ```
   ┌──────────────────────────────────────────────────────────┐
   │                   WORKING MEMORY                         │
-  │              In-process RAM, per session                  │
-  │          Fastest -- current task state & context           │
+  │              In-process RAM, per session                 │
+  │          Fastest -- current task state & context         │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐
   │                  EPISODIC MEMORY                         │
-  │            Last N messages per session                    │
-  │         Chat history -- recent conversation context        │
-  │         Persisted to EpisodicMemory table via Prisma      │
+  │            Last N messages per session                   │
+  │         Chat history -- recent conversation context      │
+  │         Persisted to EpisodicMemory table via Prisma     │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐
   │                 LONG-TERM MEMORY                         │
   │                                                          │
-  │   Scoring: similarity*0.6 + recency*0.15                │
+  │   Scoring: similarity*0.6 + recency*0.15                 │
   │            + importance*0.15 + usage*0.1                 │
   │                                                          │
   │   Memory table (PostgreSQL via Prisma)                   │
