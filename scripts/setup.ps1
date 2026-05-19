@@ -3,7 +3,7 @@ $RootDir = Split-Path -Parent $PSScriptRoot
 Set-Location $RootDir
 
 $HomeClaude = Join-Path $env:USERPROFILE ".claude"
-$HomeOpencode = Join-Path $env:USERPROFILE ".config" "opencode"
+$HomeOpencode = Join-Path (Join-Path $env:USERPROFILE ".config") "opencode"
 
 Write-Host "=== masday-workflow-rebuild Setup ===" -ForegroundColor Cyan
 
