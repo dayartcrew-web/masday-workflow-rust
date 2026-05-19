@@ -10,6 +10,7 @@ const KNOWN_NAMESPACES = new Set([
   'workflow', 'memory', 'semantic-search', 'policy', 'capability',
   'filesystem', 'review', 'session', 'local',
   'git', 'npm', 'docker', 'cicd', 'github', 'tests',
+  'reminder', 'projectRules',
 ]);
 
 export default async function toolNameGuard() {

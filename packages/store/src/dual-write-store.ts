@@ -20,6 +20,7 @@ export function setDualWritePrisma(client: unknown): void {
  */
 export class DualWriteWorkflowStore implements IWorkflowStore {
   private primary: IWorkflowStore;
+  private pendingReplication: Promise<void> = Promise.resolve();
 
   constructor(primary: IWorkflowStore) {
     this.primary = primary;
@@ -27,7 +28,7 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
 
   save(workflow: Workflow): void {
     this.primary.save(workflow);
-    this.replicateWorkflow(workflow);
+    this.pendingReplication = this.pendingReplication.then(() => this.replicateWorkflow(workflow)).catch(() => {});
   }
 
   load(id: string): Workflow | undefined {
@@ -87,7 +88,7 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
     }
 
     for (const task of workflow.tasks) {
-      this.replicateTask(workflow.id, task);
+      await this.replicateTask(workflow.id, task);
     }
   }
 
@@ -116,30 +117,32 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
     const status = rawStatus.toUpperCase();
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
 
-    prismaClient.task.upsert({
-      where: { id: task.id },
-      update: {
-        title,
-        status,
-        ownerAgent: task.agent ?? null,
-        updatedAt: new Date(),
-      },
-      create: {
-        id: task.id,
-        workflowId,
-        planId,
-        title,
-        status,
-        ownerAgent: task.agent ?? null,
-        acceptanceCriteria: [],
-        requiredContext: [],
-        verificationSteps: [],
-        createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
-        updatedAt: new Date(),
-      },
-    }).catch((err: unknown) => {
+    try {
+      await prismaClient.task.upsert({
+        where: { id: task.id },
+        update: {
+          title,
+          status,
+          ownerAgent: task.agent ?? null,
+          updatedAt: new Date(),
+        },
+        create: {
+          id: task.id,
+          workflowId,
+          planId,
+          title,
+          status,
+          ownerAgent: task.agent ?? null,
+          acceptanceCriteria: [],
+          requiredContext: [],
+          verificationSteps: [],
+          createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err: unknown) {
       logger.warn({ err: String(err), taskId: task.id }, 'Failed to replicate task to PostgreSQL');
-    });
+    }
   }
 
   private replicateDelete(workflowId: string): void {
@@ -187,7 +190,7 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
     }
   }
 
-  private replicateTask(workflowId: string, task: Task): void {
+  private async replicateTask(workflowId: string, task: Task): Promise<void> {
     if (!prismaClient) return;
 
     const planId = `plan-default-${workflowId}`;
@@ -195,29 +198,31 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
     const status = rawStatus.toUpperCase();
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
 
-    prismaClient.task.upsert({
-      where: { id: task.id },
-      update: {
-        title,
-        status,
-        ownerAgent: task.agent ?? null,
-        updatedAt: new Date(),
-      },
-      create: {
-        id: task.id,
-        workflowId,
-        planId,
-        title,
-        status,
-        ownerAgent: task.agent ?? null,
-        acceptanceCriteria: [],
-        requiredContext: [],
-        verificationSteps: [],
-        createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
-        updatedAt: new Date(),
-      },
-    }).catch((err: unknown) => {
+    try {
+      await prismaClient.task.upsert({
+        where: { id: task.id },
+        update: {
+          title,
+          status,
+          ownerAgent: task.agent ?? null,
+          updatedAt: new Date(),
+        },
+        create: {
+          id: task.id,
+          workflowId,
+          planId,
+          title,
+          status,
+          ownerAgent: task.agent ?? null,
+          acceptanceCriteria: [],
+          requiredContext: [],
+          verificationSteps: [],
+          createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err: unknown) {
       logger.warn({ err: String(err), taskId: task.id }, 'Failed to replicate task to PostgreSQL');
-    });
+    }
   }
 }
