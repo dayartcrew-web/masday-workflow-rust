@@ -16,7 +16,7 @@ allowed-tools:
   - workflow.saveProgress
   - workflow.completeTask
   - workflow.create
-  - workflow.create_plan
+  - workflow.createPlan
   - review.get_latest
   - memory.recall_recent
   - memory.recall_by_task
@@ -231,11 +231,9 @@ After user provides description:
   Record: workflowId
 
   Then create a plan for the workflow:
-  Call: workflow.create_plan({
+  Call: workflow.createPlan({
     workflow_id: workflowId,
-    summary: "<plan summary>",
-    created_by_agent: "masday-next",
-    content: { tasks: [...] }
+    plan: { tasks: [{ title, agent, skill, dependencies, input }] }
   })
 
   Call: workflow.execute({ id: workflowId })

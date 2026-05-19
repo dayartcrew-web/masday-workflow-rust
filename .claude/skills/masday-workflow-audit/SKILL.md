@@ -2,8 +2,10 @@
 name: masday-workflow-audit
 description: >
   Audit active workflows for stuck tasks, missing reviews, scope drift, and stale sessions.
-  Provides a health report with actionable recommendations. Use when the user says "audit
-  workflows", "check health", "find stuck tasks", "workflow audit", or "what needs attention".
+  Provides a health report with actionable recommendations. If invoked without a prompt,
+  auto-continues through all steps and asks user to pick next step.
+  Use when the user says "audit workflows", "check health", "find stuck tasks",
+  "workflow audit", or "what needs attention".
 allowed-tools:
   - workflow.list
   - workflow.get
@@ -13,6 +15,7 @@ allowed-tools:
   - memory.stats
   - memory.search
   - memory.recall_recent
+  - memory.recall_documents
 ---
 
 # Masday Workflow Audit
@@ -40,6 +43,7 @@ Audit workflows for issues and provide a health report.
    - Call `memory.stats` for total entries, type distribution, and average importance
    - Call `memory.search` for entries tagged with blockers or issues
    - Call `memory.recall_recent` to find recent warnings or failures
+   - Call `memory.recall_documents` to find stored decisions that may be stale
 
 5. **Compile the audit report**
    ```
@@ -59,10 +63,16 @@ Audit workflows for issues and provide a health report.
    Recent blockers: none
    ```
 
-6. **Provide actionable recommendations**
-   - For stuck tasks: suggest reset or retry via `masday-workflow-fix`
-   - For missing reviews: suggest running verification
-   - For scope drift: suggest re-planning affected tasks
+6. **Report and ask next step**
+   Use AskUserQuestion to present the audit report and let the user pick:
+   ```
+   Audit complete: [3 active workflows, 1 stuck task found]
+   ```
+
+   Ask user:
+   - "/masday-workflow-fix — fix the stuck task"
+   - "/masday-workflow-run — resume a workflow"
+   - "Continue with another task"
 
 ## Never
 

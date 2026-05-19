@@ -1,8 +1,9 @@
 ---
 name: masday-workflow-init
 description: >
-  Initialize a new workflow from a user prompt. Checks system readiness, searches memory for
-  related past work, analyzes relevant code, and creates the workflow with initial context.
+  Initialize a new workflow from a user prompt. Searches memory (local + remote) for related
+  past work, scans relevant code, checks system readiness, and creates the workflow.
+  If invoked without a prompt, auto-continues through all steps and asks user to pick next step.
   Use when the user says "start workflow", "create workflow", "new workflow",
   "initialize workflow", or "begin workflow".
 allowed-tools:
@@ -21,31 +22,28 @@ allowed-tools:
 
 # Masday Workflow Init
 
-Initialize a new Masday workflow from the user's prompt.
+Initialize a new Masday workflow. Searches memory and relevant code, creates the workflow record.
 
 ## Steps
 
 1. **Parse the user's prompt**
-   - Extract: intent (what to accomplish), scope (which packages/files), and constraints
-   - Identify key nouns and verbs as search terms
+   - If user provided a prompt: extract intent, scope, and constraints. Use key nouns/verbs as search terms.
+   - If invoked without a prompt (bare command): use "recent project work" as default search term and continue through all steps automatically.
 
-2. **Check system readiness**
-   - Call `capability.system_readiness` to verify database connection, schema, and dependencies
-   - If any check fails, report the specific issue and stop:
-     - Database: check connection string and migrations
-     - Schema: verify pgvector extension and table structure
-     - Env vars: confirm required environment variables are set
-
-3. **Search for related past work**
+2. **Search memory (local + remote)**
    - Call `memory.search` with keywords from the prompt to find similar past workflows
    - Call `memory.recall_recent` to get context from recent sessions
    - Call `memory.recall_documents` to find stored research or decisions
 
-4. **Scan relevant code**
+3. **Scan relevant code**
    - Call `semantic-search.code_search` with queries derived from the prompt
-   - Call `filesystem.list` to verify the project structure matches expectations
-   - Call `filesystem.read` to inspect key configuration files (package.json, tsconfig)
+   - Call `filesystem.list` to verify project structure
+   - Call `filesystem.read` to inspect key config files (package.json, tsconfig)
    - Call `filesystem.stat` to check file sizes and modification dates
+
+4. **Check system readiness**
+   - Call `capability.system_readiness` to verify database connection, schema, and dependencies
+   - If any check fails, report the specific issue and stop
 
 5. **Create the workflow**
    - Call `workflow.create` with:
@@ -58,22 +56,24 @@ Initialize a new Masday workflow from the user's prompt.
    - Call `memory.store` with `memory_type: "artifact"` for the related code analysis
    - Include the workflow ID in all stored memories for traceability
 
-7. **Report to the user**
+7. **Report and ask next step**
+   Use AskUserQuestion to present results and let the user pick:
    ```
    Workflow initialized: [wf-001] "Add authentication middleware"
    ID: wf-abc123
 
+   Memory: 2 similar workflows found (or: none found)
+   Code: packages/core/src/auth.ts, packages/store/src/middleware.ts
    System: Ready (database connected, schema current)
-   Related past work: 2 similar workflows found
-   Affected packages: orchestrator, core, store
-   Key files: packages/core/src/auth.ts, packages/store/src/middleware.ts
-
-   Next steps: Use /masday-workflow-plan to create a task plan
    ```
+
+   Ask user:
+   - "/masday-workflow-plan — create a task plan"
+   - "/masday-workflow-new — plan and execute in one pass"
+   - "Continue with another task"
 
 ## Never
 
 - Never create a workflow if system readiness checks fail
-- Never skip the memory search for related past work
+- Never skip the memory search — always search local AND remote
 - Never omit the workflow ID from stored memories
-- Never assume the project structure -- always verify with filesystem tools
