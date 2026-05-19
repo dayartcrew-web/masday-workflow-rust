@@ -10,7 +10,7 @@ allowed-tools:
   - workflow.get
   - workflow.getStatus
   - workflow.execute
-  - workflow.create_plan
+  - workflow.createPlan
   - workflow.addTask
   - workflow.listTasks
   - workflow.startTask
@@ -61,7 +61,7 @@ Create and execute a workflow end-to-end in a single session.
 5. **Plan tasks**
    - Call `capability.list_agents` to see available agents
    - Call `capability.match_agent` for each task type
-   - Call `workflow.create_plan` with the full task breakdown
+   - Call `workflow.createPlan` with `workflow_id` and `plan: { tasks: [...] }`
    - Call `workflow.addTask` for each planned task
    - Present the plan briefly and ask for confirmation before executing
 

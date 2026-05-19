@@ -8,7 +8,7 @@ description: >
 allowed-tools:
   - workflow.get
   - workflow.create
-  - workflow.create_plan
+  - workflow.createPlan
   - workflow.addTask
   - workflow.listTasks
   - capability.system_readiness
@@ -52,9 +52,9 @@ Generate a task plan for a Masday workflow. No execution -- planning only.
    - Record the best-matching agent for each task
 
 6. **Create the plan**
-   - Call `workflow.create_plan` with:
-     - A summary of the plan
-     - An array of tasks, each with `title`, `ownerAgent`, `priority`, `acceptanceCriteria`
+   - Call `workflow.createPlan` with:
+     - `workflow_id`: the workflow ID
+     - `plan`: `{ tasks: [{ title, agent, skill, dependencies, input }] }`
    - Include dependencies between tasks where applicable
 
 7. **Add individual tasks**
