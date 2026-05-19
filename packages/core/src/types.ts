@@ -267,7 +267,7 @@ export interface MemoryMerge {
 
 // --- Knowledge Graph Types ---
 
-export type GraphNodeType = 'user' | 'skill' | 'project' | 'concept' | 'tool';
+export type GraphNodeType = 'user' | 'skill' | 'project' | 'concept' | 'tool' | 'memory' | 'workflow' | 'task' | 'research';
 
 export interface GraphNodeRecord {
   id: string;

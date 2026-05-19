@@ -59,8 +59,9 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
                             |
   +----------------------------------------------------------+
   |                 LONG-TERM MEMORY                         |
-  |   Scoring: similarity*0.6 + recency*0.15                |
-  |            + importance*0.15 + usage*0.1                 |
+  |   Scoring: similarity*0.6 + importance*0.2              |
+  |            + recency*0.1 + usage*0.1                     |
+  |   importanceScore: type-based + content length bonus     |
   +----------------------------------------------------------+
                             |
   +----------------------------------------------------------+
@@ -134,15 +135,15 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | Memory | persistToPrisma() | memory.store, store_research |
 | ReviewDecision | Prisma direct | review.submit |
 | SessionState | Prisma direct | session.patch_state |
-| ParallelBranch | Prisma direct | workflow.createParallelBranches |
+| ParallelBranch | Prisma upsert/update | workflow.createParallelBranches, completeParallelBranch, listParallelBranches |
 | ContextDocument | Prisma direct | memory.store_research |
 | TaskProgressLog | saveProgressDb() | workflow.saveProgress |
 | RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
 | TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
-| EpisodicMemory | setEpisodicPrisma() | EpisodicMemory.add() |
-| GraphNode | setGraphPrisma() | GraphStore.addNode() |
-| GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
-| WorkflowReminder | setReminderPrisma() | reminder.check |
+| EpisodicMemory | registerTool wrapper | All MCP tool calls (captured via monkey-patched server.registerTool) |
+| GraphNode | GraphStore.addNode() | memory.store, memory.store_research, workflow.create, workflow.addTask |
+| GraphEdge | GraphStore.addEdge() + autoLink() | Jaccard similarity (threshold 0.3) auto-edges + workflow→task contains edges |
+| WorkflowReminder | checkReminders() | Startup + 15min interval, deduplicated, covers EXECUTE + FIX states |
 
 **Status Conventions (ALL UPPERCASE in PostgreSQL):**
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
@@ -160,15 +161,22 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
 import { setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
-import { saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
+import { saveProgress as saveProgressDb, logRetrieval, setReminderPrisma, checkReminders } from "@mcp-rebuild/workflow-engine";
+import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
+import { setEpisodicPrisma, setGraphPrisma, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 
 const server = new McpServer({ name: "masday", version: "0.1.0" });
+const episodicMemory = new EpisodicMemory(100);
+const graphStore = new GraphStore({ autoLinkThreshold: 0.3 });
 const primaryStore = new WorkflowStore(backend);
 const workflowStore = new DualWriteWorkflowStore(primaryStore);
 
 // After Prisma connects:
 setDualWritePrisma(prisma);      // workflow/task/plan replication
 setTokenPrisma(prisma);          // token usage tracking
+setEpisodicPrisma(prisma);       // episodic memory persistence
+setGraphPrisma(prisma);          // knowledge graph persistence
+setReminderPrisma(prisma);       // workflow reminders
 
 server.registerTool("workflow.create", { description: "...", inputSchema: {...} }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(result) }]
