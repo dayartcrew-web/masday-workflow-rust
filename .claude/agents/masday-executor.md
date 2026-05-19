@@ -94,10 +94,10 @@ Create a TodoWrite checklist from the task's acceptance criteria:
 ```
 TodoWrite({
   todos: [
-    { content: "Define AuthConfig interface in types.ts", status: "pending", activeForm: "Defining AuthConfig interface" },
-    { content: "Create JWT payload type", status: "pending", activeForm: "Creating JWT payload type" },
-    { content: "Add Zod validation schema", status: "pending", activeForm: "Adding Zod validation schema" },
-    { content: "Re-export from package index", status: "pending", activeForm: "Re-exporting from package index" }
+    { content: "Define AuthConfig interface in types.ts", status: "PENDING", activeForm: "Defining AuthConfig interface" },
+    { content: "Create JWT payload type", status: "PENDING", activeForm: "Creating JWT payload type" },
+    { content: "Add Zod validation schema", status: "PENDING", activeForm: "Adding Zod validation schema" },
+    { content: "Re-export from package index", status: "PENDING", activeForm: "Re-exporting from package index" }
   ]
 })
 ```

@@ -22,7 +22,7 @@ Show a dashboard of workflow progress and system state.
 
 1. **List all workflows**
    - Call `workflow.list` to get all workflows with their statuses
-   - Group by status: executing, planning, ready, blocked, completed
+   - Group by status: EXECUTE, PLAN, READY, BLOCKED, DONE
 
 2. **Get details for active workflows**
    - For each non-completed workflow, call `workflow.getStatus` for detailed state

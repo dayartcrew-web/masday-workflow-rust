@@ -45,7 +45,7 @@ Step 0c — Get plan:
   If no plan: STOP — "No plan found. Run /masday-workflow-plan first."
 
 Step 0d — Count pending:
-  pending = tasks where status is "todo"
+  pending = tasks where status is "PENDING"
   If pending.length === 0: STOP — "All tasks completed."
 ```
 
@@ -91,7 +91,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
 
     Bash: git worktree add .masday/worktrees/{slug} -b task/{slug} HEAD
     Write .masday/worktrees/{slug}.json:
-      { "taskId": task.id, "title": task.title, "branch": "task/{slug}", "status": "active" }
+      { "taskId": task.id, "title": task.title, "branch": "task/{slug}", "status": "ACTIVE" }
     worktreePath = ".masday/worktrees/{slug}"
 
     If worktree mode is built-in project:

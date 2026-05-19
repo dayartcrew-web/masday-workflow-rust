@@ -11,7 +11,7 @@ export async function createWorkflow(input: {
   return prisma.workflow.create({
     data: {
       name: input.name,
-      status: "planning",
+      status: "INIT",
       projectPath: input.projectPath,
       metadata: input.metadata ? (input.metadata as never) : {},
     },
