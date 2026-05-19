@@ -14,7 +14,7 @@
  *   - In mcp__masday__* prefixed calls, use: mcp__masday__workflow_getActive (SDK-resolved name)
  *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive
  *
- * TOTAL TOOLS: 83 (all real implementations)
+ * TOTAL TOOLS: 86 (all real implementations)
  *
  * Persistence:
  *   - DualWriteWorkflowStore: all workflow operations replicate to PostgreSQL in real-time via Prisma
@@ -48,6 +48,7 @@
  *   cicd (3): pipeline_status, pipeline_trigger, runs_view
  *   github (3): pr_create, pr_list, issue_list
  *   tests (1): run
+ *   reminder (3): check, list, acknowledge
  *
  * SYNC: pre-build-skill.js MCP_TOOLS set must match this list exactly.
  * SYNC: All masday skill and agent .md files must use camelCase tool names.
@@ -58,7 +59,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { EventBus, createLogger, setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
 import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
-import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
+import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderPrisma, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats } from "@mcp-rebuild/workflow-engine";
 import { setEpisodicPrisma, setGraphPrisma } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { prisma, healthCheck as dbHealthCheck } from "@mcp-rebuild/db";
@@ -135,7 +136,8 @@ async function initPrisma(): Promise<void> {
     setTokenPrisma(prisma);
     setEpisodicPrisma(prisma);
     setGraphPrisma(prisma);
-    logger.info("Prisma connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore enabled)");
+    setReminderPrisma(prisma);
+    logger.info("Prisma connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
   } catch (err) {
     logger.warn("Prisma init failed, falling back to JSON-only: " + (err instanceof Error ? err.message : String(err)));
   }
@@ -549,6 +551,59 @@ server.registerTool("tests.run", { description: "Run tests", inputSchema: { patt
 
 // capability.ping (1) — missing from original capability namespace
 server.registerTool("capability.ping", { description: "Capability health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType, postgresql: prismaReady }));
+
+// reminder (3)
+server.registerTool("reminder.check", {
+  description: "Check for stale, stuck, and failed workflows/tasks. Generates reminders for workflows in EXECUTE with no progress, tasks stuck in RUNNING, and recent failures.",
+  inputSchema: {
+    staleExecutionMinutes: z.number().min(1).optional().describe("Minutes before EXECUTE workflow is stale (default: 30)"),
+    stuckTaskMinutes: z.number().min(1).optional().describe("Minutes before RUNNING task is stuck (default: 15)"),
+    includeFailed: z.boolean().optional().describe("Include FAILED workflows/tasks (default: true)"),
+  },
+}, async (cfg) => {
+  if (!prismaReady) return ok({ reminders: [], note: "PostgreSQL not connected — reminders require DB" });
+  try {
+    const reminders = await checkReminders(cfg);
+    return ok({ reminders, count: reminders.length });
+  } catch (e) { return ok({ error: String(e), reminders: [] }); }
+});
+
+server.registerTool("reminder.list", {
+  description: "List stored reminders. Filter by workflow, acknowledged status.",
+  inputSchema: {
+    workflowId: z.string().optional(),
+    acknowledged: z.boolean().optional(),
+    limit: z.number().min(1).max(200).optional(),
+  },
+}, async ({ workflowId, acknowledged, limit }) => {
+  if (!prismaReady) return ok({ reminders: [], note: "PostgreSQL not connected" });
+  try {
+    const reminders = await listRemindersDb({ workflowId, acknowledged, limit });
+    const stats = await reminderStats();
+    return ok({ reminders, stats });
+  } catch (e) { return ok({ error: String(e), reminders: [] }); }
+});
+
+server.registerTool("reminder.acknowledge", {
+  description: "Acknowledge a reminder or dismiss all reminders for a workflow.",
+  inputSchema: {
+    id: z.string().optional().describe("Reminder ID to acknowledge"),
+    workflowId: z.string().optional().describe("Dismiss all reminders for this workflow"),
+  },
+}, async ({ id, workflowId }) => {
+  if (!prismaReady) return ok({ error: "PostgreSQL not connected" });
+  try {
+    if (workflowId) {
+      const result = await dismissWorkflowReminders(workflowId);
+      return ok({ dismissed: true, workflowId, count: result.count });
+    }
+    if (id) {
+      const result = await acknowledgeReminder(id);
+      return ok({ acknowledged: true, id, result });
+    }
+    return ok({ error: "Provide either id or workflowId" });
+  } catch (e) { return ok({ error: String(e) }); }
+});
 
 await initPrisma();
 

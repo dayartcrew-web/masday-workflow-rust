@@ -113,7 +113,9 @@ export class AnthropicProvider implements ILLMProvider {
       }
 
       const usage = data.usage as { input_tokens?: number; output_tokens?: number; total_tokens?: number } | undefined;
-      const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0) || usage?.total_tokens ?? 0;
+      const inputTok = usage?.input_tokens ?? 0;
+      const outputTok = usage?.output_tokens ?? 0;
+      const tokensUsed = (inputTok + outputTok) || (usage?.total_tokens ?? 0);
       const latencyMs = Date.now() - startTime;
       const responseModel = typeof data.model === 'string' ? data.model : model;
       const stopReason = data.stop_reason ?? data.finish_reason as string | undefined;

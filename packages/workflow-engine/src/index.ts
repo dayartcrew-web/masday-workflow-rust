@@ -68,6 +68,17 @@ export type { EmbeddingProvider } from "./embedding.js";
 export { logRetrieval } from "./audit.js";
 
 export {
+  setReminderPrisma,
+  checkReminders,
+  listReminders,
+  acknowledgeReminder,
+  dismissWorkflowReminders,
+  reminderStats,
+} from "./reminders.js";
+export type { WorkflowReminder, ReminderConfig, ReminderSeverity } from "./reminders.js";
+export { DEFAULT_REMINDER_CONFIG } from "./reminders.js";
+
+export {
   initMsdDir,
   writeLocalState,
   readLocalState,
