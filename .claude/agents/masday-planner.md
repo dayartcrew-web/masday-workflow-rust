@@ -8,7 +8,7 @@ tools:
   - Glob
   - Bash
   - TodoWrite
-  - workflow.create_plan
+  - workflow.createPlan
   - workflow.getPlan
   - workflow.listTasks
   - workflow.getActive
@@ -79,7 +79,7 @@ Break the work into discrete, ordered tasks. Each task must include:
 
 Submit the plan to the workflow:
 ```
-workflow.create_plan({
+workflow.createPlan({
   workflow_id: "<workflow_id>",
   summary: "Implement JWT auth with login, logout, refresh endpoints",
   created_by_agent: "masday-planner",

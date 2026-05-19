@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mcp-rebuild/core": "workspace:*",
+    "@mcp-rebuild/db": "workspace:^",
     "@mcp-rebuild/store": "workspace:*",
     "@mcp-rebuild/workflow-engine": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",

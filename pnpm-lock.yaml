@@ -46,6 +46,9 @@ importers:
       '@mcp-rebuild/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@mcp-rebuild/db':
+        specifier: workspace:^
+        version: link:../../packages/db
       '@mcp-rebuild/store':
         specifier: workspace:*
         version: link:../../packages/store

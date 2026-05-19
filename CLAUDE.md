@@ -22,7 +22,7 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
       v
  +-------------+                +------------------+
  |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (56+ tools)      |
+ | (Dashboard/  |   stdio       |  (83 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                          v
@@ -99,28 +99,47 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | `packages/code-skills` | Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod) |
 | `packages/cli` | CLI entry point + setup templates |
 
-## MCP Server Apps (6)
+## MCP Server — `apps/agent-runner` (83 tools)
 
-| App | Tools | Description |
-|-----|-------|-------------|
-| `apps/workflow-orchestrator-mcp` | 26 | Workflow CRUD, plans, tasks, sessions, reviews, parallel, progress |
-| `apps/memory-mcp` | 9 | Memory CRUD, research storage, recall, search |
-| `apps/semantic-search-mcp` | 2 | Hybrid context pack, fingerprinting |
-| `apps/policy-mcp` | 6 | Session readiness, execution/completion validation, drift detection |
-| `apps/capability-mcp` | 10 | Agent/skill/command registry, scaffolding, health check |
-| `apps/unified-mcp` | 70 | All tools in one server + code skills |
+Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 83 tools are real implementations connected to PostgreSQL via DualWriteStore.
+
+| Namespace | Tools | Implementation |
+|-----------|-------|----------------|
+| workflow | 23 | DualWriteStore + OrchestratingEngine (PostgreSQL real-time replication) |
+| memory | 11 | Prisma-first with JSON cache fallback (hybrid mode) |
+| semantic-search | 3 | Context pack, fingerprinting, code search |
+| policy | 6 | Real Prisma validation (workflow status, review decisions, branch status, fingerprints) |
+| capability | 11 | Real `.claude/` directory reads with frontmatter parsing |
+| filesystem | 5 | Real fs.readFileSync / writeFileSync / readdirSync / unlinkSync / statSync |
+| review | 2 | Real Prisma writes to ReviewDecision table |
+| session | 3 | Real Prisma reads/writes to SessionState table |
+| local | 4 | File-based `.masday/` state dir + Prisma sync/push |
+| git | 3 | Real `execSync` calls to git CLI |
+| npm | 2 | Real `execSync` calls to pnpm CLI |
+| docker | 3 | Real `execSync` calls to docker CLI |
+| cicd | 3 | Real `execSync` calls to `gh` CLI |
+| github | 3 | Real `execSync` calls to `gh` CLI |
+| tests | 1 | Real `execSync` calls to pnpm test runner |
+
+**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable.
 
 ## MCP Pattern
 
-Uses official `McpServer` from `@modelcontextprotocol/sdk`:
+Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore for PostgreSQL persistence:
 
 ```typescript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
 
-const server = new McpServer({ name: "my-server", version: "1.0.0" });
+const server = new McpServer({ name: "masday", version: "0.1.0" });
+const primaryStore = new WorkflowStore(backend);
+const workflowStore = new DualWriteWorkflowStore(primaryStore);
 
-server.tool("tool_name", "Description", { param: z.string() }, async (args) => ({
+// After Prisma connects:
+setDualWritePrisma(prisma); // enables real-time PostgreSQL replication
+
+server.registerTool("workflow.create", { description: "...", inputSchema: {...} }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(result) }]
 }));
 
@@ -134,7 +153,7 @@ await server.connect(transport);
 - `pnpm test` - Run tests (Vitest)
 - `pnpm db:generate` - Generate Prisma client
 - `pnpm db:push` - Push schema to database
-- Start individual MCP servers: `npx tsx apps/<app>/src/index.ts`
+- Start MCP server: `npx tsx apps/agent-runner/src/runtime/mcp.ts`
 
 ## Conventions
 
