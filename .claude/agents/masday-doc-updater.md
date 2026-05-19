@@ -167,3 +167,52 @@ Use this checklist when auditing documentation freshness:
   A wrong doc is worse than a missing doc.
 - NEVER exceed the CLAUDE.md line budget (200 lines). Keep it as a concise
   reference, not a tutorial.
+
+## Mandatory Review Pipeline
+
+When this agent completes work on a workflow task, it MUST follow this pipeline:
+
+`
+STEP 1: Save progress to PostgreSQL
+  workflow.saveProgress({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    agent_name: "<this-agent-name>",
+    progress_note: "<summary of work done>",
+    evidence: ["<files modified>", "<tests run>"]
+  })
+
+STEP 2: Submit for review
+  review.submit({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    reviewer_agent: "masday-reviewer",
+    decision: "<APPROVED | REWORK_REQUIRED | BLOCKED>",
+    notes: "<what was done, key decisions>",
+    gaps: ["<any gaps found>"]
+  })
+
+STEP 3: If REWORK_REQUIRED — fix and loop
+  - Fix the gaps identified in the review
+  - Re-save progress (workflow.saveProgress)
+  - Re-submit review (review.submit)
+  - Max 2 rework attempts, then STOP
+
+STEP 4: If APPROVED — validate completion
+  policy.validate_completion({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>"
+  })
+
+STEP 5: Complete task
+  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+
+STEP 6: Sync local state
+  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+`
+
+### Never
+- Never call workflow.completeTask without review.submit (APPROVED)
+- Never skip policy.validate_completion before completion
+- Never skip local.sync after completing a task
+- Never claim done without saving progress to PostgreSQL

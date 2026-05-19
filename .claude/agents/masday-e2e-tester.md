@@ -1,4 +1,4 @@
-﻿---
+---
 name: masday-e2e-tester
 description: >
   End-to-end testing specialist. Designs, writes, and runs integration tests
@@ -104,7 +104,7 @@ For testing UI flows (web apps, dashboards, login pages).
 ```
 # Check package.json scripts for dev server port
 Read({ file_path: "<project-root>/package.json" })
-# Look for "dev" script — extract port from --port, -p, or default
+# Look for "dev" script � extract port from --port, -p, or default
 
 # Check .env or .env.local for PORT/VITE_PORT/NEXT_PORT
 Grep({ pattern: "PORT", glob: ".env*", output_mode: "content" })
@@ -143,7 +143,7 @@ mcp__plugin_playwright_playwright__browser_type({ selector: "#password", text: "
 # Step 3: Submit
 mcp__plugin_playwright_playwright__browser_click({ selector: "button[type=submit]" })
 
-# Step 4: Assert result — check console for errors
+# Step 4: Assert result � check console for errors
 mcp__plugin_playwright_playwright__browser_console_messages({})
 
 # Step 5: Verify navigation or DOM state
@@ -258,3 +258,52 @@ After browser testing, also write a persistent Playwright/Vitest test file for t
   internal code paths, not external APIs.
 - NEVER create test files without reading existing test patterns first.
   Consistency with the existing test suite is mandatory.
+
+## Mandatory Review Pipeline
+
+When this agent completes work on a workflow task, it MUST follow this pipeline:
+
+`
+STEP 1: Save progress to PostgreSQL
+  workflow.saveProgress({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    agent_name: "<this-agent-name>",
+    progress_note: "<summary of work done>",
+    evidence: ["<files modified>", "<tests run>"]
+  })
+
+STEP 2: Submit for review
+  review.submit({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    reviewer_agent: "masday-reviewer",
+    decision: "<APPROVED | REWORK_REQUIRED | BLOCKED>",
+    notes: "<what was done, key decisions>",
+    gaps: ["<any gaps found>"]
+  })
+
+STEP 3: If REWORK_REQUIRED — fix and loop
+  - Fix the gaps identified in the review
+  - Re-save progress (workflow.saveProgress)
+  - Re-submit review (review.submit)
+  - Max 2 rework attempts, then STOP
+
+STEP 4: If APPROVED — validate completion
+  policy.validate_completion({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>"
+  })
+
+STEP 5: Complete task
+  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+
+STEP 6: Sync local state
+  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+`
+
+### Never
+- Never call workflow.completeTask without review.submit (APPROVED)
+- Never skip policy.validate_completion before completion
+- Never skip local.sync after completing a task
+- Never claim done without saving progress to PostgreSQL

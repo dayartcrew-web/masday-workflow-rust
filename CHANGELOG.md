@@ -13,12 +13,12 @@ All notable changes to masday-workflow-rebuild.
 - **ReminderEngine module** (`packages/workflow-engine/src/reminders.ts`): Time-based and state-change detection with configurable thresholds
 
 ### Changed
-- **86 MCP tools** (was 83) across 16 namespaces (was 15) with new `reminder` namespace
+- **87 MCP tools** (was 86) across 17 namespaces (was 16) with `projectRules` namespace added
 - **15 Prisma tables actively populated** (was 14) — added WorkflowReminder
 - Fixed AnthropicProvider `tokensUsed` calculation to correctly sum input + output tokens
 
 ### Documentation
-- Updated all docs: CLAUDE.md, GEMINI.md, AGENTS.md, README.md, docs/* to reflect 86 tools, 15 tables, reminder namespace
+- Updated all docs: CLAUDE.md, GEMINI.md, AGENTS.md, README.md, docs/* to reflect 87 tools, 15 tables, projectRules namespace
 
 ## [0.2.0] - 2026-05-19
 

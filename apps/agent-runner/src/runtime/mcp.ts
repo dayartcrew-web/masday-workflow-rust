@@ -445,7 +445,18 @@ server.registerTool("session.patch_state", { description: "Patch session state",
   }
   return ok({ sessionKey: session_key, patched: true, patch });
 });
-server.registerTool("session.init_context", { description: "Init session context", inputSchema: { cwd: z.string() } }, async ({ cwd }) => ok({ initialized: true, cwd }));
+server.registerTool("session.init_context", { description: "Init session context — also checks for stale/stuck/failed workflows and returns reminders", inputSchema: { cwd: z.string() } }, async ({ cwd }) => {
+  let reminders: unknown[] = [];
+  let stats: { total: number; unacknowledged: number; bySeverity: Record<string, number> } | null = null;
+  if (prismaReady) {
+    try {
+      reminders = await checkReminders();
+      stats = await reminderStats();
+      if (reminders.length > 0) logger.info({ count: reminders.length }, "Session init: reminders detected");
+    } catch (e) { logger.warn("Session init reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
+  }
+  return ok({ initialized: true, cwd, reminders, reminderStats: stats });
+});
 
 // local (4)
 server.registerTool("local.init", { description: "Init local state dir", inputSchema: { cwd: z.string() } }, async ({ cwd }) => { const p = path.join(cwd, ".masday"); if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); return ok({ initialized: true, path: p }); });
@@ -624,6 +635,27 @@ server.registerTool("projectRules.check", {
 
 await initPrisma();
 
+// Auto-run reminder check on startup
+if (prismaReady) {
+  try {
+    const startupReminders = await checkReminders();
+    if (startupReminders.length > 0) {
+      logger.info({ count: startupReminders.length }, "Startup: detected stale/stuck/failed items");
+      for (const r of startupReminders) logger.info(`  [${r.severity}] ${r.type}: ${r.message}`);
+    }
+  } catch (e) { logger.warn("Startup reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
+
+  // Periodic background check every 15 minutes
+  const REMINDER_INTERVAL_MS = 15 * 60_000;
+  const reminderTimer = setInterval(async () => {
+    try {
+      const reminders = await checkReminders();
+      if (reminders.length > 0) logger.info({ count: reminders.length }, "Periodic reminder check: items detected");
+    } catch (e) { logger.warn("Periodic reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
+  }, REMINDER_INTERVAL_MS);
+  reminderTimer.unref(); // Don't keep process alive for timer
+}
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
-logger.info("MCP Server running on stdio (" + backendType + " backend" + (prismaReady ? " + PostgreSQL" : "") + ")");
+logger.info("MCP Server running on stdio (" + backendType + " backend" + (prismaReady ? " + PostgreSQL + Reminders(auto:15m)" : "") + ")");

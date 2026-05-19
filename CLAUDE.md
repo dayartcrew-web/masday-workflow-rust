@@ -121,7 +121,7 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | cicd | 3 | Real `execSync` calls to `gh` CLI |
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
-| reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Prisma WorkflowReminder table) |
+| reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session.init_context returns reminders. Prisma WorkflowReminder table |
 | projectRules | 1 | Refactor rules validation (37 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
 **Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 15 Prisma models are actively populated:
@@ -202,6 +202,8 @@ await server.connect(transport);
 - Import renaming: `@masday-workflow-reborn/*` and `@cap/*` are both now `@mcp-rebuild/*`
 - `listWorkflows` exported as `listWorkflowsDb` from workflow-engine
 - Code skills are plain async functions (not class-based Skill objects)
+- **All agents and skills enforce review pipeline:** review.submit → policy.validate_completion → workflow.completeTask → local.sync (with rework loop on REWORK_REQUIRED, max 2 attempts)
+- **Reminder auto-run:** checkReminders() runs on startup after Prisma connects + every 15 minutes via setInterval. session.init_context returns active reminders.
 
 ## Testing
 

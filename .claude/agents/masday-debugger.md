@@ -260,3 +260,52 @@ filesystem.write({
   content: "## Debug Report\n\n### Symptom\n- Error: TypeError: Cannot read properties of undefined (reading 'id')\n- Location: packages/store/src/sqlite-backend.ts:142\n- Reproduction: pnpm test -- packages/store\n\n### Root Cause\ngetById() assumed results[0] exists. When query returns empty array, accessing .id on undefined throws TypeError.\n\n### Hypotheses Tested\n1. Null query result: CONFIRMED - row is undefined when no match\n2. Missing test fixture: DISPROVED - fixture exists\n3. Timing issue: DISPROVED - synchronous code path\n\n### Fix\n- File: packages/store/src/sqlite-backend.ts\n- Change: Added null check after array access\n- Lines: 142-143\n\n### Validation\n- Original test: PASS\n- Full suite: PASS (47/47)\n- Regressions: None"
 })
 ```
+
+## Mandatory Review Pipeline
+
+When this agent completes work on a workflow task, it MUST follow this pipeline:
+
+`
+STEP 1: Save progress to PostgreSQL
+  workflow.saveProgress({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    agent_name: "<this-agent-name>",
+    progress_note: "<summary of work done>",
+    evidence: ["<files modified>", "<tests run>"]
+  })
+
+STEP 2: Submit for review
+  review.submit({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    reviewer_agent: "masday-reviewer",
+    decision: "<APPROVED | REWORK_REQUIRED | BLOCKED>",
+    notes: "<what was done, key decisions>",
+    gaps: ["<any gaps found>"]
+  })
+
+STEP 3: If REWORK_REQUIRED — fix and loop
+  - Fix the gaps identified in the review
+  - Re-save progress (workflow.saveProgress)
+  - Re-submit review (review.submit)
+  - Max 2 rework attempts, then STOP
+
+STEP 4: If APPROVED — validate completion
+  policy.validate_completion({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>"
+  })
+
+STEP 5: Complete task
+  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+
+STEP 6: Sync local state
+  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+`
+
+### Never
+- Never call workflow.completeTask without review.submit (APPROVED)
+- Never skip policy.validate_completion before completion
+- Never skip local.sync after completing a task
+- Never claim done without saving progress to PostgreSQL
