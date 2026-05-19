@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 83 real tools across 14 namespaces, all connected to PostgreSQL via DualWriteStore.
+This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 86 real tools across 16 namespaces, all connected to PostgreSQL via DualWriteStore.
 
 ## Persistence
 
@@ -167,6 +167,14 @@ Real `execSync` calls to `gh` CLI.
 Real `execSync` calls to pnpm test runner.
 
 - `tests.run` -- `pnpm test [-- <pattern>]`
+
+## reminder (3 tools)
+
+Stale/stuck workflow detection, reminder listing, and acknowledgment (Prisma WorkflowReminder table).
+
+- `reminder.check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds)
+- `reminder.list` -- List reminders with optional filters (workflowId, acknowledged, limit)
+- `reminder.acknowledge` -- Acknowledge or dismiss reminders by ID or workflowId
 
 ## Workflow lifecycle behavior
 

@@ -82,13 +82,13 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
                                          FIX --> FAILED
 ```
 
-## Packages (12)
+## Packages (13)
 
 | Package | Description |
 |---------|-------------|
 | `packages/core` | Shared types, logger, EventBus, tracing, metrics |
 | `packages/shared-utils` | Logger, IDs, hash, env (from msd-mcp) |
-| `packages/db` | Prisma schema (14 models + pgvector), client singleton |
+| `packages/db` | Prisma schema (15 models + pgvector), client singleton |
 | `packages/store` | StorageBackend, SQLite, JSON, Prisma adapters |
 | `packages/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
 | `packages/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
@@ -97,11 +97,12 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | `packages/policy` | PolicyValidator, WorkflowAuditor, drift detection |
 | `packages/capability` | Registry, Scaffolder, SystemHealth |
 | `packages/code-skills` | Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod) |
+| `packages/project-rules` | Refactor rules engine, 37 automated checks, checklist validator |
 | `packages/cli` | CLI entry point + setup templates |
 
-## MCP Server — `apps/agent-runner` (83 tools)
+## MCP Server — `apps/agent-runner` (87 tools)
 
-Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 83 tools are real implementations connected to PostgreSQL via DualWriteStore.
+Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tools are real implementations connected to PostgreSQL via DualWriteStore.
 
 | Namespace | Tools | Implementation |
 |-----------|-------|----------------|
@@ -120,8 +121,10 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 83 tool
 | cicd | 3 | Real `execSync` calls to `gh` CLI |
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
+| reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Prisma WorkflowReminder table) |
+| projectRules | 1 | Refactor rules validation (37 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
-**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 14 Prisma models are actively populated:
+**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 15 Prisma models are actively populated:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
@@ -139,6 +142,7 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 83 tool
 | EpisodicMemory | setEpisodicPrisma() | EpisodicMemory.add() |
 | GraphNode | setGraphPrisma() | GraphStore.addNode() |
 | GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
+| WorkflowReminder | setReminderPrisma() | reminder.check |
 
 **Status Conventions (ALL UPPERCASE in PostgreSQL):**
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED

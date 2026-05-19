@@ -27,9 +27,9 @@ The DualWriteStore manages operational state with PostgreSQL as primary and JSON
 | DualWriteTaskResultStore   | Task status, execution metadata (PostgreSQL + JSON)     |
 | MemoryStore                | Memories (Prisma first, JSON fallback)                  |
 
-## 14 Prisma tables
+## 15 Prisma tables
 
-All 14 Prisma models are actively populated. Each table is wired to the MCP tools that trigger writes.
+All 15 Prisma models are actively populated. Each table is wired to the MCP tools that trigger writes.
 
 | Table             | Wired Via            | Trigger                                              |
 | ----------------- | -------------------- | ---------------------------------------------------- |
@@ -47,6 +47,7 @@ All 14 Prisma models are actively populated. Each table is wired to the MCP tool
 | EpisodicMemory    | setEpisodicPrisma()  | EpisodicMemory.add()                                 |
 | GraphNode         | setGraphPrisma()     | GraphStore.addNode()                                 |
 | GraphEdge         | setGraphPrisma()     | GraphStore.addEdge()                                 |
+| WorkflowReminder  | setReminderPrisma()  | reminder.check                                       |
 
 ## Status conventions
 

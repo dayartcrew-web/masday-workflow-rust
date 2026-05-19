@@ -12,7 +12,7 @@ Merges the best of two projects:
 - **msd-mcp** -- Official MCP SDK, 5 domain servers, Prisma/PostgreSQL persistence
 - **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
 
-The result is a modular monorepo of 12 packages and a single unified MCP server exposing 83 tools over stdio to any MCP-compatible client.
+The result is a modular monorepo of 12 packages and a single unified MCP server exposing 86 tools over stdio to any MCP-compatible client.
 
 ---
 
@@ -28,7 +28,7 @@ pnpm db:generate
 # Build all packages (Turbo)
 pnpm build
 
-# Start the unified MCP server (all 83 tools)
+# Start the unified MCP server (all 86 tools)
 npx tsx apps/agent-runner/src/runtime/mcp.ts
 ```
 
@@ -50,7 +50,7 @@ This starts a PostgreSQL 16 instance with pgvector on port 5432. See [Configurat
       v
  +-------------+                +------------------+
  |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (83 tools)       |
+ | (Dashboard/  |   stdio       |  (86 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                          v
@@ -118,7 +118,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 |---------|-------|-------------|
 | `packages/core` | `@mcp-rebuild/core` | Shared types, logger, EventBus, tracing, metrics |
 | `packages/shared-utils` | `@mcp-rebuild/shared-utils` | Logger, IDs, hash, env utilities (from msd-mcp) |
-| `packages/db` | `@mcp-rebuild/db` | Prisma schema (14 models + pgvector), client singleton |
+| `packages/db` | `@mcp-rebuild/db` | Prisma schema (15 models + pgvector), client singleton |
 | `packages/store` | `@mcp-rebuild/store` | StorageBackend, SQLite, JSON, Prisma adapters |
 | `packages/llm` | `@mcp-rebuild/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
 | `packages/memory` | `@mcp-rebuild/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
@@ -137,7 +137,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 |-----|-------|-------------|
 | `apps/agent-runner` | 83 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
 
-### Tool Namespaces (83 tools)
+### Tool Namespaces (86 tools)
 
 | Namespace | Tools | Implementation |
 |-----------|-------|----------------|
@@ -156,6 +156,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | cicd | 3 | Real `execSync` calls to `gh` CLI |
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
+| reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Prisma WorkflowReminder table) |
 
 ### MCP Pattern
 
@@ -179,7 +180,7 @@ setGraphPrisma(prisma);
 
 ### Persistence
 
-All 14 Prisma tables are actively populated via DualWriteStore pattern:
+All 15 Prisma tables are actively populated via DualWriteStore pattern:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
@@ -197,6 +198,7 @@ All 14 Prisma tables are actively populated via DualWriteStore pattern:
 | EpisodicMemory | setEpisodicPrisma() | EpisodicMemory.add() |
 | GraphNode | setGraphPrisma() | GraphStore.addNode() |
 | GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
+| WorkflowReminder | setReminderPrisma() | reminder.check |
 
 Status values are ALL UPPERCASE in PostgreSQL:
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
@@ -267,7 +269,7 @@ OPENAI_API_KEY="sk-..."
 
 ### Database
 
-The project uses Prisma with PostgreSQL and pgvector. The schema is at `packages/db/prisma/schema.prisma` and includes 14 models with pgvector support for semantic search.
+The project uses Prisma with PostgreSQL and pgvector. The schema is at `packages/db/prisma/schema.prisma` and includes 15 models with pgvector support for semantic search.
 
 ```bash
 # Start the database

@@ -26,7 +26,7 @@ This project uses **masday-workflow-rebuild** for workflow management.
 
 ## Key MCP Namespace
 
-- `mcp__masday__*` — Unified MCP server (83 tools across 14 namespaces)
+- `mcp__masday__*` — Unified MCP server (86 tools across 16 namespaces)
 
 ## Persistence
 
@@ -48,7 +48,7 @@ All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Prisma
 - Plan: ACTIVE, PENDING, READY, DONE
 - Review: APPROVED, REWORK_REQUIRED, BLOCKED
 
-## Tool Namespaces (83 tools)
+## Tool Namespaces (86 tools)
 
 | Namespace | Count | Key Tools |
 |-----------|-------|-----------|
@@ -67,6 +67,7 @@ All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Prisma
 | cicd | 3 | pipeline_status, pipeline_trigger, runs_view |
 | github | 3 | pr_create, pr_list, issue_list |
 | tests | 1 | run |
+| reminder | 3 | check, list, acknowledge |
 
 ## Naming Convention
 
