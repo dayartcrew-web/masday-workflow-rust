@@ -20,7 +20,7 @@ tools:
   - workflow.startTask
   - workflow.completeTask
   - workflow.saveProgress
-  - workflow.create_plan
+  - workflow.createPlan
   - workflow.createParallelBranches
   - workflow.completeParallelBranch
   - workflow.listParallelBranches
@@ -75,7 +75,7 @@ Phase 1: INIT
 Phase 2: ANALYZE
   -> semantic-search.code_search + memory.search + policy.check_session_readiness
 Phase 3: PLAN
-  -> workflow.create_plan + capability.match_agent + workflow.createParallelBranches
+  -> workflow.createPlan + capability.match_agent + workflow.createParallelBranches
 Phase 4: EXECUTE
   -> workflow.startTask + policy.validate_execution + workflow.saveProgress
 Phase 5: VERIFY
@@ -125,7 +125,7 @@ Phase 6: DONE
    ```
 3. Create the execution plan:
    ```
-   workflow.create_plan({
+   workflow.createPlan({
      workflow_id: "<id>",
      plan: {
        tasks: [

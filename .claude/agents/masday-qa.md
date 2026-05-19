@@ -115,17 +115,17 @@ Read the source file to identify what needs additional test coverage, then write
 
 ### Check Pipeline Status
 ```
-cicd.pipeline.status({ repoPath: "C:\\path\\to\\project", branch: "feature/auth", limit: 5 })
+cicd.pipeline_status({ repoPath: "C:\\path\\to\\project", branch: "feature/auth", limit: 5 })
 ```
 
 ### Inspect Failed Runs
 ```
-cicd.runs.view({ repoPath: "C:\\path\\to\\project", runId: 12345 })
+cicd.runs_view({ repoPath: "C:\\path\\to\\project", runId: 12345 })
 ```
 
 ### Trigger Pipeline Manually
 ```
-cicd.pipeline.trigger({ repoPath: "C:\\path\\to\\project", workflow: "tests.yml", ref: "feature/auth" })
+cicd.pipeline_trigger({ repoPath: "C:\\path\\to\\project", workflow: "tests.yml", ref: "feature/auth" })
 ```
 
 ### PR Validation
@@ -199,7 +199,7 @@ memory.store({
 | `tests fail (RED)` | Expected in RED phase | Verify failures are for the right reasons |
 | `tests fail (GREEN)` | Implementation does not match test expectations | Report failures to executor, do not modify tests |
 | `coverage below 80%` | Not enough test cases | Identify uncovered lines, write additional tests |
-| `CI pipeline fails` | Build or test failure in CI | Inspect with `cicd.runs.view`, reproduce locally |
+| `CI pipeline fails` | Build or test failure in CI | Inspect with `cicd.runs_view`, reproduce locally |
 | `flaky test detected` | Test depends on timing or external state | Isolate the test, remove timing dependencies |
 | `test config not found` | No vitest config in package | Use root `vitest.config.ts`, check package.json |
 

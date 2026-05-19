@@ -28,6 +28,14 @@ This project uses **masday-workflow-rebuild** for workflow management.
 
 - `mcp__masday__*` — Unified MCP server (83 tools across 14 namespaces)
 
+## Persistence
+
+All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Prisma) in real-time.
+- Workflow operations replicate to Supabase PostgreSQL via `DualWriteWorkflowStore`
+- Memory tools use hybrid mode: Prisma first, JSON cache fallback
+- Review, session, policy tools read/write directly to PostgreSQL tables
+- Shell tools (git, npm, docker, cicd, github, tests) use real `execSync` calls
+
 ## Tool Namespaces (83 tools)
 
 | Namespace | Count | Key Tools |
@@ -46,6 +54,7 @@ This project uses **masday-workflow-rebuild** for workflow management.
 | docker | 3 | build, run, ps |
 | cicd | 3 | pipeline_status, pipeline_trigger, runs_view |
 | github | 3 | pr_create, pr_list, issue_list |
+| tests | 1 | run |
 
 ## Naming Convention
 

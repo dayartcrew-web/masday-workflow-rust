@@ -13,7 +13,7 @@ After each task completes during `workflow.execute`:
 6. If task used `tests.run`:
    - Verify test results are reported
    - Flag any failures immediately
-   - **WARNING**: `tests.run` is currently a stub that always returns exitCode 0. Cross-validate with `pnpm test` via Bash for real results.
+   - Verify test results are from real `pnpm test` execution (tests.run runs real test suite via execSync)
 7. If task failed:
    - Log the error context via `memory.store` (type: "blocker")
    - Do NOT auto-retry (let user decide)
