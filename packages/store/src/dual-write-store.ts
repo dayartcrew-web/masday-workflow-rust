@@ -112,7 +112,8 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
       });
     } catch { /* plan may already exist */ }
 
-    const status = task.state ?? 'pending';
+    const rawStatus = task.state ?? 'pending';
+    const status = rawStatus.toUpperCase();
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
 
     prismaClient.task.upsert({
@@ -190,7 +191,8 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
     if (!prismaClient) return;
 
     const planId = `plan-default-${workflowId}`;
-    const status = task.state ?? 'pending';
+    const rawStatus = task.state ?? 'pending';
+    const status = rawStatus.toUpperCase();
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
 
     prismaClient.task.upsert({

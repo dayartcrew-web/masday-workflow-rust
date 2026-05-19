@@ -121,7 +121,31 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 83 tool
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
 
-**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable.
+**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 14 Prisma models are actively populated:
+
+| Table | Wired Via | Trigger |
+|-------|-----------|---------|
+| Workflow | DualWriteStore | workflow.create, execute, delete |
+| Task | DualWriteStore | addTask, startTask, completeTask |
+| Plan | DualWriteStore | createPlan |
+| Memory | persistToPrisma() | memory.store, store_research |
+| ReviewDecision | Prisma direct | review.submit |
+| SessionState | Prisma direct | session.patch_state |
+| ParallelBranch | Prisma direct | workflow.createParallelBranches |
+| ContextDocument | Prisma direct | memory.store_research |
+| TaskProgressLog | saveProgressDb() | workflow.saveProgress |
+| RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
+| TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
+| EpisodicMemory | setEpisodicPrisma() | EpisodicMemory.add() |
+| GraphNode | setGraphPrisma() | GraphStore.addNode() |
+| GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
+
+**Status Conventions (ALL UPPERCASE in PostgreSQL):**
+- Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
+- Task: PENDING, RUNNING, DONE, FAILED
+- Plan: ACTIVE, PENDING, READY, DONE
+- Review: APPROVED, REWORK_REQUIRED, BLOCKED
+- DualWriteStore maps in-memory lowercase TaskState to UPPERCASE for Prisma
 
 ## MCP Pattern
 
@@ -131,13 +155,16 @@ Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore f
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
+import { setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
+import { saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
 
 const server = new McpServer({ name: "masday", version: "0.1.0" });
 const primaryStore = new WorkflowStore(backend);
 const workflowStore = new DualWriteWorkflowStore(primaryStore);
 
 // After Prisma connects:
-setDualWritePrisma(prisma); // enables real-time PostgreSQL replication
+setDualWritePrisma(prisma);      // workflow/task/plan replication
+setTokenPrisma(prisma);          // token usage tracking
 
 server.registerTool("workflow.create", { description: "...", inputSchema: {...} }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(result) }]

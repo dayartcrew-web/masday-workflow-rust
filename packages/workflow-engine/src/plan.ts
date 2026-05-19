@@ -21,7 +21,7 @@ export async function createPlan(input: {
       data: {
         workflowId: input.workflowId,
         version: existingCount + 1,
-        status: "active",
+        status: "ACTIVE",
         summary: input.summary,
         content: input.content as never,
         createdByAgent: input.createdByAgent,
@@ -34,7 +34,7 @@ export async function createPlan(input: {
           workflowId: input.workflowId,
           planId: plan.id,
           title: task.title,
-          status: "todo",
+          status: "PENDING",
           priority: task.priority,
           ownerAgent: task.ownerAgent,
           acceptanceCriteria: task.acceptanceCriteria ?? [],
@@ -48,7 +48,7 @@ export async function createPlan(input: {
       where: { id: input.workflowId },
       data: {
         currentPlanId: plan.id,
-        status: "ready",
+        status: "READY",
       },
     });
 

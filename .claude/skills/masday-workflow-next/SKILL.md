@@ -86,7 +86,7 @@ If active workflow found:
 # No active workflow — check for any non-DONE workflows
 Call: workflow.list({})
 
-If any workflow with status in ["executing", "reviewing", "blocked", "planning"]:
+If any workflow with status in ["EXECUTE", "VERIFY", "BLOCKED", "PLAN"]:
   Pick the most recent one
   Record: workflowId
   Go to Step 2
@@ -109,9 +109,9 @@ Record: plan, tasks[], currentTask
 
 ```
 If currentTask exists:
-  If currentTask.status == "in_progress":   Go to Step 4 (Resume)
-  If currentTask.status == "failed":         Go to Step 5 (Retry)
-  If currentTask.status == "completed":
+  If currentTask.status == "RUNNING":   Go to Step 4 (Resume)
+  If currentTask.status == "FAILED":    Go to Step 5 (Retry)
+  If currentTask.status == "DONE":
     Find next pending task → Go to Step 6 (Next Task)
     If no pending tasks → Go to Step 8 (Verify)
 
@@ -192,10 +192,10 @@ Report: "Retrying failed task: {title} (attempt {n})"
 ```
 # Find next task whose dependencies are met
 Let nextTask = null
-For each task with status "pending" (in plan order):
+For each task with status "PENDING" (in plan order):
   deps = task.dependencies || []
   allDepsCompleted = deps.every(depId =>
-    tasks.find(t => t.id === depId)?.status === "completed"
+    tasks.find(t => t.id === depId)?.status === "DONE"
   )
   If allDepsCompleted:
     nextTask = task

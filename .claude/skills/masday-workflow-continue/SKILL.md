@@ -49,7 +49,7 @@ Resume an interrupted workflow. Detects the last known state and picks up from t
 Call: workflow.getActive({ cwd: process.cwd() })
 
 If no active workflow:
-  Call: workflow.list({ status: "executing" })
+  Call: workflow.list({ status: "EXECUTE" })
 
 If still none:
   Call: workflow.list({ status: "reviewing" })
@@ -128,7 +128,7 @@ Call: workflow.startTask({
 ```
 # Find the next task whose dependencies are met
 For each pending task (in plan order):
-  Check if all dependency tasks are "completed"
+  Check if all dependency tasks are "DONE"
   If yes: that's the next task
   If no: skip, check next
 
@@ -144,7 +144,7 @@ Call: workflow.startTask({
 ### 6. All Tasks Completed — Verify
 
 ```
-# If all tasks are "completed", check if review passed
+# If all tasks are "DONE", check if review passed
 Call: review.get_latest({ workflow_id: workflowId, task_id: lastTaskId })
 
 If review is APPROVED:

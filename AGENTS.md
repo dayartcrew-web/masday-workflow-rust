@@ -188,6 +188,9 @@ Agents are registered in the capability registry and dispatched by the Orchestra
 
 ## Agent Dispatch Flow
 
+> **All 14 Prisma tables are actively populated.** See CLAUDE.md for the full table wiring reference.
+> **Status values are UPPERCASE** in PostgreSQL: Workflow (INIT, EXECUTE, DONE, FAILED...), Task (PENDING, RUNNING, DONE, FAILED), Plan (ACTIVE, PENDING, READY, DONE), Review (APPROVED, REWORK_REQUIRED, BLOCKED).
+
 1. OrchestratingEngine receives a task
 2. AgentCoordinator queries the capability registry
 3. SkillRouter scores agents by relevance to task description

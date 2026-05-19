@@ -35,19 +35,19 @@ export async function submitReview(input: {
   if (input.decision === "REWORK_REQUIRED") {
     await (await import("@mcp-rebuild/db")).prisma.task.update({
       where: { id: input.taskId },
-      data: { status: "in_progress" },
+      data: { status: "RUNNING" },
     });
   }
 
   if (input.decision === "BLOCKED") {
     await (await import("@mcp-rebuild/db")).prisma.task.update({
       where: { id: input.taskId },
-      data: { status: "blocked" },
+      data: { status: "BLOCKED" },
     });
 
     await (await import("@mcp-rebuild/db")).prisma.workflow.update({
       where: { id: input.workflowId },
-      data: { status: "blocked" },
+      data: { status: "BLOCKED" },
     });
   }
 

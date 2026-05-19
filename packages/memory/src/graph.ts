@@ -6,6 +6,13 @@ import { createLogger } from '@mcp-rebuild/core';
 
 const logger = createLogger('memory:graph');
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let prismaClient: any = null;
+
+export function setGraphPrisma(client: unknown): void {
+  prismaClient = client;
+}
+
 export interface GraphStoreConfig {
   filePath?: string;
   autoLinkThreshold?: number;
@@ -103,6 +110,7 @@ export class GraphStore {
       properties: { ...node.properties },
     };
     this.nodes.set(record.id, record);
+    this.persistNode(record);
     logger.debug({ id: record.id, label: record.label }, 'Added node');
 
     // Auto-link with similar nodes
@@ -175,6 +183,7 @@ export class GraphStore {
       weight: edge.weight,
     };
     this.edges.set(record.id, record);
+    this.persistEdge(record);
     logger.debug({ id: record.id, relation: record.relation }, 'Added edge');
     return { ...record };
   }
@@ -354,6 +363,35 @@ export class GraphStore {
 
   get edgeCount(): number {
     return this.edges.size;
+  }
+
+  private persistNode(node: GraphNodeRecord): void {
+    if (!prismaClient?.graphNode) return;
+    prismaClient.graphNode.create({
+      data: {
+        id: node.id,
+        nodeType: node.type,
+        name: node.label,
+        properties: node.properties ?? {},
+      },
+    }).catch((err: unknown) => {
+      logger.warn({ err: String(err), id: node.id }, 'Failed to persist graph node to PostgreSQL');
+    });
+  }
+
+  private persistEdge(edge: GraphEdgeRecord): void {
+    if (!prismaClient?.graphEdge) return;
+    prismaClient.graphEdge.create({
+      data: {
+        id: edge.id,
+        sourceNodeId: edge.from,
+        targetNodeId: edge.to,
+        relationType: edge.relation,
+        weight: edge.weight,
+      },
+    }).catch((err: unknown) => {
+      logger.warn({ err: String(err), id: edge.id }, 'Failed to persist graph edge to PostgreSQL');
+    });
   }
 
   /** Auto-link a new node with similar existing nodes using Jaccard similarity. */

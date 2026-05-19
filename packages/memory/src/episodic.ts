@@ -2,6 +2,13 @@ import { createLogger } from '@mcp-rebuild/core';
 
 const logger = createLogger('memory:episodic');
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let prismaClient: any = null;
+
+export function setEpisodicPrisma(client: unknown): void {
+  prismaClient = client;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -38,6 +45,7 @@ export class EpisodicMemory {
     }
 
     this.buffer.push(message);
+    this.persistToPrisma(message);
     logger.debug({ role, bufferSize: this.buffer.length }, 'Added message to episodic buffer');
   }
 
@@ -82,5 +90,23 @@ export class EpisodicMemory {
   /** Maximum capacity of the buffer. */
   get capacity(): number {
     return this.maxSize;
+  }
+
+  private seq = 0;
+  private sessionId = `session-${Date.now()}`;
+
+  private persistToPrisma(msg: ChatMessage): void {
+    if (!prismaClient?.episodicMemory) return;
+    prismaClient.episodicMemory.create({
+      data: {
+        sessionId: this.sessionId,
+        role: msg.role,
+        content: msg.content,
+        sequenceOrder: ++this.seq,
+        createdAt: new Date(msg.timestamp),
+      },
+    }).catch((err: unknown) => {
+      logger.warn({ err: String(err) }, 'Failed to persist episodic memory to PostgreSQL');
+    });
   }
 }

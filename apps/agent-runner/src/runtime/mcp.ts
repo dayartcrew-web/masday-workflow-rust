@@ -56,9 +56,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { EventBus, createLogger } from "@mcp-rebuild/core";
+import { EventBus, createLogger, setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
 import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
-import { OrchestratingEngine } from "@mcp-rebuild/workflow-engine";
+import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
+import { setEpisodicPrisma, setGraphPrisma } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { prisma, healthCheck as dbHealthCheck } from "@mcp-rebuild/db";
 import * as path from "path";
@@ -131,7 +132,10 @@ async function initPrisma(): Promise<void> {
     }
     prismaReady = true;
     setDualWritePrisma(prisma);
-    logger.info("Prisma connected — hybrid mode active (DualWriteStore enabled)");
+    setTokenPrisma(prisma);
+    setEpisodicPrisma(prisma);
+    setGraphPrisma(prisma);
+    logger.info("Prisma connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore enabled)");
   } catch (err) {
     logger.warn("Prisma init failed, falling back to JSON-only: " + (err instanceof Error ? err.message : String(err)));
   }
@@ -162,7 +166,12 @@ server.registerTool("workflow.list", { description: "List workflows", inputSchem
 server.registerTool("workflow.addTask", { description: "Add task", inputSchema: { workflowId: z.string(), name: z.string(), agent: z.string(), skill: z.string(), dependencies: z.array(z.string()).optional(), input: z.record(z.any()).optional() } }, async (a) => ok(engine.addTask(a.workflowId, { name: a.name, agent: a.agent, skill: a.skill, dependencies: a.dependencies ?? [], input: a.input ?? {} })));
 server.registerTool("workflow.startTask", { description: "Start task", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async ({ workflow_id, task_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "running"; t.startedAt = new Date(); return ok(t); });
 server.registerTool("workflow.completeTask", { description: "Complete task", inputSchema: { workflow_id: z.string(), task_id: z.string(), result: z.record(z.any()).optional() } }, async ({ workflow_id, task_id, result }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "done"; t.completedAt = new Date(); if (result) t.output = result; return ok(t); });
-server.registerTool("workflow.saveProgress", { description: "Save progress", inputSchema: { workflow_id: z.string(), task_id: z.string(), agent_name: z.string(), progress_note: z.string(), evidence: z.array(z.string()).optional() } }, async (a) => { eventBus.emit("trace.completed", { workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] }); return ok({ saved: true }); });
+server.registerTool("workflow.saveProgress", { description: "Save progress", inputSchema: { workflow_id: z.string(), task_id: z.string(), agent_name: z.string(), progress_note: z.string(), evidence: z.array(z.string()).optional() } }, async (a) => {
+    if (prismaReady) { try { await saveProgressDb({ workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] }); } catch (e) { logger.warn("TaskProgressLog write failed: " + (e instanceof Error ? e.message : String(e))); } }
+    eventBus.emit("trace.completed", { workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] });
+    trackTokens("workflow.saveProgress", a, { saved: true });
+    return ok({ saved: true });
+  });
 server.registerTool("workflow.listTasks", { description: "List tasks", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks); });
 server.registerTool("workflow.getCurrentTask", { description: "Current task", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks.find((x: any) => x.state === "running") ?? w.tasks.find((x: any) => x.state === "pending") ?? null); });
 server.registerTool("workflow.getPlan", { description: "Get plan", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok({ workflowId: w.id, name: w.name, state: w.state, tasks: w.tasks, metadata: w.metadata }); });
@@ -187,7 +196,9 @@ server.registerTool("memory.store", { description: "Store memory", inputSchema: 
 server.registerTool("memory.store_research", { description: "Store research", inputSchema: { workflow_id: z.string().optional(), summary: z.string(), content: z.string(), created_by_agent: z.string() } }, async (a) => {
   const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now() };
   await persistToPrisma(r, a.workflow_id);
+  if (prismaReady) { try { await prisma.contextDocument.create({ data: { id: r.id, workflowId: a.workflow_id ?? null, sourceType: "research", title: a.summary, content: a.content, metadata: { agent: a.created_by_agent } } }); } catch (e) { logger.warn("ContextDocument write failed: " + (e instanceof Error ? e.message : String(e))); } }
   const m = loadMem(); m.push(r); saveMem(m);
+  trackTokens("memory.store_research", a, r);
   return ok(r);
 });
 server.registerTool("memory.recall_recent", { description: "Recall recent", inputSchema: { limit: z.number().optional(), type: z.string().optional() } }, async ({ limit, type }) => {
@@ -219,6 +230,7 @@ server.registerTool("memory.delete_by_workflow", { description: "Delete by workf
   const m = loadMem(); const n = m.length; saveMem(m.filter(x => !x.tags.includes(workflow_id))); return ok({ deleted: n - m.filter(x => !x.tags.includes(workflow_id)).length });
 });
 server.registerTool("memory.search", { description: "Search memories", inputSchema: { query: z.string(), limit: z.number().optional() } }, async ({ query, limit }) => {
+  if (prismaReady) { try { await logRetrieval({ agentName: "mcp", query, source: "memory.search", results: { limit: limit ?? 10 } }); } catch { /* non-critical */ } }
   if (prismaReady) { try { const q = query.toLowerCase(); const words = q.split(/\s+/); const orClauses = words.flatMap(w => [{ summary: { contains: w, mode: "insensitive" as const } }, { content: { contains: w, mode: "insensitive" as const } }]); const rows = await prisma.memory.findMany({ where: { OR: orClauses }, orderBy: { importanceScore: "desc" }, take: limit ?? 10 }); if (rows.length > 0) return ok(rows); } catch { /* fall through to cache */ } }
   const q = query.toLowerCase(); return ok(loadMem().map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
 });
@@ -227,9 +239,15 @@ server.registerTool("memory.stats", { description: "Memory stats", inputSchema: 
   const m = loadMem(); const by: Record<string, number> = {}; m.forEach(x => by[x.type] = (by[x.type] ?? 0) + 1); return ok({ total: m.length, byType: by, source: "json-cache" });
 });
 
-server.registerTool("semantic-search.search_hybrid_context_pack", { description: "Context pack", inputSchema: { workflow_id: z.string(), plan_id: z.string(), task_id: z.string() } }, async (a) => ok({ ...a, contextSufficient: true }));
+server.registerTool("semantic-search.search_hybrid_context_pack", { description: "Context pack", inputSchema: { workflow_id: z.string(), plan_id: z.string(), task_id: z.string() } }, async (a) => {
+  if (prismaReady) { try { await logRetrieval({ workflowId: a.workflow_id, taskId: a.task_id, agentName: "mcp", query: `context-pack:${a.plan_id}`, source: "semantic-search", results: { contextSufficient: true } }); } catch { /* non-critical */ } }
+  return ok({ ...a, contextSufficient: true });
+});
 server.registerTool("semantic-search.search_context_fingerprint", { description: "Fingerprint", inputSchema: { workflow_id: z.string(), plan_id: z.string(), task_id: z.string() } }, async (a) => ok({ fingerprint: [a.workflow_id, a.plan_id, a.task_id].join("-"), contextSufficient: true }));
-server.registerTool("semantic-search.code_search", { description: "Code search", inputSchema: { query: z.string() } }, async ({ query }) => ok({ query, results: [] }));
+server.registerTool("semantic-search.code_search", { description: "Code search", inputSchema: { query: z.string() } }, async ({ query }) => {
+  if (prismaReady) { try { await logRetrieval({ agentName: "mcp", query, source: "code_search", results: {} }); } catch { /* non-critical */ } }
+  return ok({ query, results: [] });
+});
 
 server.registerTool("policy.check_session_readiness", { description: "Session readiness", inputSchema: { sessionKey: z.string() } }, async ({ sessionKey }) => {
   if (prismaReady) {

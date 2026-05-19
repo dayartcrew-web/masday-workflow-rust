@@ -9,13 +9,13 @@
 export { WorkingMemory } from './working.js';
 export type { SessionState } from './working.js';
 
-export { EpisodicMemory } from './episodic.js';
+export { EpisodicMemory, setEpisodicPrisma } from './episodic.js';
 export type { ChatMessage } from './episodic.js';
 
 export { MemoryStore } from './store.js';
 export type { MemoryStoreConfig, SearchOptions, PruneOptions, EmbeddingProvider } from './store.js';
 
-export { GraphStore } from './graph.js';
+export { GraphStore, setGraphPrisma } from './graph.js';
 export type { GraphStoreConfig } from './graph.js';
 
 export { ScoringEngine } from './scoring.js';

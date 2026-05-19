@@ -17,7 +17,7 @@ export async function startTask(input: {
     await tx.task.update({
       where: { id: task.id },
       data: {
-        status: "in_progress",
+        status: "RUNNING",
         progressPercent: 1,
       },
     });
@@ -26,7 +26,7 @@ export async function startTask(input: {
       where: { id: input.workflowId },
       data: {
         currentTaskId: task.id,
-        status: "executing",
+        status: "EXECUTE",
       },
     });
 
@@ -55,7 +55,7 @@ export async function completeTask(input: {
     await tx.task.update({
       where: { id: task.id },
       data: {
-        status: "done",
+        status: "DONE",
         progressPercent: 100,
       },
     });
@@ -65,16 +65,16 @@ export async function completeTask(input: {
         where: { planId: task.planId },
       });
       const allDone =
-        allTasks.length > 0 && allTasks.every((t: { status: string }) => t.status === "done");
+        allTasks.length > 0 && allTasks.every((t: { status: string }) => t.status === "DONE");
 
       if (allDone) {
         await tx.plan.update({
           where: { id: task.planId },
-          data: { status: "completed" },
+          data: { status: "DONE" },
         });
         await tx.workflow.update({
           where: { id: input.workflowId },
-          data: { status: "completed", currentTaskId: null },
+          data: { status: "DONE", currentTaskId: null },
         });
       } else {
         await tx.workflow.update({
