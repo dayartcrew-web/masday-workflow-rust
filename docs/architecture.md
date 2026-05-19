@@ -4,7 +4,7 @@
 
 ## Overview
 
-Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 12 packages and a single unified MCP server app exposing 86 tools.
+Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 12 packages and a single unified MCP server app exposing 87 tools.
 
 ## System Architecture
 
@@ -115,7 +115,7 @@ masday-workflow-rebuild/
 │   ├── code-skills/           # Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod)
 │   └── cli/                   # CLI entry point + setup templates
 ├── apps/
-│   └── agent-runner/          # Single unified MCP server (86 tools)
+│   └── agent-runner/          # Single unified MCP server (87 tools)
 ├── docs/                      # Documentation
 ├── .claude/                   # Claude Code integration (project-level)
 │   ├── skills/                # 25+ workflow and builder skills
@@ -248,7 +248,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
       ▼
  ┌──────────────┐                ┌──────────────────┐
  │   Client     │ ────────────►  │   MCP Server     │
- │ (Dashboard/  │   stdio        │  (86 tools)      │
+ │ (Dashboard/  │   stdio        │  (87 tools)      │
  │  CLI/MCP)    │                └────────┬─────────┘
  └──────────────┘                         │
                                           ▼

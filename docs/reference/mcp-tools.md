@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 86 real tools across 16 namespaces, all connected to PostgreSQL via DualWriteStore.
+This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 87 real tools across 17 namespaces, all connected to PostgreSQL via DualWriteStore.
 
 ## Persistence
 
@@ -112,7 +112,7 @@ Real Prisma reads/writes to `SessionState` table.
 
 - `session.get_state` -- Get session state (finds SessionState in DB)
 - `session.patch_state` -- Patch session state (upserts SessionState in DB)
-- `session.init_context` -- Init session context
+- `session.init_context` -- Init session context + check for stale/stuck/failed workflows (returns reminders and reminderStats)
 
 ## local (4 tools)
 
@@ -170,11 +170,17 @@ Real `execSync` calls to pnpm test runner.
 
 ## reminder (3 tools)
 
-Stale/stuck workflow detection, reminder listing, and acknowledgment (Prisma WorkflowReminder table).
+Stale/stuck workflow detection, reminder listing, and acknowledgment (Prisma WorkflowReminder table). **Auto-runs on startup** after Prisma connects + **periodic background check every 15 minutes** via setInterval.
 
-- `reminder.check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds)
+- `reminder.check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds). Runs automatically on server start and every 15 minutes.
 - `reminder.list` -- List reminders with optional filters (workflowId, acknowledged, limit)
 - `reminder.acknowledge` -- Acknowledge or dismiss reminders by ID or workflowId
+
+## projectRules (1 tool)
+
+Real refactor rules validation from `@mcp-rebuild/project-rules`.
+
+- `projectRules.check` -- Validate project against refactor rules and conventions (37 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
 
 ## Workflow lifecycle behavior
 

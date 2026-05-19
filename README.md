@@ -12,7 +12,7 @@ Merges the best of two projects:
 - **msd-mcp** -- Official MCP SDK, 5 domain servers, Prisma/PostgreSQL persistence
 - **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
 
-The result is a modular monorepo of 12 packages and a single unified MCP server exposing 86 tools over stdio to any MCP-compatible client.
+The result is a modular monorepo of 12 packages and a single unified MCP server exposing 87 tools over stdio to any MCP-compatible client.
 
 ---
 
@@ -28,7 +28,7 @@ pnpm db:generate
 # Build all packages (Turbo)
 pnpm build
 
-# Start the unified MCP server (all 86 tools)
+# Start the unified MCP server (all 87 tools)
 npx tsx apps/agent-runner/src/runtime/mcp.ts
 ```
 
@@ -50,7 +50,7 @@ This starts a PostgreSQL 16 instance with pgvector on port 5432. See [Configurat
       v
  +-------------+                +------------------+
  |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (86 tools)       |
+ | (Dashboard/  |   stdio       |  (87 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                          v
@@ -135,9 +135,9 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 | App | Tools | Description |
 |-----|-------|-------------|
-| `apps/agent-runner` | 83 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
+| `apps/agent-runner` | 87 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
 
-### Tool Namespaces (86 tools)
+### Tool Namespaces (87 tools)
 
 | Namespace | Tools | Implementation |
 |-----------|-------|----------------|
@@ -157,6 +157,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
 | reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Prisma WorkflowReminder table) |
+| projectRules | 1 | Refactor rules validation (37 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
 ### MCP Pattern
 
