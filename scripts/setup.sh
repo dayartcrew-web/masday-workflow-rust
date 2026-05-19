@@ -15,7 +15,8 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
 # 2. Generate Prisma client (skip if client exists and MCP server may be running)
 echo "[2/8] Generating Prisma client..."
-if [ -f "node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client/index.js" ]; then
+PRISMA_CLIENT=$(ls node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client/index.js 2>/dev/null | head -1)
+if [ -n "$PRISMA_CLIENT" ]; then
   echo "  Prisma client already exists, skipping (run 'pnpm db:generate' manually to update)"
 else
   pnpm db:generate
