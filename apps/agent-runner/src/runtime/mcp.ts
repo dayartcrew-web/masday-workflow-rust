@@ -797,7 +797,7 @@ server.registerTool("projectRules.check", {
 
 const doctorReport = runDoctor(cwd);
 if (doctorReport.fixedCount > 0) {
-  for (const d of doctorReport.diagnoses.filter(d => d.autoFixed)) {
+  for (const d of doctorReport.diagnoses.filter((d: { autoFixed?: boolean }) => d.autoFixed)) {
     logger.info(`Doctor [${d.check}]: ${d.message}`);
   }
 }
