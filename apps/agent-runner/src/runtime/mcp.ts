@@ -66,6 +66,7 @@ import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { prisma, healthCheck as dbHealthCheck } from "@mcp-rebuild/db";
 import * as path from "path";
 import * as fs from "fs";
+import { FlagEmbedding, EmbeddingModel } from "fastembed";
 
 const logger = createLogger("MCPServer");
 
@@ -136,34 +137,51 @@ let mic = 0;
 function nid() { return "mem_" + Date.now() + "_" + (++mic); }
 function ok(d: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(d) }] }; }
 
-const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER ?? "ollama";
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "nomic-embed-text";
-const EMBEDDING_DIMENSIONS = 768;
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+const EMBEDDING_PROVIDER = (process.env.EMBEDDING_PROVIDER ?? "fastembed").toLowerCase();
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "";
+const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com").replace(/\/$/, "");
+
+let _embedModel: FlagEmbedding | null = null;
+async function getFastembedModel(): Promise<FlagEmbedding> {
+  if (!_embedModel) {
+    const modelId = (EMBEDDING_MODEL as EmbeddingModel) || EmbeddingModel.BGEBaseENV15;
+    _embedModel = await FlagEmbedding.init({ model: modelId });
+  }
+  return _embedModel;
+}
 
 async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
     if (EMBEDDING_PROVIDER === "ollama") {
-      const res = await fetch(OLLAMA_BASE_URL + "/api/embeddings", {
+      const model = EMBEDDING_MODEL || "nomic-embed-text";
+      const res = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
+        body: JSON.stringify({ model, prompt: text }),
       });
       if (!res.ok) return null;
-      const data = await res.json() as { embedding: number[] };
-      return data.embedding ?? null;
+      const json = await res.json() as { embedding?: number[] };
+      return json.embedding ?? null;
     }
-    if (!OPENAI_API_KEY) return null;
-    const url = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1") + "/embeddings";
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: text, dimensions: EMBEDDING_DIMENSIONS }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { data: Array<{ embedding: number[] }> };
-    return data.data[0]?.embedding ?? null;
+
+    if (EMBEDDING_PROVIDER === "openai") {
+      if (!OPENAI_API_KEY) return null;
+      const model = EMBEDDING_MODEL || "text-embedding-3-small";
+      const res = await fetch(`${OPENAI_BASE_URL}/v1/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({ model, input: text }),
+      });
+      if (!res.ok) return null;
+      const json = await res.json() as { data?: Array<{ embedding: number[] }> };
+      return json.data?.[0]?.embedding ?? null;
+    }
+
+    // default: fastembed
+    const model = await getFastembedModel();
+    return await model.queryEmbed(text);
   } catch { return null; }
 }
 

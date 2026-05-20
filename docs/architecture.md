@@ -315,7 +315,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   │            + importance*0.15 + usage*0.1                 │
   │                                                          │
   │   Memory table (PostgreSQL via Prisma)                   │
-  │   + BM25 scoring (embedding-ready for pgvector)          │
+  │   + BM25 + fastembed vector search (pgvector)            │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐

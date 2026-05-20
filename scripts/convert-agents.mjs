@@ -134,11 +134,20 @@ function convertClaudeAgentToOpencode(sourceContent, filename) {
   }
   if (opencodeTools.todowrite) orderedTools.todowrite = true;
 
-  let frontmatter = `---\ndescription: ${description}\nmode: subagent\n`;
+  // Map Claude model to opencode temperature
+  const modelMap = { sonnet: '0.2', haiku: '0.3', opus: '0.1' };
+  const temperature = modelMap[meta.model] || '0.2';
+
+  // NOTE: todowrite moved to description body, not frontmatter tools
+  const hasTodoWrite = orderedTools.todowrite;
+  delete orderedTools.todowrite;
+
+  let frontmatter = `---\ndescription: ${description}\nmode: subagent\ntemperature: ${temperature}\n`;
   frontmatter += 'tools:\n';
   for (const [key, val] of Object.entries(orderedTools)) {
     frontmatter += `  ${key}: ${val}\n`;
   }
+  frontmatter += `permissions:\n  edit:\n    "**/*.env*": deny\n    "**/*.key": deny\n    "**/*.secret": deny\n`;
   frontmatter += '---\n';
 
   let bodyContent = body.trim();
@@ -181,9 +190,19 @@ const [,, command, ...args] = process.argv;
 
 if (command === 'convert') {
   const sourceDir = args[0] || join(process.cwd(), '.claude', 'agents');
-  const targetDir = args[1] || join(process.env.HOME || process.env.USERPROFILE, '.config', 'opencode', 'agent');
-  console.log(`Converting agents: ${sourceDir} -> ${targetDir}`);
-  convertAll(sourceDir, targetDir);
+  const cwd = process.cwd();
+
+  // 1) Global agents
+  const globalTarget = join(process.env.HOME || process.env.USERPROFILE, '.config', 'opencode', 'agent');
+  console.log(`Converting agents: ${sourceDir} -> ${globalTarget}`);
+  convertAll(sourceDir, globalTarget);
+
+  // 2) Project agents (openagents reference shows .opencode/agent/)
+  const projectTarget = join(cwd, '.opencode', 'agent');
+  if (projectTarget !== globalTarget) {
+    console.log(`Syncing to project: ${sourceDir} -> ${projectTarget}`);
+    convertAll(sourceDir, projectTarget);
+  }
 } else if (command === 'convert-to-dir') {
   const sourceDir = args[0] || join(process.cwd(), '.claude', 'agents');
   const targetDir = args[1];

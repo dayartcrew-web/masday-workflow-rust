@@ -25,6 +25,9 @@ pnpm install
 # Generate Prisma client
 pnpm db:generate
 
+# Set up pgvector columns and indexes (PostgreSQL only)
+pnpm db:pgvector
+
 # Build all packages (Turbo)
 pnpm build
 
@@ -262,10 +265,14 @@ Create a `.env` file in the project root:
 ```env
 # Database
 DATABASE_URL="postgresql://USER:PASS@localhost:5432/masday_workflow?schema=public"
+EMBEDDING_PROVIDER="fastembed"   # fastembed | ollama | openai
+EMBEDDING_MODEL="BGEBaseENV15"
+EMBEDDING_DIMENSIONS=768
 
 # LLM Providers (optional, per-provider)
 ANTHROPIC_API_KEY="sk-ant-..."
 OPENAI_API_KEY="sk-..."
+OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
 ### Database

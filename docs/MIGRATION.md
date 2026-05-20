@@ -113,7 +113,7 @@ These packages are entirely new:
 | `LLM_MODEL_CHEAP` | Cheap tier model name | `GLM-4.5-Air` |
 | `LLM_MODEL_MEDIUM` | Medium tier model name | `glm-4.7` |
 | `LLM_MODEL_POWERFUL` | Powerful tier model name | `glm-5` |
-| `OPENAI_API_KEY` | OpenAI API key (for LLM/embeddings) | -- |
+| `OPENAI_API_KEY` | OpenAI API key (for LLM only; embeddings now use local fastembed) | -- |
 | `ANTHROPIC_API_KEY` | Anthropic API key | -- |
 
 ## Getting Help
