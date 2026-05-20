@@ -2,8 +2,9 @@
 name: masday-create-skill
 description: >
   Create a new Masday skill (SKILL.md) from a description. Designs trigger conditions,
-  allowed tools, step-by-step workflow, and constraints. Registers and saves to all locations.
-  Use when the user says "create skill", "new skill", "add workflow skill", or "skill definition".
+  allowed tools, step-by-step workflow, and constraints. Uses shared-utils createSkill()
+  for validation and file generation. Use when the user says "create skill", "new skill",
+  "add workflow skill", or "skill definition".
 allowed-tools:
   - capability.create_skill
   - capability.list_skills
@@ -16,6 +17,16 @@ allowed-tools:
 # Masday Create Skill
 
 Create a new Masday Workflow skill definition.
+
+## Validation Rules
+
+Skill names must:
+- Be kebab-case (e.g., `masday-deploy-check`, `masday-security-scan`)
+- Start with a letter
+- Be 2-64 characters
+- Match regex: `^[a-z][a-z0-9-]{1,63}$`
+
+Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
 
 ## Steps
 
@@ -30,7 +41,7 @@ Create a new Masday Workflow skill definition.
 3. **Design the skill based on user description**
    - Name: kebab-case (e.g., `masday-deploy-check`, `masday-security-scan`)
    - Description: WHAT it does + WHEN to use it + trigger phrases
-   - Allowed tools: only actual MCP tool names from the 70 available
+   - Allowed tools: only actual MCP tool names from the 87 available
    - Steps: detailed numbered workflow with tool call examples
    - Never section: constraints and prohibitions
 
@@ -48,10 +59,16 @@ Create a new Masday Workflow skill definition.
 
 5. **Register the skill**
    - Call `capability.create_skill` with:
-     - `name`: skill name
+     - `projectRoot`: the project root directory
+     - `name`: skill name (validated by shared-utils)
      - `description`: what it does
      - `trigger`: when to activate
      - `steps`: array of step descriptions
+   - The tool internally calls `createSkill()` from shared-utils which:
+     - Validates the name against kebab-case rules
+     - Creates `.claude/skills/<name>/` directory if needed
+     - Generates YAML frontmatter with name, description, trigger, allowed-tools
+     - Writes the SKILL.md file
 
 6. **Save to project location**
    - Call `filesystem.write` to save:
@@ -59,6 +76,7 @@ Create a new Masday Workflow skill definition.
 
 7. **Or use scaffold for full feature**
    - Call `capability.scaffold_feature` if the skill needs an agent and command
+   - scaffold_feature internally calls both `createAgent()` and `createSkill()` from shared-utils
 
 8. **Report**
    ```

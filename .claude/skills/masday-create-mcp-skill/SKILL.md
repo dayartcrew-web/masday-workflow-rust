@@ -2,14 +2,15 @@
 name: masday-create-mcp-skill
 description: >
   Create a new TypeScript MCP skill -- an actual executable skill with Zod schemas registered
-  in the MCP server. Generates the skill file, test file, and updates package exports.
-  Use when the user says "create MCP skill", "new MCP tool", "add tool capability",
-  or "executable skill".
+  in the MCP server. Uses shared-utils for agent/skill scaffolding. Generates the skill file,
+  test file, and updates package exports. Use when the user says "create MCP skill",
+  "new MCP tool", "add tool capability", or "executable skill".
 allowed-tools:
   - filesystem.write
   - filesystem.list
   - filesystem.read
   - capability.scaffold_mcp_server
+  - capability.scaffold_feature
   - capability.list_templates
   - npm.run
 ---
@@ -17,6 +18,12 @@ allowed-tools:
 # Masday Create MCP Skill
 
 Create a new MCP-executable skill (TypeScript) for the Masday server.
+
+## Architecture Notes
+
+- `capability.scaffold_feature` now uses `createAgent()` + `createSkill()` from `@mcp-rebuild/shared-utils` internally
+- Agent/skill files are generated with proper YAML frontmatter, kebab-case validation, and optional model/tools fields
+- The MCP server registers underscore aliases for all tools via `ToolNameRegistry` for Copilot/Codex compatibility
 
 ## Steps
 
@@ -68,8 +75,9 @@ Create a new MCP-executable skill (TypeScript) for the Masday server.
    - Call `filesystem.write` to update
 
 7. **Register in MCP server**
-   - Call `filesystem.read` on `apps/agent-runner/src/mcp.ts`
+   - Call `filesystem.read` on `apps/agent-runner/src/runtime/mcp.ts`
    - Import and register the new skill in the tool map
+   - The registerTool wrapper auto-creates underscore aliases via `ToolNameRegistry`
    - Call `filesystem.write` to update
 
 8. **Build and verify**

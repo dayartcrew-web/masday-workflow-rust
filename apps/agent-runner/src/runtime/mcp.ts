@@ -67,8 +67,11 @@ import { prisma, healthCheck as dbHealthCheck } from "@mcp-rebuild/db";
 import * as path from "path";
 import * as fs from "fs";
 import { FlagEmbedding, EmbeddingModel } from "fastembed";
+import { dotToUnderscore, ToolNameRegistry, createAgent, createSkill, runDoctor } from "@mcp-rebuild/shared-utils";
 
 const logger = createLogger("MCPServer");
+process.setMaxListeners(process.getMaxListeners() + 20);
+const toolNameRegistry = new ToolNameRegistry();
 
 const skillMap = new Map<string, { name: string; description: string }>();
 const skillRegistry: ISkillRegistry = {
@@ -107,6 +110,9 @@ const origRegister = server.registerTool.bind(server);
     episodicMemory.add("assistant", `[${name}] ${resultText}`);
     return result;
   };
+  toolNameRegistry.register(name);
+  const alias = dotToUnderscore(name);
+  origRegister(alias, schema, wrappedHandler);
   return origRegister(name, schema, wrappedHandler);
 };
 
@@ -535,27 +541,17 @@ server.registerTool("capability.workflow_audit", { description: "Audit", inputSc
   return ok({ audited: workflowId ? 1 : engine.listWorkflows().length, issues: [] });
 });
 server.registerTool("capability.create_agent", { description: "Create agent", inputSchema: { projectRoot: z.string(), name: z.string(), role: z.string(), description: z.string(), instructions: z.string() } }, async (a) => {
-  const agentDir = path.join(a.projectRoot, ".claude", "agents");
-  if (!fs.existsSync(agentDir)) fs.mkdirSync(agentDir, { recursive: true });
-  const content = `---\nname: ${a.name}\nrole: ${a.role}\ndescription: ${a.description}\n---\n\n${a.instructions}\n`;
-  fs.writeFileSync(path.join(agentDir, a.name + ".md"), content);
-  return ok({ ok: true, ...a });
+  const result = createAgent({ projectRoot: a.projectRoot, name: a.name, role: a.role, description: a.description, instructions: a.instructions });
+  return ok(result);
 });
 server.registerTool("capability.create_skill", { description: "Create skill", inputSchema: { projectRoot: z.string(), name: z.string(), description: z.string(), trigger: z.string(), steps: z.array(z.string()) } }, async (a) => {
-  const skillDir = path.join(a.projectRoot, ".claude", "skills");
-  if (!fs.existsSync(skillDir)) fs.mkdirSync(skillDir, { recursive: true });
-  const content = `---\nname: ${a.name}\ndescription: ${a.description}\ntrigger: ${a.trigger}\n---\n\n${a.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n`;
-  fs.writeFileSync(path.join(skillDir, a.name + ".md"), content);
-  return ok({ ok: true, ...a });
+  const result = createSkill({ projectRoot: a.projectRoot, name: a.name, description: a.description, trigger: a.trigger, steps: a.steps });
+  return ok(result);
 });
 server.registerTool("capability.scaffold_feature", { description: "Scaffold feature", inputSchema: { projectRoot: z.string(), name: z.string(), description: z.string() } }, async (a) => {
-  const agentDir = path.join(a.projectRoot, ".claude", "agents");
-  const skillDir = path.join(a.projectRoot, ".claude", "skills");
-  if (!fs.existsSync(agentDir)) fs.mkdirSync(agentDir, { recursive: true });
-  if (!fs.existsSync(skillDir)) fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(agentDir, a.name + ".md"), `---\nname: ${a.name}\nrole: ${a.name} specialist\ndescription: ${a.description}\n---\n\nImplement the ${a.name} feature.\n`);
-  fs.writeFileSync(path.join(skillDir, a.name + ".md"), `---\nname: ${a.name}\ndescription: ${a.description}\ntrigger: when working on ${a.name}\n---\n\n1. Analyze requirements for ${a.name}\n2. Plan implementation\n3. Implement with TDD\n4. Verify and review\n`);
-  return ok({ ok: true, createdFiles: [`${a.name}.md (agent)`, `${a.name}.md (skill)`], ...a });
+  const agentResult = createAgent({ projectRoot: a.projectRoot, name: a.name, role: `${a.name} specialist`, description: a.description, instructions: `Implement the ${a.name} feature.` });
+  const skillResult = createSkill({ projectRoot: a.projectRoot, name: a.name, description: a.description, trigger: `when working on ${a.name}`, steps: [`Analyze requirements for ${a.name}`, "Plan implementation", "Implement with TDD", "Verify and review"] });
+  return ok({ ok: true, createdFiles: [agentResult.filePath, skillResult.filePath] });
 });
 server.registerTool("capability.scaffold_mcp_server", { description: "Scaffold MCP", inputSchema: { projectRoot: z.string(), name: z.string(), description: z.string() } }, async (a) => {
   const serverDir = path.join(a.projectRoot, "apps", a.name);
@@ -799,6 +795,13 @@ server.registerTool("projectRules.check", {
   } catch (e) { return ok({ error: String(e) }); }
 });
 
+const doctorReport = runDoctor(cwd);
+if (doctorReport.fixedCount > 0) {
+  for (const d of doctorReport.diagnoses.filter(d => d.autoFixed)) {
+    logger.info(`Doctor [${d.check}]: ${d.message}`);
+  }
+}
+
 await initPrisma();
 
 // Auto-run reminder check on startup
@@ -824,4 +827,4 @@ if (prismaReady) {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-logger.info("MCP Server running on stdio (" + backendType + " backend" + (prismaReady ? " + PostgreSQL + EpisodicMemory + Reminders(auto:15m)" : "") + ")");
+logger.info("MCP Server running on stdio (" + backendType + " backend" + (prismaReady ? " + PostgreSQL + EpisodicMemory + Reminders(auto:15m)" : "") + ") — " + toolNameRegistry.size + " tools + " + toolNameRegistry.size + " underscore aliases (" + (toolNameRegistry.size * 2) + " total)");
