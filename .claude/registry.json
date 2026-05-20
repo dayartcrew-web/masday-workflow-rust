@@ -48,6 +48,7 @@
       { "name": "masday-github-pr", "directory": ".claude/skills/masday-github-pr", "category": "operations", "description": "GitHub pull request creation and management." },
       { "name": "masday-memory-search", "directory": ".claude/skills/masday-memory-search", "category": "orchestration", "description": "Search and retrieve stored memories for context." },
       { "name": "masday-parallel-execution", "directory": ".claude/skills/masday-parallel-execution", "category": "workflow", "description": "Execute multiple independent tasks in parallel." },
+      { "name": "masday-parallel-research", "directory": ".claude/skills/masday-parallel-research", "category": "analysis", "description": "Dispatch parallel research agents and synthesize findings." },
       { "name": "masday-research", "directory": ".claude/skills/masday-research", "category": "analysis", "description": "Multi-source research: web search, documentation lookup, and codebase analysis." },
       { "name": "masday-sequential-thinking", "directory": ".claude/skills/masday-sequential-thinking", "category": "analysis", "description": "Structured multi-step reasoning for complex problems." },
       { "name": "masday-skill-builder", "directory": ".claude/skills/masday-skill-builder", "category": "scaffolding", "description": "Build and validate new skills with proper frontmatter and references." },
