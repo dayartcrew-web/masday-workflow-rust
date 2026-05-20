@@ -1,10 +1,12 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import type {
   CheckResult,
   RefactorReport,
   RefactorRule,
   RuleCategory,
+  LlmRuleSource,
+  LlmRulesScanResult,
 } from "./types.js";
 import { PROJECT_RULES } from "./rules.js";
 
@@ -211,4 +213,48 @@ export function formatReport(report: RefactorReport): string {
   }
 
   return lines.join("\n");
+}
+
+// ── Multi-LLM rule scanning ──
+
+const LLM_RULES_DIRS: readonly { platform: string; dir: string }[] = [
+  { platform: "claude", dir: ".claude/rules" },
+  { platform: "opencode", dir: ".opencode/rules" },
+  { platform: "codex", dir: ".codex/rules" },
+  { platform: "continue", dir: ".continue/rules" },
+  { platform: "gemini", dir: ".gemini/rules" },
+];
+
+function collectMdFiles(dir: string): string[] {
+  const files: string[] = [];
+  if (!existsSync(dir)) return files;
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile() && (entry.name.endsWith(".md") || entry.name.endsWith(".txt"))) {
+        files.push(entry.name);
+      }
+    }
+  } catch {
+    // permission denied
+  }
+  return files;
+}
+
+export function scanLlmRules(projectRoot: string): LlmRulesScanResult {
+  const sources: LlmRuleSource[] = [];
+  const platforms: string[] = [];
+  let totalRules = 0;
+
+  for (const { platform, dir } of LLM_RULES_DIRS) {
+    const fullDir = join(projectRoot, dir);
+    const ruleFiles = collectMdFiles(fullDir);
+    const exists = ruleFiles.length > 0;
+    if (exists) {
+      platforms.push(platform);
+      totalRules += ruleFiles.length;
+    }
+    sources.push({ platform, rulesDir: dir, exists, ruleFiles });
+  }
+
+  return { projectRoot, sources, totalRules, platforms };
 }

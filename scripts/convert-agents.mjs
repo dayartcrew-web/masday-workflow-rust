@@ -142,12 +142,8 @@ function convertClaudeAgentToOpencode(sourceContent, filename) {
   const hasTodoWrite = orderedTools.todowrite;
   delete orderedTools.todowrite;
 
-  let frontmatter = `---\ndescription: ${description}\nmode: subagent\ntemperature: ${temperature}\n`;
-  frontmatter += 'tools:\n';
-  for (const [key, val] of Object.entries(orderedTools)) {
-    frontmatter += `  ${key}: ${val}\n`;
-  }
-  frontmatter += `permissions:\n  edit:\n    "**/*.env*": deny\n    "**/*.key": deny\n    "**/*.secret": deny\n`;
+  const role = meta.role || description;
+  let frontmatter = `---\nname: ${opencodeName}\ndescription: ${description}\nrole: ${role}\n`;
   frontmatter += '---\n';
 
   let bodyContent = body.trim();

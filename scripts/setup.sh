@@ -87,6 +87,16 @@ for skill_dir in .claude/skills/masday-*/; do
   cp -r "$skill_dir" ".continue/skills/$(basename "$skill_dir")" 2>/dev/null || true
 done
 
+# Sync rules to all platforms
+echo "  Syncing .claude/rules/ to all platform directories..."
+for plat_dir in .agents .gemini .continue .opencode .codex; do
+  mkdir -p "$plat_dir/rules"
+  rm -rf "$plat_dir/rules"/*
+  if [ -d ".claude/rules" ]; then
+    cp -r .claude/rules/* "$plat_dir/rules/" 2>/dev/null || true
+  fi
+done
+
 # 6. Install masday-* skills to global ~/.claude/skills/
 echo "[6/9] Installing masday-* skills to global ${HOME_CLAUDE}/skills/..."
 mkdir -p "${HOME_CLAUDE}/skills"

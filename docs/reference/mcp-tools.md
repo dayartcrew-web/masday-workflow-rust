@@ -180,7 +180,7 @@ Stale/stuck workflow detection, reminder listing, and acknowledgment (Prisma Wor
 
 Real refactor rules validation from `@mcp-rebuild/project-rules`.
 
-- `projectRules.check` -- Validate project against refactor rules and conventions (37 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
+- `projectRules.check` -- Validate project against refactor rules and conventions (14 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
 
 ## Workflow lifecycle behavior
 

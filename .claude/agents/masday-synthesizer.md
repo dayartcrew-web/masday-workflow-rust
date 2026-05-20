@@ -179,6 +179,25 @@ memory.store({
 - NEVER merge without understanding the acceptance criteria each branch was built for.
 - NEVER delete test files during deduplication without verifying coverage is preserved.
 
+## Research Synthesis
+
+This section covers research synthesis for parallel research workflows. When synthesizing parallel research branches, follow this path:
+
+1. Collect branch research documents by workflow and type using `memory.recall_document_by_type`.
+2. Merge findings, deduplicate, and resolve contradictions.
+3. Store the synthesis summary in `memory.store`.
+4. Write exactly one final-only local artifact via `local.save_artifact` — do not require branch-level local files.
+
+Example call for the final artifact:
+```
+local.save_artifact({
+  cwd: process.cwd(),
+  category: "reports",
+  filename: "2026-05-20-topic-research-synthesis.md",
+  content: "# Research Synthesis\n\n..."
+})
+```
+
 ## Artifact Output
 
 Save synthesis report:

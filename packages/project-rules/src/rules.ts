@@ -359,6 +359,76 @@ export const PROJECT_RULES: RuleSet = {
       category: "GIT",
       severity: "MEDIUM",
     },
+
+    // ── MULTI_LLM ──
+    {
+      id: "MLLM-001",
+      title: "Claude rules directory exists",
+      description:
+        "Project must have .claude/rules/ directory with at least one rule file for Claude Code compatibility.",
+      category: "MULTI_LLM",
+      severity: "HIGH",
+      check: "file-exists",
+      targets: [".claude/rules"],
+      fixHint: "Create .claude/rules/ directory and add project-specific rule files.",
+    },
+    {
+      id: "MLLM-002",
+      title: "Opencode rules directory exists",
+      description:
+        "Project should have .opencode/rules/ for opencode compatibility.",
+      category: "MULTI_LLM",
+      severity: "MEDIUM",
+      check: "file-exists",
+      targets: [".opencode/rules"],
+      fixHint:
+        "Create .opencode/rules/ directory or sync from .claude/rules/ via setup script.",
+    },
+    {
+      id: "MLLM-003",
+      title: "Codex config directory exists",
+      description:
+        "Project should have .codex/ directory with config.toml for Codex CLI compatibility.",
+      category: "MULTI_LLM",
+      severity: "MEDIUM",
+      check: "file-exists",
+      targets: [".codex"],
+      fixHint:
+        "Create .codex/config.toml pointing agents/skills to .agents/ directories.",
+    },
+    {
+      id: "MLLM-004",
+      title: "Setup scripts sync rules to all platforms",
+      description:
+        "setup.sh and setup.ps1 must copy .claude/rules/ content to .opencode/rules/, .codex/rules/ etc.",
+      category: "MULTI_LLM",
+      severity: "HIGH",
+      check: "has-match",
+      targets: ["scripts/setup.sh", "scripts/setup.ps1"],
+      pattern: "rules",
+      fixHint:
+        "Add rules sync step to setup scripts: copy .claude/rules/* to each platform's rules directory.",
+    },
+    {
+      id: "MLLM-005",
+      title: "No platform-specific rule content divergence",
+      description:
+        "Rule files across .claude/rules/, .opencode/rules/, .codex/rules/ must be in sync after setup.",
+      category: "MULTI_LLM",
+      severity: "MEDIUM",
+      fixHint:
+        "Re-run setup script to sync rules, or check for manual edits in platform-specific directories.",
+    },
+    {
+      id: "MLLM-006",
+      title: "Rules scanned before plan creation",
+      description:
+        "Workflow engine must scan all LLM rule directories (.claude/rules, .opencode/rules, .codex/rules, etc.) before creating a plan to ensure compliance with all platform constraints.",
+      category: "MULTI_LLM",
+      severity: "HIGH",
+      fixHint:
+        "Call scanLlmRules(projectRoot) before workflow.createPlan and include results in plan metadata.",
+    },
   ],
 };
 

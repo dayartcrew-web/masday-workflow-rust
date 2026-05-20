@@ -4,7 +4,7 @@
 
 ## Overview
 
-Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 12 packages and a single unified MCP server app exposing 87 tools.
+Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 13 packages and a single unified MCP server app exposing 87 tools.
 
 ## System Architecture
 
@@ -104,7 +104,7 @@ masday-workflow-rebuild/
 ├── packages/
 │   ├── core/                  # Shared types, logger, EventBus, tracing, metrics
 │   ├── shared-utils/          # Logger, IDs, hash, env utilities
-│   ├── db/                    # Prisma schema (15 models + pgvector), client singleton
+│   ├── db/                    # Prisma schema (16 models + pgvector), client singleton
 │   ├── store/                 # StorageBackend, SQLite, JSON, Prisma adapters
 │   ├── llm/                   # Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker
 │   ├── memory/                # 4-layer memory (working, episodic, long-term, graph), scoring, BM25
@@ -113,6 +113,7 @@ masday-workflow-rebuild/
 │   ├── policy/                # PolicyValidator, WorkflowAuditor, drift detection
 │   ├── capability/            # Registry, Scaffolder, SystemHealth
 │   ├── code-skills/           # Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod)
+│   ├── project-rules/         # Refactor rules engine, 14 automated checks, checklist validator
 │   └── cli/                   # CLI entry point + setup templates
 ├── apps/
 │   └── agent-runner/          # Single unified MCP server (87 tools)
@@ -193,9 +194,9 @@ All status values are stored in **UPPERCASE** in PostgreSQL:
 
 DualWriteStore maps in-memory lowercase `TaskState` values to UPPERCASE for Prisma persistence.
 
-## 15 Prisma Tables
+## 16 Prisma Tables
 
-All 15 Prisma models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
+All 16 Prisma models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
 
 | Table             | Wired Via              | Trigger                                    |
 | ----------------- | ---------------------- | ------------------------------------------ |
@@ -214,6 +215,7 @@ All 15 Prisma models are actively populated by the MCP server. Each table is wir
 | GraphNode         | setGraphPrisma()       | GraphStore.addNode()                       |
 | GraphEdge         | setGraphPrisma()       | GraphStore.addEdge()                       |
 | WorkflowReminder  | setReminderPrisma()    | reminder.check                             |
+| LlmProviderConfig | Prisma direct          | LLM provider configuration storage         |
 
 ## Workflow States
 
@@ -311,8 +313,8 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   ┌──────────────────────────────────────────────────────────┐
   │                 LONG-TERM MEMORY                         │
   │                                                          │
-  │   Scoring: similarity*0.6 + recency*0.15                 │
-  │            + importance*0.15 + usage*0.1                 │
+  │   Scoring: similarity*0.6 + importance*0.2                │
+  │            + recency*0.1 + usage*0.1                      │
   │                                                          │
   │   Memory table (PostgreSQL via Prisma)                   │
   │   + BM25 + fastembed vector search (pgvector)            │
@@ -336,7 +338,7 @@ All engines inherit from `BaseWorkflowEngine` which provides shared logic for wo
 | EnhancedWorkflowEngine  | BaseWorkflowEngine      | Planner + DAGExecutor, retry logic, VERIFY + FIX  |
 | OrchestratingEngine     | EnhancedWorkflowEngine  | AgentCoordinator, SkillRouter, TaskQueue, agent dispatch |
 
-The MCP server uses `OrchestratingEngine` with `coordinator: true` and `enableSkillRouting: true`, making the full multi-agent dispatch path available at runtime.
+The MCP server uses `OrchestratingEngine` with `coordinator: false` and `enableSkillRouting: false`, making the full multi-agent dispatch path available at runtime.
 
 ### FIX Retry Logic
 

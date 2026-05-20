@@ -12,7 +12,7 @@ Merges the best of two projects:
 - **msd-mcp** -- Official MCP SDK, 5 domain servers, Prisma/PostgreSQL persistence
 - **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
 
-The result is a modular monorepo of 12 packages and a single unified MCP server exposing 87 tools over stdio to any MCP-compatible client.
+The result is a modular monorepo of 13 packages and a single unified MCP server exposing 87 tools over stdio to any MCP-compatible client.
 
 ---
 
@@ -90,8 +90,8 @@ This starts a PostgreSQL 16 instance with pgvector on port 5432. See [Configurat
                             |
   +----------------------------------------------------------+
   |                 LONG-TERM MEMORY                         |
-  |   Scoring: similarity*0.6 + recency*0.15                |
-  |            + importance*0.15 + usage*0.1                 |
+  |   Scoring: similarity*0.6 + importance*0.2               |
+  |            + recency*0.1 + usage*0.1                      |
   +----------------------------------------------------------+
                             |
   +----------------------------------------------------------+
@@ -115,13 +115,13 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 ---
 
-## Packages (12)
+## Packages (13)
 
 | Package | Scope | Description |
 |---------|-------|-------------|
 | `packages/core` | `@mcp-rebuild/core` | Shared types, logger, EventBus, tracing, metrics |
 | `packages/shared-utils` | `@mcp-rebuild/shared-utils` | Logger, IDs, hash, env utilities (from msd-mcp) |
-| `packages/db` | `@mcp-rebuild/db` | Prisma schema (15 models + pgvector), client singleton |
+| `packages/db` | `@mcp-rebuild/db` | Prisma schema (16 models + pgvector), client singleton |
 | `packages/store` | `@mcp-rebuild/store` | StorageBackend, SQLite, JSON, Prisma adapters |
 | `packages/llm` | `@mcp-rebuild/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
 | `packages/memory` | `@mcp-rebuild/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
@@ -130,6 +130,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | `packages/policy` | `@mcp-rebuild/policy` | PolicyValidator, WorkflowAuditor, drift detection |
 | `packages/capability` | `@mcp-rebuild/capability` | Registry, Scaffolder, SystemHealth |
 | `packages/code-skills` | `@mcp-rebuild/code-skills` | Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod) |
+| `packages/project-rules` | `@mcp-rebuild/project-rules` | Refactor rules engine, 14 automated checks, checklist validator |
 | `packages/cli` | `@mcp-rebuild/cli` | CLI entry point + setup templates |
 
 ---
@@ -160,7 +161,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
 | reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Prisma WorkflowReminder table) |
-| projectRules | 1 | Refactor rules validation (37 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
+| projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
 ### MCP Pattern
 
@@ -184,7 +185,7 @@ setGraphPrisma(prisma);
 
 ### Persistence
 
-All 15 Prisma tables are actively populated via DualWriteStore pattern:
+All 16 Prisma tables are actively populated via DualWriteStore pattern:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
@@ -203,6 +204,7 @@ All 15 Prisma tables are actively populated via DualWriteStore pattern:
 | GraphNode | setGraphPrisma() | GraphStore.addNode() |
 | GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
 | WorkflowReminder | setReminderPrisma() | reminder.check |
+| LlmProviderConfig | Prisma direct | LLM provider configuration storage |
 
 Status values are ALL UPPERCASE in PostgreSQL:
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
@@ -213,7 +215,7 @@ Status values are ALL UPPERCASE in PostgreSQL:
 ### Starting the Server
 
 ```bash
-# Unified MCP server (all 83 tools)
+# Unified MCP server (all 87 tools)
 npx tsx apps/agent-runner/src/runtime/mcp.ts
 ```
 
@@ -277,7 +279,7 @@ OLLAMA_BASE_URL="http://localhost:11434"
 
 ### Database
 
-The project uses Prisma with PostgreSQL and pgvector. The schema is at `packages/db/prisma/schema.prisma` and includes 15 models with pgvector support for semantic search.
+The project uses Prisma with PostgreSQL and pgvector. The schema is at `packages/db/prisma/schema.prisma` and includes 16 models with pgvector support for semantic search.
 
 ```bash
 # Start the database
@@ -339,6 +341,53 @@ pnpm db:migrate
 - **MCP SDK**: Resolves dots to underscores: `mcp__masday__workflow_getActive`
 - **Status**: ALL UPPERCASE in PostgreSQL
 - **Package scope**: All packages use `@mcp-rebuild/*`
+
+---
+
+## Credits
+
+This project is built on top of outstanding open source software.
+
+### Core Platform
+
+| Project | Description | GitHub |
+|---------|-------------|--------|
+| **Model Context Protocol** | MCP specification and SDK | [modelcontextprotocol](https://github.com/modelcontextprotocol) |
+| **TypeScript** | Type-safe JavaScript | [microsoft/TypeScript](https://github.com/microsoft/TypeScript) |
+| **Node.js** | JavaScript runtime | [nodejs/node](https://github.com/nodejs/node) |
+| **pnpm** | Fast, disk-efficient package manager | [pnpm/pnpm](https://github.com/pnpm/pnpm) |
+| **Turborepo** | High-performance monorepo build system | [vercel/turborepo](https://github.com/vercel/turborepo) |
+
+### Database & ORM
+
+| Project | Description | GitHub |
+|---------|-------------|--------|
+| **Prisma** | Next-generation ORM for Node.js and TypeScript | [prisma/prisma](https://github.com/prisma/prisma) |
+| **PostgreSQL** | Advanced open source database | [postgres/postgres](https://github.com/postgres/postgres) |
+| **pgvector** | Vector similarity search for PostgreSQL | [pgvector/pgvector](https://github.com/pgvector/pgvector) |
+| **better-sqlite3** | SQLite3 bindings for Node.js | [WiseLibs/better-sqlite3](https://github.com/WiseLibs/better-sqlite3) |
+
+### Validation & Logging
+
+| Project | Description | GitHub |
+|---------|-------------|--------|
+| **Zod** | TypeScript-first schema validation | [colinhacks/zod](https://github.com/colinhacks/zod) |
+| **Pino** | Low-overhead Node.js logger | [pinojs/pino](https://github.com/pinojs/pino) |
+| **EventEmitter3** | High-performance event emitter | [primus/eventemitter3](https://github.com/primus/eventemitter3) |
+
+### Testing & Tooling
+
+| Project | Description | GitHub |
+|---------|-------------|--------|
+| **Vitest** | Blazing fast Vite-native unit test framework | [vitest-dev/vitest](https://github.com/vitest-dev/vitest) |
+| **tsx** | TypeScript Execute for Node.js | [privatenumber/tsx](https://github.com/privatenumber/tsx) |
+| **fastembed** | Lightweight, fast embedding generation (npm: [fastembed](https://www.npmjs.com/package/fastembed)) | [Anush008/fastembed-js](https://github.com/Anush008/fastembed-js) |
+
+### Utilities
+
+| Project | Description | GitHub |
+|---------|-------------|--------|
+| **uuid** | RFC4122 UUID generation for JavaScript | [uuidjs/uuid](https://github.com/uuidjs/uuid) |
 
 ---
 
