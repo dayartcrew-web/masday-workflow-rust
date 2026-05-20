@@ -18,6 +18,7 @@
     "@mcp-rebuild/workflow-engine": "workspace:*",
     "@mcp-rebuild/project-rules": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "fastembed": "^1.14.4",
     "zod": "^3.23.8"
   },
   "devDependencies": {

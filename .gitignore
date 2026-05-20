@@ -13,3 +13,4 @@ coverage/
 .agents/
 .continue/
 .gemini/
+.opencode/agent/

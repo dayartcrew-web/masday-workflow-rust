@@ -10,6 +10,7 @@ pnpm build                # Build all packages
 pnpm test                 # Run all tests (446 tests, 38 files)
 pnpm test:watch           # Watch mode
 pnpm lint                 # Lint all packages
+pnpm db:pgvector          # Create pgvector columns/indexes (PostgreSQL only)
 cd apps/agent-runner && pnpm start:mcp    # Start MCP server
 cd apps/agent-runner && pnpm smoke:db     # SQLite smoke check
 ```

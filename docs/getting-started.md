@@ -16,6 +16,7 @@ The runtime requires PostgreSQL with pgvector for persistent state. DualWriteSto
 
 ```bash
 # Start PostgreSQL with pgvector
+
 docker-compose up -d
 
 # Generate Prisma client
@@ -23,6 +24,9 @@ pnpm db:generate
 
 # Push schema to database
 pnpm db:push
+
+# Set up pgvector columns and indexes (PostgreSQL only)
+pnpm db:pgvector
 ```
 
 ## What this starts

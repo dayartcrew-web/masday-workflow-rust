@@ -10,6 +10,14 @@ pnpm build
 cd apps/agent-runner && pnpm start:mcp
 ```
 
+## Embedding setup
+
+- `EMBEDDING_PROVIDER=fastembed` is the default and works without external services
+- `EMBEDDING_PROVIDER=ollama` uses a local Ollama server
+- `EMBEDDING_PROVIDER=openai` uses the OpenAI-compatible HTTP endpoint
+- Run `pnpm db:pgvector` on PostgreSQL/Supabase to create the `embedding` columns and indexes
+- SQLite local mode skips pgvector setup and continues with fallback search
+
 ## Runtime profiles
 
 By default, Masday runs in the **local** profile.
