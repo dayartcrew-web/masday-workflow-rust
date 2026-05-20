@@ -241,7 +241,15 @@ async function persistToPrisma(rec: MemRec, workflowId?: string, taskId?: string
 }
 
 server.registerTool("workflow.create", { description: "Create workflow", inputSchema: { name: z.string(), description: z.string().optional(), metadata: z.record(z.any()).optional() } }, async ({ name, description, metadata }) => { const w = engine.createWorkflow(name, description ?? "", metadata); workflowStore.save(w); try { graphStore.addNode({ type: "workflow", label: name, properties: { workflowId: w.id, description: description ?? "" } }); } catch { /* non-critical */ } return ok(w); });
-server.registerTool("workflow.execute", { description: "Execute workflow", inputSchema: { id: z.string() } }, async ({ id }) => { await engine.executeWorkflow(id); return ok(engine.getWorkflow(id)); });
+server.registerTool("workflow.execute", { description: "Execute workflow", inputSchema: { id: z.string() } }, async ({ id }) => {
+  const w = engine.getWorkflow(id);
+  if (!w) throw new Error("Not found: " + id);
+  if (w.state === "INIT") { w.state = "ANALYZE"; w.updatedAt = new Date(); }
+  if (w.state === "ANALYZE") { w.state = "PLAN"; w.updatedAt = new Date(); }
+  if (w.state === "PLAN" || w.state === "PAUSED" || w.state === "FIX") { w.state = "EXECUTE"; w.updatedAt = new Date(); }
+  workflowStore.save(w);
+  return ok(w);
+});
 server.registerTool("workflow.getStatus", { description: "Get workflow status", inputSchema: { id: z.string() } }, async ({ id }) => { const w = engine.getWorkflow(id); if (!w) throw new Error("Not found: " + id); return ok(w); });
 server.registerTool("workflow.get", { description: "Get workflow by ID", inputSchema: { id: z.string() } }, async ({ id }) => { const w = engine.getWorkflow(id); if (!w) throw new Error("Not found: " + id); return ok(w); });
 server.registerTool("workflow.list", { description: "List workflows", inputSchema: {} }, async () => ok(engine.listWorkflows()));
