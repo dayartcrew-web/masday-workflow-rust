@@ -20,7 +20,7 @@
     "@radix-ui/react-visually-hidden": "^1.2.4",
     "clsx": "^2.1.0",
     "d3": "^7.9.0",
-    "jose": "^5.6.0",
+    "jose": "^6.2.3",
     "lucide-react": "^0.400.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
