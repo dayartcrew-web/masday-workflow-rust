@@ -13,6 +13,8 @@
   "dependencies": {
     "@mcp-rebuild/core": "workspace:*",
     "@mcp-rebuild/db": "workspace:^",
+    "@mcp-rebuild/intelligence": "workspace:*",
+    "@mcp-rebuild/shared-utils": "workspace:*",
     "@mcp-rebuild/store": "workspace:*",
     "@mcp-rebuild/memory": "workspace:*",
     "@mcp-rebuild/workflow-engine": "workspace:*",

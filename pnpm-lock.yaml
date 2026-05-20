@@ -49,12 +49,18 @@ importers:
       '@mcp-rebuild/db':
         specifier: workspace:^
         version: link:../../packages/db
+      '@mcp-rebuild/intelligence':
+        specifier: workspace:*
+        version: link:../../packages/intelligence
       '@mcp-rebuild/memory':
         specifier: workspace:*
         version: link:../../packages/memory
       '@mcp-rebuild/project-rules':
         specifier: workspace:*
         version: link:../../packages/project-rules
+      '@mcp-rebuild/shared-utils':
+        specifier: workspace:*
+        version: link:../../packages/shared-utils
       '@mcp-rebuild/store':
         specifier: workspace:*
         version: link:../../packages/store
