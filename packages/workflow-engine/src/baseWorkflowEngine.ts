@@ -108,6 +108,13 @@ export abstract class BaseWorkflowEngine {
       throw new Error(`Workflow ${workflowId} not found`);
     }
 
+    // Dedup: return existing task if same name already exists in this workflow
+    const existing = workflow.tasks.find((t) => t.name === task.name);
+    if (existing) {
+      logger.info(`Task "${task.name}" already exists in workflow ${workflowId}, returning existing (${existing.id})`);
+      return existing;
+    }
+
     const newTask = this.taskManager.create(task);
     workflow.tasks.push(newTask);
     workflow.updatedAt = new Date();

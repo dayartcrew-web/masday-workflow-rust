@@ -145,6 +145,23 @@ workflow.createPlan({
 })
 ```
 
+### Step 4b: Create Tasks from Plan
+
+`workflow.createPlan` only stores plan metadata. You must explicitly create tasks:
+```
+for each task in the plan:
+  workflow.addTask({
+    workflow_id: "<workflow_id>",
+    name: "<task title>",
+    agent: "<ownerAgent>",
+    skill: "<appropriate skill>",
+    dependencies: ["<task_id of prerequisite>"],
+    input: { <task-specific parameters> }
+  })
+```
+
+**IMPORTANT**: `addTask` has built-in dedup — calling it twice with the same `name` returns the existing task instead of creating a duplicate.
+
 ### Step 5: Store Planning Decision
 
 Persist the planning rationale:
