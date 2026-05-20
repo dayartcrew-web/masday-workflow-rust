@@ -1,9 +1,6 @@
 import { execSync } from "child_process";
 import { existsSync, readdirSync, rmSync, readFileSync, renameSync } from "fs";
 import { join } from "path";
-import { createLogger } from "@mcp-rebuild/core";
-
-const logger = createLogger("Doctor");
 
 export interface DoctorDiagnosis {
   check: string;
@@ -61,11 +58,9 @@ export function runDoctor(projectRoot?: string): DoctorReport {
   };
 
   if (fixedCount > 0) {
-    logger.info({ fixedCount, failCount }, "Doctor auto-fixed issues");
+    console.log(`[Doctor] Auto-fixed ${fixedCount} issue(s), ${failCount} remaining`);
   } else if (failCount > 0) {
-    logger.warn({ failCount }, "Doctor found issues it could not auto-fix");
-  } else {
-    logger.info("Doctor: all checks passed");
+    console.warn(`[Doctor] Found ${failCount} issue(s) that could not be auto-fixed`);
   }
 
   return report;
