@@ -19,6 +19,8 @@ allowed-tools:
 
 Multi-source parallel research synthesized against codebase and task.
 
+If the task requires 2+ independent research questions with separate branch outputs, Use masday-parallel-research instead of this skill.
+
 ## Steps
 
 1. **Parse the research question**

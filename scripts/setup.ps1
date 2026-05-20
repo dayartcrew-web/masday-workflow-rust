@@ -62,6 +62,19 @@ foreach ($p in $platforms) {
     }
 }
 
+# Sync rules to all platforms
+Write-Host "  Syncing .claude/rules/ to all platform directories..." -ForegroundColor DarkGray
+$rulesSource = Join-Path $RootDir ".claude\rules"
+$platDirs = @(".agents", ".gemini", ".continue", ".opencode", ".codex")
+foreach ($platDir in $platDirs) {
+    $destRules = Join-Path $RootDir "$platDir\rules"
+    New-Item -ItemType Directory -Force -Path $destRules | Out-Null
+    if (Test-Path $destRules) { Remove-Item -Path "$destRules\*" -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $rulesSource) {
+        Copy-Item -Path "$rulesSource\*" -Destination $destRules -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # 6. Install masday-* skills to global ~/.claude/skills/
 Write-Host "[6/9] Installing masday-* skills to global $HomeClaude\skills\..." -ForegroundColor Yellow
 

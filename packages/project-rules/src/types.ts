@@ -20,6 +20,7 @@ export const RuleCategory = z.enum([
   "EXPORTS",
   "PACKAGE_JSON",
   "GIT",
+  "MULTI_LLM",
 ]);
 export type RuleCategory = z.infer<typeof RuleCategory>;
 
@@ -91,3 +92,21 @@ export const RefactorChecklist = z.object({
   items: z.array(RefactorChecklistItem),
 });
 export type RefactorChecklist = z.infer<typeof RefactorChecklist>;
+
+// --- Multi-LLM rule scanning ---
+
+export const LlmRuleSource = z.object({
+  platform: z.string(),
+  rulesDir: z.string(),
+  exists: z.boolean(),
+  ruleFiles: z.array(z.string()),
+});
+export type LlmRuleSource = z.infer<typeof LlmRuleSource>;
+
+export const LlmRulesScanResult = z.object({
+  projectRoot: z.string(),
+  sources: z.array(LlmRuleSource),
+  totalRules: z.number(),
+  platforms: z.array(z.string()),
+});
+export type LlmRulesScanResult = z.infer<typeof LlmRulesScanResult>;

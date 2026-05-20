@@ -22,7 +22,7 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
       v
  +-------------+                +------------------+
  |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (83 tools)       |
+ | (Dashboard/  |   stdio       |  (87 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                          v
@@ -89,7 +89,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 |---------|-------------|
 | `packages/core` | Shared types, logger, EventBus, tracing, metrics |
 | `packages/shared-utils` | Logger, IDs, hash, env (from msd-mcp) |
-| `packages/db` | Prisma schema (15 models + pgvector), client singleton |
+| `packages/db` | Prisma schema (16 models + pgvector), client singleton |
 | `packages/store` | StorageBackend, SQLite, JSON, Prisma adapters |
 | `packages/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
 | `packages/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
@@ -98,7 +98,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | `packages/policy` | PolicyValidator, WorkflowAuditor, drift detection |
 | `packages/capability` | Registry, Scaffolder, SystemHealth |
 | `packages/code-skills` | Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod) |
-| `packages/project-rules` | Refactor rules engine, 37 automated checks, checklist validator |
+| `packages/project-rules` | Refactor rules engine, 14 automated checks, checklist validator |
 | `packages/cli` | CLI entry point + setup templates |
 
 ## MCP Server — `apps/agent-runner` (87 tools)
@@ -123,9 +123,9 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
 | reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session.init_context returns reminders. Prisma WorkflowReminder table |
-| projectRules | 1 | Refactor rules validation (37 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
+| projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
-**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 15 Prisma models are actively populated:
+**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 16 Prisma models are actively populated:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
@@ -144,6 +144,7 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | GraphNode | GraphStore.addNode() | memory.store, memory.store_research, workflow.create, workflow.addTask |
 | GraphEdge | GraphStore.addEdge() + autoLink() | Jaccard similarity (threshold 0.3) auto-edges + workflow→task contains edges |
 | WorkflowReminder | checkReminders() | Startup + 15min interval, deduplicated, covers EXECUTE + FIX states |
+| LlmProviderConfig | Prisma direct | LLM provider configuration storage |
 
 **Status Conventions (ALL UPPERCASE in PostgreSQL):**
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED

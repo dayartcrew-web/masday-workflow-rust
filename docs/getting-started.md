@@ -7,7 +7,7 @@ Masday Workflow is designed to run **locally first**. Docker is an optional prof
 ```bash
 pnpm install
 pnpm build
-cd apps/agent-runner && pnpm start:mcp
+cd apps/agent-runner && npx tsx src/runtime/mcp.ts
 ```
 
 ### Database Setup
@@ -34,7 +34,7 @@ pnpm db:pgvector
 - The local MCP stdio server from `apps/agent-runner`
 - **87 MCP tools** across 17 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests, reminder, projectRules)
 - Workflow orchestration via OrchestratingEngine with full agent dispatch
-- **PostgreSQL-backed runtime state via DualWriteStore** -- all 15 Prisma tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder)
+- **PostgreSQL-backed runtime state via DualWriteStore** -- all 16 Prisma tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder, LlmProviderConfig)
 - DualWrite pattern: PostgreSQL primary + JSON cache fallback for resilience
 - Project-local `.masday/` artifacts for cached research, plans, and notes
 - 4 default agent workers: backend, frontend, qa, general-purpose

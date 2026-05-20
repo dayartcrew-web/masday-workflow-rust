@@ -27,9 +27,9 @@ The DualWriteStore manages operational state with PostgreSQL as primary and JSON
 | DualWriteTaskResultStore   | Task status, execution metadata (PostgreSQL + JSON)     |
 | MemoryStore                | Memories (Prisma first, JSON fallback)                  |
 
-## 15 Prisma tables
+## 16 Prisma tables
 
-All 15 Prisma models are actively populated. Each table is wired to the MCP tools that trigger writes.
+All 16 Prisma models are actively populated. Each table is wired to the MCP tools that trigger writes.
 
 | Table             | Wired Via            | Trigger                                              |
 | ----------------- | -------------------- | ---------------------------------------------------- |
@@ -48,6 +48,7 @@ All 15 Prisma models are actively populated. Each table is wired to the MCP tool
 | GraphNode         | setGraphPrisma()     | GraphStore.addNode()                                 |
 | GraphEdge         | setGraphPrisma()     | GraphStore.addEdge()                                 |
 | WorkflowReminder  | setReminderPrisma()  | reminder.check                                       |
+| LlmProviderConfig | Prisma direct        | LLM provider configuration storage                   |
 
 ## Status conventions
 
@@ -75,7 +76,7 @@ BaseWorkflowEngine
 └── OrchestratingEngine     # Full: + AgentCoordinator, SkillRouter, TaskQueue
 ```
 
-The MCP server instantiates `OrchestratingEngine` with `coordinator: true` and `enableSkillRouting: true`.
+The MCP server instantiates `OrchestratingEngine` with `coordinator: false` and `enableSkillRouting: false`.
 
 ## Workflow state transitions
 

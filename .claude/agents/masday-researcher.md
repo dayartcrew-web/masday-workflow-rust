@@ -9,8 +9,8 @@ tools:
   - WebSearch
   - mcp__context7__resolve-library-id
   - mcp__context7__query-docs
-  - mcp__plugin_ecc_exa__web_search_exa
-  - mcp__plugin_ecc_exa__web_fetch_exa
+  - mcp__web-search-prime__web_search_prime
+  - mcp__web_reader__webReader
   - mcp__web_reader__webReader
   - workflow.getActive
   - workflow.getCurrentTask
@@ -68,8 +68,8 @@ memory.recall_recent({ limit: 5 })
 Break the research into independent sub-queries. For each, determine:
 - Is this answerable from the codebase? Use `semantic-search.code_search`
 - Is this answerable from library/framework docs? Use Context7 (`mcp__context7__resolve-library-id` + `mcp__context7__query-docs`)
-- Is this answerable from web/docs? Use `WebSearch` or `mcp__plugin_ecc_exa__web_search_exa`
-- Need full page content? Use `mcp__plugin_ecc_exa__web_fetch_exa` or `mcp__web_reader__webReader`
+- Is this answerable from web/docs? Use `WebSearch` or `mcp__web-search-prime__web_search_prime`
+- Need full page content? Use `mcp__web_reader__webReader`
 - Is there prior research? Use `memory.search`
 
 ### Phase 2: Parallel Research
@@ -101,12 +101,12 @@ Repeat for each relevant library (e.g., zod, prisma, express, etc.)
 **Web research** -- find best practices and broader context:
 ```
 WebSearch({ query: "TypeScript JWT authentication best practices 2025" })
-mcp__plugin_ecc_exa__web_search_exa({ query: "jose library JWT sign verify TypeScript production example", numResults: 5 })
+mcp__web-search-prime__web_search_prime({ search_query: "jose library JWT sign verify TypeScript production example" })
 ```
 
 **Deep page reading** -- when search snippets are insufficient:
 ```
-mcp__plugin_ecc_exa__web_fetch_exa({ urls: ["https://example.com/jose-docs"], maxCharacters: 5000 })
+mcp__web_reader__webReader({ url: "https://example.com/jose-docs", return_format: "markdown" })
 mcp__web_reader__webReader({ url: "https://example.com/deep-dive-article", return_format: "markdown" })
 ```
 
@@ -214,6 +214,27 @@ workflow.saveProgress({
 - NEVER proceed without checking `memory.search` for prior research on the same topic.
 - NEVER produce research output without concrete, actionable recommendations.
 - NEVER recommend patterns that conflict with this project's conventions (ESM, Zod, no `any`, immutable patterns).
+
+## Branch Output Contract
+
+When dispatched as a branch worker by `masday-parallel-research`, you must:
+
+- Store branch output through `memory.store_research` only.
+- Keep the result scoped to your assigned branch research question.
+- Do not write local artifacts — the synthesizer writes the final report.
+- Keep content synthesis-friendly and non-duplicative across branches.
+
+Include this structured payload in the stored content:
+
+```
+branch_key: stable branch identifier
+branch_scope: the exact research question this branch answered
+summary: one-paragraph answer
+findings: bullet list of concrete findings
+sources: URLs and codebase references
+confidence: high | medium | low
+gaps: unresolved questions for synthesis
+```
 
 ## Artifact Output
 
