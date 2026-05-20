@@ -2,8 +2,9 @@
 name: masday-create-agent
 description: >
   Create a new Masday agent definition from a description. Designs the agent's role,
-  preferred tools, task routing, and constraints. Registers and saves to all locations.
-  Use when the user says "create agent", "new agent", "add agent", or "agent specialization".
+  preferred tools, task routing, and constraints. Uses shared-utils createAgent() for
+  validation and file generation. Use when the user says "create agent", "new agent",
+  "add agent", or "agent specialization".
 allowed-tools:
   - capability.create_agent
   - capability.list_agents
@@ -16,6 +17,16 @@ allowed-tools:
 # Masday Create Agent
 
 Create a new Masday Workflow agent.
+
+## Validation Rules
+
+Agent names must:
+- Be kebab-case (e.g., `security-reviewer`, `api-designer`)
+- Start with a letter
+- Be 2-64 characters
+- Match regex: `^[a-z][a-z0-9-]{1,63}$`
+
+Validation is enforced by `createAgent()` in `@mcp-rebuild/shared-utils`.
 
 ## Steps
 
@@ -31,16 +42,23 @@ Create a new Masday Workflow agent.
    - Name: kebab-case (e.g., `security-reviewer`, `api-designer`)
    - Role: concise description of specialization
    - Preferred skills: which skills this agent should use
-   - Preferred tools: which MCP tools this agent needs
+   - Preferred tools: which MCP tools this agent needs (optional, added to YAML frontmatter)
+   - Model: preferred LLM model (optional, e.g., `sonnet`, `opus`)
    - Task routing rules: what types of tasks to assign to this agent
    - Constraints: what the agent must never do
 
 4. **Register the agent**
    - Call `capability.create_agent` with:
-     - `name`: the agent name
+     - `projectRoot`: the project root directory
+     - `name`: the agent name (validated by shared-utils)
      - `role`: the agent's role description
      - `description`: what this agent does
      - `instructions`: detailed instructions including constraints and workflow
+   - The tool internally calls `createAgent()` from shared-utils which:
+     - Validates the name against kebab-case rules
+     - Creates `.claude/agents/` directory if needed
+     - Generates YAML frontmatter with name, role, description, optional model and tools
+     - Writes the markdown file
 
 5. **Save to project location**
    - Call `filesystem.write` to save the agent definition:
@@ -48,6 +66,7 @@ Create a new Masday Workflow agent.
 
 6. **Or use scaffold for full feature**
    - Call `capability.scaffold_feature` if the agent needs an accompanying skill and command
+   - scaffold_feature internally calls both `createAgent()` and `createSkill()` from shared-utils
 
 7. **Report**
    ```
