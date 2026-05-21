@@ -14,23 +14,23 @@ tools:
   - Bash
   - Grep
   - Glob
-  - cicd.pipeline_status
-  - cicd.pipeline_trigger
-  - cicd.runs_view
-  - github.pr_list
-  - github.issue_list
-  - github.pr_create
-  - git.status
-  - git.diff
-  - git.commit
-  - filesystem.read
-  - filesystem.write
-  - filesystem.list
-  - memory.store
-  - memory.recall_recent
-  - memory.search
-  - workflow.saveProgress
-  - semantic-search.code_search
+  - cicd_pipeline_status
+  - cicd_pipeline_trigger
+  - cicd_runs_view
+  - github_pr_list
+  - github_issue_list
+  - github_pr_create
+  - git_status
+  - git_diff
+  - git_commit
+  - filesystem_read
+  - filesystem_write
+  - filesystem_list
+  - memory_store
+  - memory_recall_recent
+  - memory_search
+  - workflow_saveProgress
+  - semantic-search_code_search
 ---
 
 # CI/CD Pipeline Specialist
@@ -53,13 +53,13 @@ Glob({ pattern: ".github/workflows/*.yaml" })
 Read({ file_path: ".github/workflows/ci.yml" })
 
 # Check recent pipeline status
-cicd.pipeline_status({ branch: "main", limit: 10 })
+cicd_pipeline_status({ branch: "main", limit: 10 })
 
 # Check CI status on open PRs
-github.pr_list({ state: "open", limit: 10 })
+github_pr_list({ state: "open", limit: 10 })
 
 # If a run failed, get detailed logs
-cicd.runs_view({ runId: 12345 })
+cicd_runs_view({ runId: 12345 })
 ```
 
 Assessment checklist:
@@ -116,7 +116,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github_ref }}
   cancel-in-progress: true
 
 jobs:
@@ -200,7 +200,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ${{ github.repository }}
+  IMAGE: ${{ github_repository }}
 
 jobs:
   build:
@@ -214,7 +214,7 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ github_actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v5
         with:
@@ -222,7 +222,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 ```
@@ -434,13 +434,13 @@ Bash({ command: "python -c \"import yaml; yaml.safe_load(open('.github/workflows
 Bash({ command: "act -j lint -W .github/workflows/ci.yml" })
 
 # Trigger manually on a test branch
-cicd.pipeline_trigger({ workflow: "ci", ref: "feature/test-ci" })
+cicd_pipeline_trigger({ workflow: "ci", ref: "feature/test-ci" })
 
 # Monitor the run
-cicd.pipeline_status({ branch: "feature/test-ci" })
+cicd_pipeline_status({ branch: "feature/test-ci" })
 
 # If it fails, get step-level logs
-cicd.runs_view({ runId: <run_id> })
+cicd_runs_view({ runId: <run_id> })
 ```
 
 ### Phase 5: Optimize Performance
@@ -489,15 +489,15 @@ on:
 ### Phase 6: Save Progress
 
 ```
-workflow.saveProgress({
+workflow_saveProgress({
   workflow_id: "<id>",
   task_id: "<task_id>",
   agent_name: "masday-ci-cd-pipeline",
   progress_note: "Created CI workflow with lint, typecheck, test, integration jobs",
-  evidence: [".github/workflows/ci.yml", ".github/workflows/docker.yml"]
+  evidence: [".github/workflows/ci.yml", ".github/workflows/docker_yml"]
 })
 
-memory.store({
+memory_store({
   workflow_id: "<id>",
   task_id: "<task_id>",
   memory_type: "artifact",
@@ -542,7 +542,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -551,7 +551,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -562,25 +562,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

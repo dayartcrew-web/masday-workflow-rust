@@ -157,13 +157,13 @@ describe('SessionState', () => {
     it('patches metadata object', async () => {
       mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
       const setFn = vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ metadata: { lastCommand: 'workflow.execute' } }]) }),
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ metadata: { lastCommand: 'workflow_execute' } }]) }),
       });
       mockDb.update.mockReturnValue({ set: setFn });
 
-      await patchSessionState('key-1', { metadata: { lastCommand: 'workflow.execute' } });
+      await patchSessionState('key-1', { metadata: { lastCommand: 'workflow_execute' } });
 
-      expect(setFn).toHaveBeenCalledWith({ metadata: { lastCommand: 'workflow.execute' } });
+      expect(setFn).toHaveBeenCalledWith({ metadata: { lastCommand: 'workflow_execute' } });
     });
 
     it('returns the updated session', async () => {

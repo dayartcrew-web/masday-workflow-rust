@@ -12,9 +12,9 @@ tools:
   - Bash
   - Grep
   - Glob
-  - filesystem.read
-  - filesystem.write
-  - semantic-search.code_search
+  - filesystem_read
+  - filesystem_write
+  - semantic-search_code_search
 ---
 
 # Codebase Intelligence Updater
@@ -34,9 +34,9 @@ reference material that enables other agents to work effectively.
 
 ## Preferred Tools
 
-- `filesystem.read` -- read source files for analysis
-- `filesystem.write` -- write structured intel files to `.masday/intel/`
-- `semantic-search.code_search` -- find code patterns and relationships by semantic query
+- `filesystem_read` -- read source files for analysis
+- `filesystem_write` -- write structured intel files to `.masday/intel/`
+- `semantic-search_code_search` -- find code patterns and relationships by semantic query
 - `Glob` -- find all files matching a pattern across the monorepo
 - `Grep` -- trace imports, exports, and dependency chains
 - `Read` -- deep-read key files for detailed understanding
@@ -106,7 +106,7 @@ reference material that enables other agents to work effectively.
    - Kind (function / class / type / interface / const)
    - Signature (parameters and return type for functions)
    - Which other packages import it (use Grep to find consumers)
-3. Use `semantic-search.code_search` to find undocumented public APIs
+3. Use `semantic-search_code_search` to find undocumented public APIs
    (functions exported from non-index files that are imported by other packages)
 4. Write to `.masday/intel/api-surfaces.md`:
    ```markdown
@@ -158,7 +158,7 @@ reference material that enables other agents to work effectively.
 
 ### Phase 5: Architecture Patterns
 
-1. Use `semantic-search.code_search` and `Grep` to find recurring patterns:
+1. Use `semantic-search_code_search` and `Grep` to find recurring patterns:
    - EventBus usage: emit/on patterns
    - Zod validation: schema definitions
    - Error handling: try/catch patterns, error classes
@@ -221,7 +221,7 @@ reference material that enables other agents to work effectively.
 - **`.masday/intel/` does not exist**: Create it with `mkdir -p .masday/intel`. This is expected for new projects.
 - **Existing intel file is recent (within 1 hour)**: Skip unless explicitly asked to refresh. Report the existing timestamp.
 - **Package has no `index.ts`**: Check `package.json` `"main"` field for the actual entry point. Document the non-standard entry.
-- **`semantic-search.code_search` returns no results**: The search index may not be built. Fall back to `Grep` for text-based discovery and note in the intel file that search was limited.
+- **`semantic-search_code_search` returns no results**: The search index may not be built. Fall back to `Grep` for text-based discovery and note in the intel file that search was limited.
 - **Circular dependency detected**: Flag as CRITICAL in the file graph. Include both package names and the specific import paths causing the cycle.
 
 ## Output Standards
@@ -263,7 +263,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -272,7 +272,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -283,25 +283,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

@@ -19,10 +19,10 @@ This project uses **masday-workflow-rebuild** for workflow management.
 
 ## Workflow Pattern
 
-1. `workflow.getActive` → `workflow.getPlan` → `workflow.getCurrentTask`
-2. `semantic-search.search_hybrid_context_pack` to build task context
+1. `workflow_getActive` → `workflow_getPlan` → `workflow_getCurrentTask`
+2. `semantic-search_search_hybrid_context_pack` to build task context
 3. Execute / Research / Review
-4. `workflow.saveProgress` → `review.submit` → `workflow.completeTask`
+4. `workflow_saveProgress` → `review_submit` → `workflow_completeTask`
 
 ## Key MCP Namespace
 
@@ -35,9 +35,9 @@ All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Drizzl
 - Memory tools use hybrid mode: Drizzle first, JSON cache fallback
 - Review, session, policy tools read/write directly to PostgreSQL tables
 - Shell tools (git, npm, docker, cicd, github, tests) use real `execSync` calls
-- **TaskProgressLog** populated via `saveProgressDb()` on `workflow.saveProgress`
-- **RetrievalLog** populated via `logRetrieval()` on `memory.search`, `semantic-search.code_search`, `search_hybrid_context_pack`
-- **ContextDocument** populated via `drizzle().insert(contextDocument)` on `memory.store_research`
+- **TaskProgressLog** populated via `saveProgressDb()` on `workflow_saveProgress`
+- **RetrievalLog** populated via `logRetrieval()` on `memory_search`, `semantic-search_code_search`, `search_hybrid_context_pack`
+- **ContextDocument** populated via `drizzle().insert(contextDocument)` on `memory_store_research`
 - **TokenUsage** populated via `trackTokens()` on key tool calls (saveProgress, store_research)
 - **EpisodicMemory** populated via `setEpisodicDrizzle()` in `EpisodicMemory.add()`
 - **GraphNode/GraphEdge** populated via `setGraphDrizzle()` in `GraphStore.addNode()/addEdge()`
@@ -72,10 +72,10 @@ All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Drizzl
 
 ## Naming Convention
 
-- Tool names use **camelCase** dot-namespaced format: `workflow.getActive`, `memory.store`
+- Tool names use **camelCase** dot-namespaced format: `workflow_getActive`, `memory_store`
 - MCP SDK resolves: dots → underscores → `mcp__masday__workflow_getActive`
-- In .md docs, always use the logical name: `workflow.getActive`
-- **NEVER** use snake_case: `workflow.get_active` is WRONG
+- In .md docs, always use the logical name: `workflow_getActive`
+- **NEVER** use snake_case: `workflow_get_active` is WRONG
 
 ## Package Scope
 
@@ -116,10 +116,10 @@ For ALL tasks, use msd-mcp commands and MCP tools.
 
 ## Workflow Pattern
 
-1. `workflow.get_active` → `workflow.get_plan` → `workflow.get_current_task`
+1. `workflow_get_active` → `workflow_get_plan` → `workflow_get_current_task`
 2. `search.hybrid_context_pack` to build task context
 3. Execute / Research / Review
-4. `workflow.save_progress` → `review.submit` → `workflow.complete_task`
+4. `workflow_save_progress` → `review_submit` → `workflow_complete_task`
 
 ## Key MCP Namespaces
 

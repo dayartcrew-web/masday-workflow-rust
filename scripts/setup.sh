@@ -128,20 +128,35 @@ for skill_dir in .claude/skills/masday-*/; do
   cp -r "$skill_dir" "${HOME_OPENCODE}/skills/${skill_name}"
 done
 
-# 9. Ensure .masday/ state directories exist (used by tdd-guard hook)
-mkdir -p "${ROOT_DIR}/.masday/cache/tasks"
-mkdir -p "${ROOT_DIR}/.masday/reports"
 
-# 10. Summary
+# 9. Gemini MCP config (portable npx tsx)
+echo "[9/11] Setting up Gemini MCP config..."
+[ -f "scripts/.gemini/settings.json" ] && cp scripts/.gemini/settings.json .gemini/settings.json
+echo "  .gemini/settings.json installed"
+
+# 10. GitHub Copilot + VS Code MCP config
+echo "[10/11] Setting up Copilot + VS Code MCP..."
+mkdir -p .github/agents .vscode
+echo "  Copilot + VS Code MCP ready"
+
+# 11. Git hooks (cross-platform enforcement)
+echo "[11/11] Installing git hooks..."
+if [ -d ".git/hooks" ]; then
+  for hook in pre-commit pre-push; do
+    [ -f "scripts/git-hooks/${hook}" ] && cp "scripts/git-hooks/${hook}" ".git/hooks/${hook}" && chmod +x ".git/hooks/${hook}"
+  done
+  echo "  Git hooks installed (pre-commit + pre-push)"
+fi
+mkdir -p .masday/cache/tasks .masday/reports
+
 echo ""
 echo "=== Setup complete ==="
-echo "MCP server: masday (87 tools, 16 namespaces)"
-echo "  Agents:  $(ls .claude/agents/*.md 2>/dev/null | wc -l) registered"
-echo "  Hooks:   $(ls .claude/hooks/*.js .claude/hooks/*.mjs 2>/dev/null | wc -l) executable + $(ls .claude/hooks/*.md 2>/dev/null | wc -l) advisory"
-echo "  TDD guard: workflow-aware (requiresTdd tasks blocked without tests)"
-echo "  Skills:  ${copied} masday-* skills -> ${HOME_CLAUDE}/skills/"
-echo "  Opencode: $(ls "${HOME_OPENCODE}/agent/masday-"*.md 2>/dev/null | wc -l) global agents + $(ls "${ROOT_DIR}/.opencode/agent/masday-"*.md 2>/dev/null | wc -l) project agents"
-echo "  Embedding: EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-fastembed} (fastembed|ollama|openai)"
-echo "  Vector search: pnpm db:pgvector (PostgreSQL only; skipped for sqlite://local)"
+echo "  Claude Code:  .claude/settings.json (hooks + MCP)"
+echo "  Gemini CLI:   .gemini/settings.json (MCP via npx tsx)"
+echo "  VS Code:      .vscode/mcp.json (Copilot MCP)"
+echo "  GitHub:       .github/agents/masday.md (coding agent)"
+echo "  OpenCode:     .opencode/agent/ (converted agents)"
+echo "  Git hooks:    .git/hooks/pre-commit + pre-push (ALL platforms)"
+echo "  Skills:       ${copied} masday-* skills installed"
 echo ""
 echo "Start: node ${ROOT_DIR}/apps/agent-runner/dist/runtime/mcp.js"

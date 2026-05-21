@@ -6,20 +6,20 @@ description: >
   Use when the user says "plan workflow", "create plan", "task breakdown",
   "design workflow", or "plan without running".
 allowed-tools:
-  - workflow.get
-  - workflow.create
-  - workflow.createPlan
-  - workflow.addTask
-  - workflow.listTasks
-  - capability.system_readiness
-  - capability.match_agent
-  - capability.list_agents
-  - semantic-search.code_search
-  - semantic-search.search_hybrid_context_pack
-  - memory.search
-  - memory.recall_documents
-  - memory.recall_recent
-  - memory.store
+  - workflow_get
+  - workflow_create
+  - workflow_createPlan
+  - workflow_addTask
+  - workflow_listTasks
+  - capability_system_readiness
+  - capability_match_agent
+  - capability_list_agents
+  - semantic-search_code_search
+  - semantic-search_search_hybrid_context_pack
+  - memory_search
+  - memory_recall_documents
+  - memory_recall_recent
+  - memory_store
 ---
 
 # Masday Workflow Plan
@@ -29,42 +29,42 @@ Generate a task plan for a Masday workflow. No execution -- planning only.
 ## Steps
 
 1. **Get or create workflow**
-   - If the user provides a workflow ID: call `workflow.get` to verify it exists
-   - Otherwise: call `workflow.create` with a descriptive name and metadata from the prompt
+   - If the user provides a workflow ID: call `workflow_get` to verify it exists
+   - Otherwise: call `workflow_create` with a descriptive name and metadata from the prompt
 
 2. **Check system readiness**
-   - Call `capability.system_readiness` to confirm database, schema, and dependencies are healthy
+   - Call `capability_system_readiness` to confirm database, schema, and dependencies are healthy
    - If readiness fails, report the issue and stop
 
 3. **Gather context**
-   - Call `memory.search` with keywords from the user's request to find related past workflows
-   - Call `memory.recall_documents` to load any stored research or decisions
-   - Call `memory.recall_recent` to check for context from the current session
+   - Call `memory_search` with keywords from the user's request to find related past workflows
+   - Call `memory_recall_documents` to load any stored research or decisions
+   - Call `memory_recall_recent` to check for context from the current session
 
 4. **Analyze codebase**
-   - Call `semantic-search.code_search` with queries matching the task domain
-   - Call `semantic-search.search_hybrid_context_pack` with the workflow ID to build a full context pack
+   - Call `semantic-search_code_search` with queries matching the task domain
+   - Call `semantic-search_search_hybrid_context_pack` with the workflow ID to build a full context pack
    - Identify affected packages, files, and dependencies
 
 5. **Match agents to task types**
-   - Call `capability.list_agents` to see available agents
-   - For each identified task type, call `capability.match_agent` with a task description
+   - Call `capability_list_agents` to see available agents
+   - For each identified task type, call `capability_match_agent` with a task description
    - Record the best-matching agent for each task
 
 6. **Create the plan**
-   - Call `workflow.createPlan` with:
+   - Call `workflow_createPlan` with:
      - `workflow_id`: the workflow ID
      - `plan`: `{ tasks: [{ title, agent, skill, dependencies, input }] }`
    - Include dependencies between tasks where applicable
 
 7. **Add individual tasks**
-   - For each task in the plan, call `workflow.addTask` with:
+   - For each task in the plan, call `workflow_addTask` with:
      - `name`, `agent` (matched agent), `skill` (appropriate skill), `input` (parameters)
      - `dependencies` array referencing prerequisite task IDs
 
 8. **Store planning artifacts**
-   - Call `memory.store` with `memory_type: "artifact"` to save the plan summary
-   - Call `memory.store` with `memory_type: "decision"` to record key design choices
+   - Call `memory_store` with `memory_type: "artifact"` to save the plan summary
+   - Call `memory_store` with `memory_type: "decision"` to record key design choices
 
 9. **Present the plan**
    - Display the task list with agents, dependencies, and acceptance criteria
@@ -83,7 +83,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -92,7 +92,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -103,25 +103,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

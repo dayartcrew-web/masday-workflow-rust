@@ -31,7 +31,7 @@ msd-mcp provided workflow orchestration, policy enforcement, capability manageme
 1. **Import paths changed**: All `@msd-mcp/*` imports now use `@masday-workflow-reborn/*`
 2. **StorageBackend required**: Session and review managers require a `StorageBackend` parameter
 3. **Event structure**: EventBus now wraps data in `Event` objects with `{ type, timestamp, data }`
-4. **Tool names**: MCP tools are namespaced (e.g., `policy.validateExecution` not `validate_execution`)
+4. **Tool names**: MCP tools are namespaced (e.g., `policy_validateExecution` not `validate_execution`)
 
 ## From agentic-llm-mem
 
@@ -108,7 +108,7 @@ These packages are entirely new:
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `MASDAY_DB_PATH` | SQLite database path | `./data/masday-workflow.db` |
+| `MASDAY_DB_PATH` | SQLite database path | `./data/masday-workflow_db` |
 | `MASDAY_RUNTIME_PROFILE` | Runtime profile (local/docker/remote) | `local` |
 | `LLM_MODEL_CHEAP` | Cheap tier model name | `GLM-4.5-Air` |
 | `LLM_MODEL_MEDIUM` | Medium tier model name | `glm-4.7` |

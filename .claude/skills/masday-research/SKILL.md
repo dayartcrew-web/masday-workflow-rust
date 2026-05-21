@@ -7,12 +7,12 @@ description: >
   or "look into".
 allowed-tools:
   - WebSearch
-  - semantic-search.code_search
-  - semantic-search.search_hybrid_context_pack
-  - memory.store_research
-  - memory.search
-  - memory.recall_documents
-  - memory.recall_recent
+  - semantic-search_code_search
+  - semantic-search_search_hybrid_context_pack
+  - memory_store_research
+  - memory_search
+  - memory_recall_documents
+  - memory_recall_recent
 ---
 
 # Masday Research
@@ -29,9 +29,9 @@ If the task requires 2+ independent research questions with separate branch outp
    - Break into independent sub-queries for parallel research
 
 2. **Check past research**
-   - Call `memory.search` with the topic keywords to find existing research
-   - Call `memory.recall_documents` for stored research documents
-   - Call `memory.recall_recent` for recent session context
+   - Call `memory_search` with the topic keywords to find existing research
+   - Call `memory_recall_documents` for stored research documents
+   - Call `memory_recall_recent` for recent session context
    - If sufficient past research exists, summarize and ask if the user wants to update it
 
 3. **Search the web**
@@ -40,8 +40,8 @@ If the task requires 2+ independent research questions with separate branch outp
    - Collect URLs for deep reading
 
 4. **Search the codebase**
-   - Call `semantic-search.code_search` with queries matching the research topic
-   - Call `semantic-search.search_hybrid_context_pack` for deep context on related code
+   - Call `semantic-search_code_search` with queries matching the research topic
+   - Call `semantic-search_search_hybrid_context_pack` for deep context on related code
    - Identify existing implementations, patterns, and gaps
 
 5. **Synthesize findings**
@@ -51,7 +51,7 @@ If the task requires 2+ independent research questions with separate branch outp
    - Cite specific file paths and line numbers for codebase references
 
 6. **Persist findings**
-   - Call `memory.store_research` with:
+   - Call `memory_store_research` with:
      - `workflow_id`: current workflow ID (if in workflow context)
      - `summary`: brief research summary (1-2 sentences)
      - `content`: full research findings with sources
@@ -79,7 +79,7 @@ If the task requires 2+ independent research questions with separate branch outp
 
 - Never fabricate URLs -- only cite URLs returned by search tools
 - Never skip the codebase cross-reference step
-- Never skip storing findings with `memory.store_research`
+- Never skip storing findings with `memory_store_research`
 - Never present opinions as facts -- distinguish findings from recommendations
 
 ## Mandatory Review Pipeline
@@ -88,7 +88,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -97,7 +97,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -108,25 +108,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

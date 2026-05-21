@@ -7,9 +7,9 @@ describe("masday-parallel-research skill", () => {
   it("defines the parallel research orchestration flow", () => {
     expect(existsSync(skillPath)).toBe(true);
     const content = readFileSync(skillPath, "utf8");
-    expect(content).toContain("workflow.createParallelBranches");
+    expect(content).toContain("workflow_createParallelBranches");
     expect(content).toContain("masday-researcher");
     expect(content).toContain("masday-synthesizer");
-    expect(content).toContain("local.save_artifact");
+    expect(content).toContain("local_save_artifact");
   });
 });

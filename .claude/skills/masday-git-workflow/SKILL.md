@@ -5,12 +5,12 @@ description: >
   Integrates with memory for workflow tracking. Use when the user says "commit changes",
   "git status", "review diff", "stage files", or "git operations".
 allowed-tools:
-  - git.status
-  - git.diff
-  - git.commit
-  - filesystem.read
-  - filesystem.list
-  - memory.store
+  - git_status
+  - git_diff
+  - git_commit
+  - filesystem_read
+  - filesystem_list
+  - memory_store
 ---
 
 # Masday Git Workflow
@@ -20,24 +20,24 @@ Git operations integrated with Masday workflow tracking.
 ## Steps
 
 1. **Check current state**
-   - Call `git.status` to see: current branch, staged files, unstaged files, untracked files
+   - Call `git_status` to see: current branch, staged files, unstaged files, untracked files
    - Identify the working context: feature branch, main, detached HEAD
 
 2. **Review changes before committing**
-   - Call `git.diff` to see all staged and unstaged changes
+   - Call `git_diff` to see all staged and unstaged changes
    - For each changed file, verify:
      - No hardcoded secrets or credentials
      - No debug statements (console.log, debugger)
      - No unrelated changes mixed in
-   - Call `filesystem.read` on any suspicious files for full context
+   - Call `filesystem_read` on any suspicious files for full context
 
 3. **Stage relevant files**
    - Select only files related to the current task
    - Exclude: .env files, node_modules, build artifacts, IDE settings
-   - Verify staging with `git.status`
+   - Verify staging with `git_status`
 
 4. **Commit with conventional format**
-   - Call `git.commit` with message format:
+   - Call `git_commit` with message format:
      ```
      <type>: <description>
 
@@ -48,11 +48,11 @@ Git operations integrated with Masday workflow tracking.
    - Body: explain the "why" not the "what"
 
 5. **Verify commit**
-   - Call `git.status` to confirm clean working tree
-   - Call `git.diff` to verify no leftover unstaged changes
+   - Call `git_status` to confirm clean working tree
+   - Call `git_diff` to verify no leftover unstaged changes
 
 6. **Store for workflow tracking**
-   - Call `memory.store` with `memory_type: "artifact"`:
+   - Call `memory_store` with `memory_type: "artifact"`:
      - Commit hash (abbreviated)
      - Commit message
      - Files changed count
@@ -74,7 +74,7 @@ Git operations integrated with Masday workflow tracking.
 ## Never
 
 - Never commit .env files, credentials, or API keys
-- Never skip reviewing the diff with `git.diff` before committing
+- Never skip reviewing the diff with `git_diff` before committing
 - Never use vague commit messages like "fix stuff" or "updates"
 - Never commit unrelated changes in the same commit
 - Never commit node_modules or build artifacts
@@ -85,7 +85,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -94,7 +94,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -105,25 +105,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

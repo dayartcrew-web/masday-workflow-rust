@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# masday cross-platform pre-push hook
+# Full test suite + build check before every push
+
+set -euo pipefail
+
+echo "[masday pre-push] Running build..."
+pnpm build 2>&1 | tail -5
+echo "[masday pre-push] Build passed."
+
+echo "[masday pre-push] Running full test suite..."
+pnpm test 2>&1 | tail -10
+echo "[masday pre-push] All tests passed. Pushing..."

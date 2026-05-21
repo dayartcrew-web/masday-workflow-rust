@@ -5,12 +5,12 @@ description: >
   container state. Use when the user says "build docker", "run container", "docker status",
   "container management", or "docker operations".
 allowed-tools:
-  - docker.build
-  - docker.run
-  - docker.ps
-  - filesystem.read
-  - filesystem.list
-  - memory.store
+  - docker_build
+  - docker_run
+  - docker_ps
+  - filesystem_read
+  - filesystem_list
+  - memory_store
 ---
 
 # Masday Docker Ops
@@ -20,23 +20,23 @@ Build, run, and manage Docker containers.
 ## Steps
 
 1. **Check running containers**
-   - Call `docker.ps` with `all: true` to see all containers (running and stopped)
+   - Call `docker_ps` with `all: true` to see all containers (running and stopped)
    - Identify any containers relevant to the current task
 
 2. **Read Dockerfile**
-   - Call `filesystem.read` on the Dockerfile to review the build configuration
+   - Call `filesystem_read` on the Dockerfile to review the build configuration
    - Check for: base image version, exposed ports, environment variables, build stages
    - Verify no secrets or credentials are hardcoded in the Dockerfile
 
 3. **Build image**
-   - Call `docker.build` with:
+   - Call `docker_build` with:
      - `tag`: descriptive tag (e.g., `masday-workflow:latest`, `masday-workflow:v1.2.0`)
      - `context`: build context directory (default: `.`)
      - `dockerfile`: path to Dockerfile (default: `Dockerfile`)
    - Monitor build output for errors or warnings
 
 4. **Run container**
-   - Call `docker.run` with:
+   - Call `docker_run` with:
      - `image`: the image tag just built or specified
      - `ports`: host-to-container port mappings (e.g., `[{"host": 3000, "container": 3000}]`)
      - `env`: environment variables (use `.env` file references, never hardcoded secrets)
@@ -44,7 +44,7 @@ Build, run, and manage Docker containers.
      - `name`: descriptive container name
    - Example:
      ```
-     docker.run({
+     docker_run({
        image: "masday-workflow:latest",
        ports: [{ host: 3000, container: 3000 }],
        env: [{ key: "NODE_ENV", value: "production" }],
@@ -54,12 +54,12 @@ Build, run, and manage Docker containers.
      ```
 
 5. **Verify container is running**
-   - Call `docker.ps` to confirm the container is in "running" state
+   - Call `docker_ps` to confirm the container is in "running" state
    - Check the port mappings are correct
    - If the container exited immediately, check logs for errors
 
 6. **Store container details**
-   - Call `memory.store` with `memory_type: "artifact"`:
+   - Call `memory_store` with `memory_type: "artifact"`:
      - Container name, image tag, port mappings, environment variables
      - Container ID and status
 
@@ -85,7 +85,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -94,7 +94,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -105,25 +105,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

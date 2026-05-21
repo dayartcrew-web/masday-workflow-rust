@@ -16,171 +16,171 @@ This page is the canonical contributor-facing reference for the MCP tool surface
 
 DualWriteStore + OrchestratingEngine with PostgreSQL real-time replication.
 
-- `workflow.create` -- Create workflow
-- `workflow.execute` -- Execute workflow
-- `workflow.getStatus` -- Get workflow status
-- `workflow.get` -- Get workflow by ID
-- `workflow.list` -- List workflows
-- `workflow.addTask` -- Add task
-- `workflow.startTask` -- Start task
-- `workflow.completeTask` -- Complete task
-- `workflow.saveProgress` -- Save progress
-- `workflow.listTasks` -- List tasks
-- `workflow.getCurrentTask` -- Current task
-- `workflow.getPlan` -- Get plan
-- `workflow.getActive` -- Active workflow
-- `workflow.createPlan` -- Create plan
-- `workflow.createParallelBranches` -- Create parallel branches
-- `workflow.completeParallelBranch` -- Complete branch
-- `workflow.listParallelBranches` -- List branches
-- `workflow.delete` -- Delete workflow
-- `workflow.ping` -- Health check (returns backend type + PostgreSQL status)
-- `workflow.set_execution_mode` -- Set execution mode (sequential/parallel)
-- `workflow.mark_synthesis_ready` -- Mark synthesis ready
-- `workflow.mark_verification_ready` -- Mark verification ready
-- `workflow.resume_suggestion` -- Get resume suggestion
+- `workflow_create` -- Create workflow
+- `workflow_execute` -- Execute workflow
+- `workflow_getStatus` -- Get workflow status
+- `workflow_get` -- Get workflow by ID
+- `workflow_list` -- List workflows
+- `workflow_addTask` -- Add task
+- `workflow_startTask` -- Start task
+- `workflow_completeTask` -- Complete task
+- `workflow_saveProgress` -- Save progress
+- `workflow_listTasks` -- List tasks
+- `workflow_getCurrentTask` -- Current task
+- `workflow_getPlan` -- Get plan
+- `workflow_getActive` -- Active workflow
+- `workflow_createPlan` -- Create plan
+- `workflow_createParallelBranches` -- Create parallel branches
+- `workflow_completeParallelBranch` -- Complete branch
+- `workflow_listParallelBranches` -- List branches
+- `workflow_delete` -- Delete workflow
+- `workflow_ping` -- Health check (returns backend type + PostgreSQL status)
+- `workflow_set_execution_mode` -- Set execution mode (sequential/parallel)
+- `workflow_mark_synthesis_ready` -- Mark synthesis ready
+- `workflow_mark_verification_ready` -- Mark verification ready
+- `workflow_resume_suggestion` -- Get resume suggestion
 
 ## memory (11 tools)
 
 Drizzle-first with JSON cache fallback (hybrid mode).
 
-- `memory.store` -- Store memory (writes to both Drizzle and JSON cache)
-- `memory.store_research` -- Store research results
-- `memory.recall_recent` -- Recall recent memories (Drizzle query, JSON fallback)
-- `memory.recall_documents` -- Recall docs for a workflow
-- `memory.recall_document_by_type` -- Recall by source type
-- `memory.recall_by_task` -- Recall by task ID
-- `memory.update` -- Update memory
-- `memory.delete` -- Delete memory
-- `memory.delete_by_workflow` -- Delete all memories for a workflow
-- `memory.search` -- Search memories (case-insensitive text search, Drizzle or JSON)
-- `memory.stats` -- Memory stats (total count, by type)
+- `memory_store` -- Store memory (writes to both Drizzle and JSON cache)
+- `memory_store_research` -- Store research results
+- `memory_recall_recent` -- Recall recent memories (Drizzle query, JSON fallback)
+- `memory_recall_documents` -- Recall docs for a workflow
+- `memory_recall_document_by_type` -- Recall by source type
+- `memory_recall_by_task` -- Recall by task ID
+- `memory_update` -- Update memory
+- `memory_delete` -- Delete memory
+- `memory_delete_by_workflow` -- Delete all memories for a workflow
+- `memory_search` -- Search memories (case-insensitive text search, Drizzle or JSON)
+- `memory_stats` -- Memory stats (total count, by type)
 
 ## semantic-search (3 tools)
 
-- `semantic-search.search_hybrid_context_pack` -- Context pack
-- `semantic-search.search_context_fingerprint` -- Fingerprint
-- `semantic-search.code_search` -- Code search
+- `semantic-search_search_hybrid_context_pack` -- Context pack
+- `semantic-search_search_context_fingerprint` -- Fingerprint
+- `semantic-search_code_search` -- Code search
 
 ## policy (6 tools)
 
 Real Drizzle validation against DB state.
 
-- `policy.check_session_readiness` -- Session readiness (checks SessionState in DB)
-- `policy.validate_execution` -- Validate execution (checks workflow/task status in DB)
-- `policy.validate_completion` -- Validate completion (checks ReviewDecision in DB)
-- `policy.validate_parallel_completion` -- Validate parallel (checks branch status + synthesisReady in DB)
-- `policy.detect_scope_drift` -- Detect drift (keyword analysis + optional task lookup)
-- `policy.require_context_refresh` -- Context refresh (fingerprint comparison against DB)
+- `policy_check_session_readiness` -- Session readiness (checks SessionState in DB)
+- `policy_validate_execution` -- Validate execution (checks workflow/task status in DB)
+- `policy_validate_completion` -- Validate completion (checks ReviewDecision in DB)
+- `policy_validate_parallel_completion` -- Validate parallel (checks branch status + synthesisReady in DB)
+- `policy_detect_scope_drift` -- Detect drift (keyword analysis + optional task lookup)
+- `policy_require_context_refresh` -- Context refresh (fingerprint comparison against DB)
 
 ## capability (11 tools)
 
 Real `.claude/` directory reads with frontmatter parsing.
 
-- `capability.list_agents` -- List agents (reads `.claude/agents/*.md`, parses frontmatter)
-- `capability.list_skills` -- List skills (reads `.claude/skills/*.md`, parses frontmatter)
-- `capability.list_templates` -- List templates
-- `capability.match_agent` -- Match agent (scores agents against task description)
-- `capability.system_readiness` -- System readiness (backend type + PostgreSQL status)
-- `capability.workflow_audit` -- Audit (Drizzle query for running tasks with no progress)
-- `capability.create_agent` -- Create agent (writes frontmatter `.md` file)
-- `capability.create_skill` -- Create skill (writes frontmatter `.md` file)
-- `capability.scaffold_feature` -- Scaffold feature (creates agent + skill files)
-- `capability.scaffold_mcp_server` -- Scaffold MCP server (creates package.json + index.ts)
-- `capability.ping` -- Capability health check
+- `capability_list_agents` -- List agents (reads `.claude/agents/*.md`, parses frontmatter)
+- `capability_list_skills` -- List skills (reads `.claude/skills/*.md`, parses frontmatter)
+- `capability_list_templates` -- List templates
+- `capability_match_agent` -- Match agent (scores agents against task description)
+- `capability_system_readiness` -- System readiness (backend type + PostgreSQL status)
+- `capability_workflow_audit` -- Audit (Drizzle query for running tasks with no progress)
+- `capability_create_agent` -- Create agent (writes frontmatter `.md` file)
+- `capability_create_skill` -- Create skill (writes frontmatter `.md` file)
+- `capability_scaffold_feature` -- Scaffold feature (creates agent + skill files)
+- `capability_scaffold_mcp_server` -- Scaffold MCP server (creates package.json + index.ts)
+- `capability_ping` -- Capability health check
 
 ## filesystem (5 tools)
 
 Real `fs` operations.
 
-- `filesystem.read` -- Read file (readFileSync)
-- `filesystem.write` -- Write file (writeFileSync, creates dirs)
-- `filesystem.list` -- List dir (readdirSync with file/dir type)
-- `filesystem.delete` -- Delete file (unlinkSync)
-- `filesystem.stat` -- File stat (size, isFile)
+- `filesystem_read` -- Read file (readFileSync)
+- `filesystem_write` -- Write file (writeFileSync, creates dirs)
+- `filesystem_list` -- List dir (readdirSync with file/dir type)
+- `filesystem_delete` -- Delete file (unlinkSync)
+- `filesystem_stat` -- File stat (size, isFile)
 
 ## review (2 tools)
 
 Real Drizzle writes to `ReviewDecision` table.
 
-- `review.submit` -- Submit review (creates ReviewDecision row in DB)
-- `review.get_latest` -- Get latest review (queries ReviewDecision in DB)
+- `review_submit` -- Submit review (creates ReviewDecision row in DB)
+- `review_get_latest` -- Get latest review (queries ReviewDecision in DB)
 
 ## session (3 tools)
 
 Real Drizzle reads/writes to `SessionState` table.
 
-- `session.get_state` -- Get session state (finds SessionState in DB)
-- `session.patch_state` -- Patch session state (upserts SessionState in DB)
-- `session.init_context` -- Init session context + check for stale/stuck/failed workflows (returns reminders and reminderStats)
+- `session_get_state` -- Get session state (finds SessionState in DB)
+- `session_patch_state` -- Patch session state (upserts SessionState in DB)
+- `session_init_context` -- Init session context + check for stale/stuck/failed workflows (returns reminders and reminderStats)
 
 ## local (4 tools)
 
 File-based `.masday/` state dir + Drizzle sync/push.
 
-- `local.init` -- Init local state dir (creates `.masday/`)
-- `local.sync` -- Sync from DB (downloads PostgreSQL to JSON cache)
-- `local.push` -- Push to DB (uploads JSON cache to PostgreSQL)
-- `local.save_artifact` -- Save artifact file locally
+- `local_init` -- Init local state dir (creates `.masday/`)
+- `local_sync` -- Sync from DB (downloads PostgreSQL to JSON cache)
+- `local_push` -- Push to DB (uploads JSON cache to PostgreSQL)
+- `local_save_artifact` -- Save artifact file locally
 
 ## git (3 tools)
 
 Real `execSync` calls to git CLI.
 
-- `git.status` -- `git status --porcelain`
-- `git.diff` -- `git diff --stat && git diff`
-- `git.commit` -- `git commit -m "<message>"`
+- `git_status` -- `git status --porcelain`
+- `git_diff` -- `git diff --stat && git diff`
+- `git_commit` -- `git commit -m "<message>"`
 
 ## npm (2 tools)
 
 Real `execSync` calls to pnpm CLI.
 
-- `npm.install` -- `pnpm add <packages>` or `pnpm install`
-- `npm.run` -- `pnpm run <script>`
+- `npm_install` -- `pnpm add <packages>` or `pnpm install`
+- `npm_run` -- `pnpm run <script>`
 
 ## docker (3 tools)
 
 Real `execSync` calls to docker CLI.
 
-- `docker.build` -- `docker build [-t <tag>] .`
-- `docker.run` -- `docker run --rm <image>`
-- `docker.ps` -- `docker ps --format json`
+- `docker_build` -- `docker build [-t <tag>] .`
+- `docker_run` -- `docker run --rm <image>`
+- `docker_ps` -- `docker ps --format json`
 
 ## cicd (3 tools)
 
 Real `execSync` calls to `gh` CLI.
 
-- `cicd.pipeline_status` -- `gh run list --limit 5 --json ...`
-- `cicd.pipeline_trigger` -- `gh workflow run <pipeline>`
-- `cicd.runs_view` -- `gh run list --limit 20 --json ...`
+- `cicd_pipeline_status` -- `gh run list --limit 5 --json ...`
+- `cicd_pipeline_trigger` -- `gh workflow run <pipeline>`
+- `cicd_runs_view` -- `gh run list --limit 20 --json ...`
 
 ## github (3 tools)
 
 Real `execSync` calls to `gh` CLI.
 
-- `github.pr_create` -- `gh pr create --title ... --body ...`
-- `github.pr_list` -- `gh pr list --json ...`
-- `github.issue_list` -- `gh issue list --json ...`
+- `github_pr_create` -- `gh pr create --title ... --body ...`
+- `github_pr_list` -- `gh pr list --json ...`
+- `github_issue_list` -- `gh issue list --json ...`
 
 ## tests (1 tool)
 
 Real `execSync` calls to pnpm test runner.
 
-- `tests.run` -- `pnpm test [-- <pattern>]`
+- `tests_run` -- `pnpm test [-- <pattern>]`
 
 ## reminder (3 tools)
 
 Stale/stuck workflow detection, reminder listing, and acknowledgment (Drizzle WorkflowReminder table). **Auto-runs on startup** after Drizzle connects + **periodic background check every 15 minutes** via setInterval.
 
-- `reminder.check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds). Runs automatically on server start and every 15 minutes.
-- `reminder.list` -- List reminders with optional filters (workflowId, acknowledged, limit)
-- `reminder.acknowledge` -- Acknowledge or dismiss reminders by ID or workflowId
+- `reminder_check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds). Runs automatically on server start and every 15 minutes.
+- `reminder_list` -- List reminders with optional filters (workflowId, acknowledged, limit)
+- `reminder_acknowledge` -- Acknowledge or dismiss reminders by ID or workflowId
 
 ## projectRules (1 tool)
 
 Real refactor rules validation from `@mcp-rebuild/project-rules`.
 
-- `projectRules.check` -- Validate project against refactor rules and conventions (14 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
+- `projectRules_check` -- Validate project against refactor rules and conventions (14 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
 
 ## Workflow lifecycle behavior
 

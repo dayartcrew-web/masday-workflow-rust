@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# masday cross-platform pre-commit hook
+# Runs guard checks + typecheck + tests before every commit — works in ALL AI coding tools
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+
+echo "[masday pre-commit] Running guard checks on staged files..."
+node "${SCRIPT_DIR}/scripts/guard.mjs" check-staged
+echo "[masday pre-commit] Guard checks passed."
+
+echo "[masday pre-commit] Running typecheck..."
+pnpm typecheck 2>&1 | tail -5
+echo "[masday pre-commit] Typecheck passed."
+
+echo "[masday pre-commit] Running tests..."
+pnpm test 2>&1 | tail -10
+echo "[masday pre-commit] All tests passed."

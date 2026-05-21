@@ -1,22 +1,32 @@
 /**
- * Bidirectional MCP tool name converter.
+ * MCP tool name converter — universal naming for multi-provider compatibility.
  *
- * Canonical format (internal):  dot notation   — workflow.create
- * Alias format   (Copilot):     underscore     — workflow_create
+ * Canonical format (wire):   underscore     — workflow_create
+ * Legacy format (internal):  dot notation   — workflow.create
+ * Fallback format (models):  hyphen         — workflow-create
  *
- * The MCP SDK already transforms dots to underscores on the wire
- * (mcp__masday__workflow_create), but GitHub Copilot validates tool
- * names against `[a-z0-9_-]` BEFORE the SDK sees them.  Registering
- * explicit underscore aliases ensures tools are discoverable on
- * platforms that reject dot notation.
+ * OpenAI/Nemotron/Qwen regex `^[a-zA-Z0-9_-]+$` rejects dots.
+ * Only underscore and hyphen are universally accepted across all providers.
+ * Tools are registered ONCE with underscore names to stay under the 128-tool limit.
  */
 
 const SEPARATOR_DOT = ".";
 const SEPARATOR_UNDERSCORE = "_";
+const SEPARATOR_HYPHEN = "-";
+
+/** Convert any notation to canonical underscore: `workflow.create` or `workflow-create` -> `workflow_create` */
+export function toUnderscore(name: string): string {
+  return name.split(SEPARATOR_DOT).join(SEPARATOR_UNDERSCORE).split(SEPARATOR_HYPHEN).join(SEPARATOR_UNDERSCORE);
+}
 
 /** Convert dot-notation tool name to underscore alias: `workflow.create` -> `workflow_create` */
 export function dotToUnderscore(name: string): string {
   return name.split(SEPARATOR_DOT).join(SEPARATOR_UNDERSCORE);
+}
+
+/** Convert hyphen-notation to underscore: `workflow-create` -> `workflow_create` */
+export function hyphenToUnderscore(name: string): string {
+  return name.split(SEPARATOR_HYPHEN).join(SEPARATOR_UNDERSCORE);
 }
 
 /** Convert underscore tool name back to dot notation: `workflow_create` -> `workflow.create` */

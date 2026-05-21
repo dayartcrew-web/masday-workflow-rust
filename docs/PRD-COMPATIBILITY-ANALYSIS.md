@@ -156,7 +156,7 @@ msd-ui-ux-expert     -> design system expertise
 | Aspect | Project A | Project B | Recommendation |
 |--------|-----------|-----------|----------------|
 | **Enforcement** | Advisory (markdown) | Enforced (JavaScript hooks) | Adopt B's enforced model |
-| **MCP Tool Names** | Short names (`workflow.create`) | Fully qualified (`mcp__workflow-orchestrator__workflow_create`) | Use fully qualified names |
+| **MCP Tool Names** | Short names (`workflow_create`) | Fully qualified (`mcp__workflow-orchestrator__workflow_create`) | Use fully qualified names |
 | **Hook Format** | .md instruction files | .js executable scripts | Convert to executable hooks |
 | **Registry** | None | registry.json tracking all components | Add registry.json |
 | **Settings** | None | settings.json with hook matchers | Add settings.json |
@@ -389,7 +389,7 @@ my-plugin/
   "version": "1.0.0",
   "author": { "name": "Author", "email": "email@example.com" },
   "license": "MIT",
-  "repository": "https://github.com/user/plugin",
+  "repository": "https://github_com/user/plugin",
   "dependencies": { "other-plugin": "^1.0.0" },
   "userConfig": [
     {
@@ -446,7 +446,7 @@ claude plugin logs <name>        # View logs
 ### masday-workflow-reborn as a Plugin
 
 The project could be packaged as a Claude Code plugin to enable:
-- One-command installation: `claude plugin add https://github.com/user/masday-workflow-reborn`
+- One-command installation: `claude plugin add https://github_com/user/masday-workflow-reborn`
 - Automatic MCP server startup
 - Namespaced commands: `/masday:workflow-plan`
 - Version management

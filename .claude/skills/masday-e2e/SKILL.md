@@ -2,7 +2,7 @@
 name: masday-e2e
 description: Test wired frontend and backend end-to-end using Playwright MCP browser tools — auto-detects project config, navigates, snapshots, asserts
 disable-model-invocation: false
-allowed-tools: Bash Read Write Edit Grep Glob Agent mcp__plugin_playwright_playwright__browser_navigate mcp__plugin_playwright_playwright__browser_snapshot mcp__plugin_playwright_playwright__browser_click mcp__plugin_playwright_playwright__browser_type mcp__plugin_playwright_playwright__browser_take_screenshot mcp__plugin_playwright_playwright__browser_evaluate mcp__plugin_playwright_playwright__browser_fill_form mcp__plugin_playwright_playwright__browser_wait_for mcp__plugin_playwright_playwright__browser_press_key mcp__plugin_playwright_playwright__browser_network_requests mcp__plugin_playwright_playwright__browser_console_messages mcp__plugin_playwright_playwright__browser_tabs mcp__plugin_playwright_playwright__browser_resize memory.store workflow.saveProgress tests.run
+allowed-tools: Bash Read Write Edit Grep Glob Agent mcp__plugin_playwright_playwright__browser_navigate mcp__plugin_playwright_playwright__browser_snapshot mcp__plugin_playwright_playwright__browser_click mcp__plugin_playwright_playwright__browser_type mcp__plugin_playwright_playwright__browser_take_screenshot mcp__plugin_playwright_playwright__browser_evaluate mcp__plugin_playwright_playwright__browser_fill_form mcp__plugin_playwright_playwright__browser_wait_for mcp__plugin_playwright_playwright__browser_press_key mcp__plugin_playwright_playwright__browser_network_requests mcp__plugin_playwright_playwright__browser_console_messages mcp__plugin_playwright_playwright__browser_tabs mcp__plugin_playwright_playwright__browser_resize memory_store workflow_saveProgress tests_run
 context: inline
 ---
 
@@ -214,8 +214,8 @@ After testing, output:
 - Use `browser_wait_for` for dynamic content instead of fixed sleeps
 - Capture screenshots of failures for visual debugging
 - Adapt assertion selectors to the project's convention (data-testid, data-cy, etc.)
-- Store E2E results via `memory.store` (type: "artifact") for cross-session recall
-- Save progress via `workflow.saveProgress` after each testing phase completes
+- Store E2E results via `memory_store` (type: "artifact") for cross-session recall
+- Save progress via `workflow_saveProgress` after each testing phase completes
 
 ## Mandatory Review Pipeline
 
@@ -223,7 +223,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -232,7 +232,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -243,25 +243,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

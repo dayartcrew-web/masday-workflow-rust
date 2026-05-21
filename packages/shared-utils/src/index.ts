@@ -2,7 +2,7 @@ export { env } from "./env.js";
 export { logger } from "./logger.js";
 export { nowIso, generateId } from "./ids.js";
 export { sha256 } from "./hash.js";
-export { dotToUnderscore, underscoreToDot, isDotNotation, isUnderscoreNotation, ToolNameRegistry } from "./tool-names.js";
+export { toUnderscore, dotToUnderscore, hyphenToUnderscore, underscoreToDot, isDotNotation, isUnderscoreNotation, ToolNameRegistry } from "./tool-names.js";
 export { createAgent, buildAgentMarkdown, validateAgentName } from "./create-agent.js";
 export type { CreateAgentInput, CreateAgentResult } from "./create-agent.js";
 export { createSkill, buildSkillMarkdown, validateSkillName } from "./create-skill.js";

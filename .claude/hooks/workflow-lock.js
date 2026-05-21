@@ -21,21 +21,21 @@ export default function workflowLock(context) {
     if (!SRC_EXTS.has(ext)) return;
 
     return {
-      systemMessage: '[workflow-lock] Editing source file. Ensure workflow context is loaded: call workflow.getActive and workflow.getCurrentTask before making changes.',
+      systemMessage: '[workflow-lock] Editing source file. Ensure workflow context is loaded: call workflow_getActive and workflow_getCurrentTask before making changes.',
     };
   }
 
   // Agent dispatch — remind to validate execution
   if (toolName === 'Agent' && subagentType?.startsWith('masday-')) {
     return {
-      systemMessage: `[workflow-lock] Dispatching agent "${subagentType}". Ensure policy.validate_execution was called for the current task before dispatch.`,
+      systemMessage: `[workflow-lock] Dispatching agent "${subagentType}". Ensure policy_validate_execution was called for the current task before dispatch.`,
     };
   }
 
   // Bash build/test — remind to save progress
   if (toolName === 'Bash' && /\b(pnpm\s+(build|test|tsc|lint|check))\b/.test(command)) {
     return {
-      systemMessage: '[workflow-lock] Running build/test. Save progress with workflow.saveProgress after results are available.',
+      systemMessage: '[workflow-lock] Running build/test. Save progress with workflow_saveProgress after results are available.',
     };
   }
 }

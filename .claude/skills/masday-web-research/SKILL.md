@@ -7,11 +7,11 @@ description: >
   "look up", "find online", "research this", or "search the web".
 allowed-tools:
   - WebSearch
-  - semantic-search.search_hybrid_context_pack
-  - semantic-search.code_search
-  - memory.store_research
-  - memory.search
-  - memory.recall_documents
+  - semantic-search_search_hybrid_context_pack
+  - semantic-search_code_search
+  - memory_store_research
+  - memory_search
+  - memory_recall_documents
 ---
 
 # Masday Web Research
@@ -26,8 +26,8 @@ Web research with storage and codebase cross-referencing.
    - Formulate the search query to be descriptive and specific
 
 2. **Check for existing research**
-   - Call `memory.search` with the topic to find prior research
-   - Call `memory.recall_documents` for stored research documents
+   - Call `memory_search` with the topic to find prior research
+   - Call `memory_recall_documents` for stored research documents
    - If current research exists (within 7 days), summarize and ask if the user wants fresh results
 
 3. **Search the web**
@@ -36,8 +36,8 @@ Web research with storage and codebase cross-referencing.
    - Collect the top results with titles, URLs, and snippets
 
 4. **Cross-reference with codebase**
-   - Call `semantic-search.code_search` with related queries
-   - Call `semantic-search.search_hybrid_context_pack` for deeper context
+   - Call `semantic-search_code_search` with related queries
+   - Call `semantic-search_search_hybrid_context_pack` for deeper context
    - Identify where external findings relate to existing code
 
 5. **Synthesize findings**
@@ -46,12 +46,12 @@ Web research with storage and codebase cross-referencing.
    - Rank findings by relevance and actionability
 
 6. **Store for future sessions**
-   - Call `memory.store_research` with:
+   - Call `memory_store_research` with:
      - `topic`: the research topic
      - `findings`: synthesized key findings with sources
      - `source`: primary URLs and code references
      - `relevance_score`: 0.0-1.0 for task relevance
-   - This makes findings available across sessions via `memory.search`
+   - This makes findings available across sessions via `memory_search`
 
 7. **Report**
    ```
@@ -80,7 +80,7 @@ Web research with storage and codebase cross-referencing.
 
 - Never fabricate URLs or search results
 - Only cite URLs returned by the `WebSearch` tool
-- Never skip storing findings with `memory.store_research`
+- Never skip storing findings with `memory_store_research`
 - Never skip the codebase cross-reference step
 - Never present web opinions as verified facts without caveats
 
@@ -90,7 +90,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -99,7 +99,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -110,25 +110,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

@@ -8,11 +8,11 @@
  * DO NOT add tool registrations in any other file.
  *
  * NAMING CONVENTIONS:
- *   - Tool names use dot.namespaces with camelCase methods: workflow.getActive, memory.store
- *   - MCP SDK transforms: dots → underscores, preserves case: workflow.getActive → mcp__masday__workflow_getActive
- *   - In .md skill/agent docs, reference as: workflow.getActive (logical name)
- *   - In mcp__masday__* prefixed calls, use: mcp__masday__workflow_getActive (SDK-resolved name)
- *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive
+ *   - Tool names registered as underscore: workflow_create, memory_store (universal provider compatibility)
+ *   - Source code uses dot notation internally: server.registerTool("workflow.create", ...) → wrapper converts to workflow_create
+ *   - OpenAI/Nemotron/Qwen regex `^[a-zA-Z0-9_-]+$` rejects dots — underscore-only registration avoids this
+ *   - Single registration (not dot+underscore double) keeps tool count at 88 (under OpenAI's 128 limit)
+ *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive (dot in code, underscore on wire)
  *
  * TOTAL TOOLS: 88 (all real implementations)
  *
@@ -97,26 +97,36 @@ const server = new McpServer({ name: "masday", version: "0.1.0" });
 const episodicMemory = new EpisodicMemory(100);
 const graphStore = new GraphStore({ autoLinkThreshold: 0.3 });
 
-// Wrap registerTool to capture all tool calls to EpisodicMemory
+// Wrap registerTool: register ONLY underscore names (universal provider compatibility)
+// OpenAI/Nemotron/Qwen reject dots; registering both dot+underscore overflows the 128-tool limit.
 const origRegister = server.registerTool.bind(server);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (server as any).registerTool = function(name: string, schema: any, handler: (args: any) => Promise<any>) {
+  const canonicalName = dotToUnderscore(name);
   const wrappedHandler = async (args: any) => {
-    episodicMemory.add("user", `[${name}] ${JSON.stringify(args).substring(0, 500)}`);
+    episodicMemory.add("user", `[${canonicalName}] ${JSON.stringify(args).substring(0, 500)}`);
     const result = await handler(args);
     const resultText = typeof result === "object" && result !== null && "content" in result
       ? JSON.stringify((result as { content: Array<{ text: string }> }).content).substring(0, 500)
       : String(result).substring(0, 500);
-    episodicMemory.add("assistant", `[${name}] ${resultText}`);
+    episodicMemory.add("assistant", `[${canonicalName}] ${resultText}`);
     return result;
   };
-  toolNameRegistry.register(name);
-  const alias = dotToUnderscore(name);
-  origRegister(alias, schema, wrappedHandler);
-  return origRegister(name, schema, wrappedHandler);
+  toolNameRegistry.register(canonicalName);
+  return origRegister(canonicalName, schema, wrappedHandler);
 };
 
 const cwd = process.cwd();
+
+/** Validate that a path passed by a model is safe — must exist and contain project markers. Falls back to startup cwd. */
+function safePath(input: string | undefined, fallback: string = cwd): string {
+  if (!input || typeof input !== "string" || input.trim() === "") return fallback;
+  const resolved = path.resolve(input);
+  if (!fs.existsSync(resolved)) return fallback;
+  if (!resolved.includes(".masday") && !resolved.includes(".claude") && !fs.existsSync(path.join(resolved, "package.json"))) return fallback;
+  return resolved;
+}
+
 const dataDir = path.join(cwd, ".masday", "state");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
@@ -607,26 +617,29 @@ function parseFrontmatter(content: string): Record<string, string> {
 }
 
 server.registerTool("capability.list_agents", { description: "List agents", inputSchema: { projectRoot: z.string() } }, async ({ projectRoot }) => {
-  const agentDir = path.join(projectRoot, ".claude", "agents");
+  const root = safePath(projectRoot);
+  const agentDir = path.join(root, ".claude", "agents");
   const agents = listFiles(agentDir, ".md").map(name => {
     const content = fs.readFileSync(path.join(agentDir, name + ".md"), "utf-8");
     const fm = parseFrontmatter(content);
     return { name, role: fm.role ?? "", description: fm.description ?? "" };
   });
-  return ok({ agents, projectRoot });
+  return ok({ agents, projectRoot: root });
 });
 server.registerTool("capability.list_skills", { description: "List skills", inputSchema: { projectRoot: z.string() } }, async ({ projectRoot }) => {
-  const skillDir = path.join(projectRoot, ".claude", "skills");
+  const root = safePath(projectRoot);
+  const skillDir = path.join(root, ".claude", "skills");
   const skills = listFiles(skillDir, ".md").map(name => {
     const content = fs.readFileSync(path.join(skillDir, name + ".md"), "utf-8");
     const fm = parseFrontmatter(content);
     return { name, description: fm.description ?? "", trigger: fm.trigger ?? "" };
   });
-  return ok({ skills, projectRoot });
+  return ok({ skills, projectRoot: root });
 });
 server.registerTool("capability.list_templates", { description: "List templates", inputSchema: {} }, async () => ok({ templates: ["mcp-server", "agent", "skill", "feature"] }));
 server.registerTool("capability.match_agent", { description: "Match agent", inputSchema: { projectRoot: z.string(), taskDescription: z.string() } }, async (a) => {
-  const agentDir = path.join(a.projectRoot, ".claude", "agents");
+  const root = safePath(a.projectRoot);
+  const agentDir = path.join(root, ".claude", "agents");
   const agents = listFiles(agentDir, ".md").map(name => {
     const content = fs.readFileSync(path.join(agentDir, name + ".md"), "utf-8");
     const fm = parseFrontmatter(content);
@@ -636,7 +649,7 @@ server.registerTool("capability.match_agent", { description: "Match agent", inpu
   const scored = agents.map(ag => ({ ...ag, score: (ag.role + " " + ag.description).toLowerCase().split(/\s+/).filter(w => q.includes(w)).length })).sort((a, b) => b.score - a.score);
   return ok({ match: scored[0]?.score ? scored[0] : null, ...a });
 });
-server.registerTool("capability.system_readiness", { description: "System readiness", inputSchema: { projectRoot: z.string().optional() } }, async ({ projectRoot }) => ok({ ready: true, backend: backendType, postgresql: dbReady, projectRoot: projectRoot ?? cwd }));
+server.registerTool("capability.system_readiness", { description: "System readiness", inputSchema: { projectRoot: z.string().optional() } }, async ({ projectRoot }) => { const root = safePath(projectRoot); return ok({ ready: true, backend: backendType, postgresql: dbReady, projectRoot: root }); });
 server.registerTool("capability.workflow_audit", { description: "Audit", inputSchema: { workflowId: z.string().optional() } }, async ({ workflowId }) => {
   if (dbReady && workflowId) {
     const [wf] = await drizzleDb.select().from(workflowsTable).where(eq(workflowsTable.id, workflowId)).limit(1);
@@ -653,20 +666,22 @@ server.registerTool("capability.workflow_audit", { description: "Audit", inputSc
   return ok({ audited: workflowId ? 1 : engine.listWorkflows().length, issues: [] });
 });
 server.registerTool("capability.create_agent", { description: "Create agent", inputSchema: { projectRoot: z.string(), name: z.string(), role: z.string(), description: z.string(), instructions: z.string() } }, async (a) => {
-  const result = createAgent({ projectRoot: a.projectRoot, name: a.name, role: a.role, description: a.description, instructions: a.instructions });
+  const result = createAgent({ projectRoot: safePath(a.projectRoot), name: a.name, role: a.role, description: a.description, instructions: a.instructions });
   return ok(result);
 });
 server.registerTool("capability.create_skill", { description: "Create skill", inputSchema: { projectRoot: z.string(), name: z.string(), description: z.string(), trigger: z.string(), steps: z.array(z.string()) } }, async (a) => {
-  const result = createSkill({ projectRoot: a.projectRoot, name: a.name, description: a.description, trigger: a.trigger, steps: a.steps });
+  const result = createSkill({ projectRoot: safePath(a.projectRoot), name: a.name, description: a.description, trigger: a.trigger, steps: a.steps });
   return ok(result);
 });
 server.registerTool("capability.scaffold_feature", { description: "Scaffold feature", inputSchema: { projectRoot: z.string(), name: z.string(), description: z.string() } }, async (a) => {
-  const agentResult = createAgent({ projectRoot: a.projectRoot, name: a.name, role: `${a.name} specialist`, description: a.description, instructions: `Implement the ${a.name} feature.` });
-  const skillResult = createSkill({ projectRoot: a.projectRoot, name: a.name, description: a.description, trigger: `when working on ${a.name}`, steps: [`Analyze requirements for ${a.name}`, "Plan implementation", "Implement with TDD", "Verify and review"] });
+  const root = safePath(a.projectRoot);
+  const agentResult = createAgent({ projectRoot: root, name: a.name, role: `${a.name} specialist`, description: a.description, instructions: `Implement the ${a.name} feature.` });
+  const skillResult = createSkill({ projectRoot: root, name: a.name, description: a.description, trigger: `when working on ${a.name}`, steps: [`Analyze requirements for ${a.name}`, "Plan implementation", "Implement with TDD", "Verify and review"] });
   return ok({ ok: true, createdFiles: [agentResult.filePath, skillResult.filePath] });
 });
 server.registerTool("capability.scaffold_mcp_server", { description: "Scaffold MCP", inputSchema: { projectRoot: z.string(), name: z.string(), description: z.string() } }, async (a) => {
-  const serverDir = path.join(a.projectRoot, "apps", a.name);
+  const root = safePath(a.projectRoot);
+  const serverDir = path.join(root, "apps", a.name);
   if (!fs.existsSync(serverDir)) fs.mkdirSync(serverDir, { recursive: true });
   const srcDir = path.join(serverDir, "src");
   if (!fs.existsSync(srcDir)) fs.mkdirSync(srcDir, { recursive: true });
@@ -743,7 +758,8 @@ server.registerTool("session.patch_state", { description: "Patch session state",
   }
   return ok({ sessionKey: session_key, patched: true, patch });
 });
-server.registerTool("session.init_context", { description: "Init session context — also checks for stale/stuck/failed workflows and returns reminders", inputSchema: { cwd: z.string() } }, async ({ cwd }) => {
+server.registerTool("session.init_context", { description: "Init session context — also checks for stale/stuck/failed workflows and returns reminders", inputSchema: { cwd: z.string() } }, async ({ cwd: rawCwd }) => {
+  const dir = safePath(rawCwd);
   let reminders: unknown[] = [];
   let stats: { total: number; unacknowledged: number; bySeverity: Record<string, number> } | null = null;
   if (dbReady) {
@@ -753,24 +769,26 @@ server.registerTool("session.init_context", { description: "Init session context
       if (reminders.length > 0) logger.info({ count: reminders.length }, "Session init: reminders detected");
     } catch (e) { logger.warn("Session init reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
   }
-  return ok({ initialized: true, cwd, reminders, reminderStats: stats });
+  return ok({ initialized: true, cwd: dir, reminders, reminderStats: stats });
 });
 
 // local (4)
-server.registerTool("local.init", { description: "Init local state dir", inputSchema: { cwd: z.string() } }, async ({ cwd }) => { const p = path.join(cwd, ".masday"); if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); return ok({ initialized: true, path: p }); });
-server.registerTool("local.sync", { description: "Sync local state from DB (download PostgreSQL → JSON cache)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd, workflow_id }) => {
+server.registerTool("local.init", { description: "Init local state dir", inputSchema: { cwd: z.string() } }, async ({ cwd: rawCwd }) => { const dir = safePath(rawCwd); const p = path.join(dir, ".masday"); if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); return ok({ initialized: true, path: p }); });
+server.registerTool("local.sync", { description: "Sync local state from DB (download PostgreSQL → JSON cache)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => {
+  const dir = safePath(rawCwd);
   if (!dbReady) return ok({ synced: false, error: "PostgreSQL not connected" });
   const whereCond = workflow_id ? eq(memoriesTable.workflowId, workflow_id) : undefined;
   const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt));
-  const memFile = path.join(cwd, ".masday", "state", "memories.json");
+  const memFile = path.join(dir, ".masday", "state", "memories.json");
   const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore ?? 0.5, tags: r.tags, createdAt: r.createdAt.getTime() }));
-  const dir = path.dirname(memFile); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const memDir = path.dirname(memFile); if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true });
   saveMem(cached);
   return ok({ synced: true, records: cached.length, workflowId: workflow_id ?? "all" });
 });
-server.registerTool("local.push", { description: "Push local state to DB (upload JSON cache → PostgreSQL)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd, workflow_id }) => {
+server.registerTool("local.push", { description: "Push local state to DB (upload JSON cache → PostgreSQL)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => {
+  const dir = safePath(rawCwd);
   if (!dbReady) return ok({ pushed: false, error: "PostgreSQL not connected" });
-  const memFile = path.join(cwd, ".masday", "state", "memories.json");
+  const memFile = path.join(dir, ".masday", "state", "memories.json");
   const local: MemRec[] = fs.existsSync(memFile) ? JSON.parse(fs.readFileSync(memFile, "utf-8")) : [];
   let created = 0, skipped = 0;
   for (const r of local) {
@@ -787,7 +805,7 @@ server.registerTool("local.push", { description: "Push local state to DB (upload
   }
   return ok({ pushed: true, created, skipped, total: local.length, workflowId: workflow_id });
 });
-server.registerTool("local.save_artifact", { description: "Save artifact file locally", inputSchema: { cwd: z.string(), category: z.string(), filename: z.string(), content: z.string() } }, async ({ cwd, category, filename, content }) => { const d = path.join(cwd, ".masday", category); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, filename), content); return ok({ saved: true, path: path.join(d, filename) }); });
+server.registerTool("local.save_artifact", { description: "Save artifact file locally", inputSchema: { cwd: z.string(), category: z.string(), filename: z.string(), content: z.string() } }, async ({ cwd: rawCwd, category, filename, content }) => { const dir = safePath(rawCwd); const d = path.join(dir, ".masday", category); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, filename), content); return ok({ saved: true, path: path.join(d, filename) }); });
 
 // git (3)
 server.registerTool("git.status", { description: "Git status", inputSchema: {} }, async () => {
@@ -930,7 +948,7 @@ server.registerTool("projectRules.check", {
   },
 }, async ({ projectRoot }) => {
   try {
-    const root = projectRoot ?? process.cwd();
+    const root = safePath(projectRoot);
     const report = validateProject(root);
     const critical = getFailedCritical(report);
     return ok({ ...report, formatted: formatReport(report), criticalCount: critical.length });

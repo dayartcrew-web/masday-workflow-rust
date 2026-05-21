@@ -7,17 +7,17 @@ description: >
   Use when the user says "start workflow", "create workflow", "new workflow",
   "initialize workflow", or "begin workflow".
 allowed-tools:
-  - workflow.create
-  - workflow.get
-  - capability.system_readiness
-  - semantic-search.code_search
-  - memory.search
-  - memory.recall_recent
-  - memory.recall_documents
-  - memory.store
-  - filesystem.read
-  - filesystem.list
-  - filesystem.stat
+  - workflow_create
+  - workflow_get
+  - capability_system_readiness
+  - semantic-search_code_search
+  - memory_search
+  - memory_recall_recent
+  - memory_recall_documents
+  - memory_store
+  - filesystem_read
+  - filesystem_list
+  - filesystem_stat
 ---
 
 # Masday Workflow Init
@@ -31,29 +31,29 @@ Initialize a new Masday workflow. Searches memory and relevant code, creates the
    - If invoked without a prompt (bare command): use "recent project work" as default search term and continue through all steps automatically.
 
 2. **Search memory (local + remote)**
-   - Call `memory.search` with keywords from the prompt to find similar past workflows
-   - Call `memory.recall_recent` to get context from recent sessions
-   - Call `memory.recall_documents` to find stored research or decisions
+   - Call `memory_search` with keywords from the prompt to find similar past workflows
+   - Call `memory_recall_recent` to get context from recent sessions
+   - Call `memory_recall_documents` to find stored research or decisions
 
 3. **Scan relevant code**
-   - Call `semantic-search.code_search` with queries derived from the prompt
-   - Call `filesystem.list` to verify project structure
-   - Call `filesystem.read` to inspect key config files (package.json, tsconfig)
-   - Call `filesystem.stat` to check file sizes and modification dates
+   - Call `semantic-search_code_search` with queries derived from the prompt
+   - Call `filesystem_list` to verify project structure
+   - Call `filesystem_read` to inspect key config files (package.json, tsconfig)
+   - Call `filesystem_stat` to check file sizes and modification dates
 
 4. **Check system readiness**
-   - Call `capability.system_readiness` to verify database connection, schema, and dependencies
+   - Call `capability_system_readiness` to verify database connection, schema, and dependencies
    - If any check fails, report the specific issue and stop
 
 5. **Create the workflow**
-   - Call `workflow.create` with:
+   - Call `workflow_create` with:
      - `name`: a concise descriptive name from the prompt
      - `description`: the full scope and intent
    - Record the returned workflow ID
 
 6. **Store initial context**
-   - Call `memory.store` with `memory_type: "decision"` for the initial scope and constraints
-   - Call `memory.store` with `memory_type: "artifact"` for the related code analysis
+   - Call `memory_store` with `memory_type: "decision"` for the initial scope and constraints
+   - Call `memory_store` with `memory_type: "artifact"` for the related code analysis
    - Include the workflow ID in all stored memories for traceability
 
 7. **Report and ask next step**
@@ -84,7 +84,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -93,7 +93,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -104,25 +104,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

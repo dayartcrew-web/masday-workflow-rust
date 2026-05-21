@@ -5,13 +5,13 @@ description: >
   memory statistics, and highlights blocked or failed workflows. Use when the user says
   "show status", "workflow dashboard", "what's running", "list workflows", or "check progress".
 allowed-tools:
-  - workflow.list
-  - workflow.get
-  - workflow.getStatus
-  - workflow.listTasks
-  - workflow.getCurrentTask
-  - memory.stats
-  - memory.recall_recent
+  - workflow_list
+  - workflow_get
+  - workflow_getStatus
+  - workflow_listTasks
+  - workflow_getCurrentTask
+  - memory_stats
+  - memory_recall_recent
 ---
 
 # Masday Workflow Status
@@ -21,19 +21,19 @@ Show a dashboard of workflow progress and system state.
 ## Steps
 
 1. **List all workflows**
-   - Call `workflow.list` to get all workflows with their statuses
+   - Call `workflow_list` to get all workflows with their statuses
    - Group by status: EXECUTE, PLAN, READY, BLOCKED, DONE
 
 2. **Get details for active workflows**
-   - For each non-completed workflow, call `workflow.getStatus` for detailed state
-   - Call `workflow.listTasks` to see task breakdown and completion percentages
-   - Call `workflow.getCurrentTask` to identify the active task
+   - For each non-completed workflow, call `workflow_getStatus` for detailed state
+   - Call `workflow_listTasks` to see task breakdown and completion percentages
+   - Call `workflow_getCurrentTask` to identify the active task
 
 3. **Get memory statistics**
-   - Call `memory.stats` to show total memories, breakdown by type, and average importance
+   - Call `memory_stats` to show total memories, breakdown by type, and average importance
 
 4. **Check recent activity**
-   - Call `memory.recall_recent` to show the latest context entries
+   - Call `memory_recall_recent` to show the latest context entries
 
 5. **Format the dashboard**
    ```
@@ -70,7 +70,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -79,7 +79,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -90,25 +90,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

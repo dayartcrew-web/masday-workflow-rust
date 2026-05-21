@@ -6,24 +6,24 @@ description: |
   Automatically routes to: continue, start next task, verify, or create new workflow.
   Use as the default "what should I work on" command.
 allowed-tools:
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.getPlan
-  - workflow.listTasks
-  - workflow.list
-  - workflow.startTask
-  - workflow.execute
-  - workflow.saveProgress
-  - workflow.completeTask
-  - workflow.create
-  - workflow.createPlan
-  - review.get_latest
-  - memory.recall_recent
-  - memory.recall_by_task
-  - memory.search
-  - semantic-search.search_hybrid_context_pack
-  - policy.validate_execution
-  - policy.validate_completion
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_getPlan
+  - workflow_listTasks
+  - workflow_list
+  - workflow_startTask
+  - workflow_execute
+  - workflow_saveProgress
+  - workflow_completeTask
+  - workflow_create
+  - workflow_createPlan
+  - review_get_latest
+  - memory_recall_recent
+  - memory_recall_by_task
+  - memory_search
+  - semantic-search_search_hybrid_context_pack
+  - policy_validate_execution
+  - policy_validate_completion
 ---
 
 # Masday Workflow Next
@@ -41,7 +41,7 @@ Smart auto-detect: figures out what you should work on next and does it. One com
 
 ```
 ┌─────────────────────────────────┐
-│     workflow.getActive?        │
+│     workflow_getActive?        │
 └──────────┬──────────────────────┘
            │
      ┌─────┴──────┐
@@ -50,7 +50,7 @@ Smart auto-detect: figures out what you should work on next and does it. One com
      │              │
      ▼              ▼
   Check task    ┌──────────────┐
-  status        │ workflow.list│
+  status        │ workflow_list│
      │          └──────┬───────┘
      │                 │
      │           Found any?
@@ -77,14 +77,14 @@ Smart auto-detect: figures out what you should work on next and does it. One com
 
 ```
 # Check for active workflow in current project
-Call: workflow.getActive({ cwd: process.cwd() })
+Call: workflow_getActive({ cwd: process.cwd() })
 
 If active workflow found:
   Record: workflowId, status
   Go to Step 2
 
 # No active workflow — check for any non-DONE workflows
-Call: workflow.list({})
+Call: workflow_list({})
 
 If any workflow with status in ["EXECUTE", "VERIFY", "BLOCKED", "PLAN"]:
   Pick the most recent one
@@ -98,9 +98,9 @@ Go to Step 7 (Create New)
 ### 2. Load Workflow Context
 
 ```
-Call: workflow.getPlan({ workflow_id: workflowId })
-Call: workflow.listTasks({ workflow_id: workflowId })
-Call: workflow.getCurrentTask({ workflow_id: workflowId })
+Call: workflow_getPlan({ workflow_id: workflowId })
+Call: workflow_listTasks({ workflow_id: workflowId })
+Call: workflow_getCurrentTask({ workflow_id: workflowId })
 
 Record: plan, tasks[], currentTask
 ```
@@ -125,24 +125,24 @@ If no currentTask:
 
 ```
 # Load prior context
-Call: memory.recall_by_task({ task_id: currentTask.id, limit: 10 })
-Call: review.get_latest({ workflow_id: workflowId, task_id: currentTask.id })
+Call: memory_recall_by_task({ task_id: currentTask.id, limit: 10 })
+Call: review_get_latest({ workflow_id: workflowId, task_id: currentTask.id })
 
 # Build fresh context
-Call: semantic-search.search_hybrid_context_pack({
+Call: semantic-search_search_hybrid_context_pack({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: currentTask.id
 })
 
 # Validate and start
-Call: policy.validate_execution({
+Call: policy_validate_execution({
   workflow_id: workflowId,
   task_id: currentTask.id,
   session_key: "next-" + Date.now()
 })
 
-Call: workflow.startTask({
+Call: workflow_startTask({
   workflow_id: workflowId,
   task_id: currentTask.id,
   agent_name: currentTask.ownerAgent || "masday-executor"
@@ -161,23 +161,23 @@ If task retryCount >= maxRetries:
   STOP
 
 # Load error context
-Call: memory.recall_by_task({ task_id: taskId, limit: 10 })
-Call: review.get_latest({ workflow_id: workflowId, task_id: taskId })
+Call: memory_recall_by_task({ task_id: taskId, limit: 10 })
+Call: review_get_latest({ workflow_id: workflowId, task_id: taskId })
 
 # Rebuild context and retry
-Call: semantic-search.search_hybrid_context_pack({
+Call: semantic-search_search_hybrid_context_pack({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: taskId
 })
 
-Call: workflow.startTask({
+Call: workflow_startTask({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: currentTask.ownerAgent || "masday-executor"
 })
 
-Call: workflow.saveProgress({
+Call: workflow_saveProgress({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: "masday-next",
@@ -206,13 +206,13 @@ If no nextTask:
   STOP
 
 # Build context for new task
-Call: semantic-search.search_hybrid_context_pack({
+Call: semantic-search_search_hybrid_context_pack({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: nextTask.id
 })
 
-Call: workflow.startTask({
+Call: workflow_startTask({
   workflow_id: workflowId,
   task_id: nextTask.id,
   agent_name: nextTask.ownerAgent || "masday-executor"
@@ -227,16 +227,16 @@ Report: "Starting next task: {title}"
 Ask user: "No active workflows found. What would you like to work on?"
 
 After user provides description:
-  Call: workflow.create({ name: "<short name>", description: "<user description>" })
+  Call: workflow_create({ name: "<short name>", description: "<user description>" })
   Record: workflowId
 
   Then create a plan for the workflow:
-  Call: workflow.createPlan({
+  Call: workflow_createPlan({
     workflow_id: workflowId,
     plan: { tasks: [{ title, agent, skill, dependencies, input }] }
   })
 
-  Call: workflow.execute({ id: workflowId })
+  Call: workflow_execute({ id: workflowId })
   Report: "Created and started new workflow: {name}"
 ```
 
@@ -244,16 +244,16 @@ After user provides description:
 
 ```
 # Check last task review
-Call: review.get_latest({ workflow_id: workflowId, task_id: lastTaskId })
+Call: review_get_latest({ workflow_id: workflowId, task_id: lastTaskId })
 
-If review.status == "APPROVED":
-  Call: workflow.completeTask({
+If review_status == "APPROVED":
+  Call: workflow_completeTask({
     workflow_id: workflowId,
     task_id: lastTaskId
   })
   Report: "Workflow complete! All tasks verified and approved."
 
-If review.status == "REWORK_REQUIRED":
+If review_status == "REWORK_REQUIRED":
   Restart last task with reviewer feedback
   Report: "Review requested changes. Re-working: {title}"
 
@@ -266,7 +266,7 @@ If no review:
 ```
 After every action, persist state:
 
-Call: workflow.saveProgress({
+Call: workflow_saveProgress({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: "masday-next",
@@ -318,7 +318,7 @@ Last progress: "{note}"
 - NEVER create a duplicate workflow for the same task
 - NEVER mark tasks complete without review
 - NEVER discard existing workflow state
-- NEVER start a task without `policy.validate_execution`
+- NEVER start a task without `policy_validate_execution`
 - NEVER ignore failed tasks — always attempt retry first
 - NEVER proceed without saving progress after each action
 
@@ -328,7 +328,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -337,7 +337,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -348,25 +348,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

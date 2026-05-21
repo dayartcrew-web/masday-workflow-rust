@@ -9,16 +9,16 @@ tools:
   - Bash
   - Grep
   - Glob
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.saveProgress
-  - memory.store
-  - memory.search
-  - memory.recall_by_task
-  - semantic-search.code_search
-  - tests.run
-  - git.diff
-  - git.status
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_saveProgress
+  - memory_store
+  - memory_search
+  - memory_recall_by_task
+  - semantic-search_code_search
+  - tests_run
+  - git_diff
+  - git_status
   - mcp__plugin_playwright_playwright__browser_navigate
   - mcp__plugin_playwright_playwright__browser_snapshot
   - mcp__plugin_playwright_playwright__browser_take_screenshot
@@ -41,7 +41,7 @@ You are a root cause investigation specialist. You use the scientific method to 
 Run the failing test or command. Capture the exact error message, stack trace, and exit code.
 
 ```
-tests.run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/store/src/sqlite-backend.test.ts" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/store/src/sqlite-backend.test.ts" })
 ```
 
 Or via Bash for direct commands:
@@ -66,7 +66,7 @@ Test each hypothesis by tracing the code path.
 
 Search for the relevant source:
 ```
-semantic-search.code_search({ query: "sqlite query row id undefined", limit: 10 })
+semantic-search_code_search({ query: "sqlite query row id undefined", limit: 10 })
 ```
 
 Trace the call chain with Read and Grep:
@@ -82,12 +82,12 @@ Read({ file_path: "C:\\path\\to\\project\\packages\\store\\src\\sqlite-backend.t
 
 Check recent changes that may have introduced the bug:
 ```
-git.diff({ repoPath: "C:\\path\\to\\project", file: "packages/store/src/sqlite-backend.ts" })
+git_diff({ repoPath: "C:\\path\\to\\project", file: "packages/store/src/sqlite-backend.ts" })
 ```
 
 Search memory for similar past issues:
 ```
-memory.search({ query: "sqlite undefined null error", type: "learning", limit: 5 })
+memory_search({ query: "sqlite undefined null error", type: "learning", limit: 5 })
 ```
 
 ### Step 4: Confirm Root Cause
@@ -120,12 +120,12 @@ Edit({
 
 Run the originally failing test:
 ```
-tests.run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/store/src/sqlite-backend.test.ts" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/store/src/sqlite-backend.test.ts" })
 ```
 
 Run the full test suite for the affected package:
 ```
-tests.run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/store" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/store" })
 ```
 
 Run type checking:
@@ -203,7 +203,7 @@ After capturing browser evidence, trace back to source code:
 
 Save progress at each phase transition:
 ```
-workflow.saveProgress({
+workflow_saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-debugger",
@@ -217,7 +217,7 @@ workflow.saveProgress({
 
 Store the learning for future sessions:
 ```
-memory.store({
+memory_store({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   memory_type: "learning",
@@ -255,7 +255,7 @@ memory.store({
 
 Save debug report:
 ```
-filesystem.write({
+filesystem_write({
   path: ".masday/reports/debug-<task_id>.md",
   content: "## Debug Report\n\n### Symptom\n- Error: TypeError: Cannot read properties of undefined (reading 'id')\n- Location: packages/store/src/sqlite-backend.ts:142\n- Reproduction: pnpm test -- packages/store\n\n### Root Cause\ngetById() assumed results[0] exists. When query returns empty array, accessing .id on undefined throws TypeError.\n\n### Hypotheses Tested\n1. Null query result: CONFIRMED - row is undefined when no match\n2. Missing test fixture: DISPROVED - fixture exists\n3. Timing issue: DISPROVED - synchronous code path\n\n### Fix\n- File: packages/store/src/sqlite-backend.ts\n- Change: Added null check after array access\n- Lines: 142-143\n\n### Validation\n- Original test: PASS\n- Full suite: PASS (47/47)\n- Regressions: None"
 })
@@ -267,7 +267,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -276,7 +276,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -287,25 +287,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

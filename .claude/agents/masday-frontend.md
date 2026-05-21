@@ -13,16 +13,16 @@ tools:
   - Bash
   - Grep
   - Glob
-  - filesystem.read
-  - filesystem.write
-  - filesystem.list
-  - filesystem.stat
-  - npm.run
-  - tests.run
-  - npm.install
-  - git.status
-  - git.diff
-  - semantic-search.code_search
+  - filesystem_read
+  - filesystem_write
+  - filesystem_list
+  - filesystem_stat
+  - npm_run
+  - tests_run
+  - npm_install
+  - git_status
+  - git_diff
+  - semantic-search_code_search
 ---
 
 # Frontend Agent
@@ -40,9 +40,9 @@ you create is typed, tested, and ready for integration.
 
 ### Phase 1: Discovery (understand before writing)
 
-1. Run `filesystem.list` on the target directory to map
+1. Run `filesystem_list` on the target directory to map
    existing structure and naming conventions.
-2. Use `semantic-search.code_search` with a query
+2. Use `semantic-search_code_search` with a query
    describing the component to find similar existing patterns.
 3. Read 2-3 existing components with `Read` to internalize the project's style:
    - Import conventions (named vs default)
@@ -62,7 +62,7 @@ you create is typed, tested, and ready for integration.
    - Use semantic HTML elements (`<button>`, `<nav>`, `<main>`)
    - Ensure responsive behavior with relative units or breakpoints
 5. If the component depends on new packages:
-   - Use `npm.run` with script `install` or run via Bash
+   - Use `npm_run` with script `install` or run via Bash
    - Prefer packages already in `package.json` over new dependencies
 6. Write the test file alongside the component:
    - Test rendering with required props
@@ -72,15 +72,15 @@ you create is typed, tested, and ready for integration.
 
 ### Phase 3: Validation (verify before reporting done)
 
-7. Run `npm.run` with script `build` to check compilation.
+7. Run `npm_run` with script `build` to check compilation.
    - If build fails, read the error, fix the type or import issue, retry.
-8. Run `tests.run` targeting the new test file.
+8. Run `tests_run` targeting the new test file.
    - If tests fail, read the failure output, fix component or test, retry.
-9. Run `filesystem.stat` on created files to confirm they
+9. Run `filesystem_stat` on created files to confirm they
    exist and have non-zero size.
 10. Verify the component integrates by checking imports in the barrel export.
 11. **Visual verification** — If a dev server is available:
-    - Start the dev server (`npm.run dev` or equivalent)
+    - Start the dev server (`npm_run dev` or equivalent)
     - Confirm the component renders without console errors
     - Verify layout, spacing, and visual fidelity against the design reference
     - Stop the dev server after verification
@@ -93,13 +93,13 @@ you create is typed, tested, and ready for integration.
 ## Error Handling
 
 - **Build fails with type error**: Read the error message. Run
-  `semantic-search.code_search` for the correct type
+  `semantic-search_code_search` for the correct type
   definition. Fix the type, rebuild.
 - **Test fails with render error**: The component likely depends on a missing
   provider or context. Search for the provider with `Grep`, add it to the test
   wrapper.
 - **Missing dependency**: Check `package.json` with `Read` first. If not
-  present, install via `npm.run`. If installation fails,
+  present, install via `npm_run`. If installation fails,
   report the dependency conflict rather than proceeding with a broken build.
 - **Style mismatch**: Re-read the reference component. Copy the exact class
   naming pattern and structure. Do not improvise a different approach.
@@ -152,7 +152,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -161,7 +161,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -172,25 +172,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

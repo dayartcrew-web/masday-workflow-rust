@@ -6,20 +6,20 @@ description: >
   Use when the user says "verify workflow", "check completed work", "validate results",
   or "run verification".
 allowed-tools:
-  - workflow.get
-  - workflow.getStatus
-  - workflow.listTasks
-  - policy.validate_completion
-  - policy.validate_parallel_completion
-  - policy.detect_scope_drift
-  - tests.run
-  - git.diff
-  - git.status
-  - filesystem.read
-  - filesystem.list
-  - filesystem.stat
-  - memory.store
-  - memory.recall_by_task
+  - workflow_get
+  - workflow_getStatus
+  - workflow_listTasks
+  - policy_validate_completion
+  - policy_validate_parallel_completion
+  - policy_detect_scope_drift
+  - tests_run
+  - git_diff
+  - git_status
+  - filesystem_read
+  - filesystem_list
+  - filesystem_stat
+  - memory_store
+  - memory_recall_by_task
 ---
 
 # Masday Workflow Verify
@@ -29,9 +29,9 @@ Verify that a completed workflow meets all acceptance criteria and quality stand
 ## Steps
 
 1. **Get workflow state**
-   - Call `workflow.get` with the workflow ID
-   - Call `workflow.getStatus` to confirm it is in VERIFY or DONE state
-   - Call `workflow.listTasks` to see all tasks and their statuses
+   - Call `workflow_get` with the workflow ID
+   - Call `workflow_getStatus` to confirm it is in VERIFY or DONE state
+   - Call `workflow_listTasks` to see all tasks and their statuses
 
 2. **Check for failed or incomplete tasks**
    - Identify any tasks with status FAILED, BLOCKED, or PENDING
@@ -39,30 +39,30 @@ Verify that a completed workflow meets all acceptance criteria and quality stand
 
 3. **Validate each task against acceptance criteria**
    - For each completed task:
-     - Call `policy.validate_completion` with workflow ID and task ID
-     - Call `memory.recall_by_task` to load task artifacts and evidence
+     - Call `policy_validate_completion` with workflow ID and task ID
+     - Call `memory_recall_by_task` to load task artifacts and evidence
      - Cross-reference evidence against the acceptance criteria
 
 4. **Run tests**
-   - Call `tests.run` to execute the test suite
+   - Call `tests_run` to execute the test suite
    - If any tests fail, report the failures with file names and error messages
    - Verify test coverage meets the 80% minimum threshold
 
 5. **Check for regressions**
-   - Call `git.status` to see all modified files
-   - Call `git.diff` to review the full change set
-   - Use `filesystem.read` to inspect changed files for quality issues
+   - Call `git_status` to see all modified files
+   - Call `git_diff` to review the full change set
+   - Use `filesystem_read` to inspect changed files for quality issues
    - Check for: hardcoded values, missing error handling, deep nesting, large functions
 
 6. **Detect scope drift**
-   - Call `policy.detect_scope_drift` with the workflow output and original task scope
+   - Call `policy_detect_scope_drift` with the workflow output and original task scope
    - Report any deviations from the planned scope
 
 7. **Validate parallel completions** (if applicable)
-   - Call `policy.validate_parallel_completion` for tasks with parallel branches
+   - Call `policy_validate_parallel_completion` for tasks with parallel branches
 
 8. **Store verification results**
-   - Call `memory.store` with `memory_type: "artifact"` containing the verification report
+   - Call `memory_store` with `memory_type: "artifact"` containing the verification report
    - Include: pass/fail status, test results, issues found, recommendations
 
 9. **Report verification summary**
@@ -92,7 +92,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -101,7 +101,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -112,25 +112,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

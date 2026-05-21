@@ -6,18 +6,18 @@ description: >
   Use when the user asks "check CI", "pipeline status", "build results",
   "CI failed", "is the build passing", "check security", or "audit deps".
 allowed-tools:
-  - cicd.pipeline_status
-  - cicd.runs_view
-  - cicd.pipeline_trigger
-  - github.pr_list
-  - github.issue_list
+  - cicd_pipeline_status
+  - cicd_runs_view
+  - cicd_pipeline_trigger
+  - github_pr_list
+  - github_issue_list
   - Bash
   - Read
   - Grep
   - Glob
-  - memory.store
-  - memory.recall_recent
-  - memory.search
+  - memory_store
+  - memory_recall_recent
+  - memory_search
 ---
 
 # Masday CI/CD Check
@@ -30,10 +30,10 @@ Quick CI/CD pipeline status check with security audit.
 
 ```
 # Get recent runs
-cicd.pipeline_status({ branch: "main", limit: 5 })
+cicd_pipeline_status({ branch: "main", limit: 5 })
 
 # Get runs for current branch
-cicd.pipeline_status({ limit: 5 })
+cicd_pipeline_status({ limit: 5 })
 ```
 
 Show:
@@ -46,7 +46,7 @@ Show:
 
 ```
 # Get step-by-step results for a specific run
-cicd.runs_view({ runId: 12345 })
+cicd_runs_view({ runId: 12345 })
 
 # Read the workflow that failed
 Read({ file_path: ".github/workflows/ci.yml" })
@@ -61,7 +61,7 @@ Highlight:
 
 ```
 # See CI check results on open PRs
-github.pr_list({ state: "open", limit: 10 })
+github_pr_list({ state: "open", limit: 10 })
 ```
 
 Report which PRs have passing vs failing checks.
@@ -153,14 +153,14 @@ Common errors and fixes:
 
 ```
 # Only after user confirms fix is pushed
-cicd.pipeline_trigger({ workflow: "ci", ref: "main" })
+cicd_pipeline_trigger({ workflow: "ci", ref: "main" })
 ```
 
 ### 8. Store and Report
 
 ```
 # Store results for future reference
-memory.store({
+memory_store({
   workflow_id: "<id>",
   task_id: "<task_id>",
   memory_type: "artifact",
@@ -192,7 +192,7 @@ Security:
 
 Workflows:
   ci.yml        -- PASSING
-  docker.yml    -- not triggered
+  docker_yml    -- not triggered
   security.yml  -- PASSING / not found
 
 ══════════════════════════════════════════
@@ -217,7 +217,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -226,7 +226,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -237,25 +237,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

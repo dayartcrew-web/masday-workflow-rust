@@ -5,19 +5,19 @@ description: >
   Dispatches executor agents, runs review gates, and completes tasks automatically.
   Use when the user says "autopilot", "run all tasks", "auto execute", or "fly through the plan".
 allowed-tools:
-  - workflow.getActive
-  - workflow.getPlan
-  - workflow.listTasks
-  - workflow.startTask
-  - workflow.completeTask
-  - workflow.saveProgress
-  - review.submit
-  - review.get_latest
-  - local.init
-  - local.sync
-  - semantic-search.search_hybrid_context_pack
-  - memory.recall_by_task
-  - memory.store
+  - workflow_getActive
+  - workflow_getPlan
+  - workflow_listTasks
+  - workflow_startTask
+  - workflow_completeTask
+  - workflow_saveProgress
+  - review_submit
+  - review_get_latest
+  - local_init
+  - local_sync
+  - semantic-search_search_hybrid_context_pack
+  - memory_recall_by_task
+  - memory_store
   - Agent
   - Bash
   - AskUserQuestion
@@ -34,14 +34,14 @@ Execute all pending tasks in the active workflow automatically. Dispatches execu
 
 ```
 Step 0a — Init .masday/:
-  local.init({ cwd: process.cwd() })
+  local_init({ cwd: process.cwd() })
 
 Step 0b — Get active workflow:
-  workflow.getActive({ cwd: process.cwd() })
+  workflow_getActive({ cwd: process.cwd() })
   If none: STOP — "No active workflow. Run /masday-workflow-new first."
 
 Step 0c — Get plan:
-  workflow.getPlan({ workflow_id: workflowId })
+  workflow_getPlan({ workflow_id: workflowId })
   If no plan: STOP — "No plan found. Run /masday-workflow-plan first."
 
 Step 0d — Count pending:
@@ -82,7 +82,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
   === TASK LOOP START ===
 
   STEP 1: Start task
-    workflow.startTask({
+    workflow_startTask({
       workflow_id: workflowId, task_id: task.id
     })
 
@@ -98,7 +98,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       worktreePath = "." (current directory)
 
   STEP 1c: Load context pack
-    semantic-search.search_hybrid_context_pack({
+    semantic-search_search_hybrid_context_pack({
       workflow_id: workflowId, plan_id: planId,
       task_id: task.id, cwd: process.cwd()
     })
@@ -119,7 +119,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
     })
 
   STEP 3: Save progress
-    workflow.saveProgress({
+    workflow_saveProgress({
       workflow_id: workflowId, task_id: task.id,
       agent_name: "masday-executor",
       progress_note: "<summary from executor>",
@@ -142,7 +142,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
 
   STEP 5: Submit review
     Extract decision from reviewer output.
-    review.submit({
+    review_submit({
       workflow_id: workflowId, task_id: task.id,
       reviewer_agent: "masday-reviewer",
       decision: <extracted decision>,
@@ -166,7 +166,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       STEP 6b: Handle verification
         IF PASS:
           Complete task:
-            workflow.completeTask({ workflow_id: workflowId, task_id: task.id })
+            workflow_completeTask({ workflow_id: workflowId, task_id: task.id })
 
           If worktree mode is .masday/worktrees/:
             Auto-commit uncommitted changes in worktree
@@ -200,7 +200,7 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
       STOP
 
   STEP 7: Sync state
-    local.sync({ cwd: process.cwd(), workflow_id: workflowId })
+    local_sync({ cwd: process.cwd(), workflow_id: workflowId })
 
   STEP 8: Print progress bar
 
@@ -283,7 +283,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -292,7 +292,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -303,25 +303,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

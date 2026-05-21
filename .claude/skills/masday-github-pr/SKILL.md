@@ -5,14 +5,14 @@ description: >
   conventional messages, and creates a PR linked to related issues. Use when the user
   says "create PR", "make pull request", "open PR", or "push changes".
 allowed-tools:
-  - git.status
-  - git.diff
-  - git.commit
-  - github.pr_create
-  - github.pr_list
-  - github.issue_list
-  - memory.store
-  - memory.recall_documents
+  - git_status
+  - git_diff
+  - git_commit
+  - github_pr_create
+  - github_pr_list
+  - github_issue_list
+  - memory_store
+  - memory_recall_documents
 ---
 
 # Masday GitHub PR
@@ -22,24 +22,24 @@ Create a GitHub pull request from current changes.
 ## Steps
 
 1. **Review changes**
-   - Call `git.status` to see all staged, unstaged, and untracked files
-   - Call `git.diff` to review the full diff of all changes
+   - Call `git_status` to see all staged, unstaged, and untracked files
+   - Call `git_diff` to review the full diff of all changes
    - Verify no sensitive files are included: .env, credentials, secrets
 
 2. **Check existing PRs**
-   - Call `github.pr_list` to check for existing PRs on this branch
+   - Call `github_pr_list` to check for existing PRs on this branch
    - If a PR already exists, report it and stop
 
 3. **Find related issues**
-   - Call `github.issue_list` to find issues related to the changes
+   - Call `github_issue_list` to find issues related to the changes
    - Match by keywords from the commit messages and changed file paths
 
 4. **Recall workflow context**
-   - Call `memory.recall_documents` to load workflow decisions and artifacts
+   - Call `memory_recall_documents` to load workflow decisions and artifacts
    - Use this context to write a comprehensive PR description
 
 5. **Commit with conventional message**
-   - Call `git.commit` with a message following the format:
+   - Call `git_commit` with a message following the format:
      ```
      <type>: <description>
 
@@ -49,7 +49,7 @@ Create a GitHub pull request from current changes.
    - Stage only relevant files, excluding secrets and build artifacts
 
 6. **Create the PR**
-   - Call `github.pr_create` with:
+   - Call `github_pr_create` with:
      - `title`: matches commit message format
      - `body`: structured with Summary, Test Plan, Related Issues sections
      - `base`: main (default target branch)
@@ -70,7 +70,7 @@ Create a GitHub pull request from current changes.
      ```
 
 7. **Store PR reference**
-   - Call `memory.store` with `memory_type: "artifact"`:
+   - Call `memory_store` with `memory_type: "artifact"`:
      - PR number, URL, branch name, and change summary
 
 ## Never
@@ -86,7 +86,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -95,7 +95,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -106,25 +106,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

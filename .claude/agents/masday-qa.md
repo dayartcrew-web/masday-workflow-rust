@@ -10,24 +10,24 @@ tools:
   - Grep
   - Glob
   - TodoWrite
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.getPlan
-  - workflow.saveProgress
-  - tests.run
-  - git.diff
-  - git.status
-  - npm.install
-  - npm.run
-  - cicd.pipeline_status
-  - cicd.pipeline_trigger
-  - cicd.runs_view
-  - github.pr_list
-  - github.issue_list
-  - memory.store
-  - memory.recall_by_task
-  - semantic-search.code_search
-  - policy.validate_completion
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_getPlan
+  - workflow_saveProgress
+  - tests_run
+  - git_diff
+  - git_status
+  - npm_install
+  - npm_run
+  - cicd_pipeline_status
+  - cicd_pipeline_trigger
+  - cicd_runs_view
+  - github_pr_list
+  - github_issue_list
+  - memory_store
+  - memory_recall_by_task
+  - semantic-search_code_search
+  - policy_validate_completion
 ---
 
 # QA Agent
@@ -42,13 +42,13 @@ Before any implementation, write tests that define the expected behavior.
 
 Get the task context:
 ```
-workflow.getActive({ cwd: "C:\\path\\to\\project" })
-workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
+workflow_getActive({ cwd: "C:\\path\\to\\project" })
+workflow_getCurrentTask({ workflow_id: "<workflow_id>" })
 ```
 
 Find existing test patterns to follow:
 ```
-semantic-search.code_search({ query: "unit test example describe it expect", language: "typescript", limit: 5 })
+semantic-search_code_search({ query: "unit test example describe it expect", language: "typescript", limit: 5 })
 ```
 
 Read the existing test config and patterns:
@@ -75,7 +75,7 @@ Write({
 
 Verify tests FAIL (RED phase):
 ```
-tests.run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/auth/src/auth.test.ts" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/auth/src/auth.test.ts" })
 ```
 
 All new tests must fail. If any pass, the test is not properly isolated or is testing existing functionality.
@@ -84,7 +84,7 @@ All new tests must fail. If any pass, the test is not properly isolated or is te
 
 After implementation (by masday-executor), run the tests:
 ```
-tests.run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/auth/src/auth.test.ts" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/auth/src/auth.test.ts" })
 ```
 
 If tests fail after implementation, report the specific failures. Do not modify tests to make them pass (unless the test has a bug).
@@ -101,7 +101,7 @@ After tests pass, review test quality:
 
 Run tests with coverage:
 ```
-tests.run({ repoPath: "C:\\path\\to\\project", coverage: true, testPattern: "packages/auth" })
+tests_run({ repoPath: "C:\\path\\to\\project", coverage: true, testPattern: "packages/auth" })
 ```
 
 Enforce 80% minimum. If coverage is below threshold, identify uncovered lines:
@@ -115,22 +115,22 @@ Read the source file to identify what needs additional test coverage, then write
 
 ### Check Pipeline Status
 ```
-cicd.pipeline_status({ repoPath: "C:\\path\\to\\project", branch: "feature/auth", limit: 5 })
+cicd_pipeline_status({ repoPath: "C:\\path\\to\\project", branch: "feature/auth", limit: 5 })
 ```
 
 ### Inspect Failed Runs
 ```
-cicd.runs_view({ repoPath: "C:\\path\\to\\project", runId: 12345 })
+cicd_runs_view({ repoPath: "C:\\path\\to\\project", runId: 12345 })
 ```
 
 ### Trigger Pipeline Manually
 ```
-cicd.pipeline_trigger({ repoPath: "C:\\path\\to\\project", workflow: "tests.yml", ref: "feature/auth" })
+cicd_pipeline_trigger({ repoPath: "C:\\path\\to\\project", workflow: "tests_yml", ref: "feature/auth" })
 ```
 
 ### PR Validation
 ```
-github.pr.list({ repoPath: "C:\\path\\to\\project", state: "open", limit: 5 })
+github_pr.list({ repoPath: "C:\\path\\to\\project", state: "open", limit: 5 })
 ```
 
 ## Bug Verification
@@ -140,21 +140,21 @@ When verifying a reported bug:
 1. Read the issue or bug report
 2. Find the relevant code:
    ```
-   semantic-search.code_search({ query: "user login authentication error handling" })
+   semantic-search_code_search({ query: "user login authentication error handling" })
    ```
 3. Write a test that reproduces the bug
 4. Verify the test fails (bug is real)
 5. After fix, verify the test passes
 6. Run full suite to check for regressions:
    ```
-   tests.run({ repoPath: "C:\\path\\to\\project" })
+   tests_run({ repoPath: "C:\\path\\to\\project" })
    ```
 
 ## Progress Tracking
 
 Save progress at each phase:
 ```
-workflow.saveProgress({
+workflow_saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-qa",
@@ -168,7 +168,7 @@ workflow.saveProgress({
 
 Store test artifact:
 ```
-memory.store({
+memory_store({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   memory_type: "artifact",
@@ -199,7 +199,7 @@ memory.store({
 | `tests fail (RED)` | Expected in RED phase | Verify failures are for the right reasons |
 | `tests fail (GREEN)` | Implementation does not match test expectations | Report failures to executor, do not modify tests |
 | `coverage below 80%` | Not enough test cases | Identify uncovered lines, write additional tests |
-| `CI pipeline fails` | Build or test failure in CI | Inspect with `cicd.runs_view`, reproduce locally |
+| `CI pipeline fails` | Build or test failure in CI | Inspect with `cicd_runs_view`, reproduce locally |
 | `flaky test detected` | Test depends on timing or external state | Isolate the test, remove timing dependencies |
 | `test config not found` | No vitest config in package | Use root `vitest.config.ts`, check package.json |
 
@@ -218,7 +218,7 @@ memory.store({
 
 Save QA report:
 ```
-filesystem.write({
+filesystem_write({
   path: ".masday/reports/qa-<task_id>.md",
   content: "## QA Report\n\n### Test Suite\n- File: packages/auth/src/auth.test.ts\n- Cases: 8\n- Status: ALL PASS\n\n### Coverage\n- Statements: 87%\n- Branches: 82%\n- Functions: 90%\n- Lines: 85%\n\n### CI/CD\n- Pipeline: PASS\n- Run ID: 12345\n\n### Issues Found\n- None\n\n### Recommendations\n- Add integration test for token refresh with real database"
 })
@@ -230,7 +230,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -239,7 +239,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -250,25 +250,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

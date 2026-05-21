@@ -4,7 +4,7 @@
 
 **Goal:** Add a new `masday-parallel-research` skill that ports the branch-dispatch/synthesis pattern from `msd-parallel-research` into the Masday workflow system, while keeping tool names on the Masday MCP pattern and writing only the final synthesized report locally.
 
-**Architecture:** Keep `masday-research` as the simple single-entry research skill. Add a new orchestration skill that splits one research request into independent branches, stores branch outputs in `memory.store_research`, synthesizes them with `masday-synthesizer`, and writes one final local artifact via `local.save_artifact`. Avoid MCP runtime changes unless a real gap is discovered during implementation, because the required primitives already exist in `apps/agent-runner/src/runtime/mcp.ts`.
+**Architecture:** Keep `masday-research` as the simple single-entry research skill. Add a new orchestration skill that splits one research request into independent branches, stores branch outputs in `memory_store_research`, synthesizes them with `masday-synthesizer`, and writes one final local artifact via `local_save_artifact`. Avoid MCP runtime changes unless a real gap is discovered during implementation, because the required primitives already exist in `apps/agent-runner/src/runtime/mcp.ts`.
 
 **Tech Stack:** Claude skills in `.agents/skills`, agent prompts in `.agents/agents`, Masday MCP tools (`workflow.*`, `memory.*`, `local.*`), TypeScript/Vitest for validation, Markdown artifact output.
 
@@ -32,10 +32,10 @@ describe("masday-parallel-research skill", () => {
   it("defines the parallel research orchestration flow", () => {
     expect(existsSync(skillPath)).toBe(true);
     const content = readFileSync(skillPath, "utf8");
-    expect(content).toContain("workflow.createParallelBranches");
+    expect(content).toContain("workflow_createParallelBranches");
     expect(content).toContain("masday-researcher");
     expect(content).toContain("masday-synthesizer");
-    expect(content).toContain("local.save_artifact");
+    expect(content).toContain("local_save_artifact");
   });
 });
 ```
@@ -51,12 +51,12 @@ Expected: FAIL because `.agents/skills/masday-parallel-research/SKILL.md` does n
 Create `.agents/skills/masday-parallel-research/SKILL.md` with these sections:
 - frontmatter: `name`, `description`, `allowed-tools`
 - entry rule: use only for 2+ independent research questions
-- workflow context step: `workflow.getActive`, `workflow.getCurrentTask`, `workflow.getPlan`
+- workflow context step: `workflow_getActive`, `workflow_getCurrentTask`, `workflow_getPlan`
 - branch split step
-- branch creation step using `workflow.createParallelBranches`
+- branch creation step using `workflow_createParallelBranches`
 - branch dispatch step using `masday-researcher`
 - synthesis step using `masday-synthesizer`
-- final artifact write step using `local.save_artifact`
+- final artifact write step using `local_save_artifact`
 - mandatory review pipeline
 
 Use this frontmatter skeleton:
@@ -70,17 +70,17 @@ description: >
   report locally.
 allowed-tools:
   - Agent
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.getPlan
-  - workflow.createParallelBranches
-  - workflow.listParallelBranches
-  - workflow.completeParallelBranch
-  - workflow.saveProgress
-  - memory.recall_documents
-  - memory.recall_document_by_type
-  - memory.store
-  - local.save_artifact
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_getPlan
+  - workflow_createParallelBranches
+  - workflow_listParallelBranches
+  - workflow_completeParallelBranch
+  - workflow_saveProgress
+  - memory_recall_documents
+  - memory_recall_document_by_type
+  - memory_store
+  - local_save_artifact
 ---
 ```
 
@@ -117,7 +117,7 @@ describe("masday-researcher branch contract", () => {
   it("documents branch-only memory persistence and synthesis metadata", () => {
     const content = readFileSync(".agents/agents/masday-researcher.md", "utf8");
     expect(content).toContain("branch worker");
-    expect(content).toContain("memory.store_research");
+    expect(content).toContain("memory_store_research");
     expect(content).toContain("Do not write local artifacts");
     expect(content).toContain("branch_scope");
     expect(content).toContain("confidence");
@@ -135,9 +135,9 @@ Expected: FAIL because the current agent prompt does not define branch-worker ou
 **Step 3: Write minimal implementation**
 
 Update `.agents/agents/masday-researcher.md` in the persistence/reporting section to add a branch-worker contract. Document that when the agent is dispatched by `masday-parallel-research`, it must:
-- store branch output through `memory.store_research`
+- store branch output through `memory_store_research`
 - keep the result scoped to branch research only
-- not call `local.save_artifact`
+- not call `local_save_artifact`
 - include this structured payload in the stored content:
 
 ```md
@@ -186,9 +186,9 @@ describe("masday-synthesizer research output", () => {
   it("documents final-only local artifact output for parallel research", () => {
     const content = readFileSync(".agents/agents/masday-synthesizer.md", "utf8");
     expect(content).toContain("research synthesis");
-    expect(content).toContain("local.save_artifact");
+    expect(content).toContain("local_save_artifact");
     expect(content).toContain("final-only local artifact");
-    expect(content).toContain("memory.recall_document_by_type");
+    expect(content).toContain("memory_recall_document_by_type");
   });
 });
 ```
@@ -204,14 +204,14 @@ Expected: FAIL because the current synthesizer prompt only mentions `Write(...)`
 Update `.agents/agents/masday-synthesizer.md` so the research-synthesis path explicitly says:
 - collect branch research documents by workflow and type
 - merge/dedupe/resolve contradictions
-- store synthesis summary in `memory.store`
-- write exactly one final local artifact via `local.save_artifact`
+- store synthesis summary in `memory_store`
+- write exactly one final local artifact via `local_save_artifact`
 - do not require branch-level local files
 
 Add a concrete example call:
 
 ```md
-local.save_artifact({
+local_save_artifact({
   cwd: process.cwd(),
   category: "reports",
   filename: "2026-05-20-topic-research-synthesis.md",
@@ -311,11 +311,11 @@ const runtime = readFileSync("apps/agent-runner/src/runtime/mcp.ts", "utf8");
 
 describe("masday MCP runtime contract", () => {
   it("exposes the tools required by parallel research orchestration", () => {
-    expect(runtime).toContain('server.registerTool("workflow.createParallelBranches"');
-    expect(runtime).toContain('server.registerTool("workflow.completeParallelBranch"');
-    expect(runtime).toContain('server.registerTool("workflow.listParallelBranches"');
-    expect(runtime).toContain('server.registerTool("memory.store_research"');
-    expect(runtime).toContain('server.registerTool("local.save_artifact"');
+    expect(runtime).toContain('server.registerTool("workflow_createParallelBranches"');
+    expect(runtime).toContain('server.registerTool("workflow_completeParallelBranch"');
+    expect(runtime).toContain('server.registerTool("workflow_listParallelBranches"');
+    expect(runtime).toContain('server.registerTool("memory_store_research"');
+    expect(runtime).toContain('server.registerTool("local_save_artifact"');
   });
 });
 ```
@@ -329,11 +329,11 @@ Expected: PASS with the current codebase. If it fails, inspect `apps/agent-runne
 **Step 3: Write minimal implementation only if needed**
 
 Only modify `apps/agent-runner/src/runtime/mcp.ts` if the test reveals a real mismatch. Likely no code change is needed because the relevant tools already exist around:
-- `workflow.createParallelBranches`
-- `workflow.completeParallelBranch`
-- `workflow.listParallelBranches`
-- `memory.store_research`
-- `local.save_artifact`
+- `workflow_createParallelBranches`
+- `workflow_completeParallelBranch`
+- `workflow_listParallelBranches`
+- `memory_store_research`
+- `local_save_artifact`
 
 If a gap is found, fix only that gap. Do not refactor unrelated MCP tool registration.
 
@@ -371,8 +371,8 @@ const synthesizer = readFileSync(".agents/agents/masday-synthesizer.md", "utf8")
 
 describe("parallel research documentation integration", () => {
   it("aligns orchestrator, branch worker, and synthesizer responsibilities", () => {
-    expect(skill).toContain("memory.store_research");
-    expect(skill).toContain("local.save_artifact");
+    expect(skill).toContain("memory_store_research");
+    expect(skill).toContain("local_save_artifact");
     expect(researcher).toContain("Do not write local artifacts");
     expect(synthesizer).toContain("final-only local artifact");
   });
@@ -471,7 +471,7 @@ git commit -m "feat: add masday parallel research orchestration"
 ## Data Contract Summary
 
 ### Branch worker (`masday-researcher`) output
-Store via `memory.store_research`.
+Store via `memory_store_research`.
 
 ```md
 branch_key: string
@@ -487,7 +487,7 @@ gaps:
 ```
 
 ### Final synthesizer output
-Store via `memory.store`, then write once via `local.save_artifact`.
+Store via `memory_store`, then write once via `local_save_artifact`.
 
 Filename format:
 - `YYYY-MM-DD-<topic-slug>-research-synthesis.md`

@@ -33,7 +33,7 @@ async function main() {
 
   for (const task of tasks) {
     try {
-      const memIds = await prisma.memory.findMany({
+      const memIds = await prisma.memory_findMany({
         where: { OR: [{ workflowId: task.workflowId }, { taskId: task.id }] },
         select: { id: true },
         take: 20,

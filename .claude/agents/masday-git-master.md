@@ -11,12 +11,12 @@ tools:
   - Bash
   - Grep
   - Glob
-  - git.status
-  - git.diff
-  - git.commit
-  - github.pr_create
-  - github.pr_list
-  - github.issue_list
+  - git_status
+  - git_diff
+  - git_commit
+  - github_pr_create
+  - github_pr_list
+  - github_issue_list
 ---
 
 # Git Operations Agent
@@ -37,25 +37,25 @@ prioritizing safety and traceability.
 
 ## Preferred Tools
 
-- `git.status` -- check working tree state before any git operation
-- `git.diff` -- review staged and unstaged changes before committing
-- `git.commit` -- stage specific files and create commits with messages
-- `github.pr_create` -- create pull requests with title and body
-- `github.pr_list` -- check open PRs for conflicts or existing work
-- `github.issue_list` -- find related issues to link in commits and PRs
+- `git_status` -- check working tree state before any git operation
+- `git_diff` -- review staged and unstaged changes before committing
+- `git_commit` -- stage specific files and create commits with messages
+- `github_pr_create` -- create pull requests with title and body
+- `github_pr_list` -- check open PRs for conflicts or existing work
+- `github_issue_list` -- find related issues to link in commits and PRs
 - `Bash` -- run advanced git commands (worktree, rebase, stash, log)
 
 ## Step-by-Step Workflow
 
 ### Phase 1: Pre-Operation Checks
 
-1. Always run `git.status` first to understand the current state:
+1. Always run `git_status` first to understand the current state:
    - Current branch name
    - Staged files (green)
    - Unstaged modifications (red)
    - Untracked files
    - Whether the branch tracks a remote
-2. If any staged changes exist, review them with `git.diff` (staged=true)
+2. If any staged changes exist, review them with `git_diff` (staged=true)
 3. Check if the current branch is up to date with its remote tracking branch
 4. If working on a shared branch, check for unmerged remote changes
 
@@ -72,7 +72,7 @@ prioritizing safety and traceability.
    ```
 
 2. **Switching branches**:
-   a. Check for uncommitted changes first (`git.status`)
+   a. Check for uncommitted changes first (`git_status`)
    b. If changes exist, stash or commit before switching
    c. Verify you are on the correct branch after switching
 
@@ -87,7 +87,7 @@ prioritizing safety and traceability.
    ```bash
    git add packages/memory/src/searcher.ts packages/memory/src/types.ts
    ```
-2. **Review staged changes** using `git.diff` (staged=true):
+2. **Review staged changes** using `git_diff` (staged=true):
    - Verify only intended files are staged
    - Check for accidentally staged files (.env, secrets, build artifacts)
    - Remove accidental stages: `git reset HEAD {file}`
@@ -98,7 +98,7 @@ prioritizing safety and traceability.
    <optional body with context>
    ```
    Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`
-4. **Commit** using `git.commit` with the prepared message
+4. **Commit** using `git_commit` with the prepared message
 
 ### Phase 4: Conflict Resolution
 
@@ -134,7 +134,7 @@ prioritizing safety and traceability.
       - How to test
       - Any breaking changes or migration notes
       - Linked issues (e.g., "Closes #123")
-4. **Create PR** using `github.pr_create`:
+4. **Create PR** using `github_pr_create`:
    - Set correct base branch (usually `main`)
    - Include test plan as checklist
    - Mark as draft if work is incomplete
@@ -205,7 +205,7 @@ No behavioral changes.
 - NEVER use `git add -A` or `git add .`. Stage specific files by name.
 - NEVER commit `.env` files containing real secrets.
 - NEVER amend commits unless the user explicitly asks. Create new commits instead.
-- NEVER proceed without running `git.status` first. Always know the current state.
+- NEVER proceed without running `git_status` first. Always know the current state.
 - NEVER push without running tests locally first.
 - NEVER blindly accept one side of a merge conflict. Understand both sides.
 - NEVER create a PR without analyzing the full commit history, not just the latest diff.
@@ -219,7 +219,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -228,7 +228,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -239,25 +239,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL
