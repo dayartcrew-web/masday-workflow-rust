@@ -9,7 +9,7 @@
 Unified AI coding agent platform built on Model Context Protocol (MCP).
 
 Merges the best of two projects:
-- **msd-mcp** -- Official MCP SDK, 5 domain servers, Prisma/PostgreSQL persistence
+- **msd-mcp** -- Official MCP SDK, 5 domain servers, Drizzle/PostgreSQL persistence
 - **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
 
 The result is a modular monorepo of 13 packages and a single unified MCP server exposing 87 tools over stdio to any MCP-compatible client.
@@ -22,7 +22,7 @@ The result is a modular monorepo of 13 packages and a single unified MCP server 
 # Install dependencies
 pnpm install
 
-# Generate Prisma client
+# Generate Drizzle client (drizzle-kit)
 pnpm db:generate
 
 # Set up pgvector columns and indexes (PostgreSQL only)
@@ -56,23 +56,23 @@ This starts a PostgreSQL 16 instance with pgvector on port 5432. See [Configurat
  | (Dashboard/  |   stdio       |  (87 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
-                                         v
-                             +-----------------------+
-                             |    WORKFLOW ENGINE     |
-                             |                       |
-                             |  Pure functions (msd) |
-                             |  + State machine (reborn) |
-                             |  + Session/Review/Parallel |
-                             +-----------+-----------+
-                                         |
-                    +--------------------+--------------------+
-                    |                    |                    |
-                    v                    v                    v
-           +--------------+     +--------------+     +--------------+
-           |   MEMORY     |     | INTELLIGENCE |     |   POLICY     |
-           |  4-layer     |     | Search/Index |     | Validators   |
-           |  (w/e/l/g)   |     | ReAct Agent  |     | Audit/Drift  |
-           +--------------+     +--------------+     +--------------+
+                                        v
+                            +-----------------------+
+                            |    WORKFLOW ENGINE     |
+                            |                       |
+                            |  Pure functions (msd) |
+                            |  + State machine (reborn) |
+                            |  + Session/Review/Parallel |
+                            +-----------+-----------+
+                                        |
+                   +--------------------+--------------------+
+                   |                    |                    |
+                   v                    v                    v
+          +--------------+     +--------------+     +--------------+
+          |   MEMORY     |     | INTELLIGENCE |     |   POLICY     |
+          |  4-layer     |     | Search/Index |     | Validators   |
+          |  (w/e/l/g)   |     | ReAct Agent  |     | Audit/Drift  |
+          +--------------+     +--------------+     +--------------+
 ```
 
 ### Memory Stack
@@ -121,8 +121,8 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 |---------|-------|-------------|
 | `packages/core` | `@mcp-rebuild/core` | Shared types, logger, EventBus, tracing, metrics |
 | `packages/shared-utils` | `@mcp-rebuild/shared-utils` | Logger, IDs, hash, env utilities (from msd-mcp) |
-| `packages/db` | `@mcp-rebuild/db` | Prisma schema (16 models + pgvector), client singleton |
-| `packages/store` | `@mcp-rebuild/store` | StorageBackend, SQLite, JSON, Prisma adapters |
+| `packages/db` | `@mcp-rebuild/db` | Drizzle schema (16 models + pgvector), client singleton |
+| `packages/store` | `@mcp-rebuild/store` | StorageBackend, SQLite, JSON, Drizzle adapters |
 | `packages/llm` | `@mcp-rebuild/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
 | `packages/memory` | `@mcp-rebuild/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
 | `packages/workflow-engine` | `@mcp-rebuild/workflow-engine` | Pure functions + state machine, DAG, session, review, parallel, drift |
@@ -146,21 +146,21 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | Namespace | Tools | Implementation |
 |-----------|-------|----------------|
 | workflow | 23 | DualWriteStore + OrchestratingEngine (PostgreSQL real-time replication) |
-| memory | 11 | Prisma-first with JSON cache fallback (hybrid mode) |
+| memory | 11 | Drizzle-first with JSON cache fallback (hybrid mode) |
 | semantic-search | 3 | Context pack, fingerprinting, code search |
-| policy | 6 | Real Prisma validation (workflow status, review decisions, branch status, fingerprints) |
+| policy | 6 | Real Drizzle validation (workflow status, review decisions, branch status, fingerprints) |
 | capability | 11 | Real `.claude/` directory reads with frontmatter parsing |
 | filesystem | 5 | Real fs.readFileSync / writeFileSync / readdirSync / unlinkSync / statSync |
-| review | 2 | Real Prisma writes to ReviewDecision table |
-| session | 3 | Real Prisma reads/writes to SessionState table |
-| local | 4 | File-based `.masday/` state dir + Prisma sync/push |
+| review | 2 | Real Drizzle writes to ReviewDecision table |
+| session | 3 | Real Drizzle reads/writes to SessionState table |
+| local | 4 | File-based `.masday/` state dir + Drizzle sync/push |
 | git | 3 | Real `execSync` calls to git CLI |
 | npm | 2 | Real `execSync` calls to pnpm CLI |
 | docker | 3 | Real `execSync` calls to docker CLI |
 | cicd | 3 | Real `execSync` calls to `gh` CLI |
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
-| reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Prisma WorkflowReminder table) |
+| reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Drizzle WorkflowReminder table) |
 | projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
 ### MCP Pattern
@@ -170,41 +170,43 @@ Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore f
 ```typescript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
-import { setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
-import { setEpisodicPrisma, setGraphPrisma } from "@mcp-rebuild/memory";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
+import { setDbClient as setTokenDb, trackTokens } from "@mcp-rebuild/core";
+import { setEpisodicDb, setGraphDb } from "@mcp-rebuild/memory";
 import { saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
 
 const server = new McpServer({ name: "masday", version: "0.1.0" });
-// After Prisma connects:
-setDualWritePrisma(prisma);
-setTokenPrisma(prisma);
-setEpisodicPrisma(prisma);
-setGraphPrisma(prisma);
+const db = drizzle(connectionString);
+// After Drizzle connects:
+setDualWriteDb(db);
+setTokenDb(db);
+setEpisodicDb(db);
+setGraphDb(db);
 ```
 
 ### Persistence
 
-All 16 Prisma tables are actively populated via DualWriteStore pattern:
+All 16 Drizzle tables are actively populated via DualWriteStore pattern:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
 | Workflow | DualWriteStore | workflow.create, execute, delete |
 | Task | DualWriteStore | addTask, startTask, completeTask |
 | Plan | DualWriteStore | createPlan |
-| Memory | persistToPrisma() | memory.store, store_research |
-| ReviewDecision | Prisma direct | review.submit |
-| SessionState | Prisma direct | session.patch_state |
-| ParallelBranch | Prisma direct | workflow.createParallelBranches |
-| ContextDocument | Prisma direct | memory.store_research |
+| Memory | persistToDb() | memory.store, store_research |
+| ReviewDecision | Drizzle direct | review.submit |
+| SessionState | Drizzle direct | session.patch_state |
+| ParallelBranch | Drizzle direct | workflow.createParallelBranches |
+| ContextDocument | Drizzle direct | memory.store_research |
 | TaskProgressLog | saveProgressDb() | workflow.saveProgress |
 | RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
 | TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
-| EpisodicMemory | setEpisodicPrisma() | EpisodicMemory.add() |
-| GraphNode | setGraphPrisma() | GraphStore.addNode() |
-| GraphEdge | setGraphPrisma() | GraphStore.addEdge() |
-| WorkflowReminder | setReminderPrisma() | reminder.check |
-| LlmProviderConfig | Prisma direct | LLM provider configuration storage |
+| EpisodicMemory | setEpisodicDb() | EpisodicMemory.add() |
+| GraphNode | setGraphDb() | GraphStore.addNode() |
+| GraphEdge | setGraphDb() | GraphStore.addEdge() |
+| WorkflowReminder | setReminderDb() | reminder.check |
+| LlmProviderConfig | Drizzle direct | LLM provider configuration storage |
 
 Status values are ALL UPPERCASE in PostgreSQL:
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
@@ -251,9 +253,8 @@ bash scripts/setup.sh
 | `pnpm test:coverage` | Run tests with coverage report |
 | `pnpm lint` | Run type checking across all packages |
 | `pnpm typecheck` | Alias for lint |
-| `pnpm db:generate` | Generate Prisma client from schema |
-| `pnpm db:push` | Push schema to database (no migration) |
-| `pnpm db:migrate` | Create and apply Prisma migration |
+| `pnpm db:generate` | Generate Drizzle client from schema (drizzle-kit) |
+| `pnpm db:push` | Push schema to database (drizzle-kit push) |
 | `docker-compose up -d` | Start PostgreSQL + pgvector |
 
 ---
@@ -279,20 +280,17 @@ OLLAMA_BASE_URL="http://localhost:11434"
 
 ### Database
 
-The project uses Prisma with PostgreSQL and pgvector. The schema is at `packages/db/prisma/schema.prisma` and includes 16 models with pgvector support for semantic search.
+The project uses Drizzle ORM with PostgreSQL and pgvector. The schema is at `packages/db/src/schema.ts` and includes 16 models with pgvector support for semantic search.
 
 ```bash
 # Start the database
 docker-compose up -d
 
-# Generate the Prisma client
+# Generate the Drizzle client
 pnpm db:generate
 
 # Push schema (development)
 pnpm db:push
-
-# Or run migrations
-pnpm db:migrate
 ```
 
 ---
@@ -303,7 +301,7 @@ pnpm db:migrate
 |-------|-----------|
 | Language | TypeScript (strict mode, ESM modules) |
 | Runtime | Node.js with `tsx` for TypeScript execution |
-| Database | PostgreSQL 16 + pgvector (via Prisma ORM) |
+| Database | PostgreSQL 16 + pgvector (via Drizzle ORM) |
 | Protocol | Model Context Protocol (MCP) over stdio |
 | Validation | Zod schemas for all inputs |
 | Logging | Pino structured logging |
@@ -362,7 +360,7 @@ This project is built on top of outstanding open source software.
 
 | Project | Description | GitHub |
 |---------|-------------|--------|
-| **Prisma** | Next-generation ORM for Node.js and TypeScript | [prisma/prisma](https://github.com/prisma/prisma) |
+| **Drizzle ORM** | Headless TypeScript ORM with SQL-like syntax | [drizzle-team/drizzle-orm](https://github.com/drizzle-team/drizzle-orm) |
 | **PostgreSQL** | Advanced open source database | [postgres/postgres](https://github.com/postgres/postgres) |
 | **pgvector** | Vector similarity search for PostgreSQL | [pgvector/pgvector](https://github.com/pgvector/pgvector) |
 | **better-sqlite3** | SQLite3 bindings for Node.js | [WiseLibs/better-sqlite3](https://github.com/WiseLibs/better-sqlite3) |

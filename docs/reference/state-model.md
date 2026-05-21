@@ -4,7 +4,7 @@ This page captures the runtime state ownership model and the workflow engine arc
 
 ## Ownership model
 
-- **PostgreSQL** (via DualWriteStore + Prisma) owns operational workflow/task state. JSON cache is fallback.
+- **PostgreSQL** (via DualWriteStore + Drizzle) owns operational workflow/task state. JSON cache is fallback.
 - **`.masday/`** owns project-local, human-readable artifacts such as research notes, plans, context summaries, and execution notes.
 
 ## `.masday/` contents
@@ -25,30 +25,30 @@ The DualWriteStore manages operational state with PostgreSQL as primary and JSON
 | -------------------------- | ------------------------------------------------------- |
 | DualWriteWorkflowStore     | Active workflows, state transitions (PostgreSQL + JSON) |
 | DualWriteTaskResultStore   | Task status, execution metadata (PostgreSQL + JSON)     |
-| MemoryStore                | Memories (Prisma first, JSON fallback)                  |
+| MemoryStore                | Memories (Drizzle first, JSON fallback)                  |
 
-## 16 Prisma tables
+## 16 Drizzle tables
 
-All 16 Prisma models are actively populated. Each table is wired to the MCP tools that trigger writes.
+All 16 Drizzle models are actively populated. Each table is wired to the MCP tools that trigger writes.
 
 | Table             | Wired Via            | Trigger                                              |
 | ----------------- | -------------------- | ---------------------------------------------------- |
 | Workflow          | DualWriteStore       | workflow.create, execute, delete                     |
 | Task              | DualWriteStore       | addTask, startTask, completeTask                     |
 | Plan              | DualWriteStore       | createPlan                                           |
-| Memory            | persistToPrisma()    | memory.store, store_research                         |
-| ReviewDecision    | Prisma direct        | review.submit                                        |
-| SessionState      | Prisma direct        | session.patch_state                                  |
-| ParallelBranch    | Prisma direct        | workflow.createParallelBranches                      |
-| ContextDocument   | Prisma direct        | memory.store_research                                |
+| Memory            | persistToDb()    | memory.store, store_research                         |
+| ReviewDecision    | Drizzle direct        | review.submit                                        |
+| SessionState      | Drizzle direct        | session.patch_state                                  |
+| ParallelBranch    | Drizzle direct        | workflow.createParallelBranches                      |
+| ContextDocument   | Drizzle direct        | memory.store_research                                |
 | TaskProgressLog   | saveProgressDb()     | workflow.saveProgress                                |
 | RetrievalLog      | logRetrieval()       | memory.search, semantic-search.*                     |
 | TokenUsage        | trackTokens()        | workflow.saveProgress, memory.store_research         |
-| EpisodicMemory    | setEpisodicPrisma()  | EpisodicMemory.add()                                 |
-| GraphNode         | setGraphPrisma()     | GraphStore.addNode()                                 |
-| GraphEdge         | setGraphPrisma()     | GraphStore.addEdge()                                 |
-| WorkflowReminder  | setReminderPrisma()  | reminder.check                                       |
-| LlmProviderConfig | Prisma direct        | LLM provider configuration storage                   |
+| EpisodicMemory    | setEpisodicDb()  | EpisodicMemory.add()                                 |
+| GraphNode         | setGraphDb()     | GraphStore.addNode()                                 |
+| GraphEdge         | setGraphDb()     | GraphStore.addEdge()                                 |
+| WorkflowReminder  | setReminderDb()  | reminder.check                                       |
+| LlmProviderConfig | Drizzle direct        | LLM provider configuration storage                   |
 
 ## Status conventions
 
@@ -59,7 +59,7 @@ All status values are UPPERCASE in PostgreSQL:
 - **Plan:** ACTIVE, PENDING, READY, DONE
 - **Review:** APPROVED, REWORK_REQUIRED, BLOCKED
 
-DualWriteStore maps in-memory lowercase TaskState to UPPERCASE for Prisma.
+DualWriteStore maps in-memory lowercase TaskState to UPPERCASE for Drizzle.
 
 ## Engine hierarchy
 
@@ -107,7 +107,7 @@ INIT → ANALYZE → PLAN → EXECUTE → VERIFY → DONE
 | Auto-task creation | `createPlan` auto-creates tasks from `plan.tasks[]` entries        |
 | Priority queue     | OrchestratingEngine uses TaskQueue with agent-type priorities      |
 | Agent dispatch     | Tasks routed through SkillRouter to appropriate agent workers      |
-| Memory persistence | Memory persists to PostgreSQL (Prisma first) with JSON cache fallback |
+| Memory persistence | Memory persists to PostgreSQL (Drizzle first) with JSON cache fallback |
 | Startup init       | Session, Review, and Parallel tables are initialized at startup    |
 
 ## Why this matters

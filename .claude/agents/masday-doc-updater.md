@@ -46,7 +46,7 @@ invent features, commands, or patterns that do not exist in the code.
    - Tool names and counts ("70 tools across 13 namespaces")
    - Package lists and descriptions
    - Command examples (`pnpm build`, `pnpm test`)
-   - File paths (`packages/db/prisma/schema.prisma`)
+   - File paths (`packages/db/src/schema.ts`)
    - Architecture diagrams (ASCII art or Mermaid)
 
 ### Phase 2: Verify Against Codebase

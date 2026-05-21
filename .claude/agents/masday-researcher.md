@@ -96,7 +96,7 @@ mcp__context7__query-docs({
 # Returns: relevant doc snippets with code examples
 ```
 
-Repeat for each relevant library (e.g., zod, prisma, express, etc.)
+Repeat for each relevant library (e.g., zod, drizzle, express, etc.)
 
 **Web research** -- find best practices and broader context:
 ```

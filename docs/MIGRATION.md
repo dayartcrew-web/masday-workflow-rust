@@ -16,7 +16,7 @@ msd-mcp provided workflow orchestration, policy enforcement, capability manageme
 | `apps/policy-mcp/` | `packages/policy/` | PolicyValidator + WorkflowAuditor |
 | `apps/capability-mcp/` | `packages/capability/` | Registry, Scaffolder, Health |
 | `apps/semantic-search-mcp/` | `packages/intelligence/` | SemanticSearcher, Context, CodeIndexer |
-| `packages/db/` | `packages/db/` | Prisma schema preserved, new models added |
+| `packages/db/` | `packages/db/` | Drizzle schema preserved, new models added |
 
 ### API Changes
 
@@ -75,7 +75,7 @@ The standalone version provided the basic workflow engine, skills, and MCP serve
 | `packages/mcp-server/` | `packages/mcp-server/` | Unchanged |
 | `packages/skills/` | `packages/skills/` | Unchanged |
 | `packages/code-skills/` | `packages/code-skills/` | Unchanged |
-| `packages/store/` | `packages/store/` | Extended with Prisma adapter |
+| `packages/store/` | `packages/store/` | Extended with Drizzle adapter |
 | `packages/agents/` | `packages/agents/` | Unchanged |
 | `packages/intelligence/` | `packages/intelligence/` | Extended with ReAct, Guardrails, search |
 
@@ -83,7 +83,7 @@ The standalone version provided the basic workflow engine, skills, and MCP serve
 
 These packages are entirely new:
 
-- `packages/db/` -- Prisma schema and client
+- `packages/db/` -- Drizzle schema (packages/db/src/schema.ts) and client
 - `packages/memory/` -- 4-layer memory system
 - `packages/llm/` -- Multi-provider LLM with resilience
 - `packages/policy/` -- Policy enforcement and auditing
