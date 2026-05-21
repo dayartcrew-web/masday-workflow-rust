@@ -13,8 +13,12 @@ export async function submitReview(input: {
   decision: MsdReviewDecision;
   notes: string;
   gaps?: string[];
+  testsVerified?: boolean;
+  testSummary?: { testFiles: string[]; testsPassed: boolean; coveragePercent?: number };
 }) {
-  const row = await (await import("@mcp-rebuild/db")).prisma.reviewDecision.create({
+  const prisma = (await import("@mcp-rebuild/db")).prisma;
+
+  const row = await prisma.reviewDecision.create({
     data: {
       workflowId: input.workflowId,
       taskId: input.taskId,
@@ -22,10 +26,29 @@ export async function submitReview(input: {
       decision: input.decision,
       notes: input.notes,
       gaps: input.gaps ?? [],
+      testsVerified: input.testsVerified ?? false,
+      testSummary: input.testSummary ?? {},
     },
   });
 
   if (input.decision === "APPROVED") {
+    // TDD gate: check task requiresTdd before completing
+    const task = await prisma.task.findUniqueOrThrow({
+      where: { id: input.taskId },
+    });
+
+    if (task.requiresTdd && !input.testsVerified) {
+      // Don't auto-complete: reviewer must verify tests
+      await prisma.task.update({
+        where: { id: input.taskId },
+        data: { status: "RUNNING" },
+      });
+      return {
+        ...row,
+        _tddWarning: "Task requires TDD but testsVerified was not set to true. Task remains RUNNING.",
+      };
+    }
+
     await completeTask({
       taskId: input.taskId,
       workflowId: input.workflowId,
@@ -33,19 +56,19 @@ export async function submitReview(input: {
   }
 
   if (input.decision === "REWORK_REQUIRED") {
-    await (await import("@mcp-rebuild/db")).prisma.task.update({
+    await prisma.task.update({
       where: { id: input.taskId },
       data: { status: "RUNNING" },
     });
   }
 
   if (input.decision === "BLOCKED") {
-    await (await import("@mcp-rebuild/db")).prisma.task.update({
+    await prisma.task.update({
       where: { id: input.taskId },
       data: { status: "BLOCKED" },
     });
 
-    await (await import("@mcp-rebuild/db")).prisma.workflow.update({
+    await prisma.workflow.update({
       where: { id: input.workflowId },
       data: { status: "BLOCKED" },
     });

@@ -111,7 +111,11 @@ foreach ($skill in $masdaySkills) {
     Copy-Item -Path $skill.FullName -Destination $dest -Recurse -Force
 }
 
-# 9. Summary
+# 9. Ensure .masday/ state directories exist (used by tdd-guard hook)
+New-Item -ItemType Directory -Force -Path "$RootDir\.masday\cache\tasks" | Out-Null
+New-Item -ItemType Directory -Force -Path "$RootDir\.masday\reports" | Out-Null
+
+# 10. Summary
 Write-Host ""
 Write-Host "=== Setup complete ===" -ForegroundColor Green
 Write-Host "MCP server: masday (87 tools, 16 namespaces)"
@@ -120,6 +124,7 @@ $jsHooks = (Get-ChildItem "$RootDir\.claude\hooks\*.js" -ErrorAction SilentlyCon
 $mjsHooks = (Get-ChildItem "$RootDir\.claude\hooks\*.mjs" -ErrorAction SilentlyContinue).Count
 Write-Host "  Agents:  $agents registered"
 Write-Host "  Hooks:   $($jsHooks + $mjsHooks) executable"
+Write-Host "  TDD guard: workflow-aware (requiresTdd tasks blocked without tests)"
 Write-Host "  Skills:  $copiedSkills masday-* skills -> $globalSkillsDir"
 Write-Host "  Opencode: $opencodeAgents global + $projAgents project agents" -ForegroundColor Cyan
 Write-Host "  Embedding: EMBEDDING_PROVIDER=$($env:EMBEDDING_PROVIDER ?? 'fastembed') (fastembed|ollama|openai)"
