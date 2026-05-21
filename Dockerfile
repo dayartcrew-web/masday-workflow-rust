@@ -9,17 +9,11 @@ COPY packages/*/package.json ./packages/*/
 COPY apps/*/package.json ./apps/*/
 RUN pnpm install --frozen-lockfile
 
-# Generate Prisma client
-FROM deps AS prisma
-COPY packages/db/prisma ./packages/db/prisma
-RUN pnpm db:generate
-
 # Build stage
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/*/node_modules ./packages/*/node_modules
 COPY --from=deps /app/apps/*/node_modules ./apps/*/node_modules
-COPY --from=prisma /app/packages/db/node_modules/.prisma ./packages/db/node_modules/.prisma
 COPY . .
 RUN pnpm build
 
@@ -37,11 +31,10 @@ COPY --from=build /app/packages/*/node_modules ./packages/*/node_modules
 COPY --from=build /app/apps/*/dist ./apps/*/dist
 COPY --from=build /app/apps/*/package.json ./apps/*/
 COPY --from=build /app/apps/*/node_modules ./apps/*/node_modules
-COPY --from=prisma /app/packages/db/node_modules/.prisma ./packages/db/node_modules/.prisma
 
 ENV NODE_ENV=production
 ENV DATABASE_URL="postgresql://postgres:postgres@postgres:5432/masday_workflow"
 
 EXPOSE 3000
 
-CMD ["npx", "tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+CMD ["npx", "tsx", "apps/agent-runner/dist/runtime/mcp.js"]
