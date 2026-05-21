@@ -14,3 +14,6 @@ coverage/
 .continue/
 .gemini/
 .opencode/agent/
+
+# One-off ad-hoc debugging scripts
+scripts/fp-*.sql
