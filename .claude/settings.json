@@ -54,6 +54,16 @@
         ]
       },
       {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs skill-wrap-guard",
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "mcp__masday__workflow_completeTask|mcp__workflow-orchestrator__workflow_complete_task",
         "hooks": [
           {

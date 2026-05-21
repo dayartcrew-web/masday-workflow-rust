@@ -15,6 +15,8 @@ const hookModules = {
   'on-stop': './on-stop.js',
   'agentic-mem-context': './agentic-mem-context.js',
   'pre-task-complete': './pre-task-complete.js',
+  'skill-wrap-guard': './skill-wrap-guard.js',
+  'pre-commit': './pre-commit.md',
 };
 
 async function readStdin() {
