@@ -17,3 +17,4 @@ coverage/
 
 # One-off ad-hoc debugging scripts
 scripts/fp-*.sql
+e2e-results.json
