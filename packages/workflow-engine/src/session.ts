@@ -2,18 +2,16 @@
  * Session state (msd-mcp business logic)
  */
 
-
+import { eq } from "drizzle-orm";
 
 export async function getOrCreateSessionState(sessionKey: string) {
-  const existing = await (await import("@mcp-rebuild/db")).prisma.sessionState.findUnique({
-    where: { sessionKey },
-  });
+  const { db, sessionStates } = await import("@mcp-rebuild/db");
 
+  const [existing] = await db.select().from(sessionStates).where(eq(sessionStates.sessionKey, sessionKey));
   if (existing) return existing;
 
-  return (await import("@mcp-rebuild/db")).prisma.sessionState.create({
-    data: { sessionKey },
-  });
+  const [created] = await db.insert(sessionStates).values({ sessionKey }).returning();
+  return created;
 }
 
 export async function patchSessionState(
@@ -22,8 +20,7 @@ export async function patchSessionState(
 ) {
   await getOrCreateSessionState(sessionKey);
 
-  return (await import("@mcp-rebuild/db")).prisma.sessionState.update({
-    where: { sessionKey },
-    data: patch,
-  });
+  const { db, sessionStates } = await import("@mcp-rebuild/db");
+  const [updated] = await db.update(sessionStates).set(patch as Record<string, unknown>).where(eq(sessionStates.sessionKey, sessionKey)).returning();
+  return updated;
 }

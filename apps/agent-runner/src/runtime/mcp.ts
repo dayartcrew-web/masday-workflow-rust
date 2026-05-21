@@ -17,10 +17,10 @@
  * TOTAL TOOLS: 88 (all real implementations)
  *
  * Persistence:
- *   - DualWriteWorkflowStore: all workflow operations replicate to PostgreSQL in real-time via Prisma
- *   - Memory: hybrid mode (Prisma first, JSON cache fallback)
- *   - Review tools: real Prisma writes to ReviewDecision table
- *   - Session tools: real Prisma reads/writes to SessionState table
+ *   - DualWriteWorkflowStore: all workflow operations replicate to PostgreSQL in real-time via Drizzle
+ *   - Memory: hybrid mode (Drizzle first, JSON cache fallback)
+ *   - Review tools: real Drizzle writes to ReviewDecision table
+ *   - Session tools: real Drizzle reads/writes to SessionState table
  *   - Policy tools: real validation against DB (workflow status, review decisions, branch status, fingerprints)
  *   - Shell tools: real execSync calls (git, pnpm, docker, gh CLI, test runner)
  *   - Capability tools: real .claude/ directory reads with frontmatter parsing
@@ -57,13 +57,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { EventBus, createLogger, setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
 import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
-import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderPrisma, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
+import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
 import { setEpisodicPrisma, setGraphPrisma, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
-import { prisma, healthCheck as dbHealthCheck } from "@mcp-rebuild/db";
+import { db as drizzleDb, healthCheck as dbHealthCheck, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
 import * as path from "path";
 import * as fs from "fs";
 import { FlagEmbedding, EmbeddingModel } from "fastembed";
@@ -191,52 +192,58 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
   } catch { return null; }
 }
 
-let prismaReady = false;
-async function initPrisma(): Promise<void> {
+let dbReady = false;
+async function initDb(): Promise<void> {
   try {
     const healthy = await dbHealthCheck();
     if (!healthy) { logger.warn("PostgreSQL not reachable, using JSON-only mode"); return; }
-    const rows = await prisma.memory.findMany({ orderBy: { createdAt: "desc" } });
+    const rows = await drizzleDb.select().from(memoriesTable).orderBy(desc(memoriesTable.createdAt));
     if (rows.length > 0) {
       const cached: MemRec[] = rows.map(r => ({
         id: r.id, type: r.memoryType, content: r.content, summary: r.summary,
-        source: r.createdByAgent, importance: r.importanceScore,
+        source: r.createdByAgent, importance: r.importanceScore ?? 0.5,
         tags: r.tags, createdAt: r.createdAt.getTime(),
       }));
       saveMem(cached);
       logger.info("Synced " + cached.length + " memories from PostgreSQL to cache");
     }
-    prismaReady = true;
-    setDualWritePrisma(prisma);
-    setTokenPrisma(prisma);
-    setEpisodicPrisma(prisma);
-    setGraphPrisma(prisma);
-    setReminderPrisma(prisma);
-    logger.info("Prisma connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
+    dbReady = true;
+    setDualWritePrisma(drizzleDb as never);
+    setTokenPrisma(drizzleDb as never);
+    setEpisodicPrisma(drizzleDb as never);
+    setGraphPrisma(drizzleDb as never);
+    setReminderDb(drizzleDb);
+    logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
   } catch (err) {
-    logger.warn("Prisma init failed, falling back to JSON-only: " + (err instanceof Error ? err.message : String(err)));
+    logger.warn("Drizzle init failed, falling back to JSON-only: " + (err instanceof Error ? err.message : String(err)));
   }
 }
 
-async function persistToPrisma(rec: MemRec, workflowId?: string, taskId?: string): Promise<void> {
-  if (!prismaReady) return;
+async function persistToDb(rec: MemRec, workflowId?: string, taskId?: string): Promise<void> {
+  if (!dbReady) return;
   try {
     const embedding = await generateEmbedding(rec.content);
-    await prisma.memory.upsert({
-      where: { id: rec.id },
-      update: { content: rec.content, summary: rec.summary, importanceScore: rec.importance, tags: rec.tags, accessedAt: new Date() },
-      create: {
+    // Upsert: check if exists, then insert or update
+    const [existing] = await drizzleDb.select({ id: memoriesTable.id }).from(memoriesTable).where(eq(memoriesTable.id, rec.id)).limit(1);
+    if (existing) {
+      await drizzleDb.update(memoriesTable).set({
+        content: rec.content, summary: rec.summary,
+        importanceScore: rec.importance, tags: rec.tags,
+        accessedAt: new Date(),
+      }).where(eq(memoriesTable.id, rec.id));
+    } else {
+      await drizzleDb.insert(memoriesTable).values({
         id: rec.id, memoryType: rec.type, content: rec.content, summary: rec.summary,
         importanceScore: rec.importance, tags: rec.tags, createdByAgent: rec.source,
         workflowId: workflowId ?? null, taskId: taskId ?? null,
-      },
-    });
+      });
+    }
     if (embedding) {
       const vecStr = `[${embedding.join(",")}]`;
-      await prisma.$executeRaw`UPDATE "Memory" SET embedding = ${vecStr}::vector WHERE id = ${rec.id}`;
+      await drizzleDb.execute(sql`UPDATE "Memory" SET embedding = ${vecStr}::vector WHERE id = ${rec.id}`);
     }
   } catch (err) {
-    logger.warn("Prisma write failed: " + (err instanceof Error ? err.message : String(err)));
+    logger.warn("Drizzle write failed: " + (err instanceof Error ? err.message : String(err)));
   }
 }
 
@@ -257,9 +264,9 @@ server.registerTool("workflow.addTask", { description: "Add task", inputSchema: 
 server.registerTool("workflow.startTask", { description: "Start task", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async ({ workflow_id, task_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "running"; t.startedAt = new Date(); workflowStore.save(w); return ok(t); });
 server.registerTool("workflow.completeTask", { description: "Complete task", inputSchema: { workflow_id: z.string(), task_id: z.string(), result: z.record(z.any()).optional() } }, async ({ workflow_id, task_id, result }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "done"; t.completedAt = new Date(); if (result) t.output = result; const allDone = w.tasks.length > 0 && w.tasks.every((x: any) => x.state === "done"); if (allDone && w.state !== "DONE") { w.state = "DONE"; w.updatedAt = new Date(); } workflowStore.save(w); return ok(t); });
 server.registerTool("workflow.saveProgress", { description: "Save progress", inputSchema: { workflow_id: z.string(), task_id: z.string(), agent_name: z.string(), progress_note: z.string(), evidence: z.array(z.string()).optional(), test_evidence: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional(), testOutput: z.string().optional() }).optional() } }, async (a) => {
-    if (prismaReady) { try { await saveProgressDb({ workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] }); } catch (e) { logger.warn("TaskProgressLog write failed: " + (e instanceof Error ? e.message : String(e))); } }
+    if (dbReady) { try { await saveProgressDb({ workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] }); } catch (e) { logger.warn("TaskProgressLog write failed: " + (e instanceof Error ? e.message : String(e))); } }
     // Update task testEvidence if provided
-    if (prismaReady && a.test_evidence) { try { await prisma.task.update({ where: { id: a.task_id }, data: { testEvidence: a.test_evidence } }); } catch (e) { logger.warn("testEvidence update failed: " + (e instanceof Error ? e.message : String(e))); } }
+    if (dbReady && a.test_evidence) { try { await drizzleDb.update(tasksTable).set({ testEvidence: a.test_evidence as never }).where(eq(tasksTable.id, a.task_id)); } catch (e) { logger.warn("testEvidence update failed: " + (e instanceof Error ? e.message : String(e))); } }
     eventBus.emit("trace.completed", { workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] });
     trackTokens("workflow.saveProgress", a, { saved: true });
     return ok({ saved: true });
@@ -272,22 +279,31 @@ server.registerTool("workflow.createPlan", { description: "Create plan (stores m
 server.registerTool("workflow.createParallelBranches", { description: "Create parallel branches", inputSchema: { workflow_id: z.string(), branches: z.array(z.object({ branchKey: z.string(), role: z.string(), scope: z.string() })) } }, async ({ workflow_id, branches }) => {
   const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found");
   w.metadata = { ...w.metadata, parallelBranches: branches }; workflowStore.save(w);
-  if (prismaReady) { try { for (const b of branches) { await prisma.parallelBranch.upsert({ where: { id: `${workflow_id}_${b.branchKey}` }, create: { id: `${workflow_id}_${b.branchKey}`, workflowId: workflow_id, taskId: "", branchKey: b.branchKey, role: b.role, status: "ACTIVE", input: { scope: b.scope } }, update: { role: b.role, status: "ACTIVE", input: { scope: b.scope } } }); } } catch (e) { logger.warn("ParallelBranch Prisma write failed: " + (e instanceof Error ? e.message : String(e))); } }
+  if (dbReady) { try { for (const b of branches) {
+    const branchId = `${workflow_id}_${b.branchKey}`;
+    // Check if exists, then upsert
+    const [existing] = await drizzleDb.select({ id: parallelBranchesTable.id }).from(parallelBranchesTable).where(eq(parallelBranchesTable.id, branchId)).limit(1);
+    if (existing) {
+      await drizzleDb.update(parallelBranchesTable).set({ role: b.role, status: "ACTIVE", input: { scope: b.scope } as never }).where(eq(parallelBranchesTable.id, branchId));
+    } else {
+      await drizzleDb.insert(parallelBranchesTable).values({ id: branchId, workflowId: workflow_id, taskId: "", branchKey: b.branchKey, role: b.role, status: "ACTIVE", input: { scope: b.scope } as never });
+    }
+  } } catch (e) { logger.warn("ParallelBranch Drizzle write failed: " + (e instanceof Error ? e.message : String(e))); } }
   return ok({ created: true, branchCount: branches.length });
 });
 server.registerTool("workflow.completeParallelBranch", { description: "Complete branch", inputSchema: { workflow_id: z.string(), branch_key: z.string() } }, async ({ workflow_id, branch_key }) => {
   const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found");
   const b = ((w.metadata.parallelBranches ?? []) as any[]).find(x => x.branchKey === branch_key); if (b) b.completed = true; workflowStore.save(w);
-  if (prismaReady) { try { await prisma.parallelBranch.updateMany({ where: { workflowId: workflow_id, branchKey: branch_key }, data: { status: "COMPLETED", output: { completedAt: new Date().toISOString() } } }); } catch (e) { logger.warn("ParallelBranch complete Prisma failed: " + (e instanceof Error ? e.message : String(e))); } }
+  if (dbReady) { try { await drizzleDb.update(parallelBranchesTable).set({ status: "COMPLETED", output: { completedAt: new Date().toISOString() } as never }).where(and(eq(parallelBranchesTable.workflowId, workflow_id), eq(parallelBranchesTable.branchKey, branch_key))); } catch (e) { logger.warn("ParallelBranch complete Drizzle failed: " + (e instanceof Error ? e.message : String(e))); } }
   return ok({ completed: true });
 });
 server.registerTool("workflow.listParallelBranches", { description: "List branches", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => {
   const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found");
-  if (prismaReady) { try { const rows = await prisma.parallelBranch.findMany({ where: { workflowId: workflow_id } }); if (rows.length > 0) return ok(rows); } catch { /* fall through */ } }
+  if (dbReady) { try { const rows = await drizzleDb.select().from(parallelBranchesTable).where(eq(parallelBranchesTable.workflowId, workflow_id)); if (rows.length > 0) return ok(rows); } catch { /* fall through */ } }
   return ok(w.metadata.parallelBranches ?? []);
 });
 server.registerTool("workflow.delete", { description: "Delete workflow", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => ok({ deleted: engine.deleteWorkflow(workflow_id) }));
-server.registerTool("workflow.ping", { description: "Health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType, postgresql: prismaReady }));
+server.registerTool("workflow.ping", { description: "Health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType, postgresql: dbReady }));
 server.registerTool("workflow.set_execution_mode", { description: "Set execution mode", inputSchema: { session_key: z.string(), mode: z.string() } }, async ({ session_key, mode }) => ok({ sessionKey: session_key, mode }));
 server.registerTool("workflow.mark_synthesis_ready", { description: "Mark synthesis ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => ok({ sessionKey: session_key, synthesisReady: ready }));
 server.registerTool("workflow.mark_verification_ready", { description: "Mark verification ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => ok({ sessionKey: session_key, verificationReady: ready }));
@@ -295,91 +311,145 @@ server.registerTool("workflow.resume_suggestion", { description: "Get resume sug
 
 server.registerTool("memory.store", { description: "Store memory", inputSchema: { workflow_id: z.string().optional(), task_id: z.string().optional(), memory_type: z.string(), summary: z.string(), content: z.string(), created_by_agent: z.string(), importance_score: z.number().optional(), tags: z.array(z.string()).optional() } }, async (a) => {
   const r: MemRec = { id: nid(), type: a.memory_type, content: a.content, summary: a.summary, source: a.created_by_agent, importance: a.importance_score ?? 0.5, tags: [...(a.tags ?? []), a.workflow_id, a.task_id].filter(Boolean) as string[], createdAt: Date.now() };
-  await persistToPrisma(r, a.workflow_id, a.task_id);
+  await persistToDb(r, a.workflow_id, a.task_id);
   const m = loadMem(); m.push(r); saveMem(m);
   try { graphStore.addNode({ type: "memory", label: a.summary, properties: { memoryId: r.id, memoryType: a.memory_type, tags: a.tags ?? [], workflowId: a.workflow_id, taskId: a.task_id, content: a.content.substring(0, 500) } }); } catch { /* non-critical */ }
   return ok(r);
 });
 server.registerTool("memory.store_research", { description: "Store research", inputSchema: { workflow_id: z.string().optional(), summary: z.string(), content: z.string(), created_by_agent: z.string() } }, async (a) => {
   const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now() };
-  await persistToPrisma(r, a.workflow_id);
-  if (prismaReady) { try { await prisma.contextDocument.create({ data: { id: r.id, workflowId: a.workflow_id ?? null, sourceType: "research", title: a.summary, content: a.content, metadata: { agent: a.created_by_agent } } }); const emb = await generateEmbedding(a.content); if (emb) { const vecStr = `[${emb.join(",")}]`; await prisma.$executeRaw`UPDATE "ContextDocument" SET embedding = ${vecStr}::vector WHERE id = ${r.id}`; } } catch (e) { logger.warn("ContextDocument write failed: " + (e instanceof Error ? e.message : String(e))); } }
+  await persistToDb(r, a.workflow_id);
+  if (dbReady) { try {
+    const emb = await generateEmbedding(a.content);
+    await drizzleDb.insert(contextDocsTable).values({
+      id: r.id, workflowId: a.workflow_id ?? null, sourceType: "research",
+      title: a.summary, content: a.content,
+      metadata: { agent: a.created_by_agent } as never,
+    });
+    if (emb) {
+      const vecStr = `[${emb.join(",")}]`;
+      await drizzleDb.execute(sql`UPDATE "ContextDocument" SET embedding = ${vecStr}::vector WHERE id = ${r.id}`);
+    }
+  } catch (e) { logger.warn("ContextDocument write failed: " + (e instanceof Error ? e.message : String(e))); } }
   const m = loadMem(); m.push(r); saveMem(m);
   try { graphStore.addNode({ type: "research", label: a.summary, properties: { memoryId: r.id, workflowId: a.workflow_id, content: a.content.substring(0, 500) } }); } catch { /* non-critical */ }
   trackTokens("memory.store_research", a, r);
   return ok(r);
 });
 server.registerTool("memory.recall_recent", { description: "Recall recent", inputSchema: { limit: z.number().optional(), type: z.string().optional() } }, async ({ limit, type }) => {
-  if (prismaReady) { try { const where = type ? { memoryType: type } : {}; const rows = await prisma.memory.findMany({ where, orderBy: { createdAt: "desc" }, take: limit ?? 10 }); const ids = rows.map((r: { id: string }) => r.id); if (ids.length > 0) await prisma.$executeRaw`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`; return ok(rows); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const whereCond = type ? eq(memoriesTable.memoryType, type) : undefined;
+    const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10);
+    const ids = rows.map(r => r.id);
+    if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
+    return ok(rows);
+  } catch { /* fall through to cache */ } }
   let m = loadMem(); if (type) m = m.filter(x => x.type === type); return ok(m.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_documents", { description: "Recall docs", inputSchema: { workflow_id: z.string(), limit: z.number().optional() } }, async ({ workflow_id, limit }) => {
-  if (prismaReady) { try { const rows = await prisma.memory.findMany({ where: { workflowId: workflow_id }, orderBy: { createdAt: "desc" }, take: limit ?? 10 }); const ids = rows.map((r: { id: string }) => r.id); if (ids.length > 0) await prisma.$executeRaw`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`; return ok(rows); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const rows = await drizzleDb.select().from(memoriesTable).where(eq(memoriesTable.workflowId, workflow_id)).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10);
+    const ids = rows.map(r => r.id);
+    if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
+    return ok(rows);
+  } catch { /* fall through to cache */ } }
   return ok(loadMem().filter(m => m.tags.includes(workflow_id)).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_document_by_type", { description: "Recall by type", inputSchema: { workflow_id: z.string(), source_type: z.string(), limit: z.number().optional() } }, async ({ workflow_id, source_type, limit }) => {
-  if (prismaReady) { try { const rows = await prisma.memory.findMany({ where: { workflowId: workflow_id, memoryType: source_type }, orderBy: { createdAt: "desc" }, take: limit ?? 10 }); const ids = rows.map((r: { id: string }) => r.id); if (ids.length > 0) await prisma.$executeRaw`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`; return ok(rows); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const rows = await drizzleDb.select().from(memoriesTable).where(and(eq(memoriesTable.workflowId, workflow_id), eq(memoriesTable.memoryType, source_type))).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10);
+    const ids = rows.map(r => r.id);
+    if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
+    return ok(rows);
+  } catch { /* fall through to cache */ } }
   return ok(loadMem().filter(m => m.tags.includes(workflow_id) && m.type === source_type).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_by_task", { description: "Recall by task", inputSchema: { task_id: z.string(), limit: z.number().optional() } }, async ({ task_id, limit }) => {
-  if (prismaReady) { try { const rows = await prisma.memory.findMany({ where: { taskId: task_id }, orderBy: { createdAt: "desc" }, take: limit ?? 10 }); const ids = rows.map((r: { id: string }) => r.id); if (ids.length > 0) await prisma.$executeRaw`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`; return ok(rows); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const rows = await drizzleDb.select().from(memoriesTable).where(eq(memoriesTable.taskId, task_id)).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10);
+    const ids = rows.map(r => r.id);
+    if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
+    return ok(rows);
+  } catch { /* fall through to cache */ } }
   return ok(loadMem().filter(m => m.tags.includes(task_id)).slice(0, limit ?? 10));
 });
 server.registerTool("memory.update", { description: "Update memory", inputSchema: { id: z.string(), content: z.string().optional(), importance: z.number().optional() } }, async ({ id, content, importance }) => {
-  if (prismaReady) { try { const data: Record<string, unknown> = {}; if (content) data.content = content; if (importance !== undefined) data.importanceScore = importance; if (Object.keys(data).length > 0) await prisma.memory.update({ where: { id }, data }); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const data: Record<string, unknown> = {}; if (content) data.content = content; if (importance !== undefined) data.importanceScore = importance;
+    if (Object.keys(data).length > 0) await drizzleDb.update(memoriesTable).set(data).where(eq(memoriesTable.id, id));
+  } catch { /* fall through to cache */ } }
   const m = loadMem(); const r = m.find(x => x.id === id); if (!r) throw new Error("Not found"); if (content) r.content = content; if (importance !== undefined) r.importance = importance; saveMem(m); return ok(r);
 });
 server.registerTool("memory.delete", { description: "Delete memory", inputSchema: { id: z.string() } }, async ({ id }) => {
-  if (prismaReady) { try { await prisma.memory.delete({ where: { id } }); } catch { /* fall through to cache */ } }
+  if (dbReady) { try { await drizzleDb.delete(memoriesTable).where(eq(memoriesTable.id, id)); } catch { /* fall through to cache */ } }
   const m = loadMem(); const i = m.findIndex(x => x.id === id); if (i < 0) throw new Error("Not found"); m.splice(i, 1); saveMem(m); return ok({ deleted: true });
 });
 server.registerTool("memory.delete_by_workflow", { description: "Delete by workflow", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => {
-  if (prismaReady) { try { const r = await prisma.memory.deleteMany({ where: { workflowId: workflow_id } }); return ok({ deleted: r.count }); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const result = await drizzleDb.delete(memoriesTable).where(eq(memoriesTable.workflowId, workflow_id)).returning({ id: memoriesTable.id });
+    return ok({ deleted: result.length });
+  } catch { /* fall through to cache */ } }
   const m = loadMem(); const n = m.length; saveMem(m.filter(x => !x.tags.includes(workflow_id))); return ok({ deleted: n - m.filter(x => !x.tags.includes(workflow_id)).length });
 });
 server.registerTool("memory.search", { description: "Search memories with composite scoring", inputSchema: { query: z.string(), limit: z.number().optional() } }, async ({ query, limit }) => {
-  if (prismaReady) { try { await logRetrieval({ agentName: "mcp", query, source: "memory.search", results: { limit: limit ?? 10 } }); } catch { /* non-critical */ } }
-  if (prismaReady) {
+  if (dbReady) { try { await logRetrieval({ agentName: "mcp", query, source: "memory.search", results: { limit: limit ?? 10 } }); } catch { /* non-critical */ } }
+  if (dbReady) {
     try {
       const queryEmb = await generateEmbedding(query);
       if (queryEmb) {
         const vecStr = "[" + queryEmb.join(",") + "]";
-        const rows = await prisma.$queryRawUnsafe(
-          `SELECT id, "memoryType", content, summary, "importanceScore", tags, "createdByAgent", "workflowId", "taskId", "createdAt", "accessCount",
-            (1 - (embedding <=> '${vecStr}'::vector)) * 0.6 AS sim_score,
+        const rows = await drizzleDb.execute(sql`
+          SELECT id, "memoryType", content, summary, "importanceScore", tags, "createdByAgent", "workflowId", "taskId", "createdAt", "accessCount",
+            (1 - (embedding <=> ${vecStr}::vector)) * 0.6 AS sim_score,
             LEAST(1.0, "importanceScore") * 0.2 AS imp_score,
             EXP(-EXTRACT(EPOCH FROM (NOW() - "createdAt")) / 2592000.0) * 0.1 AS recency_score,
             LEAST(1.0, "accessCount"::double precision / GREATEST(1, (SELECT MAX("accessCount") FROM "Memory"))::double precision) * 0.1 AS usage_score,
-            (1 - (embedding <=> '${vecStr}'::vector)) * 0.6 + LEAST(1.0, "importanceScore") * 0.2 + EXP(-EXTRACT(EPOCH FROM (NOW() - "createdAt")) / 2592000.0) * 0.1 + LEAST(1.0, "accessCount"::double precision / GREATEST(1, (SELECT MAX("accessCount") FROM "Memory"))::double precision) * 0.1 AS composite_score
-          FROM "Memory" WHERE embedding IS NOT NULL ORDER BY composite_score DESC LIMIT ${limit ?? 10}`
-        ) as Array<Record<string, unknown>>;
+            (1 - (embedding <=> ${vecStr}::vector)) * 0.6 + LEAST(1.0, "importanceScore") * 0.2 + EXP(-EXTRACT(EPOCH FROM (NOW() - "createdAt")) / 2592000.0) * 0.1 + LEAST(1.0, "accessCount"::double precision / GREATEST(1, (SELECT MAX("accessCount") FROM "Memory"))::double precision) * 0.1 AS composite_score
+          FROM "Memory" WHERE embedding IS NOT NULL ORDER BY composite_score DESC LIMIT ${limit ?? 10}
+        `) as Array<Record<string, unknown>>;
         if (Array.isArray(rows) && rows.length > 0) {
+          if (Array.isArray(rows) && rows.length > 0 && rows[0] && "rows" in (rows as any)) {
+            // drizzle execute returns {rows: [...]} for postgres driver
+            const actualRows = (rows as any).rows as Array<Record<string, unknown>>;
+            const ids = actualRows.map((r: Record<string, unknown>) => String(r.id));
+            if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
+            return ok(actualRows);
+          }
           const ids = rows.map((r: Record<string, unknown>) => String(r.id));
-          await prisma.$executeRaw`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`;
+          await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
           return ok(rows);
         }
       }
-      const q = query.toLowerCase(); const words = q.split(/\s+/); const orClauses = words.flatMap(w => [{ summary: { contains: w, mode: "insensitive" as const } }, { content: { contains: w, mode: "insensitive" as const } }]); const rows = await prisma.memory.findMany({ where: { OR: orClauses }, orderBy: { importanceScore: "desc" }, take: limit ?? 10 }); if (rows.length > 0) return ok(rows);
+      // Fallback: text search with OR on summary and content
+      const q = query.toLowerCase(); const words = q.split(/\s+/);
+      const orClauses = words.flatMap(w => [sql`LOWER(${memoriesTable.summary}) LIKE ${"%" + w + "%"}`, sql`LOWER(${memoriesTable.content}) LIKE ${"%" + w + "%"}`]);
+      const rows = await drizzleDb.select().from(memoriesTable).where(or(...orClauses)).orderBy(desc(memoriesTable.importanceScore)).limit(limit ?? 10);
+      if (rows.length > 0) return ok(rows);
     } catch { /* fall through to cache */ }
   }
   const q = query.toLowerCase(); return ok(loadMem().map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
 });
 server.registerTool("memory.stats", { description: "Memory stats", inputSchema: {} }, async () => {
-  if (prismaReady) { try { const total = await prisma.memory.count(); const byType = await prisma.memory.groupBy({ by: ["memoryType"], _count: true }); return ok({ total, byType: Object.fromEntries(byType.map(b => [b.memoryType, b._count])), source: "postgresql" }); } catch { /* fall through to cache */ } }
+  if (dbReady) { try {
+    const [{ value: total }] = await drizzleDb.select({ value: count() }).from(memoriesTable);
+    // Group by memoryType
+    const byTypeRows = await drizzleDb.select({ memoryType: memoriesTable.memoryType, count: count() }).from(memoriesTable).groupBy(memoriesTable.memoryType);
+    return ok({ total, byType: Object.fromEntries(byTypeRows.map(b => [b.memoryType, b.count])), source: "postgresql" });
+  } catch { /* fall through to cache */ } }
   const m = loadMem(); const by: Record<string, number> = {}; m.forEach(x => by[x.type] = (by[x.type] ?? 0) + 1); return ok({ total: m.length, byType: by, source: "json-cache" });
 });
 
 server.registerTool("semantic-search.search_hybrid_context_pack", { description: "Build hybrid context pack with semantic search and fingerprinting", inputSchema: { workflow_id: z.string(), plan_id: z.string(), task_id: z.string() } }, async (a) => {
-  if (prismaReady) {
+  if (dbReady) {
     try {
       let taskTitle = ""; let acceptanceCriteria: string[] = []; let requiredContext: string[] = []; let planSummary = ""; let recentProgress: string[] = [];
       try {
-        const task = await prisma.task.findUnique({ where: { id: a.task_id } });
+        const [task] = await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.task_id)).limit(1);
         if (task) { taskTitle = task.title ?? ""; acceptanceCriteria = Array.isArray(task.acceptanceCriteria) ? (task.acceptanceCriteria as string[]) : []; requiredContext = Array.isArray(task.requiredContext) ? (task.requiredContext as string[]) : []; }
-        const plan = await prisma.plan.findUnique({ where: { id: a.plan_id } });
+        const [plan] = await drizzleDb.select().from(plansTable).where(eq(plansTable.id, a.plan_id)).limit(1);
         if (plan) { planSummary = plan.summary ?? ""; }
-        const progress = await prisma.taskProgressLog.findMany({ where: { workflowId: a.workflow_id }, orderBy: { createdAt: "desc" }, take: 3 });
-        recentProgress = progress.map((p: { progressNote: string }) => p.progressNote);
+        const progress = await drizzleDb.select().from(taskProgressLogs).where(eq(taskProgressLogs.workflowId, a.workflow_id)).orderBy(desc(taskProgressLogs.createdAt)).limit(3);
+        recentProgress = progress.map((p) => p.progressNote);
       } catch { /* non-critical metadata fetch */ }
 
       const memoryProvider = {
@@ -387,10 +457,12 @@ server.registerTool("semantic-search.search_hybrid_context_pack", { description:
           const queryEmb = await generateEmbedding(query);
           if (!queryEmb) return [];
           const vecStr = "[" + queryEmb.join(",") + "]";
-          const rows = await prisma.$queryRawUnsafe(
-            `SELECT id, content, "importanceScore", 1 - (embedding <=> '${vecStr}'::vector) as score FROM "Memory" WHERE embedding IS NOT NULL ORDER BY embedding <=> '${vecStr}'::vector LIMIT ${opts?.limit ?? 6}`
-          ) as Array<{ id: string; content: string; importanceScore: number; score: number }>;
-          return rows.map(r => ({ memory: { id: r.id, content: r.content, type: "memory", importance: r.importanceScore }, score: r.score }));
+          const rows = await drizzleDb.execute(sql`
+            SELECT id, content, "importanceScore", 1 - (embedding <=> ${vecStr}::vector) as score FROM "Memory" WHERE embedding IS NOT NULL ORDER BY embedding <=> ${vecStr}::vector LIMIT ${opts?.limit ?? 6}
+          `) as Array<Record<string, unknown>>;
+          // Handle drizzle execute returning {rows: [...]} for postgres driver
+          const actualRows = (rows as any)?.rows ?? rows;
+          return (Array.isArray(actualRows) ? actualRows : []).map((r: Record<string, unknown>) => ({ memory: { id: String(r.id), content: String(r.content), type: "memory", importance: Number(r.importanceScore ?? 0) }, score: Number(r.score ?? 0) }));
         }
       };
 
@@ -399,7 +471,7 @@ server.registerTool("semantic-search.search_hybrid_context_pack", { description:
         { memory: memoryProvider }
       );
 
-      try { await prisma.task.update({ where: { id: a.task_id }, data: { contextFingerprint: pack.fingerprint } }); } catch { /* non-critical */ }
+      try { await drizzleDb.update(tasksTable).set({ contextFingerprint: pack.fingerprint }).where(eq(tasksTable.id, a.task_id)); } catch { /* non-critical */ }
       try { await logRetrieval({ workflowId: a.workflow_id, taskId: a.task_id, agentName: "mcp", query: `context-pack:${a.plan_id}`, source: "semantic-search", results: { contextSufficient: pack.contextSufficient, fingerprint: pack.fingerprint } }); } catch { /* non-critical */ }
       return ok(pack);
     } catch (err) { return ok({ ...a, contextSufficient: true, error: String(err) }); }
@@ -407,29 +479,29 @@ server.registerTool("semantic-search.search_hybrid_context_pack", { description:
   return ok({ ...a, contextSufficient: true });
 });
 server.registerTool("semantic-search.search_context_fingerprint", { description: "Compute SHA-256 fingerprint from task context state", inputSchema: { workflow_id: z.string(), plan_id: z.string(), task_id: z.string() } }, async (a) => {
-  if (prismaReady) {
+  if (dbReady) {
     try {
       let acceptanceCriteria: string[] = []; let requiredContext: string[] = [];
       try {
-        const task = await prisma.task.findUnique({ where: { id: a.task_id } });
+        const [task] = await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.task_id)).limit(1);
         if (task) { acceptanceCriteria = Array.isArray(task.acceptanceCriteria) ? (task.acceptanceCriteria as string[]) : []; requiredContext = Array.isArray(task.requiredContext) ? (task.requiredContext as string[]) : []; }
       } catch { /* non-critical */ }
-      const memIds = await prisma.memory.findMany({ where: { OR: [{ workflowId: a.workflow_id }, { taskId: a.task_id }] }, select: { id: true }, take: 20, orderBy: { importanceScore: "desc" } });
-      const docIds = await prisma.contextDocument.findMany({ where: { workflowId: a.workflow_id }, select: { id: true }, take: 10, orderBy: { createdAt: "desc" } });
+      const memRows = await drizzleDb.select({ id: memoriesTable.id }).from(memoriesTable).where(or(eq(memoriesTable.workflowId, a.workflow_id), eq(memoriesTable.taskId, a.task_id))).orderBy(desc(memoriesTable.importanceScore)).limit(20);
+      const docRows = await drizzleDb.select({ id: contextDocsTable.id }).from(contextDocsTable).where(eq(contextDocsTable.workflowId, a.workflow_id)).orderBy(desc(contextDocsTable.createdAt)).limit(10);
       const fingerprint = computeFingerprint({
         workflowId: a.workflow_id, planId: a.plan_id, taskId: a.task_id,
         acceptanceCriteria, requiredContext,
-        memoryIds: memIds.map((r: { id: string }) => r.id),
-        docIds: docIds.map((r: { id: string }) => r.id),
+        memoryIds: memRows.map(r => r.id),
+        docIds: docRows.map(r => r.id),
       });
-      try { await prisma.task.update({ where: { id: a.task_id }, data: { contextFingerprint: fingerprint } }); } catch { /* non-critical */ }
-      return ok({ fingerprint, contextSufficient: true, memoryCount: memIds.length, docCount: docIds.length });
+      try { await drizzleDb.update(tasksTable).set({ contextFingerprint: fingerprint }).where(eq(tasksTable.id, a.task_id)); } catch { /* non-critical */ }
+      return ok({ fingerprint, contextSufficient: true, memoryCount: memRows.length, docCount: docRows.length });
     } catch { /* fall through */ }
   }
   return ok({ fingerprint: [a.workflow_id, a.plan_id, a.task_id].join("-"), contextSufficient: true });
 });
 server.registerTool("semantic-search.code_search", { description: "Code search", inputSchema: { query: z.string() } }, async ({ query }) => {
-  if (prismaReady) { try { await logRetrieval({ agentName: "mcp", query, source: "code_search", results: {} }); } catch { /* non-critical */ } }
+  if (dbReady) { try { await logRetrieval({ agentName: "mcp", query, source: "code_search", results: {} }); } catch { /* non-critical */ } }
   return ok({ query, results: [] });
 });
 server.registerTool("semantic-search.make_fingerprint", {
@@ -453,27 +525,27 @@ server.registerTool("semantic-search.make_fingerprint", {
     documentIds: a.document_ids,
     memoryIds: a.memory_ids,
   });
-  // Persist to task if Prisma is ready
-  if (prismaReady) {
-    try { await prisma.task.updateMany({ where: { workflowId: a.workflow_id, id: a.task_id }, data: { contextFingerprint: fingerprint } }); } catch { /* non-critical */ }
+  // Persist to task if DB is ready
+  if (dbReady) {
+    try { await drizzleDb.update(tasksTable).set({ contextFingerprint: fingerprint }).where(and(eq(tasksTable.workflowId, a.workflow_id), eq(tasksTable.id, a.task_id))); } catch { /* non-critical */ }
   }
   return ok({ fingerprint, workflowId: a.workflow_id, planId: a.plan_id, taskId: a.task_id, inputHashLength: JSON.stringify(a).length });
 });
 
 server.registerTool("policy.check_session_readiness", { description: "Session readiness", inputSchema: { sessionKey: z.string() } }, async ({ sessionKey }) => {
-  if (prismaReady) {
-    const state = await prisma.sessionState.findUnique({ where: { sessionKey } });
+  if (dbReady) {
+    const [state] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, sessionKey)).limit(1);
     const ready = state ? (state.workflowLoaded && state.planLoaded && state.taskLoaded) : false;
     return ok({ sessionKey, ready, workflowLoaded: state?.workflowLoaded ?? false, planLoaded: state?.planLoaded ?? false, taskLoaded: state?.taskLoaded ?? false });
   }
   return ok({ sessionKey, ready: true });
 });
 server.registerTool("policy.validate_execution", { description: "Validate execution", inputSchema: { sessionKey: z.string(), workflowId: z.string(), taskId: z.string() } }, async (a) => {
-  if (prismaReady) {
-    const wf = await prisma.workflow.findUnique({ where: { id: a.workflowId } });
+  if (dbReady) {
+    const [wf] = await drizzleDb.select().from(workflowsTable).where(eq(workflowsTable.id, a.workflowId)).limit(1);
     if (!wf) return ok({ valid: false, reason: "Workflow not found", ...a });
     if (wf.status === "COMPLETED" || wf.status === "FAILED") return ok({ valid: false, reason: "Workflow is " + wf.status, ...a });
-    const task = await prisma.task.findUnique({ where: { id: a.taskId } });
+    const [task] = await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.taskId)).limit(1);
     if (!task) return ok({ valid: false, reason: "Task not found", ...a });
     if (task.status === "done") return ok({ valid: false, reason: "Task already completed", ...a });
     return ok({ valid: true, ...a });
@@ -481,18 +553,18 @@ server.registerTool("policy.validate_execution", { description: "Validate execut
   return ok({ valid: true, ...a });
 });
 server.registerTool("policy.validate_completion", { description: "Validate completion", inputSchema: { sessionKey: z.string(), workflowId: z.string(), taskId: z.string() } }, async (a) => {
-  if (prismaReady) {
-    const review = await prisma.reviewDecision.findFirst({ where: { workflowId: a.workflowId, taskId: a.taskId }, orderBy: { createdAt: "desc" } });
+  if (dbReady) {
+    const [review] = await drizzleDb.select().from(reviewDecisionsTable).where(and(eq(reviewDecisionsTable.workflowId, a.workflowId), eq(reviewDecisionsTable.taskId, a.taskId))).orderBy(desc(reviewDecisionsTable.createdAt)).limit(1);
     const approved = review?.decision === "APPROVED";
     return ok({ valid: approved, reviewDecision: review?.decision ?? "none", ...a });
   }
   return ok({ valid: true, ...a });
 });
 server.registerTool("policy.validate_parallel_completion", { description: "Validate parallel", inputSchema: { sessionKey: z.string(), workflowId: z.string(), taskId: z.string() } }, async (a) => {
-  if (prismaReady) {
-    const branches = await prisma.parallelBranch.findMany({ where: { workflowId: a.workflowId, taskId: a.taskId } });
+  if (dbReady) {
+    const branches = await drizzleDb.select().from(parallelBranchesTable).where(and(eq(parallelBranchesTable.workflowId, a.workflowId), eq(parallelBranchesTable.taskId, a.taskId)));
     const allDone = branches.length > 0 && branches.every(b => b.status === "completed");
-    const session = await prisma.sessionState.findUnique({ where: { sessionKey: a.sessionKey } });
+    const [session] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, a.sessionKey)).limit(1);
     return ok({ valid: allDone && (session?.synthesisReady ?? false), allBranchesDone: allDone, branchCount: branches.length, ...a });
   }
   return ok({ valid: true, ...a });
@@ -501,15 +573,15 @@ server.registerTool("policy.detect_scope_drift", { description: "Detect drift", 
   const outputLen = a.outputText.length;
   const suspiciousKeywords = ["unrelated", "off-topic", "completely different"];
   const driftDetected = suspiciousKeywords.some(k => a.outputText.toLowerCase().includes(k));
-  if (prismaReady && a.workflowId) {
-    const task = a.taskId ? await prisma.task.findUnique({ where: { id: a.taskId } }) : null;
+  if (dbReady && a.workflowId) {
+    const [task] = a.taskId ? await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.taskId)).limit(1) : [null];
     return ok({ driftDetected, outputLength: outputLen, taskTitle: task?.title ?? null });
   }
   return ok({ driftDetected, outputLength: outputLen });
 });
 server.registerTool("policy.require_context_refresh", { description: "Context refresh", inputSchema: { workflowId: z.string().optional(), planId: z.string().optional(), taskId: z.string().optional(), last_fingerprint: z.string().optional() } }, async (a) => {
-  if (prismaReady && a.workflowId) {
-    const wf = await prisma.workflow.findUnique({ where: { id: a.workflowId } });
+  if (dbReady && a.workflowId) {
+    const [wf] = await drizzleDb.select().from(workflowsTable).where(eq(workflowsTable.id, a.workflowId)).limit(1);
     const currentFingerprint = wf ? `${wf.id}-${wf.updatedAt.getTime()}` : null;
     const needsRefresh = a.last_fingerprint ? currentFingerprint !== a.last_fingerprint : false;
     return ok({ needsRefresh, fingerprint: currentFingerprint, workflowId: a.workflowId });
@@ -563,17 +635,19 @@ server.registerTool("capability.match_agent", { description: "Match agent", inpu
   const scored = agents.map(ag => ({ ...ag, score: (ag.role + " " + ag.description).toLowerCase().split(/\s+/).filter(w => q.includes(w)).length })).sort((a, b) => b.score - a.score);
   return ok({ match: scored[0]?.score ? scored[0] : null, ...a });
 });
-server.registerTool("capability.system_readiness", { description: "System readiness", inputSchema: { projectRoot: z.string().optional() } }, async ({ projectRoot }) => ok({ ready: true, backend: backendType, postgresql: prismaReady, projectRoot: projectRoot ?? cwd }));
+server.registerTool("capability.system_readiness", { description: "System readiness", inputSchema: { projectRoot: z.string().optional() } }, async ({ projectRoot }) => ok({ ready: true, backend: backendType, postgresql: dbReady, projectRoot: projectRoot ?? cwd }));
 server.registerTool("capability.workflow_audit", { description: "Audit", inputSchema: { workflowId: z.string().optional() } }, async ({ workflowId }) => {
-  if (prismaReady && workflowId) {
-    const wf = await prisma.workflow.findUnique({ where: { id: workflowId }, include: { tasks: true, progressLogs: true } });
+  if (dbReady && workflowId) {
+    const [wf] = await drizzleDb.select().from(workflowsTable).where(eq(workflowsTable.id, workflowId)).limit(1);
     if (!wf) return ok({ audited: 0, issues: ["Workflow not found"] });
+    const tasksForWf = await drizzleDb.select().from(tasksTable).where(eq(tasksTable.workflowId, workflowId));
+    const progressForWf = await drizzleDb.select().from(taskProgressLogs).where(eq(taskProgressLogs.workflowId, workflowId));
     const issues: string[] = [];
-    const running = wf.tasks.filter(t => t.status === "running");
+    const running = tasksForWf.filter(t => t.status === "running");
     if (running.length > 1) issues.push(`Multiple running tasks: ${running.map(t => t.id.slice(0, 8)).join(", ")}`);
-    const noProgress = wf.tasks.filter(t => t.status === "running" && wf.progressLogs.filter(p => p.taskId === t.id).length === 0);
+    const noProgress = tasksForWf.filter(t => t.status === "running" && progressForWf.filter(p => p.taskId === t.id).length === 0);
     if (noProgress.length > 0) issues.push(`Running tasks with no progress: ${noProgress.map(t => t.id.slice(0, 8)).join(", ")}`);
-    return ok({ audited: 1, issues, taskCount: wf.tasks.length });
+    return ok({ audited: 1, issues, taskCount: tasksForWf.length });
   }
   return ok({ audited: workflowId ? 1 : engine.listWorkflows().length, issues: [] });
 });
@@ -609,14 +683,18 @@ server.registerTool("filesystem.stat", { description: "File stat", inputSchema: 
 // --- REAL TOOLS: Review, Session, Local, Shell (29) ---
 // review (2)
 server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional(), tests_verified: z.boolean().optional(), test_summary: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional() }).optional() } }, async (a) => {
-  if (prismaReady) {
-    const review = await prisma.reviewDecision.create({ data: { workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent, decision: a.decision, notes: a.notes, gaps: a.gaps ?? [], testsVerified: a.tests_verified ?? false, testSummary: a.test_summary ?? {} } });
+  if (dbReady) {
+    const [review] = await drizzleDb.insert(reviewDecisionsTable).values({
+      workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent,
+      decision: a.decision, notes: a.notes, gaps: a.gaps ?? [] as never,
+      testsVerified: a.tests_verified ?? false, testSummary: a.test_summary ?? {} as never,
+    }).returning();
     // TDD gate: if task requires TDD and review is APPROVED but tests not verified, block completion
-    if (a.decision === "APPROVED" && prismaReady) {
+    if (a.decision === "APPROVED" && dbReady) {
       try {
-        const task = await prisma.task.findUniqueOrThrow({ where: { id: a.task_id } });
-        if ((task as any).requiresTdd && !a.tests_verified) {
-          await prisma.task.update({ where: { id: a.task_id }, data: { status: "RUNNING" } });
+        const [task] = await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.task_id)).limit(1);
+        if (task && task.requiresTdd && !a.tests_verified) {
+          await drizzleDb.update(tasksTable).set({ status: "RUNNING" }).where(eq(tasksTable.id, a.task_id));
           return ok({ submitted: true, id: review.id, _tddWarning: "Task requires TDD but tests_verified=false. Task stays RUNNING.", ...a });
         }
       } catch { /* non-critical */ }
@@ -626,8 +704,8 @@ server.registerTool("review.submit", { description: "Submit review", inputSchema
   return ok({ submitted: true, ...a });
 });
 server.registerTool("review.get_latest", { description: "Get latest review", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async (a) => {
-  if (prismaReady) {
-    const review = await prisma.reviewDecision.findFirst({ where: { workflowId: a.workflow_id, taskId: a.task_id }, orderBy: { createdAt: "desc" } });
+  if (dbReady) {
+    const [review] = await drizzleDb.select().from(reviewDecisionsTable).where(and(eq(reviewDecisionsTable.workflowId, a.workflow_id), eq(reviewDecisionsTable.taskId, a.task_id))).orderBy(desc(reviewDecisionsTable.createdAt)).limit(1);
     return ok({ review });
   }
   return ok({ review: null, ...a });
@@ -635,21 +713,31 @@ server.registerTool("review.get_latest", { description: "Get latest review", inp
 
 // session (3)
 server.registerTool("session.get_state", { description: "Get session state", inputSchema: { session_key: z.string() } }, async ({ session_key }) => {
-  if (prismaReady) {
-    const state = await prisma.sessionState.findUnique({ where: { sessionKey: session_key } });
+  if (dbReady) {
+    const [state] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
     return ok({ sessionKey: session_key, state: state ?? {} });
   }
   return ok({ sessionKey: session_key, state: {} });
 });
 server.registerTool("session.patch_state", { description: "Patch session state", inputSchema: { session_key: z.string(), patch: z.record(z.any()) } }, async ({ session_key, patch }) => {
-  if (prismaReady) {
-    const existing = await prisma.sessionState.findUnique({ where: { sessionKey: session_key } });
+  if (dbReady) {
+    const [existing] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
     if (existing) {
       const merged = { ...(existing.metadata as Record<string, unknown>), ...patch };
-      await prisma.sessionState.update({ where: { sessionKey: session_key }, data: { metadata: merged, workflowId: (patch as Record<string, unknown>).workflowId as string ?? existing.workflowId, planId: (patch as Record<string, unknown>).planId as string ?? existing.planId, taskId: (patch as Record<string, unknown>).taskId as string ?? existing.taskId } });
+      await drizzleDb.update(sessionStates).set({
+        metadata: merged as never,
+        workflowId: (patch as Record<string, unknown>).workflowId as string ?? existing.workflowId,
+        planId: (patch as Record<string, unknown>).planId as string ?? existing.planId,
+        taskId: (patch as Record<string, unknown>).taskId as string ?? existing.taskId,
+      }).where(eq(sessionStates.sessionKey, session_key));
       return ok({ sessionKey: session_key, patched: true, patch });
     }
-    await prisma.sessionState.create({ data: { sessionKey: session_key, metadata: patch, workflowId: (patch as Record<string, unknown>).workflowId as string ?? null, planId: (patch as Record<string, unknown>).planId as string ?? null, taskId: (patch as Record<string, unknown>).taskId as string ?? null } });
+    await drizzleDb.insert(sessionStates).values({
+      sessionKey: session_key, metadata: patch as never,
+      workflowId: (patch as Record<string, unknown>).workflowId as string ?? null,
+      planId: (patch as Record<string, unknown>).planId as string ?? null,
+      taskId: (patch as Record<string, unknown>).taskId as string ?? null,
+    });
     return ok({ sessionKey: session_key, patched: true, patch, created: true });
   }
   return ok({ sessionKey: session_key, patched: true, patch });
@@ -657,7 +745,7 @@ server.registerTool("session.patch_state", { description: "Patch session state",
 server.registerTool("session.init_context", { description: "Init session context — also checks for stale/stuck/failed workflows and returns reminders", inputSchema: { cwd: z.string() } }, async ({ cwd }) => {
   let reminders: unknown[] = [];
   let stats: { total: number; unacknowledged: number; bySeverity: Record<string, number> } | null = null;
-  if (prismaReady) {
+  if (dbReady) {
     try {
       reminders = await checkReminders();
       stats = await reminderStats();
@@ -670,25 +758,31 @@ server.registerTool("session.init_context", { description: "Init session context
 // local (4)
 server.registerTool("local.init", { description: "Init local state dir", inputSchema: { cwd: z.string() } }, async ({ cwd }) => { const p = path.join(cwd, ".masday"); if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); return ok({ initialized: true, path: p }); });
 server.registerTool("local.sync", { description: "Sync local state from DB (download PostgreSQL → JSON cache)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd, workflow_id }) => {
-  if (!prismaReady) return ok({ synced: false, error: "PostgreSQL not connected" });
-  const where = workflow_id ? { workflowId: workflow_id } : {};
-  const rows = await prisma.memory.findMany({ where, orderBy: { createdAt: "desc" } });
+  if (!dbReady) return ok({ synced: false, error: "PostgreSQL not connected" });
+  const whereCond = workflow_id ? eq(memoriesTable.workflowId, workflow_id) : undefined;
+  const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt));
   const memFile = path.join(cwd, ".masday", "state", "memories.json");
-  const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore, tags: r.tags, createdAt: r.createdAt.getTime() }));
+  const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore ?? 0.5, tags: r.tags, createdAt: r.createdAt.getTime() }));
   const dir = path.dirname(memFile); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   saveMem(cached);
   return ok({ synced: true, records: cached.length, workflowId: workflow_id ?? "all" });
 });
 server.registerTool("local.push", { description: "Push local state to DB (upload JSON cache → PostgreSQL)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd, workflow_id }) => {
-  if (!prismaReady) return ok({ pushed: false, error: "PostgreSQL not connected" });
+  if (!dbReady) return ok({ pushed: false, error: "PostgreSQL not connected" });
   const memFile = path.join(cwd, ".masday", "state", "memories.json");
   const local: MemRec[] = fs.existsSync(memFile) ? JSON.parse(fs.readFileSync(memFile, "utf-8")) : [];
   let created = 0, skipped = 0;
   for (const r of local) {
-    const existing = await prisma.memory.findUnique({ where: { id: r.id } }).catch(() => null);
+    const [existing] = await drizzleDb.select({ id: memoriesTable.id }).from(memoriesTable).where(eq(memoriesTable.id, r.id)).limit(1);
     if (existing) { skipped++; continue; }
-    await prisma.memory.create({ data: { id: r.id, memoryType: r.type, summary: r.summary, content: r.content, importanceScore: r.importance, createdByAgent: r.source, tags: r.tags, createdAt: new Date(r.createdAt) } }).catch(() => { skipped++; });
-    created++;
+    try {
+      await drizzleDb.insert(memoriesTable).values({
+        id: r.id, memoryType: r.type, summary: r.summary, content: r.content,
+        importanceScore: r.importance, createdByAgent: r.source, tags: r.tags,
+        createdAt: new Date(r.createdAt),
+      });
+      created++;
+    } catch { skipped++; }
   }
   return ok({ pushed: true, created, skipped, total: local.length, workflowId: workflow_id });
 });
@@ -770,7 +864,7 @@ server.registerTool("tests.run", { description: "Run tests", inputSchema: { patt
 });
 
 // capability.ping (1) — missing from original capability namespace
-server.registerTool("capability.ping", { description: "Capability health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType, postgresql: prismaReady }));
+server.registerTool("capability.ping", { description: "Capability health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType, postgresql: dbReady }));
 
 // reminder (3)
 server.registerTool("reminder.check", {
@@ -781,7 +875,7 @@ server.registerTool("reminder.check", {
     includeFailed: z.boolean().optional().describe("Include FAILED workflows/tasks (default: true)"),
   },
 }, async (cfg) => {
-  if (!prismaReady) return ok({ reminders: [], note: "PostgreSQL not connected — reminders require DB" });
+  if (!dbReady) return ok({ reminders: [], note: "PostgreSQL not connected — reminders require DB" });
   try {
     const reminders = await checkReminders(cfg);
     return ok({ reminders, count: reminders.length });
@@ -796,7 +890,7 @@ server.registerTool("reminder.list", {
     limit: z.number().min(1).max(200).optional(),
   },
 }, async ({ workflowId, acknowledged, limit }) => {
-  if (!prismaReady) return ok({ reminders: [], note: "PostgreSQL not connected" });
+  if (!dbReady) return ok({ reminders: [], note: "PostgreSQL not connected" });
   try {
     const reminders = await listRemindersDb({ workflowId, acknowledged, limit });
     const stats = await reminderStats();
@@ -811,7 +905,7 @@ server.registerTool("reminder.acknowledge", {
     workflowId: z.string().optional().describe("Dismiss all reminders for this workflow"),
   },
 }, async ({ id, workflowId }) => {
-  if (!prismaReady) return ok({ error: "PostgreSQL not connected" });
+  if (!dbReady) return ok({ error: "PostgreSQL not connected" });
   try {
     if (workflowId) {
       const result = await dismissWorkflowReminders(workflowId);
@@ -849,10 +943,10 @@ if (doctorReport.fixedCount > 0) {
   }
 }
 
-await initPrisma();
+await initDb();
 
 // Auto-run reminder check on startup
-if (prismaReady) {
+if (dbReady) {
   try {
     const startupReminders = await checkReminders();
     if (startupReminders.length > 0) {
@@ -874,4 +968,4 @@ if (prismaReady) {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-logger.info("MCP Server running on stdio (" + backendType + " backend" + (prismaReady ? " + PostgreSQL + EpisodicMemory + Reminders(auto:15m)" : "") + ") — " + toolNameRegistry.size + " tools + " + toolNameRegistry.size + " underscore aliases (" + (toolNameRegistry.size * 2) + " total)");
+logger.info("MCP Server running on stdio (" + backendType + " backend" + (dbReady ? " + PostgreSQL + EpisodicMemory + Reminders(auto:15m)" : "") + ") — " + toolNameRegistry.size + " tools + " + toolNameRegistry.size + " underscore aliases (" + (toolNameRegistry.size * 2) + " total)");

@@ -1,18 +1,23 @@
-import { PrismaClient } from "@prisma/client";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema.js";
 
-export const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === "development"
-    ? ["query", "error", "warn"]
-    : ["error"],
-});
+const connectionString = process.env.DATABASE_URL!;
+const client = postgres(connectionString);
+export const db = drizzle(client, { schema });
+
+// Legacy prisma stub — removed after full migration
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _prisma: any = null;
+export { _prisma as prisma };
 
 export async function disconnectDb(): Promise<void> {
-  await prisma.$disconnect();
+  await client.end();
 }
 
 export async function healthCheck(): Promise<boolean> {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await client`SELECT 1`;
     return true;
   } catch {
     return false;

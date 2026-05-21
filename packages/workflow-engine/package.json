@@ -21,10 +21,10 @@
     "@mcp-rebuild/db": "workspace:*",
     "@mcp-rebuild/shared-utils": "workspace:*",
     "@mcp-rebuild/store": "workspace:*",
-    "@prisma/client": "^5.22.0"
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "prisma": "^5.22.0"
+    "drizzle-kit": "^1.0.0-rc.2"
   }
 }

@@ -4,7 +4,7 @@
  * Uses pgvector for semantic similarity search on memories and context documents.
  */
 
-
+import { sql } from "drizzle-orm";
 
 interface MemorySearchResult {
   id: string;
@@ -25,27 +25,23 @@ export async function vectorSearchMemories(input: {
   embedding: number[];
   limit?: number;
 }): Promise<MemorySearchResult[]> {
-  const vector = `[${input.embedding.join(",")}]`;
+  const vecStr = `[${input.embedding.join(",")}]`;
+  const { db } = await import("@mcp-rebuild/db");
 
-  const rows = await (await import("@mcp-rebuild/db")).prisma.$queryRawUnsafe(
-    `
-    select
+  const rows = await db.execute(sql`
+    SELECT
       id,
       summary,
       content,
-      1 - (embedding <=> $2::vector) as score
-    from "Memory"
-    where "workflowId" = $1
-      and embedding is not null
-    order by embedding <=> $2::vector
-    limit $3
-    `,
-    input.workflowId,
-    vector,
-    input.limit ?? 5,
-  );
+      1 - (embedding <=> ${vecStr}::vector) AS score
+    FROM "Memory"
+    WHERE "workflowId" = ${input.workflowId}
+      AND embedding IS NOT NULL
+    ORDER BY embedding <=> ${vecStr}::vector
+    LIMIT ${input.limit ?? 5}
+  `);
 
-  return rows as MemorySearchResult[];
+  return rows as unknown as MemorySearchResult[];
 }
 
 export async function vectorSearchContext(input: {
@@ -53,25 +49,21 @@ export async function vectorSearchContext(input: {
   embedding: number[];
   limit?: number;
 }): Promise<DocSearchResult[]> {
-  const vector = `[${input.embedding.join(",")}]`;
+  const vecStr = `[${input.embedding.join(",")}]`;
+  const { db } = await import("@mcp-rebuild/db");
 
-  const rows = await (await import("@mcp-rebuild/db")).prisma.$queryRawUnsafe(
-    `
-    select
+  const rows = await db.execute(sql`
+    SELECT
       id,
       title,
       content,
-      1 - (embedding <=> $2::vector) as score
-    from "ContextDocument"
-    where "workflowId" = $1
-      and embedding is not null
-    order by embedding <=> $2::vector
-    limit $3
-    `,
-    input.workflowId,
-    vector,
-    input.limit ?? 5,
-  );
+      1 - (embedding <=> ${vecStr}::vector) AS score
+    FROM "ContextDocument"
+    WHERE "workflowId" = ${input.workflowId}
+      AND embedding IS NOT NULL
+    ORDER BY embedding <=> ${vecStr}::vector
+    LIMIT ${input.limit ?? 5}
+  `);
 
-  return rows as DocSearchResult[];
+  return rows as unknown as DocSearchResult[];
 }

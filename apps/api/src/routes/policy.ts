@@ -28,10 +28,36 @@ export function createPolicyRoutes(provider: PolicyServiceProvider): RouteDefini
         sendJson(res, 200, result);
       },
     },
+    // POST /api/policy/check-readiness — Alias (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/policy/check-readiness',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const sessionKey = (body?.sessionKey as string) ?? '';
+        const result = await provider.checkReadiness(sessionKey);
+        sendJson(res, 200, result);
+      },
+    },
     // POST /api/policy/validate/execution — Validate execution
     {
       method: 'POST',
       pattern: '/api/policy/validate/execution',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const input = body!;
+        const result = await provider.validateExecution({
+          workflowId: input.workflowId as string,
+          taskId: input.taskId as string,
+          sessionKey: input.sessionKey as string,
+        });
+        sendJson(res, 200, result);
+      },
+    },
+    // POST /api/policy/validate-execution — Alias (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/policy/validate-execution',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
         const input = body!;
@@ -59,10 +85,41 @@ export function createPolicyRoutes(provider: PolicyServiceProvider): RouteDefini
         sendJson(res, 200, result);
       },
     },
+    // POST /api/policy/validate-completion — Alias (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/policy/validate-completion',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const input = body!;
+        const result = await provider.validateCompletion({
+          workflowId: input.workflowId as string,
+          taskId: input.taskId as string,
+          acceptanceCriteria: input.acceptanceCriteria as string[],
+          evidence: input.evidence as string[],
+        });
+        sendJson(res, 200, result);
+      },
+    },
     // POST /api/policy/validate/parallel — Validate parallel
     {
       method: 'POST',
       pattern: '/api/policy/validate/parallel',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const input = body!;
+        const result = await provider.validateParallel({
+          workflowId: input.workflowId as string,
+          branchResults: input.branchResults as Array<Record<string, unknown>>,
+          mergeStrategy: input.mergeStrategy as string | undefined,
+        });
+        sendJson(res, 200, result);
+      },
+    },
+    // POST /api/policy/validate-parallel — Alias (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/policy/validate-parallel',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
         const input = body!;
@@ -90,10 +147,41 @@ export function createPolicyRoutes(provider: PolicyServiceProvider): RouteDefini
         sendJson(res, 200, result);
       },
     },
+    // POST /api/policy/detect-drift — Alias (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/policy/detect-drift',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const input = body!;
+        const result = await provider.detectDrift({
+          workflowId: input.workflowId as string,
+          originalScope: input.originalScope as string,
+          currentInput: input.currentInput as string,
+          threshold: input.threshold as number | undefined,
+        });
+        sendJson(res, 200, result);
+      },
+    },
     // POST /api/policy/fingerprint — Require context refresh
     {
       method: 'POST',
       pattern: '/api/policy/fingerprint',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const input = body!;
+        const result = await provider.requireContextRefresh({
+          workflowId: input.workflowId as string,
+          planId: input.planId as string,
+          taskId: input.taskId as string,
+        });
+        sendJson(res, 200, result);
+      },
+    },
+    // POST /api/policy/require-context-refresh — Alias (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/policy/require-context-refresh',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
         const input = body!;

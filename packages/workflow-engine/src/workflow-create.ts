@@ -7,13 +7,12 @@ export async function createWorkflow(input: {
   projectPath?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const { prisma } = await import("@mcp-rebuild/db");
-  return prisma.workflow.create({
-    data: {
-      name: input.name,
-      status: "INIT",
-      projectPath: input.projectPath,
-      metadata: input.metadata ? (input.metadata as never) : {},
-    },
-  });
+  const { db, workflows } = await import("@mcp-rebuild/db");
+  const [row] = await db.insert(workflows).values({
+    name: input.name,
+    status: "INIT",
+    projectPath: input.projectPath,
+    metadata: input.metadata ?? {},
+  }).returning();
+  return row;
 }

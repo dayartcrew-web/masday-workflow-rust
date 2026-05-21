@@ -2,7 +2,7 @@
  * Policy validation (msd-mcp business logic)
  */
 
-
+import { eq, and, desc } from "drizzle-orm";
 import { detectScopeDrift } from "./drift-detector.js";
 
 export async function validateExecution(input: {
@@ -10,13 +10,12 @@ export async function validateExecution(input: {
   taskId: string;
   sessionKey: string;
 }) {
-  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
-    where: { id: input.workflowId },
-  });
+  const { db, workflows, sessionStates } = await import("@mcp-rebuild/db");
 
-  const session = await (await import("@mcp-rebuild/db")).prisma.sessionState.findUnique({
-    where: { sessionKey: input.sessionKey },
-  });
+  const [workflow] = await db.select().from(workflows).where(eq(workflows.id, input.workflowId)).limit(1);
+  if (!workflow) throw new Error(`Workflow ${input.workflowId} not found`);
+
+  const [session] = await db.select().from(sessionStates).where(eq(sessionStates.sessionKey, input.sessionKey)).limit(1);
 
   if (workflow.currentTaskId !== input.taskId) {
     throw new Error("Execution blocked: task is not current active task");
@@ -39,20 +38,19 @@ export async function validateCompletion(
   taskId: string,
   outputText?: string,
 ) {
-  const prisma = (await import("@mcp-rebuild/db")).prisma;
+  const { db, reviewDecisions, tasks } = await import("@mcp-rebuild/db");
 
-  const review = await prisma.reviewDecision.findFirst({
-    where: { workflowId, taskId },
-    orderBy: { createdAt: "desc" },
-  });
+  const [review] = await db.select().from(reviewDecisions)
+    .where(and(eq(reviewDecisions.workflowId, workflowId), eq(reviewDecisions.taskId, taskId)))
+    .orderBy(desc(reviewDecisions.createdAt))
+    .limit(1);
 
   if (!review || review.decision !== "APPROVED") {
     throw new Error("Completion blocked: review is not APPROVED");
   }
 
-  const task = await prisma.task.findUniqueOrThrow({
-    where: { id: taskId },
-  });
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!task) throw new Error(`Task ${taskId} not found`);
 
   // TDD gate: if task requires TDD, enforce test evidence
   if (task.requiresTdd) {
@@ -104,23 +102,21 @@ export async function validateParallelCompletion(input: {
   sessionKey: string;
   outputText?: string;
 }) {
-  const session = await (await import("@mcp-rebuild/db")).prisma.sessionState.findUniqueOrThrow({
-    where: { sessionKey: input.sessionKey },
-  });
+  const { db, sessionStates, parallelBranches, reviewDecisions, tasks } = await import("@mcp-rebuild/db");
+
+  const [session] = await db.select().from(sessionStates).where(eq(sessionStates.sessionKey, input.sessionKey)).limit(1);
+  if (!session) throw new Error(`SessionState for key ${input.sessionKey} not found`);
 
   if (session.executionMode !== "parallel") {
     return { ok: true, skipped: true };
   }
 
-  const branches = await (await import("@mcp-rebuild/db")).prisma.parallelBranch.findMany({
-    where: {
-      workflowId: input.workflowId,
-      taskId: input.taskId,
-    },
-  });
+  const branches = await db.select().from(parallelBranches).where(
+    and(eq(parallelBranches.workflowId, input.workflowId), eq(parallelBranches.taskId, input.taskId)),
+  );
 
   const incomplete = branches.filter(
-    (b: { status: string }) => b.status !== "completed",
+    (b) => b.status !== "completed",
   );
   if (incomplete.length > 0) {
     throw new Error(
@@ -138,13 +134,10 @@ export async function validateParallelCompletion(input: {
     );
   }
 
-  const review = await (await import("@mcp-rebuild/db")).prisma.reviewDecision.findFirst({
-    where: {
-      workflowId: input.workflowId,
-      taskId: input.taskId,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const [review] = await db.select().from(reviewDecisions)
+    .where(and(eq(reviewDecisions.workflowId, input.workflowId), eq(reviewDecisions.taskId, input.taskId)))
+    .orderBy(desc(reviewDecisions.createdAt))
+    .limit(1);
 
   if (!review || review.decision !== "APPROVED") {
     throw new Error(
@@ -153,9 +146,8 @@ export async function validateParallelCompletion(input: {
   }
 
   if (input.outputText) {
-    const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
-      where: { id: input.taskId },
-    });
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1);
+    if (!task) throw new Error(`Task ${input.taskId} not found`);
 
     const drift = detectScopeDrift({
       taskTitle: task.title,
