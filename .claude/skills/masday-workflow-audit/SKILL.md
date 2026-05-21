@@ -7,15 +7,15 @@ description: >
   Use when the user says "audit workflows", "check health", "find stuck tasks",
   "workflow audit", or "what needs attention".
 allowed-tools:
-  - workflow.list
-  - workflow.get
-  - workflow.getStatus
-  - workflow.listTasks
-  - capability.workflow_audit
-  - memory.stats
-  - memory.search
-  - memory.recall_recent
-  - memory.recall_documents
+  - workflow_list
+  - workflow_get
+  - workflow_getStatus
+  - workflow_listTasks
+  - capability_workflow_audit
+  - memory_stats
+  - memory_search
+  - memory_recall_recent
+  - memory_recall_documents
 ---
 
 # Masday Workflow Audit
@@ -25,25 +25,25 @@ Audit workflows for issues and provide a health report.
 ## Steps
 
 1. **Run system audit**
-   - Call `capability.workflow_audit` with `maxAgeMinutes: 30` (configurable)
+   - Call `capability_workflow_audit` with `maxAgeMinutes: 30` (configurable)
    - This detects: stuck tasks, missing reviews, scope drift, stale sessions
 
 2. **List all workflows**
-   - Call `workflow.list` to get a complete inventory
+   - Call `workflow_list` to get a complete inventory
    - Filter for non-completed workflows as the audit focus
 
 3. **Inspect each active workflow**
    - For each non-completed workflow:
-     - Call `workflow.get` for full details
-     - Call `workflow.getStatus` for current state
-     - Call `workflow.listTasks` to check individual task statuses
+     - Call `workflow_get` for full details
+     - Call `workflow_getStatus` for current state
+     - Call `workflow_listTasks` to check individual task statuses
    - Identify: tasks stuck in EXECUTING for too long, tasks in FAILED state, missing reviews
 
 4. **Check memory health**
-   - Call `memory.stats` for total entries, type distribution, and average importance
-   - Call `memory.search` for entries tagged with blockers or issues
-   - Call `memory.recall_recent` to find recent warnings or failures
-   - Call `memory.recall_documents` to find stored decisions that may be stale
+   - Call `memory_stats` for total entries, type distribution, and average importance
+   - Call `memory_search` for entries tagged with blockers or issues
+   - Call `memory_recall_recent` to find recent warnings or failures
+   - Call `memory_recall_documents` to find stored decisions that may be stale
 
 5. **Compile the audit report**
    ```
@@ -87,7 +87,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -96,7 +96,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -107,25 +107,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

@@ -9,21 +9,21 @@ tools:
   - Bash
   - Grep
   - Glob
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.getPlan
-  - workflow.listTasks
-  - workflow.listParallelBranches
-  - workflow.completeParallelBranch
-  - workflow.saveProgress
-  - memory.recall_documents
-  - memory.recall_document_by_type
-  - memory.recall_by_task
-  - memory.store
-  - semantic-search.code_search
-  - tests.run
-  - git.diff
-  - git.status
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_getPlan
+  - workflow_listTasks
+  - workflow_listParallelBranches
+  - workflow_completeParallelBranch
+  - workflow_saveProgress
+  - memory_recall_documents
+  - memory_recall_document_by_type
+  - memory_recall_by_task
+  - memory_store
+  - semantic-search_code_search
+  - tests_run
+  - git_diff
+  - git_status
 ---
 
 # Synthesizer Agent
@@ -36,9 +36,9 @@ You are a parallel branch merger specialist. When multiple agents work in parall
 
 Get the active workflow, plan, and parallel branches:
 ```
-workflow.getActive({ cwd: "C:\\path\\to\\project" })
-workflow.getPlan({ workflow_id: "<workflow_id>" })
-workflow.listParallelBranches({ workflow_id: "<workflow_id>" })
+workflow_getActive({ cwd: "C:\\path\\to\\project" })
+workflow_getPlan({ workflow_id: "<workflow_id>" })
+workflow_listParallelBranches({ workflow_id: "<workflow_id>" })
 ```
 
 ### Step 2: Collect Branch Outputs
@@ -46,7 +46,7 @@ workflow.listParallelBranches({ workflow_id: "<workflow_id>" })
 For each parallel branch, collect its output:
 
 ```
-memory.recall_document_by_type({
+memory_recall_document_by_type({
   workflow_id: "<workflow_id>",
   source_type: "branch-<branch_key>",
   limit: 10
@@ -55,7 +55,7 @@ memory.recall_document_by_type({
 
 Read all files changed by each branch:
 ```
-git.diff({ repoPath: "C:\\path\\to\\project" })
+git_diff({ repoPath: "C:\\path\\to\\project" })
 ```
 
 Use Grep to find files modified per branch scope:
@@ -104,7 +104,7 @@ Use Edit for modifications, Write only for truly new merged files.
 Run full validation on the merged result:
 ```
 Bash({ command: "cd C:\\path\\to\\project && pnpm build" })
-tests.run({ repoPath: "C:\\path\\to\\project" })
+tests_run({ repoPath: "C:\\path\\to\\project" })
 ```
 
 Check for orphaned imports:
@@ -114,7 +114,7 @@ Grep({ pattern: "^import.*from.*'\./", glob: "packages/*/src/**/*.ts", output_mo
 
 Verify against original acceptance criteria from the plan:
 ```
-workflow.getPlan({ workflow_id: "<workflow_id>" })
+workflow_getPlan({ workflow_id: "<workflow_id>" })
 ```
 
 If build or tests fail, fix the merge issue and re-validate.
@@ -123,7 +123,7 @@ If build or tests fail, fix the merge issue and re-validate.
 
 Mark branches as completed:
 ```
-workflow.completeParallelBranch({
+workflow_completeParallelBranch({
   workflow_id: "<workflow_id>",
   branch_key: "backend-auth"
 })
@@ -131,7 +131,7 @@ workflow.completeParallelBranch({
 
 Save synthesis progress:
 ```
-workflow.saveProgress({
+workflow_saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-synthesizer",
@@ -146,7 +146,7 @@ workflow.saveProgress({
 
 Store synthesis artifact:
 ```
-memory.store({
+memory_store({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   memory_type: "artifact",
@@ -183,14 +183,14 @@ memory.store({
 
 This section covers research synthesis for parallel research workflows. When synthesizing parallel research branches, follow this path:
 
-1. Collect branch research documents by workflow and type using `memory.recall_document_by_type`.
+1. Collect branch research documents by workflow and type using `memory_recall_document_by_type`.
 2. Merge findings, deduplicate, and resolve contradictions.
-3. Store the synthesis summary in `memory.store`.
-4. Write exactly one final-only local artifact via `local.save_artifact` — do not require branch-level local files.
+3. Store the synthesis summary in `memory_store`.
+4. Write exactly one final-only local artifact via `local_save_artifact` — do not require branch-level local files.
 
 Example call for the final artifact:
 ```
-local.save_artifact({
+local_save_artifact({
   cwd: process.cwd(),
   category: "reports",
   filename: "2026-05-20-topic-research-synthesis.md",
@@ -214,7 +214,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -223,7 +223,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -234,25 +234,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

@@ -5,13 +5,13 @@ description: >
   search, builds context fingerprints, and identifies module relationships. Use when starting
   a new feature, debugging, or understanding the codebase before planning.
 allowed-tools:
-  - semantic-search.code_search
-  - semantic-search.search_hybrid_context_pack
-  - filesystem.read
-  - filesystem.list
-  - filesystem.stat
-  - git.status
-  - git.diff
+  - semantic-search_code_search
+  - semantic-search_search_hybrid_context_pack
+  - filesystem_read
+  - filesystem_list
+  - filesystem_stat
+  - git_status
+  - git_diff
 ---
 
 # Masday Code Analyze
@@ -21,30 +21,30 @@ Analyze codebase for Masday workflow context.
 ## Steps
 
 1. **Scan project structure**
-   - Call `filesystem.list` with `recursive: true` on the project root
+   - Call `filesystem_list` with `recursive: true` on the project root
    - Identify top-level directories and package structure
 
 2. **Get file metadata**
-   - Call `filesystem.stat` for key files: package.json, tsconfig.json, entry points
+   - Call `filesystem_stat` for key files: package.json, tsconfig.json, entry points
    - Note file sizes and modification dates for change detection
 
 3. **Read key configuration**
-   - Call `filesystem.read` on package.json for dependencies and scripts
-   - Call `filesystem.read` on tsconfig.json for compiler settings
+   - Call `filesystem_read` on package.json for dependencies and scripts
+   - Call `filesystem_read` on tsconfig.json for compiler settings
    - Identify the monorepo package layout (16 packages in this project)
 
 4. **Semantic search**
-   - Call `semantic-search.code_search` with queries related to the task domain
-   - Example: `semantic-search.code_search({ query: "workflow engine state machine" })`
+   - Call `semantic-search_code_search` with queries related to the task domain
+   - Example: `semantic-search_code_search({ query: "workflow engine state machine" })`
    - Identify related modules, shared types, and dependency chains
 
 5. **Build context fingerprint**
-   - Call `semantic-search.search_hybrid_context_pack` with the relevant workflow/task IDs
+   - Call `semantic-search_search_hybrid_context_pack` with the relevant workflow/task IDs
    - This generates a comprehensive context bundle for downstream tasks
 
 6. **Check git state**
-   - Call `git.status` for current branch and uncommitted changes
-   - Call `git.diff` for staged and unstaged modifications
+   - Call `git_status` for current branch and uncommitted changes
+   - Call `git_diff` for staged and unstaged modifications
    - Identify files that have been modified but not yet committed
 
 7. **Identify patterns**
@@ -64,7 +64,7 @@ Analyze codebase for Masday workflow context.
    ```
 
 9. **Clean up**
-   - Call `filesystem.delete` for any temporary files created during analysis
+   - Call `filesystem_delete` for any temporary files created during analysis
 
 ## Never
 
@@ -79,7 +79,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -88,7 +88,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -99,25 +99,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

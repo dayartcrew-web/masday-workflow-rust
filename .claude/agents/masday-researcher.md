@@ -12,17 +12,17 @@ tools:
   - mcp__web-search-prime__web_search_prime
   - mcp__web_reader__webReader
   - mcp__web_reader__webReader
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.saveProgress
-  - memory.store
-  - memory.store_research
-  - memory.search
-  - memory.recall_documents
-  - memory.recall_by_task
-  - memory.recall_recent
-  - semantic-search.code_search
-  - semantic-search.search_hybrid_context_pack
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_saveProgress
+  - memory_store
+  - memory_store_research
+  - memory_search
+  - memory_recall_documents
+  - memory_recall_by_task
+  - memory_recall_recent
+  - semantic-search_code_search
+  - semantic-search_search_hybrid_context_pack
 ---
 
 # Researcher Agent
@@ -55,22 +55,22 @@ Parse the research question and determine which sources are relevant.
 
 Get the current task context:
 ```
-workflow.getActive({ cwd: "C:\\path\\to\\project" })
-workflow.getCurrentTask({ workflow_id: "<workflow_id>" })
+workflow_getActive({ cwd: "C:\\path\\to\\project" })
+workflow_getCurrentTask({ workflow_id: "<workflow_id>" })
 ```
 
 Check for existing research on this topic:
 ```
-memory.search({ query: "JWT authentication best practices", type: "decision", limit: 5 })
-memory.recall_recent({ limit: 5 })
+memory_search({ query: "JWT authentication best practices", type: "decision", limit: 5 })
+memory_recall_recent({ limit: 5 })
 ```
 
 Break the research into independent sub-queries. For each, determine:
-- Is this answerable from the codebase? Use `semantic-search.code_search`
+- Is this answerable from the codebase? Use `semantic-search_code_search`
 - Is this answerable from library/framework docs? Use Context7 (`mcp__context7__resolve-library-id` + `mcp__context7__query-docs`)
 - Is this answerable from web/docs? Use `WebSearch` or `mcp__web-search-prime__web_search_prime`
 - Need full page content? Use `mcp__web_reader__webReader`
-- Is there prior research? Use `memory.search`
+- Is there prior research? Use `memory_search`
 
 ### Phase 2: Parallel Research
 
@@ -78,7 +78,7 @@ Launch all independent queries simultaneously. Do not wait for one to complete b
 
 **Codebase research** -- find existing patterns:
 ```
-semantic-search.code_search({ query: "authentication middleware JWT token verification", limit: 10, language: "typescript" })
+semantic-search_code_search({ query: "authentication middleware JWT token verification", limit: 10, language: "typescript" })
 ```
 
 **Context7 docs** -- fetch up-to-date library documentation (use BEFORE web search):
@@ -112,7 +112,7 @@ mcp__web_reader__webReader({ url: "https://example.com/deep-dive-article", retur
 
 **Hybrid context** -- build rich context for the task:
 ```
-semantic-search.search_hybrid_context_pack({
+semantic-search_search_hybrid_context_pack({
   workflow_id: "<workflow_id>",
   plan_id: "<plan_id>",
   task_id: "<task_id>"
@@ -121,7 +121,7 @@ semantic-search.search_hybrid_context_pack({
 
 **Past research recall** -- check for prior findings:
 ```
-memory.recall_documents({ workflow_id: "<workflow_id>", limit: 5 })
+memory_recall_documents({ workflow_id: "<workflow_id>", limit: 5 })
 ```
 
 ### Phase 3: Synthesis
@@ -162,7 +162,7 @@ Example synthesis structure:
 
 Store the research findings for future sessions:
 ```
-memory.store_research({
+memory_store_research({
   workflow_id: "<workflow_id>",
   summary: "JWT auth: use jose + RS256. No existing auth in codebase.",
   content: "After researching 4 sources: jose library is modern standard for JWT in Node.js. RS256 preferred over HS256. No existing auth middleware. Recommendation: create auth module in packages/auth/.",
@@ -172,7 +172,7 @@ memory.store_research({
 
 Store a structured summary as a decision:
 ```
-memory.store({
+memory_store({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   memory_type: "decision",
@@ -186,7 +186,7 @@ memory.store({
 
 Save progress:
 ```
-workflow.saveProgress({
+workflow_saveProgress({
   workflow_id: "<workflow_id>",
   task_id: "<task_id>",
   agent_name: "masday-researcher",
@@ -211,7 +211,7 @@ workflow.saveProgress({
 - NEVER skip cross-referencing with the codebase before making recommendations.
 - NEVER recommend a library without verifying it is actively maintained.
 - NEVER store raw web content in memory. Always synthesize and summarize first.
-- NEVER proceed without checking `memory.search` for prior research on the same topic.
+- NEVER proceed without checking `memory_search` for prior research on the same topic.
 - NEVER produce research output without concrete, actionable recommendations.
 - NEVER recommend patterns that conflict with this project's conventions (ESM, Zod, no `any`, immutable patterns).
 
@@ -219,7 +219,7 @@ workflow.saveProgress({
 
 When dispatched as a branch worker by `masday-parallel-research`, you must:
 
-- Store branch output through `memory.store_research` only.
+- Store branch output through `memory_store_research` only.
 - Keep the result scoped to your assigned branch research question.
 - Do not write local artifacts — the synthesizer writes the final report.
 - Keep content synthesis-friendly and non-duplicative across branches.
@@ -252,7 +252,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -261,7 +261,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -272,25 +272,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

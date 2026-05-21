@@ -5,20 +5,20 @@ description: >
   Docker build verification, and CI/CD pipeline checks. Use before pushing changes or when
   the user says "pre-deploy check", "ready to deploy", "deployment validation", or "check before push".
 allowed-tools:
-  - npm.install
-  - npm.run
-  - tests.run
-  - git.status
-  - git.diff
-  - git.commit
-  - docker.build
-  - docker.ps
-  - cicd.pipeline_status
-  - cicd.pipeline_trigger
-  - cicd.runs_view
-  - github.pr_list
-  - github.pr_create
-  - github.issue_list
+  - npm_install
+  - npm_run
+  - tests_run
+  - git_status
+  - git_diff
+  - git_commit
+  - docker_build
+  - docker_ps
+  - cicd_pipeline_status
+  - cicd_pipeline_trigger
+  - cicd_runs_view
+  - github_pr_list
+  - github_pr_create
+  - github_issue_list
 ---
 
 # Masday Deploy Check
@@ -28,46 +28,46 @@ Pre-flight checks before deployment.
 ## Steps
 
 1. **Install dependencies**
-   - Call `npm.install` if pnpm-lock.yaml has changed
+   - Call `npm_install` if pnpm-lock.yaml has changed
    - Verify no vulnerability warnings in output
 
 2. **Build**
-   - Call `npm.run` with script `build`
+   - Call `npm_run` with script `build`
    - Must pass with zero errors and zero warnings
    - If build fails, report the error and stop
 
 3. **Run tests**
-   - Call `tests.run` to execute the full test suite
+   - Call `tests_run` to execute the full test suite
    - All tests must pass (1017+ tests across 82+ files)
    - Report any failures with file names and error messages
 
 4. **Check git state**
-   - Call `git.status` to see branch, staged, and unstaged changes
-   - Call `git.diff` to review all changes before committing
+   - Call `git_status` to see branch, staged, and unstaged changes
+   - Call `git_diff` to review all changes before committing
    - Flag any: uncommitted changes, hardcoded values, debug statements
 
 5. **Type checking**
-   - Call `npm.run` with script `typecheck` (or `tsc --noEmit` via Bash)
+   - Call `npm_run` with script `typecheck` (or `tsc --noEmit` via Bash)
    - Verify TypeScript compiles without errors
    - No `any` types, no implicit any, strict mode enforced
 
 6. **Lint**
-   - Call `npm.run` with script `lint` (or `eslint` via Bash)
+   - Call `npm_run` with script `lint` (or `eslint` via Bash)
    - Verify no critical lint issues
    - Check for: unused imports, missing return types, console.log statements
 
 7. **Docker verification** (if Dockerfile exists)
-   - Call `docker.build` with appropriate tag to verify image builds
-   - Call `docker.ps` to check current running containers
+   - Call `docker_build` with appropriate tag to verify image builds
+   - Call `docker_ps` to check current running containers
 
 8. **CI/CD pipeline**
-   - Call `cicd.pipeline_status` to check current pipeline state
-   - If pipeline is failing, call `cicd.runs_view` for error details
-   - Optionally call `cicd.pipeline_trigger` to start a new run
+   - Call `cicd_pipeline_status` to check current pipeline state
+   - If pipeline is failing, call `cicd_runs_view` for error details
+   - Optionally call `cicd_pipeline_trigger` to start a new run
 
 9. **GitHub integration**
-   - Call `github.pr_list` to check existing PRs
-   - Call `github.issue_list` for related issues
+   - Call `github_pr_list` to check existing PRs
+   - Call `github_issue_list` for related issues
 
 10. **Report**
     ```
@@ -85,9 +85,9 @@ Pre-flight checks before deployment.
     ```
 
 11. **Deploy** (if all checks pass and user confirms)
-    - Call `git.commit` to commit all changes
-    - Call `cicd.pipeline_trigger` to start deployment
-    - Call `github.pr_create` if PR workflow is used
+    - Call `git_commit` to commit all changes
+    - Call `cicd_pipeline_trigger` to start deployment
+    - Call `github_pr_create` if PR workflow is used
 
 ## Never
 
@@ -102,7 +102,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -111,7 +111,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -122,25 +122,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

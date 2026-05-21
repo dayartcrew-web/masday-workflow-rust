@@ -6,12 +6,12 @@ description: >
   for validation and file generation. Use when the user says "create skill", "new skill",
   "add workflow skill", or "skill definition".
 allowed-tools:
-  - capability.create_skill
-  - capability.list_skills
-  - capability.list_templates
-  - capability.scaffold_feature
-  - filesystem.write
-  - filesystem.list
+  - capability_create_skill
+  - capability_list_skills
+  - capability_list_templates
+  - capability_scaffold_feature
+  - filesystem_write
+  - filesystem_list
 ---
 
 # Masday Create Skill
@@ -31,11 +31,11 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
 ## Steps
 
 1. **Check existing skills**
-   - Call `capability.list_skills` to see all registered skills
+   - Call `capability_list_skills` to see all registered skills
    - Verify the proposed skill name does not conflict with existing ones
 
 2. **Check templates**
-   - Call `capability.list_templates` for available patterns
+   - Call `capability_list_templates` for available patterns
    - Select a template if one matches the skill type
 
 3. **Design the skill based on user description**
@@ -58,7 +58,7 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
    ```
 
 5. **Register the skill**
-   - Call `capability.create_skill` with:
+   - Call `capability_create_skill` with:
      - `projectRoot`: the project root directory
      - `name`: skill name (validated by shared-utils)
      - `description`: what it does
@@ -71,11 +71,11 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
      - Writes the SKILL.md file
 
 6. **Save to project location**
-   - Call `filesystem.write` to save:
+   - Call `filesystem_write` to save:
      - `$ROOT/.claude/skills/<name>/SKILL.md`
 
 7. **Or use scaffold for full feature**
-   - Call `capability.scaffold_feature` if the skill needs an agent and command
+   - Call `capability_scaffold_feature` if the skill needs an agent and command
    - scaffold_feature internally calls both `createAgent()` and `createSkill()` from shared-utils
 
 8. **Report**
@@ -91,7 +91,7 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
 
 - Never use fake MCP tool names -- only use actual tool names from the project
 - Never create a skill without a clear trigger condition
-- Never skip registration with `capability.create_skill`
+- Never skip registration with `capability_create_skill`
 - Never omit the `allowed-tools` list from the frontmatter
 
 ## Mandatory Review Pipeline
@@ -100,7 +100,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -109,7 +109,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -120,25 +120,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

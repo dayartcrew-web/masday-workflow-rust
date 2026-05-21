@@ -50,11 +50,11 @@ describe("buildAgentMarkdown", () => {
     const md = buildAgentMarkdown({
       projectRoot: tmpDir, name: "test-agent", role: "tester",
       description: "desc", instructions: "inst",
-      model: "sonnet", tools: ["filesystem.read", "filesystem.write"],
+      model: "sonnet", tools: ["filesystem_read", "filesystem_write"],
     });
     expect(md).toContain("model: sonnet");
-    expect(md).toContain("  - filesystem.read");
-    expect(md).toContain("  - filesystem.write");
+    expect(md).toContain("  - filesystem_read");
+    expect(md).toContain("  - filesystem_write");
   });
 });
 
@@ -128,10 +128,10 @@ describe("buildSkillMarkdown", () => {
     const md = buildSkillMarkdown({
       projectRoot: tmpDir, name: "test-skill",
       description: "desc", trigger: "trig",
-      steps: ["Step"], allowedTools: ["filesystem.read", "workflow.create"],
+      steps: ["Step"], allowedTools: ["filesystem_read", "workflow_create"],
     });
-    expect(md).toContain("  - filesystem.read");
-    expect(md).toContain("  - workflow.create");
+    expect(md).toContain("  - filesystem_read");
+    expect(md).toContain("  - workflow_create");
   });
 });
 

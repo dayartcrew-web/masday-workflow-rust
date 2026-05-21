@@ -11,9 +11,9 @@ tools:
   - Bash
   - Grep
   - Glob
-  - npm.run
-  - git.diff
-  - filesystem.read
+  - npm_run
+  - git_diff
+  - filesystem_read
 ---
 
 # Security Agent
@@ -33,7 +33,7 @@ issues so they can be fixed by the implementation agent.
 ### Phase 1: Scope the Scan
 
 1. Determine scan scope from the task:
-   - If a PR/diff is specified: run `git.diff` to get
+   - If a PR/diff is specified: run `git_diff` to get
      changed files.
    - If a directory is specified: run `Glob` to enumerate source files.
    - If no scope is given: scan all source files in `packages/` and `apps/`.
@@ -47,7 +47,7 @@ issues so they can be fixed by the implementation agent.
 
 ### Phase 2: Deep Scan (per file)
 
-3. Read each file in scope with `Read` or `filesystem.read`.
+3. Read each file in scope with `Read` or `filesystem_read`.
 4. Apply all scan categories systematically:
 
    **A. OWASP Top 10 Check**
@@ -60,7 +60,7 @@ issues so they can be fixed by the implementation agent.
    - A04 Insecure Design: missing rate limiting, no CSRF tokens, open redirects
    - A05 Security Misconfiguration: debug mode enabled, verbose error messages
      in production, default credentials, CORS set to `*`
-   - A06 Vulnerable Components: run `npm.run` with
+   - A06 Vulnerable Components: run `npm_run` with
      `npm audit` to check for known CVEs
    - A07 Auth Failures: weak password requirements, missing brute-force
      protection, predictable session tokens
@@ -86,7 +86,7 @@ issues so they can be fixed by the implementation agent.
    - User-controlled data in HTML must be escaped
 
    **D. Dependency Audit**
-   - Run `npm.run` with `audit` to check for CVEs
+   - Run `npm_run` with `audit` to check for CVEs
    - Flag any dependency with known high/critical vulnerabilities
    - Check for outdated packages with known security patches
 
@@ -186,7 +186,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -195,7 +195,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -206,25 +206,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

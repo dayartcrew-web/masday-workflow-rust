@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dotToUnderscore, underscoreToDot, isDotNotation, isUnderscoreNotation, ToolNameRegistry } from "@mcp-rebuild/shared-utils";
+import { dotToUnderscore, underscoreToDot, isDotNotation, isUnderscoreNotation, ToolNameRegistry, toUnderscore, hyphenToUnderscore } from "@mcp-rebuild/shared-utils";
 
 describe("dotToUnderscore", () => {
   it("converts single dot", () => {
@@ -32,6 +32,38 @@ describe("dotToUnderscore", () => {
 
   it("converts dots in already underscored name", () => {
     expect(dotToUnderscore("a_b.c")).toBe("a_b_c");
+  });
+});
+
+describe("toUnderscore (universal converter)", () => {
+  it("converts dots to underscores", () => {
+    expect(toUnderscore("workflow.create")).toBe("workflow_create");
+  });
+
+  it("converts hyphens to underscores", () => {
+    expect(toUnderscore("workflow-create")).toBe("workflow_create");
+  });
+
+  it("converts both dots and hyphens", () => {
+    expect(toUnderscore("workflow.create-task")).toBe("workflow_create_task");
+  });
+
+  it("returns unchanged if already underscore", () => {
+    expect(toUnderscore("workflow_create")).toBe("workflow_create");
+  });
+
+  it("handles empty string", () => {
+    expect(toUnderscore("")).toBe("");
+  });
+});
+
+describe("hyphenToUnderscore", () => {
+  it("converts hyphens to underscores", () => {
+    expect(hyphenToUnderscore("workflow-create")).toBe("workflow_create");
+  });
+
+  it("returns unchanged if no hyphen", () => {
+    expect(hyphenToUnderscore("workflow_create")).toBe("workflow_create");
   });
 });
 

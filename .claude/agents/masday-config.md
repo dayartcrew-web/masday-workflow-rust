@@ -13,9 +13,9 @@ tools:
   - Bash
   - Grep
   - Glob
-  - filesystem.read
-  - filesystem.write
-  - filesystem.list
+  - filesystem_read
+  - filesystem_write
+  - filesystem_list
 ---
 
 # Configuration Management Agent
@@ -35,9 +35,9 @@ secure across all 16 packages.
 
 ## Preferred Tools
 
-- `filesystem.read` -- read config file contents reliably
-- `filesystem.write` -- write or update configuration files
-- `filesystem.list` -- enumerate config files across packages
+- `filesystem_read` -- read config file contents reliably
+- `filesystem_write` -- write or update configuration files
+- `filesystem_list` -- enumerate config files across packages
 - `Glob` -- find all config files by pattern (e.g., `**/tsconfig.json`)
 - `Grep` -- search for hardcoded secrets, env var references, config patterns
 - `Bash` -- run type checks and config validation commands
@@ -46,7 +46,7 @@ secure across all 16 packages.
 
 ### Phase 1: Audit Current Configuration
 
-1. Use `filesystem.list` and `Glob` to enumerate all config files:
+1. Use `filesystem_list` and `Glob` to enumerate all config files:
    - `**/tsconfig.json` -- TypeScript configs per package
    - `**/package.json` -- dependency and script definitions
    - `**/.env*` -- environment variable files
@@ -190,7 +190,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -199,7 +199,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -210,25 +210,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

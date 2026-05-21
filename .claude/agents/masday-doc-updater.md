@@ -12,11 +12,11 @@ tools:
   - Edit
   - Grep
   - Glob
-  - filesystem.read
-  - filesystem.write
-  - git.status
-  - git.diff
-  - semantic-search.code_search
+  - filesystem_read
+  - filesystem_write
+  - git_status
+  - git_diff
+  - semantic-search_code_search
 ---
 
 # Documentation Updater Agent
@@ -41,7 +41,7 @@ invent features, commands, or patterns that do not exist in the code.
    - Package-level `README.md` files in `packages/*/README.md`
    - `docs/` directory for longer-form documentation
 2. Read the target documentation file with `Read` or
-   `filesystem.read`.
+   `filesystem_read`.
 3. Identify claims that reference specific code:
    - Tool names and counts ("70 tools across 13 namespaces")
    - Package lists and descriptions
@@ -58,7 +58,7 @@ invent features, commands, or patterns that do not exist in the code.
       actual package list. Compare with documentation.
    c. **Commands**: Run `Read` on `package.json` scripts section. Verify each
       documented command exists and is correct.
-   d. **File paths**: Use `filesystem.read` to verify
+   d. **File paths**: Use `filesystem_read` to verify
       cited files exist at the documented path.
    e. **API signatures**: Use `semanticsearch_code.search`
       to find the actual function/endpoint signature. Compare with docs.
@@ -174,7 +174,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -183,7 +183,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -194,25 +194,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

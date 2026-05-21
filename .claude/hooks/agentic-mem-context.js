@@ -74,7 +74,7 @@ try {
   }
 
   console.log(`Stats: ${total} total | ${Object.entries(typeCounts).map(([k, v]) => `${k}:${v}`).join(' ')}`)
-  console.log('Use memory.search for specific queries, memory.store to store new context.')
+  console.log('Use memory_search for specific queries, memory_store to store new context.')
 
 } catch (err) {
   // Silent fail — don't block session start

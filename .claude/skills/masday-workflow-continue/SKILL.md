@@ -6,22 +6,22 @@ description: |
   and you need to pick up exactly where the last task stopped.
   Handles: paused workflows, failed tasks with retry budget, partially completed plans.
 allowed-tools:
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - workflow.getPlan
-  - workflow.listTasks
-  - workflow.startTask
-  - workflow.execute
-  - workflow.saveProgress
-  - workflow.completeTask
-  - review.get_latest
-  - memory.recall_recent
-  - memory.recall_by_task
-  - memory.recall_documents
-  - semantic-search.search_hybrid_context_pack
-  - semantic-search.search_context_fingerprint
-  - policy.validate_execution
-  - tests.run
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - workflow_getPlan
+  - workflow_listTasks
+  - workflow_startTask
+  - workflow_execute
+  - workflow_saveProgress
+  - workflow_completeTask
+  - review_get_latest
+  - memory_recall_recent
+  - memory_recall_by_task
+  - memory_recall_documents
+  - semantic-search_search_hybrid_context_pack
+  - semantic-search_search_context_fingerprint
+  - policy_validate_execution
+  - tests_run
 ---
 
 # Masday Workflow Continue
@@ -46,13 +46,13 @@ Resume an interrupted workflow. Detects the last known state and picks up from t
 ### 1. Detect Active Workflow
 
 ```
-Call: workflow.getActive({ cwd: process.cwd() })
+Call: workflow_getActive({ cwd: process.cwd() })
 
 If no active workflow:
-  Call: workflow.list({ status: "EXECUTE" })
+  Call: workflow_list({ status: "EXECUTE" })
 
 If still none:
-  Call: workflow.list({ status: "reviewing" })
+  Call: workflow_list({ status: "reviewing" })
 
 If no workflows found at all:
   STOP: "No active or paused workflows found. Use /masday-workflow-new to start one."
@@ -63,9 +63,9 @@ Record: workflowId, workflow status
 ### 2. Load Full State
 
 ```
-Call: workflow.getPlan({ workflow_id: workflowId })
-Call: workflow.listTasks({ workflow_id: workflowId })
-Call: workflow.getCurrentTask({ workflow_id: workflowId })
+Call: workflow_getPlan({ workflow_id: workflowId })
+Call: workflow_listTasks({ workflow_id: workflowId })
+Call: workflow_getCurrentTask({ workflow_id: workflowId })
 
 Record: plan, all tasks with statuses, current task (if any)
 ```
@@ -81,7 +81,7 @@ Based on task statuses, determine where to resume:
 | Current task `completed`, next task `pending` | Start next task (Step 5) |
 | All tasks `completed` | Move to VERIFY phase (Step 6) |
 | No current task, some `pending` | Start first pending task (Step 5) |
-| All tasks `pending` (plan never started) | Call `workflow.execute` (Step 7) |
+| All tasks `pending` (plan never started) | Call `workflow_execute` (Step 7) |
 
 ### 4. Resume Interrupted Task
 
@@ -89,32 +89,32 @@ For a task that was `in_progress` or `failed`:
 
 ```
 # Load prior context
-Call: memory.recall_by_task({ task_id: taskId, limit: 10 })
-Call: review.get_latest({ workflow_id: workflowId, task_id: taskId })
+Call: memory_recall_by_task({ task_id: taskId, limit: 10 })
+Call: review_get_latest({ workflow_id: workflowId, task_id: taskId })
 
 # Check fingerprint for context freshness
-Call: semantic-search.search_context_fingerprint({
+Call: semantic-search_search_context_fingerprint({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: taskId
 })
 
 # Build fresh context pack
-Call: semantic-search.search_hybrid_context_pack({
+Call: semantic-search_search_hybrid_context_pack({
   workflow_id: workflowId,
   plan_id: planId,
   task_id: taskId
 })
 
 # Validate execution is allowed
-Call: policy.validate_execution({
+Call: policy_validate_execution({
   workflow_id: workflowId,
   task_id: taskId,
   session_key: "resume-" + Date.now()
 })
 
 # Re-start the task
-Call: workflow.startTask({
+Call: workflow_startTask({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: "<from task ownerAgent>"
@@ -132,7 +132,7 @@ For each pending task (in plan order):
   If yes: that's the next task
   If no: skip, check next
 
-Call: workflow.startTask({
+Call: workflow_startTask({
   workflow_id: workflowId,
   task_id: nextTaskId,
   agent_name: "<from task ownerAgent>"
@@ -145,10 +145,10 @@ Call: workflow.startTask({
 
 ```
 # If all tasks are "DONE", check if review passed
-Call: review.get_latest({ workflow_id: workflowId, task_id: lastTaskId })
+Call: review_get_latest({ workflow_id: workflowId, task_id: lastTaskId })
 
 If review is APPROVED:
-  Call: workflow.completeTask({ workflow_id: workflowId, task_id: lastTaskId })
+  Call: workflow_completeTask({ workflow_id: workflowId, task_id: lastTaskId })
   Report: "Workflow complete! All tasks done."
 
 If review is REWORK_REQUIRED:
@@ -161,7 +161,7 @@ If no review:
 ### 7. Plan Exists But Never Started
 
 ```
-Call: workflow.execute({ id: workflowId })
+Call: workflow_execute({ id: workflowId })
 
 This transitions INIT -> ANALYZE -> PLAN -> EXECUTE automatically.
 Then follow the task execution loop.
@@ -172,7 +172,7 @@ Then follow the task execution loop.
 ```
 After every significant action, save progress:
 
-Call: workflow.saveProgress({
+Call: workflow_saveProgress({
   workflow_id: workflowId,
   task_id: taskId,
   agent_name: "masday-continue",
@@ -228,7 +228,7 @@ Previous progress: "{last progress note}"
 - NEVER assume task order — always check dependencies
 - NEVER mark a task complete without review approval
 - NEVER discard prior progress notes — they contain recovery context
-- NEVER start a task without calling `policy.validate_execution` first
+- NEVER start a task without calling `policy_validate_execution` first
 
 ## Mandatory Review Pipeline
 
@@ -236,7 +236,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -245,7 +245,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -256,25 +256,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

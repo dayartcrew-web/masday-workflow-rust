@@ -3,7 +3,7 @@
  *
  * Fires on Skill tool use. Behavior:
  * - masday-* skills: no reminder (they already follow the pipeline)
- * - Non-masday skills: inject wrap-back reminder to saveProgress → review → completeTask → memory.store
+ * - Non-masday skills: inject wrap-back reminder to saveProgress → review → completeTask → memory_store
  */
 
 const MASDAY_PREFIX = 'masday-';
@@ -36,11 +36,11 @@ export default function skillWrapGuard(context) {
     systemMessage:
       `[skill-wrap-guard] Non-masday skill "${skillName}" invoked. ` +
       `After this skill completes, you MUST wrap back to masday pipeline:\n` +
-      `  1. workflow.saveProgress — log what the skill did\n` +
-      `  2. review.submit — quality gate (APPROVED needed before completeTask)\n` +
-      `  3. policy.validate_completion — check readiness\n` +
-      `  4. workflow.completeTask — close the task\n` +
-      `  5. memory.store — persist findings\n` +
+      `  1. workflow_saveProgress — log what the skill did\n` +
+      `  2. review_submit — quality gate (APPROVED needed before completeTask)\n` +
+      `  3. policy_validate_completion — check readiness\n` +
+      `  4. workflow_completeTask — close the task\n` +
+      `  5. memory_store — persist findings\n` +
       `Skipping this wrap-back is a policy violation.`,
   };
 }

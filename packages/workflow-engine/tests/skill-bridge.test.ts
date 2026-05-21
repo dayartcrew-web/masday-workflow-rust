@@ -20,8 +20,8 @@ describe("MCPToolBridge", () => {
   });
 
   it("has() returns true for registered tools", () => {
-    bridge.register("workflow.create", async () => null);
-    expect(bridge.has("workflow.create")).toBe(true);
+    bridge.register("workflow_create", async () => null);
+    expect(bridge.has("workflow_create")).toBe(true);
     expect(bridge.has("nonexistent")).toBe(false);
   });
 
@@ -48,8 +48,8 @@ describe("parseSkillFrontmatter", () => {
 name: test-skill
 description: A test skill
 allowed-tools:
-  - workflow.create
-  - memory.store
+  - workflow_create
+  - memory_store
   - Bash
 ---
 
@@ -60,7 +60,7 @@ allowed-tools:
     const { meta, body } = parseSkillFrontmatter(content);
     expect(meta.name).toBe("test-skill");
     expect(meta.description).toBe("A test skill");
-    expect(meta["allowed-tools"]).toEqual(["workflow.create", "memory.store", "Bash"]);
+    expect(meta["allowed-tools"]).toEqual(["workflow_create", "memory_store", "Bash"]);
     expect(body).toContain("# Steps");
     expect(body).toContain("Do something");
   });
@@ -112,8 +112,8 @@ describe("SkillLoader", () => {
 name: test-skill
 description: A test skill for unit tests
 allowed-tools:
-  - workflow.create
-  - memory.store
+  - workflow_create
+  - memory_store
 ---
 
 # Test Skill Steps
@@ -130,7 +130,7 @@ allowed-tools:
     const skills = loader.loadAll();
     expect(skills).toHaveLength(1);
     expect(skills[0].name).toBe("test-skill");
-    expect(skills[0].allowedTools).toEqual(["workflow.create", "memory.store"]);
+    expect(skills[0].allowedTools).toEqual(["workflow_create", "memory_store"]);
     expect(skills[0].steps).toContain("Create a workflow");
   });
 
@@ -173,9 +173,9 @@ describe("LiveSkillRegistry", () => {
 
   beforeEach(() => {
     bridge = new MCPToolBridge();
-    bridge.register("workflow.create", async (input) => ({ created: true, ...(input as Record<string, unknown>) }));
-    bridge.register("memory.store", async (input) => ({ stored: true, ...(input as Record<string, unknown>) }));
-    bridge.register("policy.validate", async (input) => ({ valid: true, ...(input as Record<string, unknown>) }));
+    bridge.register("workflow_create", async (input) => ({ created: true, ...(input as Record<string, unknown>) }));
+    bridge.register("memory_store", async (input) => ({ stored: true, ...(input as Record<string, unknown>) }));
+    bridge.register("policy_validate", async (input) => ({ valid: true, ...(input as Record<string, unknown>) }));
 
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "registry-test-"));
     const skillDir = path.join(tmpDir, "test-skill");
@@ -184,8 +184,8 @@ describe("LiveSkillRegistry", () => {
 name: test-skill
 description: Test skill
 allowed-tools:
-  - workflow.create
-  - memory.store
+  - workflow_create
+  - memory_store
 ---
 Steps here`);
 
@@ -199,7 +199,7 @@ Steps here`);
 
   it("execute routes direct tool calls through the bridge", async () => {
     const result = await registry.execute("test-skill", {
-      tool: "workflow.create",
+      tool: "workflow_create",
       args: { name: "my-workflow" },
     });
     expect(result).toEqual({ created: true, name: "my-workflow" });
@@ -208,10 +208,10 @@ Steps here`);
   it("execute rejects disallowed tools", async () => {
     await expect(
       registry.execute("test-skill", {
-        tool: "policy.validate",
+        tool: "policy_validate",
         args: {},
       }),
-    ).rejects.toThrow('Tool "policy.validate" not allowed for skill "test-skill"');
+    ).rejects.toThrow('Tool "policy_validate" not allowed for skill "test-skill"');
   });
 
   it("execute throws for missing skill", async () => {
@@ -272,10 +272,10 @@ describe("Integration: Full flow — skill load → bridge → handler", () => {
   beforeEach(() => {
     bridge = new MCPToolBridge();
 
-    bridge.register("workflow.create", async (input) => {
+    bridge.register("workflow_create", async (input) => {
       return { id: "wf-1", ...(input as Record<string, unknown>) };
     });
-    bridge.register("memory.store", async (input) => {
+    bridge.register("memory_store", async (input) => {
       return { id: "mem-1", ...(input as Record<string, unknown>) };
     });
 
@@ -286,8 +286,8 @@ describe("Integration: Full flow — skill load → bridge → handler", () => {
 name: run-workflow
 description: Runs a workflow
 allowed-tools:
-  - workflow.create
-  - memory.store
+  - workflow_create
+  - memory_store
 ---
 1. Create workflow
 2. Store memory`);
@@ -303,10 +303,10 @@ allowed-tools:
   it("full flow: load skill → route tool call → execute handler", async () => {
     const skill = loader.load("run-workflow");
     expect(skill).toBeDefined();
-    expect(skill!.allowedTools).toContain("workflow.create");
+    expect(skill!.allowedTools).toContain("workflow_create");
 
     const result = await registry.execute("run-workflow", {
-      tool: "workflow.create",
+      tool: "workflow_create",
       args: { name: "test-wf" },
     });
     expect(result).toEqual({ id: "wf-1", name: "test-wf" });
@@ -315,10 +315,10 @@ allowed-tools:
   it("full flow: disallowed tool is rejected", async () => {
     await expect(
       registry.execute("run-workflow", {
-        tool: "memory.delete",
+        tool: "memory_delete",
         args: { id: "x" },
       }),
-    ).rejects.toThrow('Tool "memory.delete" not allowed for skill "run-workflow"');
+    ).rejects.toThrow('Tool "memory_delete" not allowed for skill "run-workflow"');
   });
 
   it("full flow: default action routes to first allowed tool", async () => {

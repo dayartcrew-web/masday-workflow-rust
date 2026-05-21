@@ -15,9 +15,9 @@ All notable changes to masday-workflow-rebuild.
 
 ### Added
 - **Reminder hooks**: Workflow lifecycle reminder engine detecting stale, stuck, and failed workflows/tasks
-  - `reminder.check` — Detect STALE_EXECUTION, STUCK_TASK, FAILED_WORKFLOW, FAILED_TASK, IDLE_EXECUTION
-  - `reminder.list` — List reminders with filtering (workflowId, acknowledged, limit)
-  - `reminder.acknowledge` — Acknowledge or dismiss reminders
+  - `reminder_check` — Detect STALE_EXECUTION, STUCK_TASK, FAILED_WORKFLOW, FAILED_TASK, IDLE_EXECUTION
+  - `reminder_list` — List reminders with filtering (workflowId, acknowledged, limit)
+  - `reminder_acknowledge` — Acknowledge or dismiss reminders
 - **WorkflowReminder Prisma model**: 15th database table for persisting reminder state (type, severity, message, acknowledged)
 - **ReminderEngine module** (`packages/workflow-engine/src/reminders.ts`): Time-based and state-change detection with configurable thresholds
 
@@ -37,23 +37,23 @@ All notable changes to masday-workflow-rebuild.
 - **14 Prisma tables actively populated**: Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge
 - **Status normalization**: All status values UPPERCASE in PostgreSQL (Workflow: INIT/EXECUTE/DONE..., Task: PENDING/RUNNING/DONE/FAILED, Plan: ACTIVE/PENDING/READY/DONE, Review: APPROVED/REWORK_REQUIRED/BLOCKED)
 - **Module system**: ESM (`"type": "module"`, NodeNext resolution) across all packages
-- **Tool naming**: camelCase dot-namespaced format (`workflow.getActive`, `memory.store`)
+- **Tool naming**: camelCase dot-namespaced format (`workflow_getActive`, `memory_store`)
 - **Package scope**: All packages unified under `@mcp-rebuild/*`
 
 ### Added
 - EpisodicMemory persistence to PostgreSQL via `setEpisodicPrisma()`
 - GraphNode/GraphEdge persistence to PostgreSQL via `setGraphPrisma()`
-- ContextDocument creation on `memory.store_research`
-- TaskProgressLog population via `saveProgressDb()` on `workflow.saveProgress`
-- RetrievalLog population via `logRetrieval()` on `memory.search`, `semantic-search.code_search`, `search_hybrid_context_pack`
-- TokenUsage tracking via `trackTokens()` on `workflow.saveProgress`, `memory.store_research`
+- ContextDocument creation on `memory_store_research`
+- TaskProgressLog population via `saveProgressDb()` on `workflow_saveProgress`
+- RetrievalLog population via `logRetrieval()` on `memory_search`, `semantic-search_code_search`, `search_hybrid_context_pack`
+- TokenUsage tracking via `trackTokens()` on `workflow_saveProgress`, `memory_store_research`
 - `@mcp-rebuild/memory` dependency added to `apps/agent-runner`
 - 26 specialist agents registered in `.claude/agents/`
 - 25+ skills registered in `.claude/skills/`
 
 ### Fixed
 - DualWriteStore status mapping: Task states normalized from lowercase to UPPERCASE before Prisma writes
-- workflow-engine status values: `task.ts`, `plan.ts`, `review.ts`, `workflow-create.ts` all emit UPPERCASE
+- workflow-engine status values: `task.ts`, `plan.ts`, `review_ts`, `workflow-create.ts` all emit UPPERCASE
 - All `.claude/` skill and agent .md files updated with UPPERCASE status conventions
 
 ### Documentation

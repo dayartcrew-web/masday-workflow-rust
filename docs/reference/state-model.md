@@ -33,21 +33,21 @@ All 16 Drizzle models are actively populated. Each table is wired to the MCP too
 
 | Table             | Wired Via            | Trigger                                              |
 | ----------------- | -------------------- | ---------------------------------------------------- |
-| Workflow          | DualWriteStore       | workflow.create, execute, delete                     |
+| Workflow          | DualWriteStore       | workflow_create, execute, delete                     |
 | Task              | DualWriteStore       | addTask, startTask, completeTask                     |
 | Plan              | DualWriteStore       | createPlan                                           |
-| Memory            | persistToDb()    | memory.store, store_research                         |
-| ReviewDecision    | Drizzle direct        | review.submit                                        |
-| SessionState      | Drizzle direct        | session.patch_state                                  |
-| ParallelBranch    | Drizzle direct        | workflow.createParallelBranches                      |
-| ContextDocument   | Drizzle direct        | memory.store_research                                |
-| TaskProgressLog   | saveProgressDb()     | workflow.saveProgress                                |
-| RetrievalLog      | logRetrieval()       | memory.search, semantic-search.*                     |
-| TokenUsage        | trackTokens()        | workflow.saveProgress, memory.store_research         |
+| Memory            | persistToDb()    | memory_store, store_research                         |
+| ReviewDecision    | Drizzle direct        | review_submit                                        |
+| SessionState      | Drizzle direct        | session_patch_state                                  |
+| ParallelBranch    | Drizzle direct        | workflow_createParallelBranches                      |
+| ContextDocument   | Drizzle direct        | memory_store_research                                |
+| TaskProgressLog   | saveProgressDb()     | workflow_saveProgress                                |
+| RetrievalLog      | logRetrieval()       | memory_search, semantic-search.*                     |
+| TokenUsage        | trackTokens()        | workflow_saveProgress, memory_store_research         |
 | EpisodicMemory    | setEpisodicDb()  | EpisodicMemory.add()                                 |
 | GraphNode         | setGraphDb()     | GraphStore.addNode()                                 |
 | GraphEdge         | setGraphDb()     | GraphStore.addEdge()                                 |
-| WorkflowReminder  | setReminderDb()  | reminder.check                                       |
+| WorkflowReminder  | setReminderDb()  | reminder_check                                       |
 | LlmProviderConfig | Drizzle direct        | LLM provider configuration storage                   |
 
 ## Status conventions

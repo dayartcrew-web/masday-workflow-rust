@@ -2,7 +2,7 @@
  * on-stop — Enforces masday wrap-up before session ends.
  *
  * Checks:
- * 1. Active workflow/task exists → remind to saveProgress + memory.store
+ * 1. Active workflow/task exists → remind to saveProgress + memory_store
  * 2. Uncommitted changes → remind to commit or stash
  * 3. Incomplete task state → warn about leaving tasks RUNNING
  */
@@ -62,14 +62,14 @@ export default async function onStop(context) {
       const taskName = task.title || task.name || task.id;
       warnings.push(
         `[on-stop] ACTIVE TASK "${taskName}" still RUNNING. Before ending:\n` +
-        `  1. workflow.saveProgress — persist current work\n` +
-        `  2. review.submit — quality gate\n` +
-        `  3. workflow.completeTask — close the task\n` +
-        `  4. memory.store — save findings for future sessions`
+        `  1. workflow_saveProgress — persist current work\n` +
+        `  2. review_submit — quality gate\n` +
+        `  3. workflow_completeTask — close the task\n` +
+        `  4. memory_store — save findings for future sessions`
       );
     } else {
       warnings.push(
-        `[on-stop] Active workflow "${workflow.name || workflow.id}" found. Run workflow.saveProgress and memory.store before ending.`
+        `[on-stop] Active workflow "${workflow_name || workflow_id}" found. Run workflow_saveProgress and memory_store before ending.`
       );
     }
   }

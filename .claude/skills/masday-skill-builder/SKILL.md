@@ -5,16 +5,16 @@ description: >
   Handles registration, file generation, and scaffolding. Use when the user says
   "build skill", "create agent", "new command", "scaffold feature", or "add capability".
 allowed-tools:
-  - capability.create_agent
-  - capability.create_skill
-  - capability.list_agents
-  - capability.list_skills
-  - capability.list_templates
-  - capability.scaffold_feature
-  - capability.scaffold_mcp_server
-  - filesystem.read
-  - filesystem.write
-  - filesystem.list
+  - capability_create_agent
+  - capability_create_skill
+  - capability_list_agents
+  - capability_list_skills
+  - capability_list_templates
+  - capability_scaffold_feature
+  - capability_scaffold_mcp_server
+  - filesystem_read
+  - filesystem_write
+  - filesystem_list
 ---
 
 # Masday Skill Builder
@@ -24,8 +24,8 @@ Create new skills, agents, commands, and MCP packages for Masday Workflow.
 ## Pre-flight
 
 1. **Detect project root** -- find the masday-workflow-reborn repo root
-2. **List existing** -- call `capability.list_agents` and `capability.list_skills` to avoid duplicates
-3. **Check templates** -- call `capability.list_templates` for available scaffolds
+2. **List existing** -- call `capability_list_agents` and `capability_list_skills` to avoid duplicates
+3. **Check templates** -- call `capability_list_templates` for available scaffolds
 
 ## Skill Builder
 
@@ -51,7 +51,7 @@ Create new skills, agents, commands, and MCP packages for Masday Workflow.
 3. **Save to project location**
    - `$ROOT/.claude/skills/<name>/SKILL.md`
 
-4. **Register** -- call `capability.create_skill` with name, description, trigger, and steps
+4. **Register** -- call `capability_create_skill` with name, description, trigger, and steps
 
 ## Agent Builder
 
@@ -62,7 +62,7 @@ Create new skills, agents, commands, and MCP packages for Masday Workflow.
    - Preferred skills and tools
    - Task routing rules and constraints
 
-2. **Register** -- call `capability.create_agent` with name, role, description, and instructions
+2. **Register** -- call `capability_create_agent` with name, role, description, and instructions
 
 3. **Save to project**
    - `$ROOT/.claude/agents/<name>.md`
@@ -71,8 +71,8 @@ Create new skills, agents, commands, and MCP packages for Masday Workflow.
 
 ### Steps
 
-1. **Full feature** -- call `capability.scaffold_feature` for agent + skill + command + MCP tool stub
-2. **MCP server** -- call `capability.scaffold_mcp_server` for a new server package
+1. **Full feature** -- call `capability_scaffold_feature` for agent + skill + command + MCP tool stub
+2. **MCP server** -- call `capability_scaffold_mcp_server` for a new server package
 3. **Review generated code** and adjust as needed
 
 ## Validation Checklist
@@ -96,7 +96,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -105,7 +105,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -116,25 +116,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

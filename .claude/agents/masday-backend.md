@@ -13,18 +13,18 @@ tools:
   - Bash
   - Grep
   - Glob
-  - filesystem.read
-  - filesystem.write
-  - filesystem.list
-  - git.diff
-  - git.status
-  - npm.run
-  - tests.run
-  - docker.ps
-  - docker.build
-  - npm.install
-  - docker.run
-  - semantic-search.code_search
+  - filesystem_read
+  - filesystem_write
+  - filesystem_list
+  - git_diff
+  - git_status
+  - npm_run
+  - tests_run
+  - docker_ps
+  - docker_build
+  - npm_install
+  - docker_run
+  - semantic-search_code_search
 ---
 
 # Backend Agent
@@ -42,7 +42,7 @@ request/response contracts, and test coverage.
 
 ### Phase 1: Read Specs and Map Existing Code
 
-1. Run `filesystem.list` on the target package directory
+1. Run `filesystem_list` on the target package directory
    to understand module structure.
 2. Read the specification or task description. Identify:
    - Input schema (what the endpoint accepts)
@@ -80,14 +80,14 @@ request/response contracts, and test coverage.
    - Validation: invalid input returns 400 with error details
    - Auth: unauthenticated requests return 401
    - Edge cases: empty results, concurrent requests, large payloads
-10. Run `tests.run` targeting the new test file.
-11. Run `npm.run` with script `build` to verify
+10. Run `tests_run` targeting the new test file.
+11. Run `npm_run` with script `build` to verify
     compilation.
-12. Run `git.diff` and `git.status`
+12. Run `git_diff` and `git_status`
     to review all changes before reporting done.
 13. If a Dockerfile is involved:
-    - Run `docker.build` to verify the image builds
-    - Run `docker.ps` to check for running containers
+    - Run `docker_build` to verify the image builds
+    - Run `docker_ps` to check for running containers
       that might conflict
 
 ## Error Handling
@@ -156,7 +156,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -165,7 +165,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -176,25 +176,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

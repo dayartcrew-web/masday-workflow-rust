@@ -6,51 +6,51 @@
 
 const MCP_TOOLS = new Set([
   // workflow (19+4 stubs)
-  'workflow.create', 'workflow.execute', 'workflow.getStatus', 'workflow.get',
-  'workflow.list', 'workflow.addTask', 'workflow.startTask', 'workflow.completeTask',
-  'workflow.saveProgress', 'workflow.listTasks', 'workflow.getCurrentTask',
-  'workflow.getPlan', 'workflow.getActive', 'workflow.createPlan',
-  'workflow.createParallelBranches', 'workflow.completeParallelBranch',
-  'workflow.listParallelBranches', 'workflow.delete', 'workflow.ping',
-  'workflow.set_execution_mode', 'workflow.mark_synthesis_ready',
-  'workflow.mark_verification_ready', 'workflow.resume_suggestion',
+  'workflow_create', 'workflow_execute', 'workflow_getStatus', 'workflow_get',
+  'workflow_list', 'workflow_addTask', 'workflow_startTask', 'workflow_completeTask',
+  'workflow_saveProgress', 'workflow_listTasks', 'workflow_getCurrentTask',
+  'workflow_getPlan', 'workflow_getActive', 'workflow_createPlan',
+  'workflow_createParallelBranches', 'workflow_completeParallelBranch',
+  'workflow_listParallelBranches', 'workflow_delete', 'workflow_ping',
+  'workflow_set_execution_mode', 'workflow_mark_synthesis_ready',
+  'workflow_mark_verification_ready', 'workflow_resume_suggestion',
   // review (2 stubs)
-  'review.submit', 'review.get_latest',
+  'review_submit', 'review_get_latest',
   // session (3 stubs)
-  'session.get_state', 'session.patch_state', 'session.init_context',
+  'session_get_state', 'session_patch_state', 'session_init_context',
   // local (4 stubs)
-  'local.init', 'local.sync', 'local.push', 'local.save_artifact',
+  'local_init', 'local_sync', 'local_push', 'local_save_artifact',
   // memory (11)
-  'memory.store', 'memory.store_research', 'memory.recall_recent',
-  'memory.recall_documents', 'memory.recall_document_by_type', 'memory.recall_by_task',
-  'memory.update', 'memory.delete', 'memory.delete_by_workflow', 'memory.search',
-  'memory.stats',
+  'memory_store', 'memory_store_research', 'memory_recall_recent',
+  'memory_recall_documents', 'memory_recall_document_by_type', 'memory_recall_by_task',
+  'memory_update', 'memory_delete', 'memory_delete_by_workflow', 'memory_search',
+  'memory_stats',
   // semantic-search (3) — NOT search.*
-  'semantic-search.search_hybrid_context_pack', 'semantic-search.search_context_fingerprint', 'semantic-search.code_search',
+  'semantic-search_search_hybrid_context_pack', 'semantic-search_search_context_fingerprint', 'semantic-search_code_search',
   // policy (6)
-  'policy.check_session_readiness', 'policy.validate_execution',
-  'policy.validate_completion', 'policy.validate_parallel_completion',
-  'policy.detect_scope_drift', 'policy.require_context_refresh',
+  'policy_check_session_readiness', 'policy_validate_execution',
+  'policy_validate_completion', 'policy_validate_parallel_completion',
+  'policy_detect_scope_drift', 'policy_require_context_refresh',
   // capability (11)
-  'capability.ping', 'capability.list_agents', 'capability.list_skills',
-  'capability.list_templates', 'capability.match_agent', 'capability.system_readiness',
-  'capability.workflow_audit', 'capability.create_agent', 'capability.create_skill',
-  'capability.scaffold_feature', 'capability.scaffold_mcp_server',
+  'capability_ping', 'capability_list_agents', 'capability_list_skills',
+  'capability_list_templates', 'capability_match_agent', 'capability_system_readiness',
+  'capability_workflow_audit', 'capability_create_agent', 'capability_create_skill',
+  'capability_scaffold_feature', 'capability_scaffold_mcp_server',
   // filesystem (5)
-  'filesystem.read', 'filesystem.write', 'filesystem.list', 'filesystem.delete',
-  'filesystem.stat',
+  'filesystem_read', 'filesystem_write', 'filesystem_list', 'filesystem_delete',
+  'filesystem_stat',
   // git (3 stubs)
-  'git.status', 'git.diff', 'git.commit',
+  'git_status', 'git_diff', 'git_commit',
   // npm (2 stubs)
-  'npm.install', 'npm.run',
+  'npm_install', 'npm_run',
   // docker (3 stubs)
-  'docker.build', 'docker.run', 'docker.ps',
+  'docker_build', 'docker_run', 'docker_ps',
   // cicd (3 stubs)
-  'cicd.pipeline_status', 'cicd.pipeline_trigger', 'cicd.runs_view',
+  'cicd_pipeline_status', 'cicd_pipeline_trigger', 'cicd_runs_view',
   // github (3 stubs)
-  'github.pr_create', 'github.pr_list', 'github.issue_list',
+  'github_pr_create', 'github_pr_list', 'github_issue_list',
   // tests (1 stub)
-  'tests.run',
+  'tests_run',
 ]);
 
 const CC_TOOLS = new Set([
@@ -61,9 +61,9 @@ const CC_TOOLS = new Set([
 ]);
 
 const ANTI_PATTERNS = [
-  { re: /filesystem\.write\s*\(/g, msg: 'Use Claude Code Write tool instead of filesystem.write MCP tool' },
-  { re: /status_before/g, msg: 'status_before is NOT a valid param for workflow.save_progress' },
-  { re: /status_after/g, msg: 'status_after is NOT a valid param for workflow.save_progress' },
+  { re: /filesystem\.write\s*\(/g, msg: 'Use Claude Code Write tool instead of filesystem_write MCP tool' },
+  { re: /status_before/g, msg: 'status_before is NOT a valid param for workflow_save_progress' },
+  { re: /status_after/g, msg: 'status_after is NOT a valid param for workflow_save_progress' },
   { re: /\.msd\//g, msg: 'Use .masday/ instead of .msd/' },
   { re: /\bCommonJS\b/g, msg: 'Project uses ESM — avoid referencing CommonJS' },
   { re: /subagent_type:\s*["']msd-/g, msg: 'Agent names use masday-* prefix, not msd-*' },

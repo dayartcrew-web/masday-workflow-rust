@@ -122,26 +122,26 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | cicd | 3 | Real `execSync` calls to `gh` CLI |
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
-| reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session.init_context returns reminders. Drizzle WorkflowReminder table |
+| reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session_init_context returns reminders. Drizzle WorkflowReminder table |
 | projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
 **Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Drizzle. Memory uses hybrid mode: Drizzle first, JSON cache fallback when PostgreSQL is unavailable. All 16 Drizzle tables are actively populated:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
-| Workflow | DualWriteStore | workflow.create, execute, delete |
+| Workflow | DualWriteStore | workflow_create, execute, delete |
 | Task | DualWriteStore | addTask, startTask, completeTask |
 | Plan | DualWriteStore | createPlan |
-| Memory | persistToDb() | memory.store, store_research |
-| ReviewDecision | Drizzle direct | review.submit |
-| SessionState | Drizzle direct | session.patch_state |
-| ParallelBranch | Drizzle upsert/update | workflow.createParallelBranches, completeParallelBranch, listParallelBranches |
-| ContextDocument | Drizzle direct | memory.store_research |
-| TaskProgressLog | saveProgressDb() | workflow.saveProgress |
-| RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
-| TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
+| Memory | persistToDb() | memory_store, store_research |
+| ReviewDecision | Drizzle direct | review_submit |
+| SessionState | Drizzle direct | session_patch_state |
+| ParallelBranch | Drizzle upsert/update | workflow_createParallelBranches, completeParallelBranch, listParallelBranches |
+| ContextDocument | Drizzle direct | memory_store_research |
+| TaskProgressLog | saveProgressDb() | workflow_saveProgress |
+| RetrievalLog | logRetrieval() | memory_search, semantic-search_code_search, search_hybrid_context_pack |
+| TokenUsage | trackTokens() | workflow_saveProgress, memory_store_research |
 | EpisodicMemory | registerTool wrapper | All MCP tool calls (captured via monkey-patched server.registerTool) |
-| GraphNode | GraphStore.addNode() | memory.store, memory.store_research, workflow.create, workflow.addTask |
+| GraphNode | GraphStore.addNode() | memory_store, memory_store_research, workflow_create, workflow_addTask |
 | GraphEdge | GraphStore.addEdge() + autoLink() | Jaccard similarity (threshold 0.3) auto-edges + workflow→task contains edges |
 | WorkflowReminder | checkReminders() | Startup + 15min interval, deduplicated, covers EXECUTE + FIX states |
 | LlmProviderConfig | Drizzle direct | LLM provider configuration storage |
@@ -180,7 +180,7 @@ setEpisodicDb(db);              // episodic memory persistence
 setGraphDb(db);                 // knowledge graph persistence
 setReminderDb(db);              // workflow reminders
 
-server.registerTool("workflow.create", { description: "...", inputSchema: {...} }, async (args) => ({
+server.registerTool("workflow_create", { description: "...", inputSchema: {...} }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(result) }]
 }));
 
@@ -212,8 +212,8 @@ await server.connect(transport);
 - Import renaming: `@masday-workflow-reborn/*` and `@cap/*` are both now `@mcp-rebuild/*`
 - `listWorkflows` exported as `listWorkflowsDb` from workflow-engine
 - Code skills are plain async functions (not class-based Skill objects)
-- **All agents and skills enforce review pipeline:** review.submit → policy.validate_completion → workflow.completeTask → local.sync (with rework loop on REWORK_REQUIRED, max 2 attempts)
-- **Reminder auto-run:** checkReminders() runs on startup after Drizzle db connects + every 15 minutes via setInterval. session.init_context returns active reminders.
+- **All agents and skills enforce review pipeline:** review_submit → policy_validate_completion → workflow_completeTask → local_sync (with rework loop on REWORK_REQUIRED, max 2 attempts)
+- **Reminder auto-run:** checkReminders() runs on startup after Drizzle db connects + every 15 minutes via setInterval. session_init_context returns active reminders.
 
 ## Testing
 

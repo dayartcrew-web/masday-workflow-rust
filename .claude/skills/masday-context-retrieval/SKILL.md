@@ -6,16 +6,16 @@ description: >
   codebase analysis, stored research, and prior decisions. Use when the user says "build context",
   "load context", "get task context", "context pack", or "prepare context".
 allowed-tools:
-  - semantic-search.search_hybrid_context_pack
-  - semantic-search.code_search
-  - semantic-search.search_context_fingerprint
-  - workflow.getActive
-  - workflow.getPlan
-  - workflow.listTasks
-  - memory.recall_documents
-  - memory.recall_by_task
-  - memory.recall_recent
-  - memory.search
+  - semantic-search_search_hybrid_context_pack
+  - semantic-search_code_search
+  - semantic-search_search_context_fingerprint
+  - workflow_getActive
+  - workflow_getPlan
+  - workflow_listTasks
+  - memory_recall_documents
+  - memory_recall_by_task
+  - memory_recall_recent
+  - memory_search
 ---
 
 # Masday Context Retrieval
@@ -25,16 +25,16 @@ Build comprehensive context packs for workflow task execution.
 ## Steps
 
 1. **Identify the active workflow**
-   - Call `workflow.getActive` to find the current workflow
+   - Call `workflow_getActive` to find the current workflow
    - If no active workflow, ask the user which workflow to build context for
 
 2. **Get the plan and tasks**
-   - Call `workflow.getPlan` to retrieve the plan structure
-   - Call `workflow.listTasks` to see all tasks and their statuses
+   - Call `workflow_getPlan` to retrieve the plan structure
+   - Call `workflow_listTasks` to see all tasks and their statuses
    - Identify which task needs context loaded
 
 3. **Build the hybrid context pack**
-   - Call `semantic-search.search_hybrid_context_pack` with:
+   - Call `semantic-search_search_hybrid_context_pack` with:
      - `workflow_id`: the active workflow ID
      - `plan_id`: the plan ID from step 2
      - `task_id`: the specific task ID needing context
@@ -42,19 +42,19 @@ Build comprehensive context packs for workflow task execution.
    - This combines: vector similarity search + exact context + fingerprinting
 
 4. **Get context fingerprint**
-   - Call `semantic-search.search_context_fingerprint` with:
+   - Call `semantic-search_search_context_fingerprint` with:
      - `workflow_id`, `plan_id`, `task_id`
    - This checks if the current context is sufficient or needs refresh
    - Compare fingerprint against prior executions to detect staleness
 
 5. **Augment with memory**
-   - Call `memory.recall_documents` for stored research related to the workflow
-   - Call `memory.recall_by_task` for task-specific prior context
-   - Call `memory.recall_recent` for session-level context
-   - Call `memory.search` with task-relevant queries for additional context
+   - Call `memory_recall_documents` for stored research related to the workflow
+   - Call `memory_recall_by_task` for task-specific prior context
+   - Call `memory_recall_recent` for session-level context
+   - Call `memory_search` with task-relevant queries for additional context
 
 6. **Search for related code**
-   - Call `semantic-search.code_search` with queries derived from the task description
+   - Call `semantic-search_code_search` with queries derived from the task description
    - Identify the most relevant files, functions, and types
 
 7. **Assemble and report**
@@ -91,7 +91,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -100,7 +100,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -111,25 +111,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

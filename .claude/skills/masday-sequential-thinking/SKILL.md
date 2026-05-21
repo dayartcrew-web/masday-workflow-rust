@@ -6,9 +6,9 @@ description: >
   understanding incrementally. Use when the user says "think through this", "analyze step
   by step", "reason about", "walk through", or "break down this problem".
 allowed-tools:
-  - filesystem.read
-  - filesystem.list
-  - filesystem.stat
+  - filesystem_read
+  - filesystem_list
+  - filesystem_stat
 ---
 
 # Masday Sequential Thinking
@@ -23,17 +23,17 @@ Step-by-step reasoning with codebase analysis.
    - Identify what code or files need to be examined at each step
 
 2. **Step 1: Survey the landscape**
-   - Call `filesystem.list` to understand the project structure
+   - Call `filesystem_list` to understand the project structure
    - Identify which packages and directories are relevant
    - Note the scale: how many files, how deep is the hierarchy
 
 3. **Step 2: Read entry points**
-   - Call `filesystem.stat` on key files to check sizes and dates
-   - Call `filesystem.read` on entry points: package.json, index.ts, main files
+   - Call `filesystem_stat` on key files to check sizes and dates
+   - Call `filesystem_read` on entry points: package.json, index.ts, main files
    - Understand the public API surface
 
 4. **Step 3: Trace the flow**
-   - For each relevant module, call `filesystem.read` on the source file
+   - For each relevant module, call `filesystem_read` on the source file
    - Trace imports, function calls, and data flow
    - Map the dependency graph: what depends on what
 
@@ -44,7 +44,7 @@ Step-by-step reasoning with codebase analysis.
 
 6. **Step 5: Locate the relevant code**
    - Focus reading on the files most relevant to the problem
-   - Call `filesystem.read` on specific files mentioned in the problem
+   - Call `filesystem_read` on specific files mentioned in the problem
    - Cross-reference with related modules
 
 7. **Step 6: Build the mental model**
@@ -84,7 +84,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -93,7 +93,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -104,25 +104,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

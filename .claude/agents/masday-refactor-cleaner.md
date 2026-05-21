@@ -13,10 +13,10 @@ tools:
   - Bash
   - Grep
   - Glob
-  - semantic-search.code_search
-  - tests.run
-  - git.status
-  - git.diff
+  - semantic-search_code_search
+  - tests_run
+  - git_status
+  - git_diff
 ---
 
 # Refactor Cleaner Agent
@@ -90,12 +90,12 @@ and you run tests after every change to prove nothing broke.
 9. For each structural improvement:
    - Extract functions using `Edit` (cut from source, paste to new location)
    - Add imports in the original file for the extracted functions
-10. After every 3-5 changes, run `tests.run` to verify
+10. After every 3-5 changes, run `tests_run` to verify
     no regressions.
 
 ### Phase 4: Verify
 
-11. Run the full test suite with `tests.run`.
+11. Run the full test suite with `tests_run`.
 12. If any test fails:
     - Read the failing test output
     - Identify which removal caused the failure
@@ -166,7 +166,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -175,7 +175,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -186,25 +186,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

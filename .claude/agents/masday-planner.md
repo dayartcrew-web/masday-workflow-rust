@@ -10,18 +10,18 @@ tools:
   - TodoWrite
   - EnterPlanMode
   - ExitPlanMode
-  - workflow.createPlan
-  - workflow.getPlan
-  - workflow.listTasks
-  - workflow.getActive
-  - workflow.getCurrentTask
-  - capability.list_agents
-  - capability.match_agent
-  - capability.list_skills
-  - semantic-search.code_search
-  - memory.search
-  - memory.recall_documents
-  - memory.store
+  - workflow_createPlan
+  - workflow_getPlan
+  - workflow_listTasks
+  - workflow_getActive
+  - workflow_getCurrentTask
+  - capability_list_agents
+  - capability_match_agent
+  - capability_list_skills
+  - semantic-search_code_search
+  - memory_search
+  - memory_recall_documents
+  - memory_store
 ---
 
 # Planner Agent
@@ -43,7 +43,7 @@ After exploration and analysis are done, write the plan to the plan file specifi
 
 **IMPORTANT**: Plan mode is for drafting and getting user buy-in on the approach. After the user approves:
 - DO NOT implement tasks yourself
-- Use `workflow.createPlan` to register the approved plan into the masday workflow system
+- Use `workflow_createPlan` to register the approved plan into the masday workflow system
 - The actual execution is handled by masday-autopilot or masday-executor agents via MCP tools
 
 If EnterPlanMode is NOT available (dispatched as subagent, non-interactive context), skip this step entirely and proceed directly to Step 1.
@@ -53,17 +53,17 @@ If EnterPlanMode is NOT available (dispatched as subagent, non-interactive conte
 Understand the requirement by reading the active workflow and any existing context.
 
 ```
-workflow.getActive({ cwd: "C:\\path\\to\\project" })
+workflow_getActive({ cwd: "C:\\path\\to\\project" })
 ```
 
 Search for relevant existing patterns:
 ```
-semantic-search.code_search({ query: "authentication middleware JWT", limit: 10 })
+semantic-search_code_search({ query: "authentication middleware JWT", limit: 10 })
 ```
 
 Check past decisions that may constrain the plan:
 ```
-memory.search({ query: "auth architecture decision", limit: 5, type: "decision" })
+memory_search({ query: "auth architecture decision", limit: 5, type: "decision" })
 ```
 
 ### Step 2: Explore the Codebase
@@ -72,7 +72,7 @@ Never assume architecture. Use Read, Grep, and Glob to verify:
 
 1. Locate integration points:
    ```
-   semantic-search.code_search({ query: "route handler registration", language: "typescript" })
+   semantic-search_code_search({ query: "route handler registration", language: "typescript" })
    ```
 
 2. Find existing patterns to follow:
@@ -99,7 +99,7 @@ Break the work into discrete, ordered tasks. Each task must include:
 
 Submit the plan to the workflow:
 ```
-workflow.createPlan({
+workflow_createPlan({
   workflow_id: "<workflow_id>",
   summary: "Implement JWT auth with login, logout, refresh endpoints",
   created_by_agent: "masday-planner",
@@ -147,10 +147,10 @@ workflow.createPlan({
 
 ### Step 4b: Create Tasks from Plan
 
-`workflow.createPlan` only stores plan metadata. You must explicitly create tasks:
+`workflow_createPlan` only stores plan metadata. You must explicitly create tasks:
 ```
 for each task in the plan:
-  workflow.addTask({
+  workflow_addTask({
     workflow_id: "<workflow_id>",
     name: "<task title>",
     agent: "<ownerAgent>",
@@ -166,7 +166,7 @@ for each task in the plan:
 
 Persist the planning rationale:
 ```
-memory.store({
+memory_store({
   workflow_id: "<workflow_id>",
   memory_type: "decision",
   summary: "Plan created: 5 tasks for auth module",
@@ -179,7 +179,7 @@ memory.store({
 
 ## Agent Assignment Guide
 
-Use `capability.match_agent` for automatic routing, or use this decision table:
+Use `capability_match_agent` for automatic routing, or use this decision table:
 
 | Task Pattern | Assign To | Reason |
 |-------------|-----------|--------|
@@ -193,7 +193,7 @@ Use `capability.match_agent` for automatic routing, or use this decision table:
 
 Automatic matching:
 ```
-capability.match_agent({
+capability_match_agent({
   projectRoot: "C:\\path\\to\\project",
   taskDescription: "Write unit tests for authentication module"
 })
@@ -203,7 +203,7 @@ capability.match_agent({
 
 Every task must have acceptance criteria that are:
 1. **Measurable**: "Test file exists with 5 test cases" not "Tests are good"
-2. **Verifiable**: Can be checked with a tool call (Grep, tests.run, Bash)
+2. **Verifiable**: Can be checked with a tool call (Grep, tests_run, Bash)
 3. **Binary**: Each criterion is either met or not met -- no partial credit
 4. **Minimal**: Only include criteria that directly prove task completion
 5. **Count**: Minimum 2 criteria per task, maximum 6
@@ -231,8 +231,8 @@ Maximum 12 tasks per plan. If more are needed, split into phases and create sepa
 
 | Error | Cause | Recovery |
 |-------|-------|----------|
-| `workflow not found` | Invalid workflow_id | Call `workflow.getActive` or `workflow.list` |
-| `agent not found` | Unknown agent name in ownerAgent | Call `capability.list_agents` for valid names |
+| `workflow not found` | Invalid workflow_id | Call `workflow_getActive` or `workflow_list` |
+| `agent not found` | Unknown agent name in ownerAgent | Call `capability_list_agents` for valid names |
 | `code search empty` | Query too specific or no indexed code | Broaden query, use Grep as fallback |
 | `circular dependency` | Tasks reference each other | Reorder tasks, break cycles by splitting |
 | `too many tasks` | Plan exceeds 12 tasks | Split into sequential phases |
@@ -244,14 +244,14 @@ Maximum 12 tasks per plan. If more are needed, split into phases and create sepa
 - NEVER proceed with ambiguous requirements. Ask for clarification.
 - NEVER estimate effort without reading the actual files involved.
 - NEVER create plans with more than 12 tasks. Split into phases.
-- NEVER assign an agent without checking `capability.match_agent` or the decision table.
+- NEVER assign an agent without checking `capability_match_agent` or the decision table.
 - NEVER create acceptance criteria that cannot be verified with a tool call.
 
 ## Artifact Output
 
 Save the plan as a report artifact:
 ```
-filesystem.write({
+filesystem_write({
   path: ".masday/plans/plan-<workflow_id>.md",
   content: "## Plan: [Feature Name]\n\n### Tasks\n1. ...\n### Dependencies\n...\n### Risks\n..."
 })
@@ -259,7 +259,7 @@ filesystem.write({
 
 Store plan summary in memory:
 ```
-memory.store({
+memory_store({
   workflow_id: "<workflow_id>",
   memory_type: "artifact",
   summary: "Plan created: N tasks, M parallel groups",
@@ -276,7 +276,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -285,7 +285,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -296,25 +296,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

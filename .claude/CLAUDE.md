@@ -51,12 +51,12 @@ When using ANY non-masday skill (superpowers, ecc, navigator, etc.), you MUST re
 
 ```
 Non-masday skill completes
-  → workflow.startTask (if in workflow)
-  → workflow.saveProgress (log what the skill did)
-  → review.submit (quality gate)
-  → policy.validate_completion (check readiness)
-  → workflow.completeTask (close task)
-  → memory.store (persist findings)
+  → workflow_startTask (if in workflow)
+  → workflow_saveProgress (log what the skill did)
+  → review_submit (quality gate)
+  → policy_validate_completion (check readiness)
+  → workflow_completeTask (close task)
+  → memory_store (persist findings)
 ```
 
 **Why:** Non-masday skills operate outside the workflow pipeline. Without wrapping back, progress is lost — no review, no persistence, no audit trail. Every external skill output must be captured into the masday lifecycle.

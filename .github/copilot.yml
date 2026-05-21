@@ -1,11 +1,8 @@
+# GitHub Copilot configuration
+# Custom agent with MCP is defined in .github/agents/masday.md
+# VS Code Copilot MCP is in .vscode/mcp.json
+
 copilot:
   models:
     - name: claude-sonnet-4-20250514
       provider: anthropic
-  mcp:
-    servers:
-      masday:
-        command: npx
-        args:
-          - tsx
-          - apps/agent-runner/src/runtime/mcp.ts

@@ -7,23 +7,23 @@ description: >
   or when the user says "pipeline status", "trigger build", "CI/CD ops",
   "check security", "audit deps", or "pipeline management".
 allowed-tools:
-  - cicd.pipeline_status
-  - cicd.pipeline_trigger
-  - cicd.runs_view
-  - github.pr_list
-  - github.issue_list
-  - github.pr_create
-  - git.status
-  - git.diff
-  - git.commit
+  - cicd_pipeline_status
+  - cicd_pipeline_trigger
+  - cicd_runs_view
+  - github_pr_list
+  - github_issue_list
+  - github_pr_create
+  - git_status
+  - git_diff
+  - git_commit
   - Bash
   - Read
   - Glob
   - Grep
-  - memory.store
-  - memory.recall_recent
-  - memory.search
-  - workflow.saveProgress
+  - memory_store
+  - memory_recall_recent
+  - memory_search
+  - workflow_saveProgress
 ---
 
 # Masday CI/CD Ops
@@ -36,13 +36,13 @@ Manage CI/CD pipelines, inspect build results, run security audits, and debug fa
 
 ```
 # Get recent pipeline runs for current branch
-cicd.pipeline_status({ branch: "main", limit: 5 })
+cicd_pipeline_status({ branch: "main", limit: 5 })
 
 # Check all open PRs and their CI status
-github.pr_list({ state: "open", limit: 10 })
+github_pr_list({ state: "open", limit: 10 })
 
 # Check for specific workflow
-cicd.pipeline_status({ branch: "feature/auth", limit: 3 })
+cicd_pipeline_status({ branch: "feature/auth", limit: 3 })
 ```
 
 Identify:
@@ -55,30 +55,30 @@ Identify:
 
 ```
 # Get detailed step-by-step results for a failed run
-cicd.runs_view({ runId: 12345 })
+cicd_runs_view({ runId: 12345 })
 
 # Read the workflow file that failed
 Read({ file_path: ".github/workflows/ci.yml" })
 
 # Check what changed since last passing run
-git.diff({ repoPath: ".", file: "packages/store/src/sqlite-backend.ts" })
+git_diff({ repoPath: ".", file: "packages/store/src/sqlite-backend.ts" })
 ```
 
 ### 3. Trigger Pipeline
 
 ```
 # Trigger workflow on current branch
-cicd.pipeline_trigger({ workflow: "ci", ref: "feature/auth" })
+cicd_pipeline_trigger({ workflow: "ci", ref: "feature/auth" })
 
 # Trigger with inputs
-cicd.pipeline_trigger({
+cicd_pipeline_trigger({
   workflow: "deploy",
   ref: "main",
   inputs: { environment: "staging" }
 })
 
 # Monitor the triggered run
-cicd.pipeline_status({ branch: "feature/auth", limit: 1 })
+cicd_pipeline_status({ branch: "feature/auth", limit: 1 })
 ```
 
 **IMPORTANT**: Always confirm with user before triggering deployment pipelines.
@@ -124,11 +124,11 @@ Common failure patterns and fixes:
 
 ```
 # Recall prior pipeline context
-memory.recall_recent({ limit: 5 })
-memory.search({ query: "pipeline failure build", limit: 5 })
+memory_recall_recent({ limit: 5 })
+memory_search({ query: "pipeline failure build", limit: 5 })
 
 # Store pipeline results
-memory.store({
+memory_store({
   workflow_id: "<id>",
   task_id: "<task_id>",
   memory_type: "artifact",
@@ -182,7 +182,7 @@ PRs:
 - Never store sensitive pipeline secrets in memory
 - Never skip security audit when adding new dependencies
 - Never commit workflow changes without YAML validation first
-- Always call `workflow.saveProgress` after completing pipeline operations to persist results
+- Always call `workflow_saveProgress` after completing pipeline operations to persist results
 - Never expose secrets in workflow files or memory
 - Never run `pnpm audit` with `--audit-level=low` in CI (too noisy, use moderate+)
 
@@ -192,7 +192,7 @@ When this skill completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<current-agent>",
@@ -201,7 +201,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -212,25 +212,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

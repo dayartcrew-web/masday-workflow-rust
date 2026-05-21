@@ -3,7 +3,7 @@
  *
  * Reminds to:
  * 1. Run build/tests to verify changes
- * 2. Save progress to masday pipeline (saveProgress, memory.store)
+ * 2. Save progress to masday pipeline (saveProgress, memory_store)
  * 3. Submit review if in active task
  */
 
@@ -29,8 +29,8 @@ export default function postToolUse(context) {
       `[post-tool-use] Source file modified: ${filePath}\n` +
       `Masday wrap-back:\n` +
       `  1. Run build/tests to verify changes\n` +
-      `  2. workflow.saveProgress — persist what changed\n` +
-      `  3. memory.store — save context for future sessions\n` +
-      `  4. review.submit — quality gate before completeTask`,
+      `  2. workflow_saveProgress — persist what changed\n` +
+      `  3. memory_store — save context for future sessions\n` +
+      `  4. review_submit — quality gate before completeTask`,
   };
 }

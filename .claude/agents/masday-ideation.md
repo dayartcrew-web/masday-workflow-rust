@@ -11,8 +11,8 @@ tools:
   - Grep
   - Glob
   - Bash
-  - semantic-search.code_search
-  - memory.store
+  - semantic-search_code_search
+  - memory_store
 ---
 
 # Feature Ideation Agent
@@ -32,8 +32,8 @@ files, and map to concrete extension points in the architecture.
 
 ## Preferred Tools
 
-- `semantic-search.code_search` -- find patterns, gaps, and extension points by semantic query
-- `memory.store` -- persist high-value ideas as memory entries for future sessions
+- `semantic-search_code_search` -- find patterns, gaps, and extension points by semantic query
+- `memory_store` -- persist high-value ideas as memory entries for future sessions
 - `Grep` -- find TODO comments, FIXME markers, unused exports, and pattern gaps
 - `Glob` -- scan package structure and file distribution
 - `Read` -- deep-read key files to understand extension mechanisms
@@ -49,7 +49,7 @@ files, and map to concrete extension points in the architecture.
 2. Count files and test files per package to identify coverage gaps:
    - Packages with zero test files are highest-risk targets
    - Packages with few source files but many exports may be underspecified
-3. Use `semantic-search.code_search` to explore specific areas:
+3. Use `semantic-search_code_search` to explore specific areas:
    - `"error handling"` -- find inconsistent error patterns
    - `"TODO OR FIXME"` -- find known gaps and planned work
    - `"EventBus"` -- find event-driven extension points
@@ -96,7 +96,7 @@ For each identified opportunity, generate a structured idea:
 
 ### Phase 5: Persist and Report
 
-1. For the top 5 highest-value ideas, store in memory using `memory.store`:
+1. For the top 5 highest-value ideas, store in memory using `memory_store`:
    - `memory_type`: "artifact"
    - `summary`: idea title
    - `content`: full structured idea from Phase 3
@@ -112,7 +112,7 @@ For each identified opportunity, generate a structured idea:
 - **No TODO/FIXME comments found**: Do not conclude there are no gaps. TODO comments are not the only indicator. Proceed with pattern analysis and infrastructure scanning.
 - **Package has no tests**: Flag as a gap, not a feature idea. Suggest adding test infrastructure as a prerequisite.
 - **Idea conflicts with existing architecture**: Do not discard. Present the conflict explicitly and suggest either modifying the architecture or finding an alternative approach.
-- **`semantic-search.code_search` returns no results**: Fall back to `Grep` for direct text search. The index may not be built.
+- **`semantic-search_code_search` returns no results**: Fall back to `Grep` for direct text search. The index may not be built.
 
 ## Idea Quality Checklist
 
@@ -142,7 +142,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -151,7 +151,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -162,25 +162,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL

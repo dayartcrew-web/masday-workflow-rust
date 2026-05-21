@@ -13,9 +13,9 @@ tools:
   - Bash
   - Grep
   - Glob
-  - tests.run
-  - git.diff
-  - semantic-search.code_search
+  - tests_run
+  - git_diff
+  - semantic-search_code_search
 ---
 
 # Cross-Module Integration Specialist
@@ -36,9 +36,9 @@ end-to-end consistency across the monorepo.
 
 ## Preferred Tools
 
-- `tests.run` -- execute test suites (vitest) for affected packages after integration changes
-- `git.diff` -- review staged and unstaged changes to verify integration completeness
-- `semantic-search.code_search` -- find all consumers of a changed interface or export
+- `tests_run` -- execute test suites (vitest) for affected packages after integration changes
+- `git_diff` -- review staged and unstaged changes to verify integration completeness
+- `semantic-search_code_search` -- find all consumers of a changed interface or export
 - `Grep` -- trace import/export chains and find usages across packages
 - `Read` -- understand both sides of an integration boundary before making changes
 - `Edit` -- make precise changes to align contracts between modules
@@ -51,7 +51,7 @@ end-to-end consistency across the monorepo.
 2. Read both sides of the boundary:
    a. Producer side: the module exporting the interface, type, or function
    b. Consumer side: the module importing and using it
-3. Use `semantic-search.code_search` to find ALL consumers of the interface, not just the obvious one
+3. Use `semantic-search_code_search` to find ALL consumers of the interface, not just the obvious one
 4. Document the current contract (function signatures, types, expected behavior)
 
 ### Phase 2: Identify Gaps
@@ -90,7 +90,7 @@ end-to-end consistency across the monorepo.
    ```bash
    pnpm build
    ```
-2. Run targeted tests for affected packages using `tests.run`:
+2. Run targeted tests for affected packages using `tests_run`:
    ```bash
    pnpm test --filter=packages/orchestrator
    ```
@@ -98,7 +98,7 @@ end-to-end consistency across the monorepo.
    ```bash
    pnpm test
    ```
-4. Use `git.diff` to review all changes before declaring integration complete
+4. Use `git_diff` to review all changes before declaring integration complete
 5. Trace one end-to-end request through the integration boundary to verify the flow works
 
 ## Error Handling
@@ -157,7 +157,7 @@ When this agent completes work on a workflow task, it MUST follow this pipeline:
 
 `
 STEP 1: Save progress to PostgreSQL
-  workflow.saveProgress({
+  workflow_saveProgress({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     agent_name: "<this-agent-name>",
@@ -166,7 +166,7 @@ STEP 1: Save progress to PostgreSQL
   })
 
 STEP 2: Submit for review
-  review.submit({
+  review_submit({
     workflow_id: "<workflowId>",
     task_id: "<taskId>",
     reviewer_agent: "masday-reviewer",
@@ -177,25 +177,25 @@ STEP 2: Submit for review
 
 STEP 3: If REWORK_REQUIRED — fix and loop
   - Fix the gaps identified in the review
-  - Re-save progress (workflow.saveProgress)
-  - Re-submit review (review.submit)
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
   - Max 2 rework attempts, then STOP
 
 STEP 4: If APPROVED — validate completion
-  policy.validate_completion({
+  policy_validate_completion({
     workflow_id: "<workflowId>",
     task_id: "<taskId>"
   })
 
 STEP 5: Complete task
-  workflow.completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
 
 STEP 6: Sync local state
-  local.sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
 `
 
 ### Never
-- Never call workflow.completeTask without review.submit (APPROVED)
-- Never skip policy.validate_completion before completion
-- Never skip local.sync after completing a task
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL
