@@ -13,19 +13,20 @@
     }
   },
   "scripts": {
-    "build": "prisma generate && tsc",
-    "generate": "prisma generate",
-    "prisma": "prisma",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
+    "build": "tsc",
+    "generate": "drizzle-kit generate",
+    "push": "drizzle-kit push",
+    "migrate": "drizzle-kit migrate",
+    "studio": "drizzle-kit studio",
     "test": "echo \"No tests yet\""
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "prisma": "^5.22.0",
+    "drizzle-kit": "^1.0.0-rc.2",
     "typescript": "^5.3.3"
   },
   "prisma": {

@@ -20,6 +20,27 @@ export interface MemoryServiceProvider {
 
 export function createMemoryRoutes(provider: MemoryServiceProvider): RouteDefinition[] {
   return [
+    // GET /api/memory — Query-param based recall (e2e compat)
+    {
+      method: 'GET',
+      pattern: '/api/memory',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params: Record<string, string>, _body?: Record<string, unknown>, query?: URLSearchParams) => {
+        const workflowId = query?.get('workflowId');
+        const taskId = query?.get('taskId');
+        const limit = query?.get('limit') ? parseInt(query.get('limit')!) : undefined;
+
+        if (workflowId) {
+          const docs = await provider.recallDocuments(workflowId, limit);
+          sendJson(res, 200, { documents: docs });
+        } else if (taskId) {
+          const memories = await provider.recallByTask(taskId, limit);
+          sendJson(res, 200, { memories });
+        } else {
+          sendJson(res, 200, { documents: [] });
+        }
+      },
+    },
     // POST /api/memory — Store memory
     {
       method: 'POST',

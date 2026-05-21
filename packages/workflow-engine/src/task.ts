@@ -2,95 +2,85 @@
  * Task operations (msd-mcp business logic)
  */
 
-
-import type { Prisma } from "@prisma/client";
+import { eq, asc } from "drizzle-orm";
 
 export async function startTask(input: {
   workflowId: string;
   taskId: string;
 }) {
-  return (await import("@mcp-rebuild/db")).prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const task = await tx.task.findUniqueOrThrow({
-      where: { id: input.taskId },
-    });
+  const { db, tasks: tasksTable, workflows } = await import("@mcp-rebuild/db");
 
-    await tx.task.update({
-      where: { id: task.id },
-      data: {
-        status: "RUNNING",
-        progressPercent: 1,
-      },
-    });
+  return db.transaction(async (tx) => {
+    const [task] = await tx.select().from(tasksTable).where(eq(tasksTable.id, input.taskId)).limit(1);
+    if (!task) throw new Error(`Task not found: ${input.taskId}`);
 
-    await tx.workflow.update({
-      where: { id: input.workflowId },
-      data: {
-        currentTaskId: task.id,
-        status: "EXECUTE",
-      },
-    });
+    await tx.update(tasksTable).set({
+      status: "RUNNING",
+      progressPercent: 1,
+    }).where(eq(tasksTable.id, task.id));
 
-    return tx.task.findUniqueOrThrow({
-      where: { id: task.id },
-    });
+    await tx.update(workflows).set({
+      currentTaskId: task.id,
+      status: "EXECUTE",
+    }).where(eq(workflows.id, input.workflowId));
+
+    const [updated] = await tx.select().from(tasksTable).where(eq(tasksTable.id, task.id)).limit(1);
+    if (!updated) throw new Error(`Task not found after update: ${task.id}`);
+    return updated;
   });
 }
 
 export async function listTasks(workflowId: string) {
-  return (await import("@mcp-rebuild/db")).prisma.task.findMany({
-    where: { workflowId },
-    orderBy: { createdAt: "asc" },
-  });
+  const { db, tasks: tasksTable } = await import("@mcp-rebuild/db");
+
+  return db.select().from(tasksTable)
+    .where(eq(tasksTable.workflowId, workflowId))
+    .orderBy(asc(tasksTable.createdAt));
 }
 
 export async function completeTask(input: {
   workflowId: string;
   taskId: string;
 }) {
-  return (await import("@mcp-rebuild/db")).prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const task = await tx.task.findUniqueOrThrow({
-      where: { id: input.taskId },
-    });
+  const { db, tasks: tasksTable, plans, workflows } = await import("@mcp-rebuild/db");
 
-    await tx.task.update({
-      where: { id: task.id },
-      data: {
-        status: "DONE",
-        progressPercent: 100,
-      },
-    });
+  return db.transaction(async (tx) => {
+    const [task] = await tx.select().from(tasksTable).where(eq(tasksTable.id, input.taskId)).limit(1);
+    if (!task) throw new Error(`Task not found: ${input.taskId}`);
+
+    await tx.update(tasksTable).set({
+      status: "DONE",
+      progressPercent: 100,
+    }).where(eq(tasksTable.id, task.id));
 
     if (task.planId) {
-      const allTasks = await tx.task.findMany({
-        where: { planId: task.planId },
-      });
+      const allTasks = await tx.select().from(tasksTable)
+        .where(eq(tasksTable.planId, task.planId));
       const allDone =
-        allTasks.length > 0 && allTasks.every((t: { status: string }) => t.status === "DONE");
+        allTasks.length > 0 && allTasks.every((t) => t.status === "DONE");
 
       if (allDone) {
-        await tx.plan.update({
-          where: { id: task.planId },
-          data: { status: "DONE" },
-        });
-        await tx.workflow.update({
-          where: { id: input.workflowId },
-          data: { status: "DONE", currentTaskId: null },
-        });
+        await tx.update(plans).set({
+          status: "DONE",
+        }).where(eq(plans.id, task.planId));
+
+        await tx.update(workflows).set({
+          status: "DONE",
+          currentTaskId: null,
+        }).where(eq(workflows.id, input.workflowId));
       } else {
-        await tx.workflow.update({
-          where: { id: input.workflowId },
-          data: { currentTaskId: null },
-        });
+        await tx.update(workflows).set({
+          currentTaskId: null,
+        }).where(eq(workflows.id, input.workflowId));
       }
     } else {
-      await tx.workflow.update({
-        where: { id: input.workflowId },
-        data: { currentTaskId: null },
-      });
+      await tx.update(workflows).set({
+        currentTaskId: null,
+      }).where(eq(workflows.id, input.workflowId));
     }
 
-    return tx.task.findUniqueOrThrow({
-      where: { id: task.id },
-    });
+    const [updated] = await tx.select().from(tasksTable).where(eq(tasksTable.id, task.id)).limit(1);
+    if (!updated) throw new Error(`Task not found after update: ${task.id}`);
+    return updated;
   });
 }

@@ -2,7 +2,7 @@
  * Context retrieval / context pack building (msd-mcp business logic)
  */
 
-
+import { eq, desc } from "drizzle-orm";
 import type { ContextPack } from "@mcp-rebuild/core";
 import { logger } from "@mcp-rebuild/shared-utils";
 import { createEmbeddingProvider } from "./embedding.js";
@@ -17,29 +17,31 @@ export async function buildContextPack(
   planId: string,
   taskId: string,
 ): Promise<ContextPack> {
-  const plan = await (await import("@mcp-rebuild/db")).prisma.plan.findUniqueOrThrow({ where: { id: planId } });
-  const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  const { db, plans, tasks, taskProgressLogs, memories, contextDocuments } = await import("@mcp-rebuild/db");
 
-  const progress = await (await import("@mcp-rebuild/db")).prisma.taskProgressLog.findMany({
-    where: { taskId },
-    orderBy: { createdAt: "desc" },
-    take: 5,
-  });
+  const [plan] = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
 
-  const memories = await (await import("@mcp-rebuild/db")).prisma.memory.findMany({
-    where: { workflowId },
-    orderBy: { createdAt: "desc" },
-    take: 5,
-  });
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!task) throw new Error(`Task ${taskId} not found`);
 
-  const docs = await (await import("@mcp-rebuild/db")).prisma.contextDocument.findMany({
-    where: { workflowId },
-    orderBy: { createdAt: "desc" },
-    take: 5,
-  });
+  const progress = await db.select().from(taskProgressLogs)
+    .where(eq(taskProgressLogs.taskId, taskId))
+    .orderBy(desc(taskProgressLogs.createdAt))
+    .limit(5);
 
-  const memoryIds = memories.map((m: { id: string }) => m.id);
-  const docIds = docs.map((d: { id: string }) => d.id);
+  const mems = await db.select().from(memories)
+    .where(eq(memories.workflowId, workflowId))
+    .orderBy(desc(memories.createdAt))
+    .limit(5);
+
+  const docs = await db.select().from(contextDocuments)
+    .where(eq(contextDocuments.workflowId, workflowId))
+    .orderBy(desc(contextDocuments.createdAt))
+    .limit(5);
+
+  const memoryIds = mems.map((m) => m.id);
+  const docIds = docs.map((d) => d.id);
 
   const fingerprint = makeFingerprint({
     workflowId,
@@ -60,24 +62,24 @@ export async function buildContextPack(
     acceptanceCriteria: (task.acceptanceCriteria as string[]) ?? [],
     requiredContext: (task.requiredContext as string[]) ?? [],
     recentProgress: progress.map(
-      (p: { progressNote: string }) => p.progressNote,
+      (p) => p.progressNote,
     ),
-    semanticMemories: memories.map(
-      (m: { id: string; summary: string; content: string }) => ({
+    semanticMemories: mems.map(
+      (m) => ({
         id: m.id,
         summary: m.summary,
         content: m.content,
       }),
     ),
     semanticDocs: docs.map(
-      (d: { id: string; title: string | null; content: string }) => ({
+      (d) => ({
         id: d.id,
         title: d.title,
         content: d.content,
       }),
     ),
     fingerprint,
-    contextSufficient: docs.length > 0 || memories.length > 0,
+    contextSufficient: docs.length > 0 || mems.length > 0,
   };
 }
 
@@ -86,8 +88,13 @@ export async function buildHybridContextPack(
   planId: string,
   taskId: string,
 ): Promise<ContextPack> {
-  const plan = await (await import("@mcp-rebuild/db")).prisma.plan.findUniqueOrThrow({ where: { id: planId } });
-  const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  const { db, plans, tasks, taskProgressLogs } = await import("@mcp-rebuild/db");
+
+  const [plan] = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!task) throw new Error(`Task ${taskId} not found`);
 
   const queryText = [
     task.title,
@@ -97,11 +104,10 @@ export async function buildHybridContextPack(
 
   const queryEmbedding = await embedder.embed(queryText);
 
-  const recentProgress = await (await import("@mcp-rebuild/db")).prisma.taskProgressLog.findMany({
-    where: { taskId },
-    orderBy: { createdAt: "desc" },
-    take: 5,
-  });
+  const recentProgress = await db.select().from(taskProgressLogs)
+    .where(eq(taskProgressLogs.taskId, taskId))
+    .orderBy(desc(taskProgressLogs.createdAt))
+    .limit(5);
 
   const semanticMemories = await vectorSearchMemories({
     workflowId,
@@ -125,10 +131,7 @@ export async function buildHybridContextPack(
     memoryIds: semanticMemories.map((m: { id: string }) => m.id),
   });
 
-  await (await import("@mcp-rebuild/db")).prisma.task.update({
-    where: { id: taskId },
-    data: { contextFingerprint: fingerprint },
-  });
+  await db.update(tasks).set({ contextFingerprint: fingerprint }).where(eq(tasks.id, taskId));
 
   logger.info("hybrid_context_pack_built", {
     workflowId,
@@ -159,7 +162,7 @@ export async function buildHybridContextPack(
     acceptanceCriteria: (task.acceptanceCriteria as string[]) ?? [],
     requiredContext: (task.requiredContext as string[]) ?? [],
     recentProgress: recentProgress.map(
-      (p: { progressNote: string }) => p.progressNote,
+      (p) => p.progressNote,
     ),
     semanticMemories,
     semanticDocs,

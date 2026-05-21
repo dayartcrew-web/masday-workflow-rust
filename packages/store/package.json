@@ -16,7 +16,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@mcp-rebuild/core": "workspace:*"
+    "@mcp-rebuild/core": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "optionalDependencies": {
     "better-sqlite3": "^12.10.0"

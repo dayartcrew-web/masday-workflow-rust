@@ -30,6 +30,21 @@ export function createSearchRoutes(provider: SearchServiceProvider): RouteDefini
         sendJson(res, 200, result);
       },
     },
+    // POST /api/search/context-pack — Alias for hybrid (e2e compat)
+    {
+      method: 'POST',
+      pattern: '/api/search/context-pack',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse, _params, body?: Record<string, unknown>) => {
+        const input = body!;
+        const result = await provider.hybridContextPack({
+          workflowId: input.workflowId as string,
+          planId: input.planId as string,
+          taskId: input.taskId as string,
+        });
+        sendJson(res, 200, result);
+      },
+    },
     // POST /api/search/fingerprint — Context fingerprint
     {
       method: 'POST',

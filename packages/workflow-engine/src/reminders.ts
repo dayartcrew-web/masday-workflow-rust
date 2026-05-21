@@ -6,9 +6,10 @@
  *   1. State-change: immediate notifications on FAILED workflows/tasks
  *   2. Time-based: workflows in EXECUTE with no recent progress, tasks stuck in RUNNING
  *
- * Persists reminders to PostgreSQL via Prisma (WorkflowReminder table).
+ * Persists reminders to PostgreSQL via Drizzle (WorkflowReminder table).
  */
 
+import { eq, and, or, desc, count, inArray } from "drizzle-orm";
 import { createLogger } from "@mcp-rebuild/core";
 
 const logger = createLogger("ReminderEngine");
@@ -43,15 +44,15 @@ export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
   includeFailed: true,
 };
 
-// ─── Prisma interface (set at startup) ───
+// ─── Drizzle interface (set at startup) ───
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let prisma: any = null;
+let drizzleDb: any = null;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function setReminderPrisma(client: any): void {
-  prisma = client;
-  logger.info("ReminderEngine: Prisma client set");
+export function setReminderDb(client: any): void {
+  drizzleDb = client;
+  logger.info("ReminderEngine: Drizzle db instance set");
 }
 
 // ─── Core: Check for reminders ───
@@ -60,23 +61,23 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
   const cfg = { ...DEFAULT_REMINDER_CONFIG, ...config };
   const reminders: WorkflowReminder[] = [];
 
-  if (!prisma) {
-    logger.warn("ReminderEngine: No Prisma client, skipping check");
+  if (!drizzleDb) {
+    logger.warn("ReminderEngine: No Drizzle db instance, skipping check");
     return reminders;
   }
 
+  const { workflows, tasks, taskProgressLogs, workflowReminders } = await import("@mcp-rebuild/db");
   const now = new Date();
 
   // 1. Active workflows in EXECUTE or FIX with no recent progress
-  const activeWorkflows = await prisma.workflow.findMany({
-    where: { status: { in: ["EXECUTE", "FIX"] } },
-  }) as Array<{ id: string; name: string; status: string; updatedAt: Date; currentTaskId?: string }>;
+  const activeWorkflows = await drizzleDb.select().from(workflows)
+    .where(inArray(workflows.status, ["EXECUTE", "FIX"]));
 
   for (const wf of activeWorkflows) {
-    const lastProgress = await prisma.taskProgressLog.findFirst({
-      where: { workflowId: wf.id },
-      orderBy: { createdAt: "desc" },
-    }) as { createdAt: Date } | null;
+    const [lastProgress] = await drizzleDb.select().from(taskProgressLogs)
+      .where(eq(taskProgressLogs.workflowId, wf.id))
+      .orderBy(desc(taskProgressLogs.createdAt))
+      .limit(1);
 
     const lastActivity = lastProgress?.createdAt ?? new Date(wf.updatedAt);
     const minutesSinceActivity = (now.getTime() - new Date(lastActivity).getTime()) / 60_000;
@@ -93,9 +94,8 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
       });
     } else {
       // Check for tasks stuck in RUNNING
-      const runningTasks = await prisma.task.findMany({
-        where: { workflowId: wf.id, status: "RUNNING" },
-      }) as Array<{ id: string; title: string; status: string; updatedAt: Date }>;
+      const runningTasks = await drizzleDb.select().from(tasks)
+        .where(and(eq(tasks.workflowId, wf.id), eq(tasks.status, "RUNNING")));
 
       for (const task of runningTasks) {
         const taskMinutes = (now.getTime() - new Date(task.updatedAt).getTime()) / 60_000;
@@ -114,9 +114,8 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
       }
 
       // Check for idle execution (all tasks PENDING but workflow in EXECUTE)
-      const pendingTasks = await prisma.task.findMany({
-        where: { workflowId: wf.id, status: "PENDING" },
-      }) as Array<{ id: string }>;
+      const pendingTasks = await drizzleDb.select({ id: tasks.id }).from(tasks)
+        .where(and(eq(tasks.workflowId, wf.id), eq(tasks.status, "PENDING")));
 
       if (runningTasks.length === 0 && pendingTasks.length > 0 && minutesSinceActivity > 5) {
         reminders.push({
@@ -134,9 +133,8 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
 
   // 2. Failed workflows (recent: < 1 hour)
   if (cfg.includeFailed) {
-    const failedWorkflows = await prisma.workflow.findMany({
-      where: { status: "FAILED" },
-    }) as Array<{ id: string; name: string; status: string; updatedAt: Date }>;
+    const failedWorkflows = await drizzleDb.select().from(workflows)
+      .where(eq(workflows.status, "FAILED"));
 
     for (const wf of failedWorkflows) {
       const minutesSinceFailure = (now.getTime() - new Date(wf.updatedAt).getTime()) / 60_000;
@@ -154,9 +152,8 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
     }
 
     // 3. Failed tasks in active workflows
-    const failedTasks = await prisma.task.findMany({
-      where: { status: "FAILED" },
-    }) as Array<{ id: string; title: string; workflowId: string; status: string; updatedAt: Date }>;
+    const failedTasks = await drizzleDb.select().from(tasks)
+      .where(eq(tasks.status, "FAILED"));
 
     for (const task of failedTasks) {
       const minutesSinceFailure = (now.getTime() - new Date(task.updatedAt).getTime()) / 60_000;
@@ -178,25 +175,28 @@ export async function checkReminders(config: Partial<ReminderConfig> = {}): Prom
   // Persist new reminders to DB (skip if unacknowledged reminder already exists for same key)
   for (const reminder of reminders) {
     try {
-      const existing = await prisma.workflowReminder.findFirst({
-        where: {
-          workflowId: reminder.workflowId,
-          taskId: reminder.taskId ?? undefined,
-          type: reminder.type,
-          acknowledged: false,
-        },
-      });
+      const conditions = [
+        eq(workflowReminders.workflowId, reminder.workflowId),
+        eq(workflowReminders.type, reminder.type),
+        eq(workflowReminders.acknowledged, false),
+      ];
+      if (reminder.taskId) {
+        conditions.push(eq(workflowReminders.taskId, reminder.taskId));
+      }
+
+      const [existing] = await drizzleDb.select().from(workflowReminders)
+        .where(and(...conditions))
+        .limit(1);
       if (existing) continue;
-      await prisma.workflowReminder.create({
-        data: {
-          workflowId: reminder.workflowId,
-          taskId: reminder.taskId,
-          type: reminder.type,
-          severity: reminder.severity,
-          message: reminder.message,
-          acknowledged: false,
-        },
-      });
+
+      await drizzleDb.insert(workflowReminders).values({
+        workflowId: reminder.workflowId,
+        taskId: reminder.taskId,
+        type: reminder.type,
+        severity: reminder.severity,
+        message: reminder.message,
+        acknowledged: false,
+      }).returning();
     } catch (e) {
       logger.error({ error: String(e) }, "Failed to persist reminder");
     }
@@ -216,54 +216,75 @@ export async function listReminders(opts: {
   acknowledged?: boolean;
   limit?: number;
 }): Promise<unknown[]> {
-  if (!prisma) return [];
+  if (!drizzleDb) return [];
 
-  const where: Record<string, unknown> = {};
-  if (opts.workflowId) where.workflowId = opts.workflowId;
-  if (opts.acknowledged !== undefined) where.acknowledged = opts.acknowledged;
+  const { workflowReminders } = await import("@mcp-rebuild/db");
 
-  return prisma.workflowReminder.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: opts.limit ?? 50,
-  });
+  const conditions = [];
+  if (opts.workflowId) conditions.push(eq(workflowReminders.workflowId, opts.workflowId));
+  if (opts.acknowledged !== undefined) conditions.push(eq(workflowReminders.acknowledged, opts.acknowledged));
+
+  const query = drizzleDb.select().from(workflowReminders)
+    .orderBy(desc(workflowReminders.createdAt))
+    .limit(opts.limit ?? 50);
+
+  if (conditions.length > 0) {
+    query.where(and(...conditions));
+  }
+
+  return query;
 }
 
 // ─── Acknowledge a reminder ───
 
 export async function acknowledgeReminder(id: string): Promise<unknown> {
-  if (!prisma) throw new Error("No Prisma client");
+  if (!drizzleDb) throw new Error("No Drizzle db instance");
 
-  return prisma.workflowReminder.update({
-    where: { id },
-    data: { acknowledged: true },
-  });
+  const { workflowReminders } = await import("@mcp-rebuild/db");
+
+  const [row] = await drizzleDb.update(workflowReminders)
+    .set({ acknowledged: true })
+    .where(eq(workflowReminders.id, id))
+    .returning();
+
+  return row;
 }
 
 // ─── Dismiss all reminders for a workflow ───
 
 export async function dismissWorkflowReminders(workflowId: string): Promise<{ count: number }> {
-  if (!prisma) throw new Error("No Prisma client");
+  if (!drizzleDb) throw new Error("No Drizzle db instance");
 
-  const result = await prisma.workflowReminder.updateMany({
-    where: { workflowId },
-    data: { acknowledged: true },
-  });
-  return { count: result.count };
+  const { workflowReminders } = await import("@mcp-rebuild/db");
+
+  const result = await drizzleDb.update(workflowReminders)
+    .set({ acknowledged: true })
+    .where(eq(workflowReminders.workflowId, workflowId))
+    .returning();
+
+  return { count: result.length };
 }
 
 // ─── Reminder stats ───
 
 export async function reminderStats(): Promise<{ total: number; unacknowledged: number; bySeverity: Record<string, number> }> {
-  if (!prisma) return { total: 0, unacknowledged: 0, bySeverity: {} };
+  if (!drizzleDb) return { total: 0, unacknowledged: 0, bySeverity: {} };
 
-  const [total, unacknowledged, critical, warning, info] = await Promise.all([
-    prisma.workflowReminder.count({ where: {} }),
-    prisma.workflowReminder.count({ where: { acknowledged: false } }),
-    prisma.workflowReminder.count({ where: { severity: "critical", acknowledged: false } }),
-    prisma.workflowReminder.count({ where: { severity: "warning", acknowledged: false } }),
-    prisma.workflowReminder.count({ where: { severity: "info", acknowledged: false } }),
+  const { workflowReminders } = await import("@mcp-rebuild/db");
+
+  const [totalRow, unackRow, criticalRow, warningRow, infoRow] = await Promise.all([
+    drizzleDb.select({ count: count() }).from(workflowReminders),
+    drizzleDb.select({ count: count() }).from(workflowReminders).where(eq(workflowReminders.acknowledged, false)),
+    drizzleDb.select({ count: count() }).from(workflowReminders).where(and(eq(workflowReminders.severity, "critical"), eq(workflowReminders.acknowledged, false))),
+    drizzleDb.select({ count: count() }).from(workflowReminders).where(and(eq(workflowReminders.severity, "warning"), eq(workflowReminders.acknowledged, false))),
+    drizzleDb.select({ count: count() }).from(workflowReminders).where(and(eq(workflowReminders.severity, "info"), eq(workflowReminders.acknowledged, false))),
   ]);
+
+  const total = totalRow[0]?.count ?? 0;
+  const unacknowledged = unackRow[0]?.count ?? 0;
+  const critical = criticalRow[0]?.count ?? 0;
+  const warning = warningRow[0]?.count ?? 0;
+  const info = infoRow[0]?.count ?? 0;
 
   return { total, unacknowledged, bySeverity: { critical, warning, info } };
 }

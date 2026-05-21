@@ -5,64 +5,71 @@
  * getPlan, getCurrentTask, getResumeSuggestion.
  */
 
-
+import { eq, desc, asc, sql } from "drizzle-orm";
 
 export async function getActiveWorkflow(projectPath?: string) {
-  return (await import("@mcp-rebuild/db")).prisma.workflow.findFirst({
-    where: {
-      projectPath: projectPath ?? null,
-      status: { notIn: ["completed", "cancelled"] },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+  const { db, workflows } = await import("@mcp-rebuild/db");
+
+  const conditions = projectPath !== undefined
+    ? eq(workflows.projectPath, projectPath)
+    : sql`${workflows.projectPath} IS NULL`;
+
+  const rows = await db.select().from(workflows)
+    .where(sql`${conditions} AND ${workflows.status} NOT IN ('completed', 'cancelled')`)
+    .orderBy(desc(workflows.updatedAt))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function listWorkflows(status?: string) {
-  return (await import("@mcp-rebuild/db")).prisma.workflow.findMany({
-    where: status ? { status } : undefined,
-    orderBy: { updatedAt: "desc" },
-  });
+  const { db, workflows } = await import("@mcp-rebuild/db");
+
+  if (status) {
+    return db.select().from(workflows).where(eq(workflows.status, status)).orderBy(desc(workflows.updatedAt));
+  }
+  return db.select().from(workflows).orderBy(desc(workflows.updatedAt));
 }
 
 export async function getPlan(workflowId: string) {
-  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
-    where: { id: workflowId },
-  });
+  const { db, workflows, plans, tasks: tasksTable } = await import("@mcp-rebuild/db");
+
+  const [workflow] = await db.select().from(workflows).where(eq(workflows.id, workflowId)).limit(1);
+  if (!workflow) throw new Error("Workflow not found");
 
   if (!workflow.currentPlanId) {
     throw new Error("No active plan");
   }
 
-  const plan = await (await import("@mcp-rebuild/db")).prisma.plan.findUniqueOrThrow({
-    where: { id: workflow.currentPlanId },
-  });
+  const [plan] = await db.select().from(plans).where(eq(plans.id, workflow.currentPlanId)).limit(1);
+  if (!plan) throw new Error("Plan not found");
 
-  const tasks = await (await import("@mcp-rebuild/db")).prisma.task.findMany({
-    where: { planId: plan.id },
-    orderBy: { createdAt: "asc" },
-  });
+  const tasksList = await db.select().from(tasksTable)
+    .where(eq(tasksTable.planId, plan.id))
+    .orderBy(asc(tasksTable.createdAt));
 
-  return { plan, tasks };
+  return { plan, tasks: tasksList };
 }
 
 export async function getCurrentTask(workflowId: string) {
-  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
-    where: { id: workflowId },
-  });
+  const { db, workflows, tasks: tasksTable } = await import("@mcp-rebuild/db");
+
+  const [workflow] = await db.select().from(workflows).where(eq(workflows.id, workflowId)).limit(1);
+  if (!workflow) throw new Error("Workflow not found");
 
   if (!workflow.currentTaskId) {
     throw new Error("No current task");
   }
 
-  return (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
-    where: { id: workflow.currentTaskId },
-  });
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, workflow.currentTaskId)).limit(1);
+  if (!task) throw new Error("Task not found");
+  return task;
 }
 
 export async function getResumeSuggestion(workflowId: string) {
-  const workflow = await (await import("@mcp-rebuild/db")).prisma.workflow.findUniqueOrThrow({
-    where: { id: workflowId },
-  });
+  const { db, workflows, plans, tasks: tasksTable, taskProgressLogs } = await import("@mcp-rebuild/db");
+
+  const [workflow] = await db.select().from(workflows).where(eq(workflows.id, workflowId)).limit(1);
+  if (!workflow) throw new Error("Workflow not found");
 
   if (!workflow.currentPlanId) {
     return {
@@ -73,13 +80,11 @@ export async function getResumeSuggestion(workflowId: string) {
   }
 
   if (!workflow.currentTaskId) {
-    const plan = await (await import("@mcp-rebuild/db")).prisma.plan.findUniqueOrThrow({
-      where: { id: workflow.currentPlanId },
-    });
-    const nextTodo = await (await import("@mcp-rebuild/db")).prisma.task.findFirst({
-      where: { planId: plan.id, status: "todo" },
-      orderBy: { createdAt: "asc" },
-    });
+    const [plan] = await db.select().from(plans).where(eq(plans.id, workflow.currentPlanId)).limit(1);
+    const [nextTodo] = await db.select().from(tasksTable)
+      .where(sql`${tasksTable.planId} = ${plan!.id} AND ${tasksTable.status} = 'todo'`)
+      .orderBy(asc(tasksTable.createdAt))
+      .limit(1);
 
     return {
       workflowId,
@@ -91,14 +96,13 @@ export async function getResumeSuggestion(workflowId: string) {
     };
   }
 
-  const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
-    where: { id: workflow.currentTaskId },
-  });
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, workflow.currentTaskId)).limit(1);
+  if (!task) throw new Error("Task not found");
 
-  const latestProgress = await (await import("@mcp-rebuild/db")).prisma.taskProgressLog.findFirst({
-    where: { taskId: task.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const [latestProgress] = await db.select().from(taskProgressLogs)
+    .where(eq(taskProgressLogs.taskId, task.id))
+    .orderBy(desc(taskProgressLogs.createdAt))
+    .limit(1);
 
   return {
     workflowId,

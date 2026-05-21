@@ -2,9 +2,8 @@
  * Plan creation (msd-mcp business logic)
  */
 
-
+import { eq, count } from "drizzle-orm";
 import type { PlanContent } from "@mcp-rebuild/core";
-import type { Prisma } from "@prisma/client";
 
 export async function createPlan(input: {
   workflowId: string;
@@ -12,45 +11,42 @@ export async function createPlan(input: {
   content: PlanContent;
   createdByAgent: string;
 }) {
-  const existingCount = await (await import("@mcp-rebuild/db")).prisma.plan.count({
-    where: { workflowId: input.workflowId },
-  });
+  const { db, plans, tasks: tasksTable, workflows } = await import("@mcp-rebuild/db");
 
-  return (await import("@mcp-rebuild/db")).prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const plan = await tx.plan.create({
-      data: {
-        workflowId: input.workflowId,
-        version: existingCount + 1,
-        status: "ACTIVE",
-        summary: input.summary,
-        content: input.content as never,
-        createdByAgent: input.createdByAgent,
-      },
-    });
+  const countResult = await db
+    .select({ count: count() })
+    .from(plans)
+    .where(eq(plans.workflowId, input.workflowId));
+  const existingCount = countResult[0]?.count ?? 0;
+
+  return db.transaction(async (tx) => {
+    const [plan] = await tx.insert(plans).values({
+      workflowId: input.workflowId,
+      version: existingCount + 1,
+      status: "ACTIVE",
+      summary: input.summary,
+      content: input.content as unknown as Record<string, unknown>,
+      createdByAgent: input.createdByAgent,
+    }).returning();
 
     for (const task of input.content.tasks) {
-      await tx.task.create({
-        data: {
-          workflowId: input.workflowId,
-          planId: plan.id,
-          title: task.title,
-          status: "PENDING",
-          priority: task.priority,
-          ownerAgent: task.ownerAgent,
-          acceptanceCriteria: task.acceptanceCriteria ?? [],
-          requiredContext: task.requiredContext ?? [],
-          verificationSteps: task.verificationSteps ?? [],
-        },
+      await tx.insert(tasksTable).values({
+        workflowId: input.workflowId,
+        planId: plan.id,
+        title: task.title,
+        status: "PENDING",
+        priority: task.priority,
+        ownerAgent: task.ownerAgent,
+        acceptanceCriteria: task.acceptanceCriteria ?? [],
+        requiredContext: task.requiredContext ?? [],
+        verificationSteps: task.verificationSteps ?? [],
       });
     }
 
-    await tx.workflow.update({
-      where: { id: input.workflowId },
-      data: {
-        currentPlanId: plan.id,
-        status: "READY",
-      },
-    });
+    await tx.update(workflows).set({
+      currentPlanId: plan.id,
+      status: "READY",
+    }).where(eq(workflows.id, input.workflowId));
 
     return plan;
   });

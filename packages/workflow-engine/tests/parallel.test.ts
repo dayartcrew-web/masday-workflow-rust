@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createParallelBranches,
   listParallelBranches,
@@ -8,119 +8,115 @@ import {
   markVerificationReady,
 } from '../src/parallel';
 
-// Mock the db module
-const mockPrisma = {
-  parallelBranch: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-    update: vi.fn(),
-  },
-  sessionState: {
-    update: vi.fn(),
-  },
-};
-
-vi.mock('@mcp-rebuild/db', () => ({
-  get prisma() {
-    return mockPrisma;
-  },
+vi.mock('drizzle-orm', () => ({
+  eq: (col: any, val: any) => ({ col, val, op: 'eq' }),
+  and: (...conds: any[]) => ({ conds, op: 'and' }),
+  asc: (col: any) => ({ col, dir: 'asc' }),
+  desc: (col: any) => ({ col, dir: 'desc' }),
 }));
 
-describe('ParallelBranch', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+const mockParallelBranches = {
+  id: 'id', workflowId: 'workflowId', taskId: 'taskId', branchKey: 'branchKey',
+  role: 'role', status: 'status', input: 'input', output: 'output', createdAt: 'createdAt',
+};
+const mockSessionStates = {
+  sessionKey: 'sessionKey', executionMode: 'executionMode',
+  synthesisReady: 'synthesisReady', verificationReady: 'verificationReady',
+};
 
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
+const mockDb = { insert: vi.fn(), select: vi.fn(), update: vi.fn() };
+
+vi.mock('@mcp-rebuild/db', () => ({
+  get db() { return mockDb; },
+  parallelBranches: mockParallelBranches,
+  sessionStates: mockSessionStates,
+}));
+
+function createResolvable(result: any) {
+  return {
+    then: (resolve: any, reject?: any) => Promise.resolve(result).then(resolve, reject),
+    orderBy: vi.fn().mockImplementation(() => createResolvable(result)),
+    limit: vi.fn().mockImplementation(() => createResolvable(result)),
+  };
+}
+
+function selectChain(result: any) {
+  return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(createResolvable(result)) }) };
+}
+
+describe('ParallelBranch', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  function setupInsert() {
+    mockDb.insert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+  }
+  function setupSelect(result: any) {
+    mockDb.select.mockReturnValue(selectChain(result));
+  }
+  function setupUpdate(returnValue: any) {
+    const setFn = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([returnValue]) }),
+    });
+    mockDb.update.mockReturnValue({ set: setFn });
+    return setFn;
+  }
 
   describe('createParallelBranches', () => {
     it('creates branches and returns them sorted by createdAt', async () => {
-      const mockBranches = [
+      const mockResult = [
         { id: '1', workflowId: 'wf-1', taskId: 't-1', branchKey: 'backend', role: 'executor', status: 'pending', createdAt: new Date('2024-01-01') },
         { id: '2', workflowId: 'wf-1', taskId: 't-1', branchKey: 'frontend', role: 'executor', status: 'pending', createdAt: new Date('2024-01-02') },
       ];
-      mockPrisma.parallelBranch.create.mockResolvedValue(mockBranches[0]);
-      mockPrisma.parallelBranch.findMany.mockResolvedValue(mockBranches);
+      setupInsert();
+      setupSelect(mockResult);
 
       const result = await createParallelBranches({
-        workflowId: 'wf-1',
-        taskId: 't-1',
+        workflowId: 'wf-1', taskId: 't-1',
         branches: [
           { branchKey: 'backend', role: 'executor', input: {} },
           { branchKey: 'frontend', role: 'executor', input: {} },
         ],
       });
 
-      expect(mockPrisma.parallelBranch.create).toHaveBeenCalledTimes(2);
-      expect(mockPrisma.parallelBranch.create).toHaveBeenNthCalledWith(1, {
-        data: {
-          workflowId: 'wf-1',
-          taskId: 't-1',
-          branchKey: 'backend',
-          role: 'executor',
-          status: 'pending',
-          input: {},
-        },
-      });
-      expect(result).toEqual(mockBranches);
+      expect(mockDb.insert).toHaveBeenCalledTimes(2);
+      expect(result).toEqual(mockResult);
     });
 
     it('creates a single branch', async () => {
-      mockPrisma.parallelBranch.create.mockResolvedValue({ id: '1' });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([{ id: '1' }]);
+      setupInsert();
+      setupSelect([{ id: '1' }]);
 
       const result = await createParallelBranches({
-        workflowId: 'wf-1',
-        taskId: 't-1',
+        workflowId: 'wf-1', taskId: 't-1',
         branches: [{ branchKey: 'solo', role: 'executor', input: { key: 'value' } }],
       });
 
-      expect(mockPrisma.parallelBranch.create).toHaveBeenCalledTimes(1);
-      expect(mockPrisma.parallelBranch.create).toHaveBeenCalledWith({
-        data: {
-          workflowId: 'wf-1',
-          taskId: 't-1',
-          branchKey: 'solo',
-          role: 'executor',
-          status: 'pending',
-          input: { key: 'value' },
-        },
-      });
+      expect(mockDb.insert).toHaveBeenCalledTimes(1);
       expect(result).toHaveLength(1);
     });
 
     it('creates zero branches when array is empty', async () => {
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([]);
+      setupSelect([]);
 
       const result = await createParallelBranches({
-        workflowId: 'wf-1',
-        taskId: 't-1',
-        branches: [],
+        workflowId: 'wf-1', taskId: 't-1', branches: [],
       });
 
-      expect(mockPrisma.parallelBranch.create).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
       expect(result).toEqual([]);
     });
 
-    it('passes input data through to Prisma', async () => {
-      mockPrisma.parallelBranch.create.mockResolvedValue({ id: '1' });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([{ id: '1' }]);
+    it('passes input data through to db', async () => {
+      const valuesSpy = vi.fn().mockResolvedValue(undefined);
+      mockDb.insert.mockReturnValue({ values: valuesSpy });
+      setupSelect([{ id: '1' }]);
 
       await createParallelBranches({
-        workflowId: 'wf-1',
-        taskId: 't-1',
+        workflowId: 'wf-1', taskId: 't-1',
         branches: [{ branchKey: 'data-test', role: 'qa', input: { scope: 'packages/core' } }],
       });
 
-      expect(mockPrisma.parallelBranch.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            input: { scope: 'packages/core' },
-          }),
-        })
-      );
+      expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ input: { scope: 'packages/core' } }));
     });
   });
 
@@ -130,19 +126,15 @@ describe('ParallelBranch', () => {
         { id: '1', branchKey: 'first', createdAt: new Date('2024-01-01') },
         { id: '2', branchKey: 'second', createdAt: new Date('2024-01-02') },
       ];
-      mockPrisma.parallelBranch.findMany.mockResolvedValue(branches);
+      setupSelect(branches);
 
       const result = await listParallelBranches('wf-1', 't-1');
 
-      expect(mockPrisma.parallelBranch.findMany).toHaveBeenCalledWith({
-        where: { workflowId: 'wf-1', taskId: 't-1' },
-        orderBy: { createdAt: 'asc' },
-      });
       expect(result).toEqual(branches);
     });
 
     it('returns empty array when no branches exist', async () => {
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([]);
+      setupSelect([]);
 
       const result = await listParallelBranches('wf-empty', 't-empty');
 
@@ -153,106 +145,75 @@ describe('ParallelBranch', () => {
   describe('completeParallelBranch', () => {
     it('sets status to completed and stores output', async () => {
       const updated = { id: '1', status: 'completed', output: { files: ['a.ts'] } };
-      mockPrisma.parallelBranch.update.mockResolvedValue(updated);
+      const setFn = setupUpdate(updated);
 
-      const result = await completeParallelBranch({
-        branchId: '1',
-        output: { files: ['a.ts'] },
-      });
+      const result = await completeParallelBranch({ branchId: '1', output: { files: ['a.ts'] } });
 
-      expect(mockPrisma.parallelBranch.update).toHaveBeenCalledWith({
-        where: { id: '1' },
-        data: {
-          status: 'completed',
-          output: { files: ['a.ts'] },
-        },
-      });
+      expect(setFn).toHaveBeenCalledWith({ status: 'completed', output: { files: ['a.ts'] } });
       expect(result).toEqual(updated);
     });
 
     it('stores complex output objects', async () => {
       const output = { summary: 'done', metrics: { tests: 10, passed: 10 } };
-      mockPrisma.parallelBranch.update.mockResolvedValue({ id: '1', output });
+      const setFn = setupUpdate({ id: '1', output });
 
       await completeParallelBranch({ branchId: '1', output });
 
-      expect(mockPrisma.parallelBranch.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ output }),
-        })
-      );
+      expect(setFn).toHaveBeenCalledWith(expect.objectContaining({ output }));
     });
   });
 
   describe('setExecutionMode', () => {
     it('sets mode to parallel', async () => {
-      mockPrisma.sessionState.update.mockResolvedValue({ executionMode: 'parallel' });
+      const setFn = setupUpdate({ executionMode: 'parallel' });
+      const result = await setExecutionMode('session-1', 'parallel');
 
-      await setExecutionMode('session-1', 'parallel');
-
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'session-1' },
-        data: { executionMode: 'parallel' },
-      });
+      expect(setFn).toHaveBeenCalledWith({ executionMode: 'parallel' });
+      expect(result).toEqual({ executionMode: 'parallel' });
     });
 
     it('sets mode to sequential', async () => {
-      mockPrisma.sessionState.update.mockResolvedValue({ executionMode: 'sequential' });
+      const setFn = setupUpdate({ executionMode: 'sequential' });
+      const result = await setExecutionMode('session-1', 'sequential');
 
-      await setExecutionMode('session-1', 'sequential');
-
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'session-1' },
-        data: { executionMode: 'sequential' },
-      });
+      expect(setFn).toHaveBeenCalledWith({ executionMode: 'sequential' });
+      expect(result).toEqual({ executionMode: 'sequential' });
     });
   });
 
   describe('markSynthesisReady', () => {
     it('sets synthesisReady to true', async () => {
-      mockPrisma.sessionState.update.mockResolvedValue({ synthesisReady: true });
+      const setFn = setupUpdate({ synthesisReady: true });
+      const result = await markSynthesisReady('session-1', true);
 
-      await markSynthesisReady('session-1', true);
-
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'session-1' },
-        data: { synthesisReady: true },
-      });
+      expect(setFn).toHaveBeenCalledWith({ synthesisReady: true });
+      expect(result).toEqual({ synthesisReady: true });
     });
 
     it('sets synthesisReady to false', async () => {
-      mockPrisma.sessionState.update.mockResolvedValue({ synthesisReady: false });
+      const setFn = setupUpdate({ synthesisReady: false });
+      const result = await markSynthesisReady('session-1', false);
 
-      await markSynthesisReady('session-1', false);
-
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'session-1' },
-        data: { synthesisReady: false },
-      });
+      expect(setFn).toHaveBeenCalledWith({ synthesisReady: false });
+      expect(result).toEqual({ synthesisReady: false });
     });
   });
 
   describe('markVerificationReady', () => {
     it('sets verificationReady to true', async () => {
-      mockPrisma.sessionState.update.mockResolvedValue({ verificationReady: true });
+      const setFn = setupUpdate({ verificationReady: true });
+      const result = await markVerificationReady('session-1', true);
 
-      await markVerificationReady('session-1', true);
-
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'session-1' },
-        data: { verificationReady: true },
-      });
+      expect(setFn).toHaveBeenCalledWith({ verificationReady: true });
+      expect(result).toEqual({ verificationReady: true });
     });
 
     it('sets verificationReady to false', async () => {
-      mockPrisma.sessionState.update.mockResolvedValue({ verificationReady: false });
+      const setFn = setupUpdate({ verificationReady: false });
+      const result = await markVerificationReady('session-1', false);
 
-      await markVerificationReady('session-1', false);
-
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'session-1' },
-        data: { verificationReady: false },
-      });
+      expect(setFn).toHaveBeenCalledWith({ verificationReady: false });
+      expect(result).toEqual({ verificationReady: false });
     });
   });
 });

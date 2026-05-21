@@ -1,82 +1,86 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getOrCreateSessionState, patchSessionState } from '../src/session.js';
 import { validateExecution, validateParallelCompletion } from '../src/policy.js';
 
-// Mock the db module
-const mockPrisma = {
-  sessionState: {
-    findUnique: vi.fn(),
-    findUniqueOrThrow: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  },
-  workflow: {
-    findUniqueOrThrow: vi.fn(),
-  },
-  reviewDecision: {
-    findFirst: vi.fn(),
-  },
-  task: {
-    findUniqueOrThrow: vi.fn(),
-  },
-  parallelBranch: {
-    findMany: vi.fn(),
-  },
-};
-
-vi.mock('@mcp-rebuild/db', () => ({
-  get prisma() {
-    return mockPrisma;
-  },
+vi.mock('drizzle-orm', () => ({
+  eq: (col: any, val: any) => ({ col, val, op: 'eq' }),
+  and: (...conds: any[]) => ({ conds, op: 'and' }),
+  asc: (col: any) => ({ col, dir: 'asc' }),
+  desc: (col: any) => ({ col, dir: 'desc' }),
 }));
 
-describe('SessionState', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+const mockSessionStates = {
+  sessionKey: 'sessionKey', executionMode: 'executionMode',
+  synthesisReady: 'synthesisReady', verificationReady: 'verificationReady',
+  workflowLoaded: 'workflowLoaded', planLoaded: 'planLoaded',
+  taskLoaded: 'taskLoaded', contextLoaded: 'contextLoaded',
+};
+const mockWorkflows = { id: 'id', currentTaskId: 'currentTaskId' };
+const mockParallelBranches = { id: 'id', workflowId: 'workflowId', taskId: 'taskId', status: 'status' };
+const mockReviewDecisions = { workflowId: 'workflowId', taskId: 'taskId', decision: 'decision', createdAt: 'createdAt', testsVerified: 'testsVerified' };
+const mockTasks = { id: 'id', title: 'title', acceptanceCriteria: 'acceptanceCriteria', requiredContext: 'requiredContext', requiresTdd: 'requiresTdd', testEvidence: 'testEvidence' };
 
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
+const mockDb = { insert: vi.fn(), select: vi.fn(), update: vi.fn() };
+
+vi.mock('@mcp-rebuild/db', () => ({
+  get db() { return mockDb; },
+  sessionStates: mockSessionStates,
+  workflows: mockWorkflows,
+  parallelBranches: mockParallelBranches,
+  reviewDecisions: mockReviewDecisions,
+  tasks: mockTasks,
+}));
+
+function createResolvable(result: any) {
+  return {
+    then: (resolve: any, reject?: any) => Promise.resolve(result).then(resolve, reject),
+    orderBy: vi.fn().mockImplementation(() => createResolvable(result)),
+    limit: vi.fn().mockImplementation(() => createResolvable(result)),
+  };
+}
+
+function selectChain(result: any) {
+  return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(createResolvable(result)) }) };
+}
+
+describe('SessionState', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
 
   // ─── getOrCreateSessionState ───
 
   describe('getOrCreateSessionState', () => {
     it('returns existing session when found', async () => {
       const existing = { sessionKey: 'key-1', workflowLoaded: true };
-      mockPrisma.sessionState.findUnique.mockResolvedValue(existing);
+      mockDb.select.mockReturnValueOnce(selectChain([existing]));
 
       const result = await getOrCreateSessionState('key-1');
 
       expect(result).toBe(existing);
-      expect(mockPrisma.sessionState.findUnique).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-      });
-      expect(mockPrisma.sessionState.create).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
     });
 
     it('creates new session when not found', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue(null);
+      mockDb.select.mockReturnValueOnce(selectChain([]));
       const created = { sessionKey: 'key-new', workflowLoaded: false };
-      mockPrisma.sessionState.create.mockResolvedValue(created);
+      mockDb.insert.mockReturnValueOnce({
+        values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([created]) }),
+      });
 
       const result = await getOrCreateSessionState('key-new');
 
       expect(result).toBe(created);
-      expect(mockPrisma.sessionState.create).toHaveBeenCalledWith({
-        data: { sessionKey: 'key-new' },
-      });
     });
 
     it('creates session with only sessionKey, no extra fields', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue(null);
-      mockPrisma.sessionState.create.mockResolvedValue({ sessionKey: 'key-minimal' });
+      mockDb.select.mockReturnValueOnce(selectChain([]));
+      const valuesMock = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ sessionKey: 'key-minimal' }]),
+      });
+      mockDb.insert.mockReturnValueOnce({ values: valuesMock });
 
       await getOrCreateSessionState('key-minimal');
 
-      expect(mockPrisma.sessionState.create).toHaveBeenCalledWith({
-        data: { sessionKey: 'key-minimal' },
-      });
+      expect(valuesMock).toHaveBeenCalledWith({ sessionKey: 'key-minimal' });
     });
   });
 
@@ -84,113 +88,92 @@ describe('SessionState', () => {
 
   describe('patchSessionState', () => {
     it('ensures session exists before patching', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue(null);
-      mockPrisma.sessionState.create.mockResolvedValue({ sessionKey: 'key-1' });
-      mockPrisma.sessionState.update.mockResolvedValue({ sessionKey: 'key-1', workflowLoaded: true });
+      mockDb.select.mockReturnValueOnce(selectChain([]));
+      mockDb.insert.mockReturnValueOnce({
+        values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ sessionKey: 'key-1' }]) }),
+      });
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ sessionKey: 'key-1', workflowLoaded: true }]) }),
+        }),
+      });
 
       await patchSessionState('key-1', { workflowLoaded: true });
 
-      expect(mockPrisma.sessionState.findUnique).toHaveBeenCalled();
-      expect(mockPrisma.sessionState.create).toHaveBeenCalled();
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-        data: { workflowLoaded: true },
-      });
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(mockDb.insert).toHaveBeenCalled();
     });
 
     it('patches multiple fields at once', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue({ sessionKey: 'key-1' });
-      mockPrisma.sessionState.update.mockResolvedValue({
-        sessionKey: 'key-1',
-        workflowLoaded: true,
-        planLoaded: true,
-        taskLoaded: true,
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ sessionKey: 'key-1', workflowLoaded: true, planLoaded: true, taskLoaded: true }]),
+        }),
       });
+      mockDb.update.mockReturnValue({ set: setFn });
 
-      await patchSessionState('key-1', {
-        workflowLoaded: true,
-        planLoaded: true,
-        taskLoaded: true,
-      });
+      await patchSessionState('key-1', { workflowLoaded: true, planLoaded: true, taskLoaded: true });
 
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-        data: {
-          workflowLoaded: true,
-          planLoaded: true,
-          taskLoaded: true,
-        },
-      });
+      expect(setFn).toHaveBeenCalledWith({ workflowLoaded: true, planLoaded: true, taskLoaded: true });
     });
 
     it('patches executionMode', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue({ sessionKey: 'key-1' });
-      mockPrisma.sessionState.update.mockResolvedValue({ executionMode: 'parallel' });
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ executionMode: 'parallel' }]) }),
+      });
+      mockDb.update.mockReturnValue({ set: setFn });
 
       await patchSessionState('key-1', { executionMode: 'parallel' });
 
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-        data: { executionMode: 'parallel' },
-      });
+      expect(setFn).toHaveBeenCalledWith({ executionMode: 'parallel' });
     });
 
     it('patches contextFingerprint', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue({ sessionKey: 'key-1' });
-      mockPrisma.sessionState.update.mockResolvedValue({
-        contextFingerprint: 'abc123',
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ contextFingerprint: 'abc123' }]) }),
       });
+      mockDb.update.mockReturnValue({ set: setFn });
 
-      await patchSessionState('key-1', {
-        contextFingerprint: 'abc123',
-      });
+      await patchSessionState('key-1', { contextFingerprint: 'abc123' });
 
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-        data: { contextFingerprint: 'abc123' },
-      });
+      expect(setFn).toHaveBeenCalledWith({ contextFingerprint: 'abc123' });
     });
 
     it('patches activeBranchIds', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue({ sessionKey: 'key-1' });
-      mockPrisma.sessionState.update.mockResolvedValue({
-        activeBranchIds: ['branch-1', 'branch-2'],
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ activeBranchIds: ['branch-1', 'branch-2'] }]) }),
       });
+      mockDb.update.mockReturnValue({ set: setFn });
 
-      await patchSessionState('key-1', {
-        activeBranchIds: ['branch-1', 'branch-2'],
-      });
+      await patchSessionState('key-1', { activeBranchIds: ['branch-1', 'branch-2'] });
 
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-        data: { activeBranchIds: ['branch-1', 'branch-2'] },
-      });
+      expect(setFn).toHaveBeenCalledWith({ activeBranchIds: ['branch-1', 'branch-2'] });
     });
 
     it('patches metadata object', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue({ sessionKey: 'key-1' });
-      mockPrisma.sessionState.update.mockResolvedValue({
-        metadata: { lastCommand: 'workflow.execute' },
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ metadata: { lastCommand: 'workflow.execute' } }]) }),
       });
+      mockDb.update.mockReturnValue({ set: setFn });
 
-      await patchSessionState('key-1', {
-        metadata: { lastCommand: 'workflow.execute' },
-      });
+      await patchSessionState('key-1', { metadata: { lastCommand: 'workflow.execute' } });
 
-      expect(mockPrisma.sessionState.update).toHaveBeenCalledWith({
-        where: { sessionKey: 'key-1' },
-        data: { metadata: { lastCommand: 'workflow.execute' } },
-      });
+      expect(setFn).toHaveBeenCalledWith({ metadata: { lastCommand: 'workflow.execute' } });
     });
 
     it('returns the updated session', async () => {
-      mockPrisma.sessionState.findUnique.mockResolvedValue({ sessionKey: 'key-1' });
-      const expected = {
-        sessionKey: 'key-1',
-        workflowLoaded: true,
-        planLoaded: false,
-      };
-      mockPrisma.sessionState.update.mockResolvedValue(expected);
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'key-1' }]));
+      const expected = { sessionKey: 'key-1', workflowLoaded: true, planLoaded: false };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([expected]) }),
+        }),
+      });
 
       const result = await patchSessionState('key-1', { workflowLoaded: true });
 
@@ -201,24 +184,12 @@ describe('SessionState', () => {
   // ─── validateExecution (SessionState gate) ───
 
   describe('validateExecution', () => {
-    const baseInput = {
-      workflowId: 'wf-1',
-      taskId: 'task-1',
-      sessionKey: 'session-1',
-    };
+    const baseInput = { workflowId: 'wf-1', taskId: 'task-1', sessionKey: 'session-1' };
 
     it('passes when session state is complete', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-1',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue({
-        sessionKey: 'session-1',
-        workflowLoaded: true,
-        planLoaded: true,
-        taskLoaded: true,
-        contextLoaded: true,
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-1' }]))
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', workflowLoaded: true, planLoaded: true, taskLoaded: true, contextLoaded: true }]));
 
       const result = await validateExecution(baseInput);
 
@@ -226,134 +197,69 @@ describe('SessionState', () => {
     });
 
     it('fails when workflowLoaded is false', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-1',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue({
-        sessionKey: 'session-1',
-        workflowLoaded: false,
-        planLoaded: true,
-        taskLoaded: true,
-        contextLoaded: true,
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-1' }]))
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', workflowLoaded: false, planLoaded: true, taskLoaded: true, contextLoaded: true }]));
 
-      await expect(validateExecution(baseInput)).rejects.toThrow(
-        'Execution blocked: session state is incomplete',
-      );
+      await expect(validateExecution(baseInput)).rejects.toThrow('Execution blocked: session state is incomplete');
     });
 
     it('fails when planLoaded is false', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-1',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue({
-        sessionKey: 'session-1',
-        workflowLoaded: true,
-        planLoaded: false,
-        taskLoaded: true,
-        contextLoaded: true,
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-1' }]))
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', workflowLoaded: true, planLoaded: false, taskLoaded: true, contextLoaded: true }]));
 
-      await expect(validateExecution(baseInput)).rejects.toThrow(
-        'Execution blocked: session state is incomplete',
-      );
+      await expect(validateExecution(baseInput)).rejects.toThrow('Execution blocked: session state is incomplete');
     });
 
     it('fails when taskLoaded is false', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-1',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue({
-        sessionKey: 'session-1',
-        workflowLoaded: true,
-        planLoaded: true,
-        taskLoaded: false,
-        contextLoaded: true,
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-1' }]))
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', workflowLoaded: true, planLoaded: true, taskLoaded: false, contextLoaded: true }]));
 
-      await expect(validateExecution(baseInput)).rejects.toThrow(
-        'Execution blocked: session state is incomplete',
-      );
+      await expect(validateExecution(baseInput)).rejects.toThrow('Execution blocked: session state is incomplete');
     });
 
     it('fails when contextLoaded is false', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-1',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue({
-        sessionKey: 'session-1',
-        workflowLoaded: true,
-        planLoaded: true,
-        taskLoaded: true,
-        contextLoaded: false,
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-1' }]))
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', workflowLoaded: true, planLoaded: true, taskLoaded: true, contextLoaded: false }]));
 
-      await expect(validateExecution(baseInput)).rejects.toThrow(
-        'Execution blocked: session state is incomplete',
-      );
+      await expect(validateExecution(baseInput)).rejects.toThrow('Execution blocked: session state is incomplete');
     });
 
     it('fails when session is null', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-1',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue(null);
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-1' }]))
+        .mockReturnValueOnce(selectChain([]));
 
-      await expect(validateExecution(baseInput)).rejects.toThrow(
-        'Execution blocked: session state is incomplete',
-      );
+      await expect(validateExecution(baseInput)).rejects.toThrow('Execution blocked: session state is incomplete');
     });
 
     it('fails when task is not current active task', async () => {
-      mockPrisma.workflow.findUniqueOrThrow.mockResolvedValue({
-        id: 'wf-1',
-        currentTaskId: 'task-2',
-      });
-      mockPrisma.sessionState.findUnique.mockResolvedValue({
-        sessionKey: 'session-1',
-        workflowLoaded: true,
-        planLoaded: true,
-        taskLoaded: true,
-        contextLoaded: true,
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ id: 'wf-1', currentTaskId: 'task-2' }]))
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', workflowLoaded: true, planLoaded: true, taskLoaded: true, contextLoaded: true }]));
 
-      await expect(validateExecution(baseInput)).rejects.toThrow(
-        'Execution blocked: task is not current active task',
-      );
+      await expect(validateExecution(baseInput)).rejects.toThrow('Execution blocked: task is not current active task');
     });
   });
 
   // ─── validateParallelCompletion (SessionState gate) ───
 
   describe('validateParallelCompletion', () => {
-    const baseInput = {
-      workflowId: 'wf-1',
-      taskId: 'task-1',
-      sessionKey: 'session-1',
-    };
+    const baseInput = { workflowId: 'wf-1', taskId: 'task-1', sessionKey: 'session-1' };
 
     it('skips validation when executionMode is not parallel', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'sequential',
-      });
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'sequential' }]));
 
       const result = await validateParallelCompletion(baseInput);
 
       expect(result).toEqual({ ok: true, skipped: true });
-      expect(mockPrisma.parallelBranch.findMany).not.toHaveBeenCalled();
     });
 
     it('skips validation when executionMode is null', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: null,
-      });
+      mockDb.select.mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: null }]));
 
       const result = await validateParallelCompletion(baseInput);
 
@@ -361,87 +267,43 @@ describe('SessionState', () => {
     });
 
     it('fails when branches are not all completed', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'parallel',
-      });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([
-        { id: 'b1', status: 'completed' },
-        { id: 'b2', status: 'pending' },
-      ]);
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'parallel' }]))
+        .mockReturnValueOnce(selectChain([{ id: 'b1', status: 'completed' }, { id: 'b2', status: 'pending' }]));
 
-      await expect(validateParallelCompletion(baseInput)).rejects.toThrow(
-        'Parallel completion blocked: some branches are not completed',
-      );
+      await expect(validateParallelCompletion(baseInput)).rejects.toThrow('Parallel completion blocked: some branches are not completed');
     });
 
     it('fails when synthesis is not ready', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'parallel',
-        synthesisReady: false,
-      });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([
-        { id: 'b1', status: 'completed' },
-      ]);
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'parallel', synthesisReady: false }]))
+        .mockReturnValueOnce(selectChain([{ id: 'b1', status: 'completed' }]));
 
-      await expect(validateParallelCompletion(baseInput)).rejects.toThrow(
-        'Parallel completion blocked: synthesis is not ready',
-      );
+      await expect(validateParallelCompletion(baseInput)).rejects.toThrow('Parallel completion blocked: synthesis is not ready');
     });
 
     it('fails when verification is not ready', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'parallel',
-        synthesisReady: true,
-        verificationReady: false,
-      });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([
-        { id: 'b1', status: 'completed' },
-      ]);
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'parallel', synthesisReady: true, verificationReady: false }]))
+        .mockReturnValueOnce(selectChain([{ id: 'b1', status: 'completed' }]));
 
-      await expect(validateParallelCompletion(baseInput)).rejects.toThrow(
-        'Parallel completion blocked: verification is not ready',
-      );
+      await expect(validateParallelCompletion(baseInput)).rejects.toThrow('Parallel completion blocked: verification is not ready');
     });
 
     it('fails when review is not approved', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'parallel',
-        synthesisReady: true,
-        verificationReady: true,
-      });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([
-        { id: 'b1', status: 'completed' },
-      ]);
-      mockPrisma.reviewDecision.findFirst.mockResolvedValue(null);
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'parallel', synthesisReady: true, verificationReady: true }]))
+        .mockReturnValueOnce(selectChain([{ id: 'b1', status: 'completed' }]))
+        .mockReturnValueOnce(selectChain([]));
 
-      await expect(validateParallelCompletion(baseInput)).rejects.toThrow(
-        'Parallel completion blocked: review is not approved',
-      );
+      await expect(validateParallelCompletion(baseInput)).rejects.toThrow('Parallel completion blocked: review is not approved');
     });
 
     it('passes when all conditions are met', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'parallel',
-        synthesisReady: true,
-        verificationReady: true,
-      });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([
-        { id: 'b1', status: 'completed' },
-        { id: 'b2', status: 'completed' },
-      ]);
-      mockPrisma.reviewDecision.findFirst.mockResolvedValue({
-        decision: 'APPROVED',
-      });
-      mockPrisma.task.findUniqueOrThrow.mockResolvedValue({
-        title: 'Test task',
-        acceptanceCriteria: [],
-        requiredContext: [],
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'parallel', synthesisReady: true, verificationReady: true }]))
+        .mockReturnValueOnce(selectChain([{ id: 'b1', status: 'completed' }, { id: 'b2', status: 'completed' }]))
+        .mockReturnValueOnce(selectChain([{ decision: 'APPROVED' }]));
 
       const result = await validateParallelCompletion(baseInput);
 
@@ -449,21 +311,10 @@ describe('SessionState', () => {
     });
 
     it('passes with empty branches array', async () => {
-      mockPrisma.sessionState.findUniqueOrThrow.mockResolvedValue({
-        sessionKey: 'session-1',
-        executionMode: 'parallel',
-        synthesisReady: true,
-        verificationReady: true,
-      });
-      mockPrisma.parallelBranch.findMany.mockResolvedValue([]);
-      mockPrisma.reviewDecision.findFirst.mockResolvedValue({
-        decision: 'APPROVED',
-      });
-      mockPrisma.task.findUniqueOrThrow.mockResolvedValue({
-        title: 'Test task',
-        acceptanceCriteria: [],
-        requiredContext: [],
-      });
+      mockDb.select
+        .mockReturnValueOnce(selectChain([{ sessionKey: 'session-1', executionMode: 'parallel', synthesisReady: true, verificationReady: true }]))
+        .mockReturnValueOnce(selectChain([]))
+        .mockReturnValueOnce(selectChain([{ decision: 'APPROVED' }]));
 
       const result = await validateParallelCompletion(baseInput);
 

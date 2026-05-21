@@ -68,7 +68,7 @@ export type { EmbeddingProvider } from "./embedding.js";
 export { logRetrieval } from "./audit.js";
 
 export {
-  setReminderPrisma,
+  setReminderDb,
   checkReminders,
   listReminders,
   acknowledgeReminder,

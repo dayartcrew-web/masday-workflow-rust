@@ -15,10 +15,28 @@ export interface MonitoringServiceProvider {
 
 export function createMonitoringRoutes(provider: MonitoringServiceProvider): RouteDefinition[] {
   return [
+    // GET /health — Top-level health check (no auth)
+    {
+      method: 'GET',
+      pattern: '/health',
+      handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        const result = await provider.getHealth();
+        sendJson(res, 200, result);
+      },
+    },
     // GET /api/health — Health check
     {
       method: 'GET',
       pattern: '/api/health',
+      handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        const result = await provider.getHealth();
+        sendJson(res, 200, result);
+      },
+    },
+    // GET /api/monitoring/health — Monitoring health alias
+    {
+      method: 'GET',
+      pattern: '/api/monitoring/health',
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
         const result = await provider.getHealth();
         sendJson(res, 200, result);
@@ -34,10 +52,30 @@ export function createMonitoringRoutes(provider: MonitoringServiceProvider): Rou
         sendJson(res, 200, result);
       },
     },
+    // GET /api/monitoring/metrics — Monitoring metrics alias
+    {
+      method: 'GET',
+      pattern: '/api/monitoring/metrics',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        const result = provider.getMetrics();
+        sendJson(res, 200, result);
+      },
+    },
     // GET /api/stats — System stats
     {
       method: 'GET',
       pattern: '/api/stats',
+      authRequired: true,
+      handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        const result = provider.getStats();
+        sendJson(res, 200, result);
+      },
+    },
+    // GET /api/monitoring/stats — Monitoring stats alias
+    {
+      method: 'GET',
+      pattern: '/api/monitoring/stats',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
         const result = provider.getStats();
