@@ -253,11 +253,13 @@ server.registerTool("workflow.execute", { description: "Execute workflow", input
 server.registerTool("workflow.getStatus", { description: "Get workflow status", inputSchema: { id: z.string() } }, async ({ id }) => { const w = engine.getWorkflow(id); if (!w) throw new Error("Not found: " + id); return ok(w); });
 server.registerTool("workflow.get", { description: "Get workflow by ID", inputSchema: { id: z.string() } }, async ({ id }) => { const w = engine.getWorkflow(id); if (!w) throw new Error("Not found: " + id); return ok(w); });
 server.registerTool("workflow.list", { description: "List workflows", inputSchema: {} }, async () => ok(engine.listWorkflows()));
-server.registerTool("workflow.addTask", { description: "Add task", inputSchema: { workflowId: z.string(), name: z.string(), agent: z.string(), skill: z.string(), dependencies: z.array(z.string()).optional(), input: z.record(z.any()).optional() } }, async (a) => { const t = engine.addTask(a.workflowId, { name: a.name, agent: a.agent, skill: a.skill, dependencies: a.dependencies ?? [], input: a.input ?? {} }); try { const node = graphStore.addNode({ type: "task", label: a.name, properties: { taskId: t.id, workflowId: a.workflowId, agent: a.agent, skill: a.skill } }); const wfNodes = graphStore.findNodes(n => n.properties.workflowId === a.workflowId && n.type === "workflow"); if (wfNodes.length > 0 && node) graphStore.addEdge({ from: wfNodes[0].id, to: node.id, relation: "contains", weight: 1.0 }); } catch { /* non-critical */ } return ok(t); });
+server.registerTool("workflow.addTask", { description: "Add task", inputSchema: { workflowId: z.string(), name: z.string(), agent: z.string(), skill: z.string(), dependencies: z.array(z.string()).optional(), input: z.record(z.any()).optional(), requires_tdd: z.boolean().optional() } }, async (a) => { const t = engine.addTask(a.workflowId, { name: a.name, agent: a.agent, skill: a.skill, dependencies: a.dependencies ?? [], input: a.input ?? {} }); try { const node = graphStore.addNode({ type: "task", label: a.name, properties: { taskId: t.id, workflowId: a.workflowId, agent: a.agent, skill: a.skill } }); const wfNodes = graphStore.findNodes(n => n.properties.workflowId === a.workflowId && n.type === "workflow"); if (wfNodes.length > 0 && node) graphStore.addEdge({ from: wfNodes[0].id, to: node.id, relation: "contains", weight: 1.0 }); } catch { /* non-critical */ } return ok(t); });
 server.registerTool("workflow.startTask", { description: "Start task", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async ({ workflow_id, task_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "running"; t.startedAt = new Date(); workflowStore.save(w); return ok(t); });
 server.registerTool("workflow.completeTask", { description: "Complete task", inputSchema: { workflow_id: z.string(), task_id: z.string(), result: z.record(z.any()).optional() } }, async ({ workflow_id, task_id, result }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "done"; t.completedAt = new Date(); if (result) t.output = result; const allDone = w.tasks.length > 0 && w.tasks.every((x: any) => x.state === "done"); if (allDone && w.state !== "DONE") { w.state = "DONE"; w.updatedAt = new Date(); } workflowStore.save(w); return ok(t); });
-server.registerTool("workflow.saveProgress", { description: "Save progress", inputSchema: { workflow_id: z.string(), task_id: z.string(), agent_name: z.string(), progress_note: z.string(), evidence: z.array(z.string()).optional() } }, async (a) => {
+server.registerTool("workflow.saveProgress", { description: "Save progress", inputSchema: { workflow_id: z.string(), task_id: z.string(), agent_name: z.string(), progress_note: z.string(), evidence: z.array(z.string()).optional(), test_evidence: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional(), testOutput: z.string().optional() }).optional() } }, async (a) => {
     if (prismaReady) { try { await saveProgressDb({ workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] }); } catch (e) { logger.warn("TaskProgressLog write failed: " + (e instanceof Error ? e.message : String(e))); } }
+    // Update task testEvidence if provided
+    if (prismaReady && a.test_evidence) { try { await prisma.task.update({ where: { id: a.task_id }, data: { testEvidence: a.test_evidence } }); } catch (e) { logger.warn("testEvidence update failed: " + (e instanceof Error ? e.message : String(e))); } }
     eventBus.emit("trace.completed", { workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] });
     trackTokens("workflow.saveProgress", a, { saved: true });
     return ok({ saved: true });
@@ -579,9 +581,19 @@ server.registerTool("filesystem.stat", { description: "File stat", inputSchema: 
 
 // --- REAL TOOLS: Review, Session, Local, Shell (29) ---
 // review (2)
-server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional() } }, async (a) => {
+server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional(), tests_verified: z.boolean().optional(), test_summary: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional() }).optional() } }, async (a) => {
   if (prismaReady) {
-    const review = await prisma.reviewDecision.create({ data: { workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent, decision: a.decision, notes: a.notes, gaps: a.gaps ?? [] } });
+    const review = await prisma.reviewDecision.create({ data: { workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent, decision: a.decision, notes: a.notes, gaps: a.gaps ?? [], testsVerified: a.tests_verified ?? false, testSummary: a.test_summary ?? {} } });
+    // TDD gate: if task requires TDD and review is APPROVED but tests not verified, block completion
+    if (a.decision === "APPROVED" && prismaReady) {
+      try {
+        const task = await prisma.task.findUniqueOrThrow({ where: { id: a.task_id } });
+        if ((task as any).requiresTdd && !a.tests_verified) {
+          await prisma.task.update({ where: { id: a.task_id }, data: { status: "RUNNING" } });
+          return ok({ submitted: true, id: review.id, _tddWarning: "Task requires TDD but tests_verified=false. Task stays RUNNING.", ...a });
+        }
+      } catch { /* non-critical */ }
+    }
     return ok({ submitted: true, id: review.id, ...a });
   }
   return ok({ submitted: true, ...a });

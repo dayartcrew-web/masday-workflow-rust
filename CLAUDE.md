@@ -26,13 +26,13 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                          v
-                             +-----------------------+
-                             |    WORKFLOW ENGINE     |
-                             |                       |
-                             |  Pure functions (msd) |
-                             |  + State machine (reborn) |
+                             +----------------------------+
+                             |    WORKFLOW ENGINE         |
+                             |                            |
+                             |  Pure functions (msd)      |
+                             |  + State machine (reborn)  |
                              |  + Session/Review/Parallel |
-                             +-----------+-----------+
+                             +-----------+----------------+
                                          |
                     +--------------------+--------------------+
                     |                    |                    |
@@ -49,17 +49,17 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
 ```
   +----------------------------------------------------------+
   |                   WORKING MEMORY                         |
-  |              In-process RAM, per session                  |
+  |              In-process RAM, per session                 |
   +----------------------------------------------------------+
                             |
   +----------------------------------------------------------+
   |                  EPISODIC MEMORY                         |
-  |            Last N messages per session                    |
+  |            Last N messages per session                   |
   +----------------------------------------------------------+
                             |
   +----------------------------------------------------------+
   |                 LONG-TERM MEMORY                         |
-  |   Scoring: similarity*0.6 + importance*0.2              |
+  |   Scoring: similarity*0.6 + importance*0.2               |
   |            + recency*0.1 + usage*0.1                     |
   |   importanceScore: type-based + content length bonus     |
   +----------------------------------------------------------+

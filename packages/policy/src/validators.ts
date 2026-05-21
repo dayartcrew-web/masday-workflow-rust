@@ -27,6 +27,7 @@ export interface ValidateCompletionInput {
   taskTitle?: string;
   acceptanceCriteria?: string[];
   requiredContext?: string[];
+  testEvidence?: { testFiles: string[]; testsPassed: boolean; coveragePercent?: number };
 }
 
 export interface ValidateParallelCompletionInput {
@@ -45,6 +46,8 @@ export interface PolicyResult {
   missing?: string[];
   driftDetected?: boolean;
   driftScore?: number;
+  tddRequired?: boolean;
+  testsVerified?: boolean;
 }
 
 export class PolicyValidator {
@@ -93,8 +96,10 @@ export class PolicyValidator {
   /**
    * Validate that task completion is allowed.
    *
-   * Checks that the latest review is APPROVED and optionally
-   * detects scope drift in the output text.
+   * Checks:
+   * 1. Latest review is APPROVED
+   * 2. If task requires TDD: tests exist, tests passed, reviewer verified tests
+   * 3. No scope drift in output text
    */
   async validateCompletion(input: ValidateCompletionInput): Promise<PolicyResult> {
     // Check review approval
@@ -123,6 +128,51 @@ export class PolicyValidator {
         ok: false,
         reason: `Latest review decision is ${latestReview.decision}, not APPROVED.`,
       };
+    }
+
+    // TDD gate: if testEvidence is provided, validate test completeness
+    if (input.testEvidence) {
+      const hasTests = input.testEvidence.testFiles.length > 0;
+      const testsPassed = input.testEvidence.testsPassed === true;
+
+      if (!hasTests) {
+        logger.warn(
+          { workflowId: input.workflowId, taskId: input.taskId },
+          'Completion blocked: no test files in testEvidence',
+        );
+        return {
+          ok: false,
+          reason: 'Task requires TDD but no test files found in testEvidence.',
+          tddRequired: true,
+          testsVerified: false,
+        };
+      }
+
+      if (!testsPassed) {
+        logger.warn(
+          { workflowId: input.workflowId, taskId: input.taskId },
+          'Completion blocked: tests not passing',
+        );
+        return {
+          ok: false,
+          reason: 'Task requires TDD but tests have not passed.',
+          tddRequired: true,
+          testsVerified: false,
+        };
+      }
+
+      if (!((latestReview as unknown as Record<string, unknown>).testsVerified)) {
+        logger.warn(
+          { workflowId: input.workflowId, taskId: input.taskId },
+          'Completion blocked: review did not verify tests',
+        );
+        return {
+          ok: false,
+          reason: 'Review must verify tests (testsVerified: true) before completing TDD task.',
+          tddRequired: true,
+          testsVerified: false,
+        };
+      }
     }
 
     // Check for scope drift if output text and task context are provided
@@ -155,7 +205,7 @@ export class PolicyValidator {
 
     logger.info(
       { workflowId: input.workflowId, taskId: input.taskId },
-      'Completion validated: review approved',
+      'Completion validated: review approved, TDD checks passed',
     );
 
     return { ok: true };

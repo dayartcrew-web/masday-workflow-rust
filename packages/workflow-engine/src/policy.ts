@@ -39,7 +39,9 @@ export async function validateCompletion(
   taskId: string,
   outputText?: string,
 ) {
-  const review = await (await import("@mcp-rebuild/db")).prisma.reviewDecision.findFirst({
+  const prisma = (await import("@mcp-rebuild/db")).prisma;
+
+  const review = await prisma.reviewDecision.findFirst({
     where: { workflowId, taskId },
     orderBy: { createdAt: "desc" },
   });
@@ -48,11 +50,39 @@ export async function validateCompletion(
     throw new Error("Completion blocked: review is not APPROVED");
   }
 
-  if (outputText) {
-    const task = await (await import("@mcp-rebuild/db")).prisma.task.findUniqueOrThrow({
-      where: { id: taskId },
-    });
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+  });
 
+  // TDD gate: if task requires TDD, enforce test evidence
+  if (task.requiresTdd) {
+    const testEvidence = task.testEvidence as Record<string, unknown> | null;
+    const hasTests = Array.isArray(testEvidence?.testFiles) && (testEvidence?.testFiles as string[]).length > 0;
+    const testsPassed = testEvidence?.testsPassed === true;
+
+    if (!hasTests) {
+      throw new Error(
+        "Completion blocked: task requires TDD but no test files found. " +
+        "Write tests first, then update task testEvidence via workflow.saveProgress.",
+      );
+    }
+
+    if (!testsPassed) {
+      throw new Error(
+        "Completion blocked: task requires TDD but tests have not passed. " +
+        "Run tests and ensure they pass before completing this task.",
+      );
+    }
+
+    if (!review.testsVerified) {
+      throw new Error(
+        "Completion blocked: task requires TDD but review did not verify tests. " +
+        "Reviewer must confirm tests exist and pass (testsVerified: true).",
+      );
+    }
+  }
+
+  if (outputText) {
     const result = detectScopeDrift({
       taskTitle: task.title,
       acceptanceCriteria: (task.acceptanceCriteria as string[]) ?? [],

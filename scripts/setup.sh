@@ -129,12 +129,17 @@ for skill_dir in .claude/skills/masday-*/; do
   cp -r "$skill_dir" "${HOME_OPENCODE}/skills/${skill_name}"
 done
 
-# 9. Summary
+# 9. Ensure .masday/ state directories exist (used by tdd-guard hook)
+mkdir -p "${ROOT_DIR}/.masday/cache/tasks"
+mkdir -p "${ROOT_DIR}/.masday/reports"
+
+# 10. Summary
 echo ""
 echo "=== Setup complete ==="
 echo "MCP server: masday (87 tools, 16 namespaces)"
 echo "  Agents:  $(ls .claude/agents/*.md 2>/dev/null | wc -l) registered"
 echo "  Hooks:   $(ls .claude/hooks/*.js .claude/hooks/*.mjs 2>/dev/null | wc -l) executable + $(ls .claude/hooks/*.md 2>/dev/null | wc -l) advisory"
+echo "  TDD guard: workflow-aware (requiresTdd tasks blocked without tests)"
 echo "  Skills:  ${copied} masday-* skills -> ${HOME_CLAUDE}/skills/"
 echo "  Opencode: $(ls "${HOME_OPENCODE}/agent/masday-"*.md 2>/dev/null | wc -l) global agents + $(ls "${ROOT_DIR}/.opencode/agent/masday-"*.md 2>/dev/null | wc -l) project agents"
 echo "  Embedding: EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-fastembed} (fastembed|ollama|openai)"

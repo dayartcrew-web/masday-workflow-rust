@@ -71,6 +71,8 @@ model Task {
   verificationSteps   Json     @default("[]")
   contextFingerprint  String?
   progressPercent     Int      @default(0)
+  requiresTdd         Boolean  @default(false)
+  testEvidence        Json     @default("{}")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -109,6 +111,8 @@ model ReviewDecision {
   decision      String
   notes         String
   gaps          Json     @default("[]")
+  testsVerified Boolean  @default(false)
+  testSummary   Json     @default("{}")
   createdAt     DateTime @default(now())
 
   workflow Workflow @relation(fields: [workflowId], references: [id])
