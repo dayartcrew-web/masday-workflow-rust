@@ -30,11 +30,10 @@ echo "=== masday-workflow-rebuild Setup ==="
 echo "[1/9] Installing dependencies..."
 pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
-# 2. Generate Prisma client (skip if client exists and MCP server may be running)
-echo "[2/9] Generating Prisma client..."
-PRISMA_CLIENT=$(ls node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client/index.js 2>/dev/null | head -1)
-if [ -n "$PRISMA_CLIENT" ]; then
-  echo "  Prisma client already exists, skipping (run 'pnpm db:generate' manually to update)"
+# 2. Generate Drizzle client (skip if client exists and MCP server may be running)
+echo "[2/9] Generating Drizzle client..."
+if [ -f "node_modules/drizzle-orm/index.js" ] || [ -f "packages/db/node_modules/drizzle-orm/index.js" ]; then
+  echo "  Drizzle client already exists, skipping (run 'pnpm db:generate' manually to update)"
 else
   pnpm db:generate
 fi

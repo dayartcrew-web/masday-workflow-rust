@@ -67,7 +67,6 @@ import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { db as drizzleDb, healthCheck as dbHealthCheck, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
 import * as path from "path";
 import * as fs from "fs";
-import { FlagEmbedding, EmbeddingModel } from "fastembed";
 import { dotToUnderscore, ToolNameRegistry, createAgent, createSkill, runDoctor } from "@mcp-rebuild/shared-utils";
 
 const logger = createLogger("MCPServer");
@@ -150,10 +149,12 @@ const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434"
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com").replace(/\/$/, "");
 
-let _embedModel: FlagEmbedding | null = null;
-async function getFastembedModel(): Promise<FlagEmbedding> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _embedModel: any = null;
+async function getFastembedModel() {
   if (!_embedModel) {
-    const modelId = (EMBEDDING_MODEL as EmbeddingModel) || EmbeddingModel.BGEBaseENV15;
+    const { FlagEmbedding, EmbeddingModel } = await import("fastembed");
+    const modelId = (EMBEDDING_MODEL as typeof EmbeddingModel[keyof typeof EmbeddingModel]) || EmbeddingModel.BGEBaseENV15;
     _embedModel = await FlagEmbedding.init({ model: modelId });
   }
   return _embedModel;
@@ -936,36 +937,46 @@ server.registerTool("projectRules.check", {
   } catch (e) { return ok({ error: String(e) }); }
 });
 
-const doctorReport = runDoctor(cwd);
-if (doctorReport.fixedCount > 0) {
-  for (const d of doctorReport.diagnoses.filter((d: { autoFixed?: boolean }) => d.autoFixed)) {
-    logger.info(`Doctor [${d.check}]: ${d.message}`);
-  }
-}
-
-await initDb();
-
-// Auto-run reminder check on startup
-if (dbReady) {
-  try {
-    const startupReminders = await checkReminders();
-    if (startupReminders.length > 0) {
-      logger.info({ count: startupReminders.length }, "Startup: detected stale/stuck/failed items");
-      for (const r of startupReminders) logger.info(`  [${r.severity}] ${r.type}: ${r.message}`);
-    }
-  } catch (e) { logger.warn("Startup reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
-
-  // Periodic background check every 15 minutes
-  const REMINDER_INTERVAL_MS = 15 * 60_000;
-  const reminderTimer = setInterval(async () => {
-    try {
-      const reminders = await checkReminders();
-      if (reminders.length > 0) logger.info({ count: reminders.length }, "Periodic reminder check: items detected");
-    } catch (e) { logger.warn("Periodic reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
-  }, REMINDER_INTERVAL_MS);
-  reminderTimer.unref(); // Don't keep process alive for timer
-}
-
+// Connect transport FIRST so MCP health check passes within 3s,
+// then run heavy init (doctor, DB, reminders) in background.
 const transport = new StdioServerTransport();
 await server.connect(transport);
-logger.info("MCP Server running on stdio (" + backendType + " backend" + (dbReady ? " + PostgreSQL + EpisodicMemory + Reminders(auto:15m)" : "") + ") — " + toolNameRegistry.size + " tools + " + toolNameRegistry.size + " underscore aliases (" + (toolNameRegistry.size * 2) + " total)");
+logger.info("MCP Server running on stdio (" + backendType + " backend) — " + toolNameRegistry.size + " tools + " + toolNameRegistry.size + " underscore aliases (" + (toolNameRegistry.size * 2) + " total)");
+
+// Heavy initialization in background (non-blocking)
+(async () => {
+  const doctorReport = runDoctor(cwd);
+  if (doctorReport.fixedCount > 0) {
+    for (const d of doctorReport.diagnoses.filter((d: { autoFixed?: boolean }) => d.autoFixed)) {
+      logger.info(`Doctor [${d.check}]: ${d.message}`);
+    }
+  }
+
+  await Promise.race([
+    initDb(),
+    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 2.5s, continuing without DB"); resolve(); }, 2500)),
+  ]);
+
+  // Auto-run reminder check on startup
+  if (dbReady) {
+    try {
+      const startupReminders = await checkReminders();
+      if (startupReminders.length > 0) {
+        logger.info({ count: startupReminders.length }, "Startup: detected stale/stuck/failed items");
+        for (const r of startupReminders) logger.info(`  [${r.severity}] ${r.type}: ${r.message}`);
+      }
+    } catch (e) { logger.warn("Startup reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
+
+    // Periodic background check every 15 minutes
+    const REMINDER_INTERVAL_MS = 15 * 60_000;
+    const reminderTimer = setInterval(async () => {
+      try {
+        const reminders = await checkReminders();
+        if (reminders.length > 0) logger.info({ count: reminders.length }, "Periodic reminder check: items detected");
+      } catch (e) { logger.warn("Periodic reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
+    }, REMINDER_INTERVAL_MS);
+    reminderTimer.unref(); // Don't keep process alive for timer
+  }
+
+  logger.info("Background init complete" + (dbReady ? " (PostgreSQL + EpisodicMemory + Reminders(auto:15m))" : " (JSON-only mode)"));
+})();

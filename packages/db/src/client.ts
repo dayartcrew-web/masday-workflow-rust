@@ -15,9 +15,12 @@ export async function disconnectDb(): Promise<void> {
   await client.end();
 }
 
-export async function healthCheck(): Promise<boolean> {
+export async function healthCheck(timeoutMs = 2000): Promise<boolean> {
   try {
-    await client`SELECT 1`;
+    await Promise.race([
+      client`SELECT 1`,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)),
+    ]);
     return true;
   } catch {
     return false;
