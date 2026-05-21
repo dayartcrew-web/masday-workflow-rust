@@ -11,11 +11,10 @@ Write-Host "=== masday-workflow-rebuild Setup ===" -ForegroundColor Cyan
 Write-Host "[1/9] Installing dependencies..." -ForegroundColor Yellow
 pnpm install
 
-# 2. Generate Prisma client (skip if client exists and MCP server may be running)
-Write-Host "[2/9] Generating Prisma client..." -ForegroundColor Yellow
-$prismaClient = Get-ChildItem -Path "$RootDir\node_modules\.pnpm\@prisma+client*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($prismaClient -and (Test-Path (Join-Path $prismaClient.FullName "node_modules\.prisma\client\index.js"))) {
-    Write-Host "  Prisma client already exists, skipping (run 'pnpm db:generate' manually to update)" -ForegroundColor Gray
+# 2. Generate Drizzle client (skip if client exists and MCP server may be running)
+Write-Host "[2/9] Generating Drizzle client..." -ForegroundColor Yellow
+if ((Test-Path "$RootDir\node_modules\drizzle-orm\index.js") -or (Test-Path "$RootDir\packages\db\node_modules\drizzle-orm\index.js")) {
+    Write-Host "  Drizzle client already exists, skipping (run 'pnpm db:generate' manually to update)" -ForegroundColor Gray
 } else {
     pnpm db:generate
 }
