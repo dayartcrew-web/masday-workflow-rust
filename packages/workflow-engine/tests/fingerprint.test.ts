@@ -97,4 +97,91 @@ describe('makeFingerprint', () => {
     const b = makeFingerprint(baseInput({ memoryIds: ['m3', 'm1', 'm2'] }));
     expect(a).toBe(b);
   });
+
+  it('all fields changed produces different hash', () => {
+    const a = makeFingerprint(baseInput());
+    const b = makeFingerprint({
+      workflowId: 'wf-diff',
+      planId: 'plan-diff',
+      taskId: 'task-diff',
+      acceptanceCriteria: ['different criteria'],
+      requiredContext: ['different context'],
+      documentIds: ['doc-diff'],
+      memoryIds: ['mem-diff'],
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it('handles very long strings without error', () => {
+    const longString = 'x'.repeat(10000);
+    const hash = makeFingerprint(
+      baseInput({
+        workflowId: longString,
+        acceptanceCriteria: [longString],
+      }),
+    );
+    expect(hash).toHaveLength(64);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('handles unicode and special characters', () => {
+    const hash = makeFingerprint(
+      baseInput({
+        workflowId: 'wf-🔥-日本語',
+        planId: 'plan-<script>alert(1)</script>',
+        taskId: "task-with'quotes\"and\\backslash",
+        acceptanceCriteria: ['ac\nwith\nnewlines', 'ac\twith\ttabs'],
+      }),
+    );
+    expect(hash).toHaveLength(64);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('null-like string values are treated as distinct', () => {
+    const a = makeFingerprint(baseInput({ workflowId: 'null' }));
+    const b = makeFingerprint(baseInput({ workflowId: 'undefined' }));
+    const c = makeFingerprint(baseInput({ workflowId: '' }));
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(c);
+    expect(b).not.toBe(c);
+  });
+
+  it('duplicate items in arrays are preserved (not deduplicated)', () => {
+    const a = makeFingerprint(baseInput({ acceptanceCriteria: ['ac', 'ac', 'ac'] }));
+    const b = makeFingerprint(baseInput({ acceptanceCriteria: ['ac'] }));
+    // After sorting: ['ac','ac','ac'] vs ['ac'] — different payloads
+    expect(a).not.toBe(b);
+  });
+
+  it('fingerprint is stable across multiple calls with same object reference', () => {
+    const input = baseInput();
+    const hashes = Array.from({ length: 100 }, () => makeFingerprint(input));
+    const unique = new Set(hashes);
+    expect(unique.size).toBe(1);
+  });
+
+  it('empty string fields produce same hash as other empty strings', () => {
+    const a = makeFingerprint(baseInput({ workflowId: '' }));
+    const b = makeFingerprint(baseInput({ workflowId: '' }));
+    expect(a).toBe(b);
+  });
+
+  it('single-item arrays sort to same result', () => {
+    const a = makeFingerprint(baseInput({ acceptanceCriteria: ['only'] }));
+    const b = makeFingerprint(baseInput({ acceptanceCriteria: ['only'] }));
+    expect(a).toBe(b);
+  });
+
+  it('fingerprint changes when any single array element changes', () => {
+    const base = baseInput({ acceptanceCriteria: ['a', 'b', 'c'] });
+    const original = makeFingerprint(base);
+
+    const changed1 = makeFingerprint({ ...base, acceptanceCriteria: ['a', 'B', 'c'] });
+    const changed2 = makeFingerprint({ ...base, acceptanceCriteria: ['a', 'b', 'c', 'd'] });
+    const changed3 = makeFingerprint({ ...base, acceptanceCriteria: ['a', 'b'] });
+
+    expect(changed1).not.toBe(original);
+    expect(changed2).not.toBe(original);
+    expect(changed3).not.toBe(original);
+  });
 });

@@ -14,7 +14,7 @@
  *   - In mcp__masday__* prefixed calls, use: mcp__masday__workflow_getActive (SDK-resolved name)
  *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive
  *
- * TOTAL TOOLS: 87 (all real implementations)
+ * TOTAL TOOLS: 88 (all real implementations)
  *
  * Persistence:
  *   - DualWriteWorkflowStore: all workflow operations replicate to PostgreSQL in real-time via Prisma
@@ -33,7 +33,7 @@
  *                  resume_suggestion
  *   memory (11): store, store_research, recall_recent, recall_documents, recall_document_by_type,
  *                recall_by_task, update, delete, delete_by_workflow, search, stats
- *   semantic-search (3): search_hybrid_context_pack, search_context_fingerprint, code_search
+ *   semantic-search (4): search_hybrid_context_pack, search_context_fingerprint, make_fingerprint, code_search
  *   policy (6): check_session_readiness, validate_execution, validate_completion,
  *               validate_parallel_completion, detect_scope_drift, require_context_refresh
  *   capability (11): list_agents, list_skills, list_templates, match_agent, system_readiness,
@@ -59,7 +59,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { EventBus, createLogger, setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
 import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
-import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderPrisma, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats } from "@mcp-rebuild/workflow-engine";
+import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderPrisma, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
 import { setEpisodicPrisma, setGraphPrisma, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
@@ -431,6 +431,33 @@ server.registerTool("semantic-search.search_context_fingerprint", { description:
 server.registerTool("semantic-search.code_search", { description: "Code search", inputSchema: { query: z.string() } }, async ({ query }) => {
   if (prismaReady) { try { await logRetrieval({ agentName: "mcp", query, source: "code_search", results: {} }); } catch { /* non-critical */ } }
   return ok({ query, results: [] });
+});
+server.registerTool("semantic-search.make_fingerprint", {
+  description: "Generate a deterministic SHA-256 fingerprint from structured context data. All array fields are sorted before hashing to ensure stable output.",
+  inputSchema: {
+    workflow_id: z.string(),
+    plan_id: z.string(),
+    task_id: z.string(),
+    acceptance_criteria: z.array(z.string()).optional().default([]),
+    required_context: z.array(z.string()).optional().default([]),
+    document_ids: z.array(z.string()).optional().default([]),
+    memory_ids: z.array(z.string()).optional().default([]),
+  },
+}, async (a) => {
+  const fingerprint = makeFingerprint({
+    workflowId: a.workflow_id,
+    planId: a.plan_id,
+    taskId: a.task_id,
+    acceptanceCriteria: a.acceptance_criteria,
+    requiredContext: a.required_context,
+    documentIds: a.document_ids,
+    memoryIds: a.memory_ids,
+  });
+  // Persist to task if Prisma is ready
+  if (prismaReady) {
+    try { await prisma.task.updateMany({ where: { workflowId: a.workflow_id, id: a.task_id }, data: { contextFingerprint: fingerprint } }); } catch { /* non-critical */ }
+  }
+  return ok({ fingerprint, workflowId: a.workflow_id, planId: a.plan_id, taskId: a.task_id, inputHashLength: JSON.stringify(a).length });
 });
 
 server.registerTool("policy.check_session_readiness", { description: "Session readiness", inputSchema: { sessionKey: z.string() } }, async ({ sessionKey }) => {
