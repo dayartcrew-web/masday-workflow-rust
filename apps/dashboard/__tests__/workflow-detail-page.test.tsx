@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import WorkflowDetailPage from '@/app/workflows/[id]/page';
 import type { Task, Workflow } from '@/lib/types';
@@ -99,8 +99,8 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    // Spinner element
-    expect(screen.getByRole('progressbar', { hidden: true }) || document.querySelector('.animate-spin')).toBeInTheDocument();
+    // Spinner element - look for the spinner by its animation class
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
   });
 
   it('shows "Workflow not found" when no workflow is loaded', () => {
@@ -296,7 +296,7 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    fireEvent.click(screen.getByText('No Output'));
+    fireEvent.click(within(screen.getByRole('table')).getByText('No Output'));
 
     expect(screen.queryByText(/Output:/)).not.toBeInTheDocument();
   });
@@ -308,8 +308,8 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    fireEvent.click(screen.getByText('Closeable Task'));
-    expect(screen.getByText('Closeable Task')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('table')).getByText('Closeable Task'));
+    expect(screen.getByText('Close')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Close'));
 
@@ -323,20 +323,20 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: /arrow left/i }) || screen.getAllByRole('button')[0]);
+    fireEvent.click(screen.getAllByRole('button')[0]);
 
     expect(push).toHaveBeenCalledWith('/workflows');
   });
 
   it('keeps selected task details in sync with the latest workflow task state', () => {
-    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'pending' }));
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [createTask({ state: 'pending' })] });
 
     const { rerender } = render(<WorkflowDetailPage />);
 
     fireEvent.click(screen.getAllByText('Plan merge')[0]);
     expect(screen.getByText((_, element) => element?.textContent === 'State: pending')).toBeInTheDocument();
 
-    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'running' }));
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [createTask({ state: 'running' })] });
     rerender(<WorkflowDetailPage />);
 
     expect(screen.getByText((_, element) => element?.textContent === 'State: running')).toBeInTheDocument();
@@ -344,7 +344,7 @@ describe('WorkflowDetailPage', () => {
   });
 
   it('ignores task.* websocket events for other workflows when workflowId is present', () => {
-    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'pending' }));
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [createTask({ state: 'pending' })] });
 
     const { rerender } = render(<WorkflowDetailPage />);
 
@@ -358,7 +358,7 @@ describe('WorkflowDetailPage', () => {
   });
 
   it('applies task.* websocket events without workflowId only when the task belongs to the selected workflow', () => {
-    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ id: 'task-1', state: 'pending' }));
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [createTask({ id: 'task-1', state: 'pending' })] });
 
     const { rerender } = render(<WorkflowDetailPage />);
 
@@ -381,7 +381,7 @@ describe('WorkflowDetailPage', () => {
   });
 
   it('ignores non-task websocket events', () => {
-    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'pending' }));
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [createTask({ state: 'pending' })] });
 
     const { rerender } = render(<WorkflowDetailPage />);
 
@@ -395,7 +395,7 @@ describe('WorkflowDetailPage', () => {
   });
 
   it('ignores task events without taskId or state', () => {
-    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'pending' }));
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [createTask({ state: 'pending' })] });
 
     const { rerender } = render(<WorkflowDetailPage />);
 
