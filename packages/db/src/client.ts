@@ -6,7 +6,7 @@ const connectionString = process.env.DATABASE_URL!;
 const client = postgres(connectionString);
 export const db = drizzle(client, { schema });
 
-// Legacy prisma stub — removed after full migration
+// Deprecated: apps/api still imports { prisma } — migrate to Drizzle db and remove this stub
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _prisma: any = null;
 export { _prisma as prisma };

@@ -1,11 +1,13 @@
 /**
  * Regenerate null contextFingerprint values for all tasks.
- * Uses the db package's prisma instance which is already configured.
+ * Uses the db package's Drizzle instance.
  *
  * Run: npx tsx scripts/regenerate-fingerprints.ts
  */
 import { createHash } from 'crypto';
-import { prisma } from '../packages/db/src/index.js';
+import { db, disconnectDb } from '../packages/db/src/index.js';
+import { tasks, memories, contextDocuments } from '../packages/db/src/schema.js';
+import { isNull, or, eq, desc } from 'drizzle-orm';
 
 function makeFingerprint(input: {
   workflowId: string;
@@ -32,29 +34,25 @@ function makeFingerprint(input: {
 }
 
 async function main() {
-  const tasks = await prisma.task.findMany({
-    where: { OR: [{ contextFingerprint: null }, { contextFingerprint: '' }] },
-  });
+  const nullTasks = await db.select().from(tasks)
+    .where(or(isNull(tasks.contextFingerprint), eq(tasks.contextFingerprint, '')));
 
-  console.log('Found', tasks.length, 'tasks with null fingerprints');
+  console.log('Found', nullTasks.length, 'tasks with null fingerprints');
 
   let updated = 0;
   let skipped = 0;
 
-  for (const task of tasks) {
+  for (const task of nullTasks) {
     try {
-      const memIds = await prisma.memory.findMany({
-        where: { OR: [{ workflowId: task.workflowId }, { taskId: task.id }] },
-        select: { id: true },
-        take: 20,
-        orderBy: { importanceScore: 'desc' },
-      });
-      const docIds = await prisma.contextDocument.findMany({
-        where: { workflowId: task.workflowId },
-        select: { id: true },
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-      });
+      const memRows = await db.select({ id: memories.id }).from(memories)
+        .where(or(eq(memories.workflowId, task.workflowId), eq(memories.taskId, task.id)))
+        .orderBy(desc(memories.importanceScore))
+        .limit(20);
+
+      const docRows = await db.select({ id: contextDocuments.id }).from(contextDocuments)
+        .where(eq(contextDocuments.workflowId, task.workflowId))
+        .orderBy(desc(contextDocuments.createdAt))
+        .limit(10);
 
       const fp = makeFingerprint({
         workflowId: task.workflowId,
@@ -62,14 +60,13 @@ async function main() {
         taskId: task.id,
         acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? (task.acceptanceCriteria as string[]) : [],
         requiredContext: Array.isArray(task.requiredContext) ? (task.requiredContext as string[]) : [],
-        documentIds: docIds.map((d: { id: string }) => d.id),
-        memoryIds: memIds.map((m: { id: string }) => m.id),
+        documentIds: docRows.map(d => d.id),
+        memoryIds: memRows.map(m => m.id),
       });
 
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { contextFingerprint: fp },
-      });
+      await db.update(tasks)
+        .set({ contextFingerprint: fp })
+        .where(eq(tasks.id, task.id));
       updated++;
     } catch (e: unknown) {
       skipped++;
@@ -79,13 +76,11 @@ async function main() {
 
   console.log('Updated:', updated, '| Skipped:', skipped);
 
-  // Verify
-  const remaining = await prisma.task.count({
-    where: { OR: [{ contextFingerprint: null }, { contextFingerprint: '' }] },
-  });
-  console.log('Remaining null fingerprints:', remaining);
+  const remaining = await db.select().from(tasks)
+    .where(or(isNull(tasks.contextFingerprint), eq(tasks.contextFingerprint, '')));
+  console.log('Remaining null fingerprints:', remaining.length);
 
-  await prisma.$disconnect();
+  await disconnectDb();
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
