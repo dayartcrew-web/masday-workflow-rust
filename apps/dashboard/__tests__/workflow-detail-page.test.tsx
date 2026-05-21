@@ -1,14 +1,15 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import WorkflowDetailPage from '@/app/workflows/[id]/page';
 import type { Task, Workflow } from '@/lib/types';
 
 const push = vi.fn();
+const replace = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'wf-1' }),
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
 }));
 
 vi.mock('@/components/app-shell', () => ({
@@ -16,7 +17,15 @@ vi.mock('@/components/app-shell', () => ({
 }));
 
 vi.mock('@/components/workflow-dag', () => ({
-  WorkflowDag: () => <div data-testid="workflow-dag" />,
+  WorkflowDag: ({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick?: (task: Task) => void }) => (
+    <div data-testid="workflow-dag">
+      {tasks.map((t) => (
+        <button key={t.id} onClick={() => onTaskClick?.(t)} data-testid={`dag-task-${t.id}`}>
+          {t.name}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 
 const workflowStoreState: {
@@ -33,8 +42,10 @@ const workflowStoreState: {
   updateTaskState: vi.fn(),
 };
 
-const websocketStoreState = {
-  latestEvent: null as { type: string; data: unknown } | null,
+const websocketStoreState: {
+  latestEvent: { type: string; data: unknown } | null;
+} = {
+  latestEvent: null,
 };
 
 vi.mock('@/stores/workflow-store', () => ({
@@ -57,26 +68,264 @@ function createTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
-function createWorkflow(task: Task): Workflow {
+function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
     id: 'wf-1',
     name: 'Merge workflow',
     description: 'Test workflow',
     state: 'running',
-    tasks: [task],
+    tasks: [],
     metadata: {},
     createdAt: '2026-05-16T00:00:00.000Z',
     updatedAt: '2026-05-16T00:00:00.000Z',
+    ...overrides,
   };
 }
 
 describe('WorkflowDetailPage', () => {
   beforeEach(() => {
     push.mockReset();
+    replace.mockReset();
     workflowStoreState.fetchWorkflow.mockReset();
     workflowStoreState.executeWorkflow.mockReset();
     workflowStoreState.updateTaskState.mockReset();
     websocketStoreState.latestEvent = null;
+    workflowStoreState.selectedWorkflow = null;
+    workflowStoreState.isLoading = false;
+  });
+
+  it('shows loading spinner when loading and no workflow', () => {
+    workflowStoreState.isLoading = true;
+
+    render(<WorkflowDetailPage />);
+
+    // Spinner element
+    expect(screen.getByRole('progressbar', { hidden: true }) || document.querySelector('.animate-spin')).toBeInTheDocument();
+  });
+
+  it('shows "Workflow not found" when no workflow is loaded', () => {
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('Workflow not found')).toBeInTheDocument();
+  });
+
+  it('calls fetchWorkflow on mount with the workflow ID', () => {
+    render(<WorkflowDetailPage />);
+
+    expect(workflowStoreState.fetchWorkflow).toHaveBeenCalledWith('wf-1');
+  });
+
+  it('renders workflow name and description', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      name: 'My Workflow',
+      description: 'A test workflow description',
+      tasks: [],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('My Workflow')).toBeInTheDocument();
+    expect(screen.getByText('A test workflow description')).toBeInTheDocument();
+  });
+
+  it('renders workflow state badge', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({ state: 'EXECUTE' });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('EXECUTE')).toBeInTheDocument();
+  });
+
+  it('shows DONE state with emerald styling', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({ state: 'DONE' });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('DONE')).toBeInTheDocument();
+  });
+
+  it('shows FAILED state with red styling', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({ state: 'FAILED' });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('FAILED')).toBeInTheDocument();
+  });
+
+  it('calls executeWorkflow when Execute button is clicked', async () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [] });
+    workflowStoreState.executeWorkflow.mockResolvedValue(undefined);
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /execute/i }));
+
+    await waitFor(() => {
+      expect(workflowStoreState.executeWorkflow).toHaveBeenCalledWith('wf-1');
+      expect(workflowStoreState.fetchWorkflow).toHaveBeenCalledWith('wf-1');
+    });
+  });
+
+  it('shows task count and progress bar', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [
+        createTask({ id: 't1', state: 'done' }),
+        createTask({ id: 't2', state: 'done' }),
+        createTask({ id: 't3', state: 'running' }),
+        createTask({ id: 't4', state: 'pending' }),
+      ],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('2/4 tasks')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+  });
+
+  it('shows 0% progress when no tasks', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [] });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('0/0 tasks')).toBeInTheDocument();
+    expect(screen.getByText('0%')).toBeInTheDocument();
+  });
+
+  it('renders tasks in the DataTable', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [
+        createTask({ id: 't1', name: 'Build', state: 'done', agent: 'builder', skill: 'build' }),
+        createTask({ id: 't2', name: 'Test', state: 'running', agent: 'tester', skill: 'test' }),
+      ],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('Build')).toBeInTheDocument();
+    expect(screen.getByText('Test')).toBeInTheDocument();
+    expect(screen.getByText('builder')).toBeInTheDocument();
+    expect(screen.getByText('tester')).toBeInTheDocument();
+  });
+
+  it('shows task state badges with correct colors', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [
+        createTask({ id: 't1', state: 'done' }),
+        createTask({ id: 't2', state: 'failed' }),
+        createTask({ id: 't3', state: 'running' }),
+        createTask({ id: 't4', state: 'pending' }),
+      ],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    expect(screen.getByText('done')).toBeInTheDocument();
+    expect(screen.getByText('failed')).toBeInTheDocument();
+    expect(screen.getByText('running')).toBeInTheDocument();
+    expect(screen.getByText('pending')).toBeInTheDocument();
+  });
+
+  it('selects a task when clicking on a row', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [createTask({ id: 't1', name: 'Selected Task' })],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByText('Selected Task'));
+
+    expect(screen.getByText('Selected Task')).toBeInTheDocument();
+  });
+
+  it('selects a task when clicking on a DAG node', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [createTask({ id: 't1', name: 'DAG Task' })],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByTestId('dag-task-t1'));
+
+    // Task detail panel should appear
+    expect(screen.getByText('DAG Task')).toBeInTheDocument();
+  });
+
+  it('shows selected task details panel', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [createTask({
+        id: 't1',
+        name: 'Detail Task',
+        state: 'running',
+        agent: 'executor',
+        skill: 'coding',
+        dependencies: ['dep-1', 'dep-2'],
+      })],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByText('Detail Task'));
+
+    expect(screen.getByText((_, el) => el?.textContent === 'State: running')).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === 'Agent: executor')).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === 'Skill: coding')).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === 'Dependencies: 2')).toBeInTheDocument();
+  });
+
+  it('shows task output when available', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [createTask({
+        id: 't1',
+        name: 'Output Task',
+        output: { result: 'success', files: ['a.ts', 'b.ts'] },
+      })],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByText('Output Task'));
+
+    expect(screen.getByText(/Output:/)).toBeInTheDocument();
+    expect(screen.getByText(/"result": "success"/)).toBeInTheDocument();
+  });
+
+  it('does not show output section when task has no output', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [createTask({ id: 't1', name: 'No Output' })],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByText('No Output'));
+
+    expect(screen.queryByText(/Output:/)).not.toBeInTheDocument();
+  });
+
+  it('closes task detail panel when Close button is clicked', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({
+      tasks: [createTask({ id: 't1', name: 'Closeable Task' })],
+    });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByText('Closeable Task'));
+    expect(screen.getByText('Closeable Task')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Close'));
+
+    // Task detail should be gone (only the table row remains)
+    const closeButtons = screen.queryAllByText('Close');
+    expect(closeButtons).toHaveLength(0);
+  });
+
+  it('navigates back to workflows list when back button is clicked', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow({ tasks: [] });
+
+    render(<WorkflowDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /arrow left/i }) || screen.getAllByRole('button')[0]);
+
+    expect(push).toHaveBeenCalledWith('/workflows');
   });
 
   it('keeps selected task details in sync with the latest workflow task state', () => {
@@ -125,6 +374,34 @@ describe('WorkflowDetailPage', () => {
     websocketStoreState.latestEvent = {
       type: 'task.updated',
       data: { taskId: 'task-other', state: 'running' },
+    };
+    rerender(<WorkflowDetailPage />);
+
+    expect(workflowStoreState.updateTaskState).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-task websocket events', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'pending' }));
+
+    const { rerender } = render(<WorkflowDetailPage />);
+
+    websocketStoreState.latestEvent = {
+      type: 'workflow.updated',
+      data: { workflowId: 'wf-1', state: 'done' },
+    };
+    rerender(<WorkflowDetailPage />);
+
+    expect(workflowStoreState.updateTaskState).not.toHaveBeenCalled();
+  });
+
+  it('ignores task events without taskId or state', () => {
+    workflowStoreState.selectedWorkflow = createWorkflow(createTask({ state: 'pending' }));
+
+    const { rerender } = render(<WorkflowDetailPage />);
+
+    websocketStoreState.latestEvent = {
+      type: 'task.updated',
+      data: { workflowId: 'wf-1' }, // missing taskId and state
     };
     rerender(<WorkflowDetailPage />);
 
