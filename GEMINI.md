@@ -30,17 +30,17 @@ This project uses **masday-workflow-rebuild** for workflow management.
 
 ## Persistence
 
-All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Prisma) in real-time.
+All tools use **DualWriteStore**: local cache (SQLite/JSON) + PostgreSQL (Drizzle) in real-time.
 - Workflow operations replicate to Supabase PostgreSQL via `DualWriteWorkflowStore`
-- Memory tools use hybrid mode: Prisma first, JSON cache fallback
+- Memory tools use hybrid mode: Drizzle first, JSON cache fallback
 - Review, session, policy tools read/write directly to PostgreSQL tables
 - Shell tools (git, npm, docker, cicd, github, tests) use real `execSync` calls
 - **TaskProgressLog** populated via `saveProgressDb()` on `workflow.saveProgress`
 - **RetrievalLog** populated via `logRetrieval()` on `memory.search`, `semantic-search.code_search`, `search_hybrid_context_pack`
-- **ContextDocument** populated via `prisma.contextDocument.create` on `memory.store_research`
+- **ContextDocument** populated via `drizzle().insert(contextDocument)` on `memory.store_research`
 - **TokenUsage** populated via `trackTokens()` on key tool calls (saveProgress, store_research)
-- **EpisodicMemory** populated via `setEpisodicPrisma()` in `EpisodicMemory.add()`
-- **GraphNode/GraphEdge** populated via `setGraphPrisma()` in `GraphStore.addNode()/addEdge()`
+- **EpisodicMemory** populated via `setEpisodicDrizzle()` in `EpisodicMemory.add()`
+- **GraphNode/GraphEdge** populated via `setGraphDrizzle()` in `GraphStore.addNode()/addEdge()`
 
 **Status Conventions (ALL UPPERCASE in PostgreSQL):**
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED

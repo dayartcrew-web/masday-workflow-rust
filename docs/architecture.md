@@ -4,7 +4,7 @@
 
 ## Overview
 
-Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Prisma) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 13 packages and a single unified MCP server app exposing 87 tools.
+Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). It merges a 5-domain MCP server architecture with a 4-layer memory system, 3-tier workflow engine, and code skills -- all backed by PostgreSQL (Drizzle) with a JSON/SQLite cache fallback. The repository is a pnpm monorepo with 13 packages and a single unified MCP server app exposing 87 tools.
 
 ## System Architecture
 
@@ -64,7 +64,7 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 │      Skill Layer         │  │   Persistence Layer          │
 │  ┌────────────────────┐  │  │  ┌────────────────────────┐  │
 │  │ filesystem.*       │  │  │  │ DualWriteStore         │  │
-│  │ git.*              │  │  │  │ (PostgreSQL via Prisma │  │
+│  │ git.*              │  │  │  │ (PostgreSQL via Drizzle │  │
 │  │ code.*             │  │  │  │  + JSON cache fallback)│  │
 │  │ tests.*            │  │  │  └────────────────────────┘  │
 │  │ npm.*              │  │  │  ┌────────────────────────┐  │
@@ -91,8 +91,8 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 | Validation      | Zod                                           | Schema validation                    |
 | Logging         | Pino                                          | Structured logging                   |
 | Events          | EventEmitter3                                 | Pub/sub event bus                    |
-| Storage         | DualWriteStore (PostgreSQL via Prisma + JSON/SQLite cache) | Workflow state persistence |
-| ORM             | Prisma                                        | Database access, schema, migrations  |
+| Storage         | DualWriteStore (PostgreSQL via Drizzle + JSON/SQLite cache) | Workflow state persistence |
+| ORM             | Drizzle                                       | Database access, schema, migrations  |
 | Semantic Search | pgvector                                      | Vector similarity in PostgreSQL      |
 | Module System   | ESM (`"type": "module"`, NodeNext resolution) | All packages use ESM                 |
 | Testing         | Vitest (globals enabled)                      | Unit, integration, benchmarks        |
@@ -104,8 +104,8 @@ masday-workflow-rebuild/
 ├── packages/
 │   ├── core/                  # Shared types, logger, EventBus, tracing, metrics
 │   ├── shared-utils/          # Logger, IDs, hash, env utilities
-│   ├── db/                    # Prisma schema (16 models + pgvector), client singleton
-│   ├── store/                 # StorageBackend, SQLite, JSON, Prisma adapters
+│   ├── db/                    # Drizzle schema (16 models + pgvector), client singleton (packages/db/src/schema.ts)
+│   ├── store/                 # StorageBackend, SQLite, JSON, Drizzle adapters
 │   ├── llm/                   # Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker
 │   ├── memory/                # 4-layer memory (working, episodic, long-term, graph), scoring, BM25
 │   ├── workflow-engine/       # Pure functions + state machine, DAG, session, review, parallel, drift
@@ -177,8 +177,8 @@ DualWriteStore (PostgreSQL + JSON cache)     .masday/ (Local)
 
 ### State Ownership
 
-- **PostgreSQL is the operational source of truth** for active workflows, task state, task results, memory, review decisions, session state, and all runtime execution metadata. All writes go through DualWriteStore which replicates to PostgreSQL in real-time via Prisma.
-- **JSON cache is the fallback** when PostgreSQL is unavailable. Memory operations use hybrid mode: Prisma first, JSON cache fallback.
+- **PostgreSQL is the operational source of truth** for active workflows, task state, task results, memory, review decisions, session state, and all runtime execution metadata. All writes go through DualWriteStore which replicates to PostgreSQL in real-time via Drizzle.
+- **JSON cache is the fallback** when PostgreSQL is unavailable. Memory operations use hybrid mode: Drizzle first, JSON cache fallback.
 - **`.masday/` is the project-local artifact space** for human-readable outputs such as research snapshots, context summaries, plans, and notes. If a command exports workflow information into `.masday/`, that export is a convenience artifact, not the authoritative runtime state store.
 
 ## Status Conventions
@@ -192,30 +192,30 @@ All status values are stored in **UPPERCASE** in PostgreSQL:
 | Plan     | ACTIVE, PENDING, READY, DONE                                           |
 | Review   | APPROVED, REWORK_REQUIRED, BLOCKED                                     |
 
-DualWriteStore maps in-memory lowercase `TaskState` values to UPPERCASE for Prisma persistence.
+DualWriteStore maps in-memory lowercase `TaskState` values to UPPERCASE for Drizzle persistence.
 
-## 16 Prisma Tables
+## 16 Drizzle Tables
 
-All 16 Prisma models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
+All 16 Drizzle models are actively populated by the MCP server. Each table is wired through a specific persistence mechanism:
 
 | Table             | Wired Via              | Trigger                                    |
 | ----------------- | ---------------------- | ------------------------------------------ |
 | Workflow          | DualWriteStore         | workflow.create, execute, delete           |
 | Task              | DualWriteStore         | addTask, startTask, completeTask           |
 | Plan              | DualWriteStore         | createPlan                                 |
-| Memory            | persistToPrisma()      | memory.store, store_research               |
-| ReviewDecision    | Prisma direct          | review.submit                              |
-| SessionState      | Prisma direct          | session.patch_state                        |
-| ParallelBranch    | Prisma direct          | workflow.createParallelBranches            |
-| ContextDocument   | Prisma direct          | memory.store_research                      |
+| Memory            | persistToDb()      | memory.store, store_research               |
+| ReviewDecision    | Drizzle direct          | review.submit                              |
+| SessionState      | Drizzle direct          | session.patch_state                        |
+| ParallelBranch    | Drizzle direct          | workflow.createParallelBranches            |
+| ContextDocument   | Drizzle direct          | memory.store_research                      |
 | TaskProgressLog   | saveProgressDb()       | workflow.saveProgress                      |
 | RetrievalLog      | logRetrieval()         | memory.search, semantic-search.code_search, search_hybrid_context_pack |
 | TokenUsage        | trackTokens()          | workflow.saveProgress, memory.store_research |
-| EpisodicMemory    | setEpisodicPrisma()    | EpisodicMemory.add()                       |
-| GraphNode         | setGraphPrisma()       | GraphStore.addNode()                       |
-| GraphEdge         | setGraphPrisma()       | GraphStore.addEdge()                       |
-| WorkflowReminder  | setReminderPrisma()    | reminder.check                             |
-| LlmProviderConfig | Prisma direct          | LLM provider configuration storage         |
+| EpisodicMemory    | setEpisodicDb()    | EpisodicMemory.add()                       |
+| GraphNode         | setGraphDb()       | GraphStore.addNode()                       |
+| GraphEdge         | setGraphDb()       | GraphStore.addEdge()                       |
+| WorkflowReminder  | setReminderDb()    | reminder.check                             |
+| LlmProviderConfig | Drizzle direct          | LLM provider configuration storage         |
 
 ## Workflow States
 
@@ -307,7 +307,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   │                  EPISODIC MEMORY                         │
   │            Last N messages per session                   │
   │         Chat history -- recent conversation context      │
-  │         Persisted to EpisodicMemory table via Prisma     │
+  │         Persisted to EpisodicMemory table via Drizzle     │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐
@@ -316,7 +316,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   │   Scoring: similarity*0.6 + importance*0.2                │
   │            + recency*0.1 + usage*0.1                      │
   │                                                          │
-  │   Memory table (PostgreSQL via Prisma)                   │
+  │   Memory table (PostgreSQL via Drizzle)                   │
   │   + BM25 + fastembed vector search (pgvector)            │
   └──────────────────────────────────────────────────────────┘
                             │
@@ -382,6 +382,6 @@ DAGExecutor.executeTask()
 ### Additional Runtime Behaviors
 
 - **Auto-task creation**: `createPlan` auto-creates tasks from `plan.tasks[]` entries
-- **Memory persistence**: Memory store persists to PostgreSQL after each add (calls `persistToPrisma()`), with JSON cache fallback
+- **Memory persistence**: Memory store persists to PostgreSQL after each add (calls `persistToDb()`), with JSON cache fallback
 - **Startup initialization**: Session, Review, and Parallel tables are initialized at startup
 - **DualWrite replication**: All workflow/task/plan operations replicate to PostgreSQL in real-time via DualWriteStore wrapping WorkflowStore

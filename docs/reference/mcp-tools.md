@@ -4,10 +4,10 @@ This page is the canonical contributor-facing reference for the MCP tool surface
 
 ## Persistence
 
-- **DualWriteWorkflowStore**: all workflow operations replicate to PostgreSQL in real-time via Prisma
-- **Memory**: hybrid mode -- Prisma first, JSON cache fallback when PostgreSQL is unavailable
-- **Review tools**: real Prisma writes to `ReviewDecision` table
-- **Session tools**: real Prisma reads/writes to `SessionState` table
+- **DualWriteWorkflowStore**: all workflow operations replicate to PostgreSQL in real-time via Drizzle
+- **Memory**: hybrid mode -- Drizzle first, JSON cache fallback when PostgreSQL is unavailable
+- **Review tools**: Real Drizzle writes to `ReviewDecision` table
+- **Session tools**: Real Drizzle reads/writes to `SessionState` table
 - **Policy tools**: real validation against DB (workflow status, review decisions, branch status, fingerprints)
 - **Shell tools**: real `execSync` calls (git, pnpm, docker, gh CLI, test runner)
 - **Capability tools**: real `.claude/` directory reads with frontmatter parsing
@@ -42,18 +42,18 @@ DualWriteStore + OrchestratingEngine with PostgreSQL real-time replication.
 
 ## memory (11 tools)
 
-Prisma-first with JSON cache fallback (hybrid mode).
+Drizzle-first with JSON cache fallback (hybrid mode).
 
-- `memory.store` -- Store memory (writes to both Prisma and JSON cache)
+- `memory.store` -- Store memory (writes to both Drizzle and JSON cache)
 - `memory.store_research` -- Store research results
-- `memory.recall_recent` -- Recall recent memories (Prisma query, JSON fallback)
+- `memory.recall_recent` -- Recall recent memories (Drizzle query, JSON fallback)
 - `memory.recall_documents` -- Recall docs for a workflow
 - `memory.recall_document_by_type` -- Recall by source type
 - `memory.recall_by_task` -- Recall by task ID
 - `memory.update` -- Update memory
 - `memory.delete` -- Delete memory
 - `memory.delete_by_workflow` -- Delete all memories for a workflow
-- `memory.search` -- Search memories (case-insensitive text search, Prisma or JSON)
+- `memory.search` -- Search memories (case-insensitive text search, Drizzle or JSON)
 - `memory.stats` -- Memory stats (total count, by type)
 
 ## semantic-search (3 tools)
@@ -64,7 +64,7 @@ Prisma-first with JSON cache fallback (hybrid mode).
 
 ## policy (6 tools)
 
-Real Prisma validation against DB state.
+Real Drizzle validation against DB state.
 
 - `policy.check_session_readiness` -- Session readiness (checks SessionState in DB)
 - `policy.validate_execution` -- Validate execution (checks workflow/task status in DB)
@@ -82,7 +82,7 @@ Real `.claude/` directory reads with frontmatter parsing.
 - `capability.list_templates` -- List templates
 - `capability.match_agent` -- Match agent (scores agents against task description)
 - `capability.system_readiness` -- System readiness (backend type + PostgreSQL status)
-- `capability.workflow_audit` -- Audit (Prisma query for running tasks with no progress)
+- `capability.workflow_audit` -- Audit (Drizzle query for running tasks with no progress)
 - `capability.create_agent` -- Create agent (writes frontmatter `.md` file)
 - `capability.create_skill` -- Create skill (writes frontmatter `.md` file)
 - `capability.scaffold_feature` -- Scaffold feature (creates agent + skill files)
@@ -101,14 +101,14 @@ Real `fs` operations.
 
 ## review (2 tools)
 
-Real Prisma writes to `ReviewDecision` table.
+Real Drizzle writes to `ReviewDecision` table.
 
 - `review.submit` -- Submit review (creates ReviewDecision row in DB)
 - `review.get_latest` -- Get latest review (queries ReviewDecision in DB)
 
 ## session (3 tools)
 
-Real Prisma reads/writes to `SessionState` table.
+Real Drizzle reads/writes to `SessionState` table.
 
 - `session.get_state` -- Get session state (finds SessionState in DB)
 - `session.patch_state` -- Patch session state (upserts SessionState in DB)
@@ -116,7 +116,7 @@ Real Prisma reads/writes to `SessionState` table.
 
 ## local (4 tools)
 
-File-based `.masday/` state dir + Prisma sync/push.
+File-based `.masday/` state dir + Drizzle sync/push.
 
 - `local.init` -- Init local state dir (creates `.masday/`)
 - `local.sync` -- Sync from DB (downloads PostgreSQL to JSON cache)
@@ -170,7 +170,7 @@ Real `execSync` calls to pnpm test runner.
 
 ## reminder (3 tools)
 
-Stale/stuck workflow detection, reminder listing, and acknowledgment (Prisma WorkflowReminder table). **Auto-runs on startup** after Prisma connects + **periodic background check every 15 minutes** via setInterval.
+Stale/stuck workflow detection, reminder listing, and acknowledgment (Drizzle WorkflowReminder table). **Auto-runs on startup** after Drizzle connects + **periodic background check every 15 minutes** via setInterval.
 
 - `reminder.check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds). Runs automatically on server start and every 15 minutes.
 - `reminder.list` -- List reminders with optional filters (workflowId, acknowledged, limit)

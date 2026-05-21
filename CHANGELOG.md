@@ -2,6 +2,15 @@
 
 All notable changes to masday-workflow-rebuild.
 
+## 2026-05-21 — Prisma to Drizzle ORM Migration
+
+- **Migrated from Prisma ORM to Drizzle ORM** across all packages
+- Schema now defined in `packages/db/src/schema.ts` using `pgTable()` (was `packages/db/prisma/schema.prisma`)
+- Client uses `drizzle()` + `postgres-js` (was `@prisma/client`)
+- All 16 tables preserved with identical PostgreSQL schema
+- `pnpm db:generate` now runs `drizzle-kit generate`
+- Legacy `prisma` export stub retained for backward compatibility
+
 ## [0.3.0] - 2026-05-19
 
 ### Added

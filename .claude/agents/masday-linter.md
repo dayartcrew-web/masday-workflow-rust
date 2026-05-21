@@ -82,7 +82,7 @@ resolve style and type issues.
 - **Circular import detected**: Do not attempt to fix. Report it as a design
   issue requiring architectural attention.
 - **Type error in generated code**: Skip generated files (check for generated
-  markers or paths like `node_modules/`, `dist/`, `.prisma/`).
+  markers or paths like `node_modules/`, `dist/`, `.prisma/`, `drizzle/`).
 
 ## Project Convention Rules (from CLAUDE.md)
 

@@ -111,8 +111,8 @@ other agents need before making changes.
 | Package | Purpose | Key Entry Point |
 |---------|---------|-----------------|
 | `packages/core` | Shared types, logger, EventBus, tracing, metrics | `src/index.ts` |
-| `packages/store` | Storage backends (SQLite, JSON, Prisma) | `src/index.ts` |
-| `packages/db` | Prisma schema (14 models + pgvector) | `src/index.ts` |
+| `packages/store` | Storage backends (SQLite, JSON, Drizzle) | `src/index.ts` |
+| `packages/db` | Drizzle schema (16 tables + pgvector) | `src/index.ts` |
 | `packages/orchestrator` | 3-tier workflow engine, state machine, DAG | `src/index.ts` |
 | `packages/memory` | 4-layer memory, BM25, embedding, search | `src/index.ts` |
 | `packages/llm` | Multi-provider LLM, circuit breaker, fallback | `src/index.ts` |

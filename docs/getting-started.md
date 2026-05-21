@@ -12,14 +12,14 @@ cd apps/agent-runner && npx tsx src/runtime/mcp.ts
 
 ### Database Setup
 
-The runtime requires PostgreSQL with pgvector for persistent state. DualWriteStore replicates all workflow, task, and memory operations to PostgreSQL in real-time via Prisma, with JSON cache fallback when the database is unavailable.
+The runtime requires PostgreSQL with pgvector for persistent state. DualWriteStore replicates all workflow, task, and memory operations to PostgreSQL in real-time via Drizzle, with JSON cache fallback when the database is unavailable.
 
 ```bash
 # Start PostgreSQL with pgvector
 
 docker-compose up -d
 
-# Generate Prisma client
+# Generate Drizzle client
 pnpm db:generate
 
 # Push schema to database
@@ -34,7 +34,7 @@ pnpm db:pgvector
 - The local MCP stdio server from `apps/agent-runner`
 - **87 MCP tools** across 17 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests, reminder, projectRules)
 - Workflow orchestration via OrchestratingEngine with full agent dispatch
-- **PostgreSQL-backed runtime state via DualWriteStore** -- all 16 Prisma tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder, LlmProviderConfig)
+- **PostgreSQL-backed runtime state via DualWriteStore** -- all 16 Drizzle tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder, LlmProviderConfig)
 - DualWrite pattern: PostgreSQL primary + JSON cache fallback for resilience
 - Project-local `.masday/` artifacts for cached research, plans, and notes
 - 4 default agent workers: backend, frontend, qa, general-purpose

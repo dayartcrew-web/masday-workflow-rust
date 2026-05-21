@@ -3,7 +3,7 @@
 ## Project Overview
 
 Unified AI coding agent platform built on Model Context Protocol (MCP).
-Merges msd-mcp (official MCP SDK, 5 domain servers, Prisma/PostgreSQL) with masday-workflow-reborn (4-layer memory, 3-tier workflow engine, code skills).
+Merges msd-mcp (official MCP SDK, 5 domain servers, Drizzle/PostgreSQL) with masday-workflow-reborn (4-layer memory, 3-tier workflow engine, code skills).
 Monorepo: pnpm workspaces with TypeScript, ESM modules, Turbo build.
 
 Package scope: `@mcp-rebuild/*`
@@ -25,23 +25,23 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
  | (Dashboard/  |   stdio       |  (87 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
-                                         v
-                             +----------------------------+
-                             |    WORKFLOW ENGINE         |
-                             |                            |
-                             |  Pure functions (msd)      |
-                             |  + State machine (reborn)  |
-                             |  + Session/Review/Parallel |
-                             +-----------+----------------+
-                                         |
-                    +--------------------+--------------------+
-                    |                    |                    |
-                    v                    v                    v
-           +--------------+     +--------------+     +--------------+
-           |   MEMORY     |     | INTELLIGENCE |     |   POLICY     |
-           |  4-layer     |     | Search/Index |     | Validators   |
-           |  (w/e/l/g)   |     | ReAct Agent  |     | Audit/Drift  |
-           +--------------+     +--------------+     +--------------+
+                                        v
+                            +----------------------------+
+                            |    WORKFLOW ENGINE         |
+                            |                            |
+                            |  Pure functions (msd)      |
+                            |  + State machine (reborn)  |
+                            |  + Session/Review/Parallel |
+                            +-----------+----------------+
+                                        |
+                   +--------------------+--------------------+
+                   |                    |                    |
+                   v                    v                    v
+          +--------------+     +--------------+     +--------------+
+          |   MEMORY     |     | INTELLIGENCE |     |   POLICY     |
+          |  4-layer     |     | Search/Index |     | Validators   |
+          |  (w/e/l/g)   |     | ReAct Agent  |     | Audit/Drift  |
+          +--------------+     +--------------+     +--------------+
 ```
 
 ### Memory Stack
@@ -51,19 +51,19 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
   |                   WORKING MEMORY                         |
   |              In-process RAM, per session                 |
   +----------------------------------------------------------+
-                            |
+                           |
   +----------------------------------------------------------+
   |                  EPISODIC MEMORY                         |
   |            Last N messages per session                   |
   +----------------------------------------------------------+
-                            |
+                           |
   +----------------------------------------------------------+
   |                 LONG-TERM MEMORY                         |
   |   Scoring: similarity*0.6 + importance*0.2               |
   |            + recency*0.1 + usage*0.1                     |
   |   importanceScore: type-based + content length bonus     |
   +----------------------------------------------------------+
-                            |
+                           |
   +----------------------------------------------------------+
   |                 KNOWLEDGE GRAPH                          |
   |             Nodes & edges, auto-linked                   |
@@ -77,10 +77,10 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
   |                    |    |      |          |
   |--> DONE            |    |      |--> FIX --|
   |--> FAILED          |    |--> PAUSED       |--> FIX --> EXECUTE
-                       |--> FAILED    |
-                                      |--> FAILED
-                                         FIX --> DONE
-                                         FIX --> FAILED
+                      |--> FAILED    |
+                                     |--> FAILED
+                                        FIX --> DONE
+                                        FIX --> FAILED
 ```
 
 ## Packages (13)
@@ -89,8 +89,8 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 |---------|-------------|
 | `packages/core` | Shared types, logger, EventBus, tracing, metrics |
 | `packages/shared-utils` | Logger, IDs, hash, env (from msd-mcp) |
-| `packages/db` | Prisma schema (16 models + pgvector), client singleton |
-| `packages/store` | StorageBackend, SQLite, JSON, Prisma adapters |
+| `packages/db` | Drizzle schema (`src/schema.ts`, 16 `pgTable()` exports + pgvector), client via `drizzle()` + `postgres-js` |
+| `packages/store` | StorageBackend, SQLite, JSON, Drizzle adapters |
 | `packages/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
 | `packages/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
 | `packages/workflow-engine` | Pure functions + state machine, DAG, session, review, parallel, drift |
@@ -108,35 +108,35 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | Namespace | Tools | Implementation |
 |-----------|-------|----------------|
 | workflow | 23 | DualWriteStore + OrchestratingEngine (PostgreSQL real-time replication) |
-| memory | 11 | Prisma-first with JSON cache fallback (hybrid mode) |
+| memory | 11 | Drizzle-first with JSON cache fallback (hybrid mode) |
 | semantic-search | 3 | Context pack, fingerprinting, code search |
-| policy | 6 | Real Prisma validation (workflow status, review decisions, branch status, fingerprints) |
+| policy | 6 | Real Drizzle validation (workflow status, review decisions, branch status, fingerprints) |
 | capability | 11 | Real `.claude/` directory reads with frontmatter parsing |
 | filesystem | 5 | Real fs.readFileSync / writeFileSync / readdirSync / unlinkSync / statSync |
-| review | 2 | Real Prisma writes to ReviewDecision table |
-| session | 3 | Real Prisma reads/writes to SessionState table |
-| local | 4 | File-based `.masday/` state dir + Prisma sync/push |
+| review | 2 | Real Drizzle writes to ReviewDecision table |
+| session | 3 | Real Drizzle reads/writes to SessionState table |
+| local | 4 | File-based `.masday/` state dir + Drizzle sync/push |
 | git | 3 | Real `execSync` calls to git CLI |
 | npm | 2 | Real `execSync` calls to pnpm CLI |
 | docker | 3 | Real `execSync` calls to docker CLI |
 | cicd | 3 | Real `execSync` calls to `gh` CLI |
 | github | 3 | Real `execSync` calls to `gh` CLI |
 | tests | 1 | Real `execSync` calls to pnpm test runner |
-| reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session.init_context returns reminders. Prisma WorkflowReminder table |
+| reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session.init_context returns reminders. Drizzle WorkflowReminder table |
 | projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
 
-**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Prisma. Memory uses hybrid mode: Prisma first, JSON cache fallback when PostgreSQL is unavailable. All 16 Prisma models are actively populated:
+**Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Drizzle. Memory uses hybrid mode: Drizzle first, JSON cache fallback when PostgreSQL is unavailable. All 16 Drizzle tables are actively populated:
 
 | Table | Wired Via | Trigger |
 |-------|-----------|---------|
 | Workflow | DualWriteStore | workflow.create, execute, delete |
 | Task | DualWriteStore | addTask, startTask, completeTask |
 | Plan | DualWriteStore | createPlan |
-| Memory | persistToPrisma() | memory.store, store_research |
-| ReviewDecision | Prisma direct | review.submit |
-| SessionState | Prisma direct | session.patch_state |
-| ParallelBranch | Prisma upsert/update | workflow.createParallelBranches, completeParallelBranch, listParallelBranches |
-| ContextDocument | Prisma direct | memory.store_research |
+| Memory | persistToDb() | memory.store, store_research |
+| ReviewDecision | Drizzle direct | review.submit |
+| SessionState | Drizzle direct | session.patch_state |
+| ParallelBranch | Drizzle upsert/update | workflow.createParallelBranches, completeParallelBranch, listParallelBranches |
+| ContextDocument | Drizzle direct | memory.store_research |
 | TaskProgressLog | saveProgressDb() | workflow.saveProgress |
 | RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
 | TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
@@ -144,14 +144,14 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | GraphNode | GraphStore.addNode() | memory.store, memory.store_research, workflow.create, workflow.addTask |
 | GraphEdge | GraphStore.addEdge() + autoLink() | Jaccard similarity (threshold 0.3) auto-edges + workflow→task contains edges |
 | WorkflowReminder | checkReminders() | Startup + 15min interval, deduplicated, covers EXECUTE + FIX states |
-| LlmProviderConfig | Prisma direct | LLM provider configuration storage |
+| LlmProviderConfig | Drizzle direct | LLM provider configuration storage |
 
 **Status Conventions (ALL UPPERCASE in PostgreSQL):**
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
 - Task: PENDING, RUNNING, DONE, FAILED
 - Plan: ACTIVE, PENDING, READY, DONE
 - Review: APPROVED, REWORK_REQUIRED, BLOCKED
-- DualWriteStore maps in-memory lowercase TaskState to UPPERCASE for Prisma
+- DualWriteStore maps in-memory lowercase TaskState to UPPERCASE for Drizzle
 
 ## MCP Pattern
 
@@ -160,11 +160,12 @@ Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore f
 ```typescript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
-import { setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
-import { saveProgress as saveProgressDb, logRetrieval, setReminderPrisma, checkReminders } from "@mcp-rebuild/workflow-engine";
+import { db } from "@mcp-rebuild/db";
+import { DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
+import { setPrismaClient as setTokenDb, trackTokens } from "@mcp-rebuild/core";
+import { saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
-import { setEpisodicPrisma, setGraphPrisma, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
+import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 
 const server = new McpServer({ name: "masday", version: "0.1.0" });
 const episodicMemory = new EpisodicMemory(100);
@@ -172,12 +173,12 @@ const graphStore = new GraphStore({ autoLinkThreshold: 0.3 });
 const primaryStore = new WorkflowStore(backend);
 const workflowStore = new DualWriteWorkflowStore(primaryStore);
 
-// After Prisma connects:
-setDualWritePrisma(prisma);      // workflow/task/plan replication
-setTokenPrisma(prisma);          // token usage tracking
-setEpisodicPrisma(prisma);       // episodic memory persistence
-setGraphPrisma(prisma);          // knowledge graph persistence
-setReminderPrisma(prisma);       // workflow reminders
+// After Drizzle db connects:
+setDualWriteDb(db);             // workflow/task/plan replication
+setTokenDb(db);                 // token usage tracking
+setEpisodicDb(db);              // episodic memory persistence
+setGraphDb(db);                 // knowledge graph persistence
+setReminderDb(db);              // workflow reminders
 
 server.registerTool("workflow.create", { description: "...", inputSchema: {...} }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(result) }]
@@ -191,8 +192,8 @@ await server.connect(transport);
 
 - `pnpm build` - Build all packages (Turbo)
 - `pnpm test` - Run tests (Vitest)
-- `pnpm db:generate` - Generate Prisma client
-- `pnpm db:push` - Push schema to database
+- `pnpm db:generate` - Generate Drizzle schema types (drizzle-kit)
+- `pnpm db:push` - Push schema to database (drizzle-kit push)
 - Start MCP server: `npx tsx apps/agent-runner/src/runtime/mcp.ts`
 
 ## Conventions
@@ -212,7 +213,7 @@ await server.connect(transport);
 - `listWorkflows` exported as `listWorkflowsDb` from workflow-engine
 - Code skills are plain async functions (not class-based Skill objects)
 - **All agents and skills enforce review pipeline:** review.submit → policy.validate_completion → workflow.completeTask → local.sync (with rework loop on REWORK_REQUIRED, max 2 attempts)
-- **Reminder auto-run:** checkReminders() runs on startup after Prisma connects + every 15 minutes via setInterval. session.init_context returns active reminders.
+- **Reminder auto-run:** checkReminders() runs on startup after Drizzle db connects + every 15 minutes via setInterval. session.init_context returns active reminders.
 
 ## Testing
 

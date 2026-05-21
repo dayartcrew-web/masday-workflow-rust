@@ -182,13 +182,13 @@ Agents are registered in the capability registry and dispatched by the Orchestra
 - **Role:** Schema design and query optimization
 - **When to use:** Designing database schemas, optimizing queries, migration planning, pgvector configuration
 - **MCP tools:** Filesystem tools, `memory.store` (schema decisions)
-- **Description:** Designs database schemas with proper indexing, writes optimized queries, plans migrations, and configures pgvector for semantic search. Manages Prisma schema evolution.
+- **Description:** Designs database schemas with proper indexing, writes optimized queries, plans migrations, and configures pgvector for semantic search. Manages Drizzle schema evolution.
 
 ---
 
 ## Agent Dispatch Flow
 
-> **All 15 Prisma tables are actively populated.** See CLAUDE.md for the full table wiring reference.
+> **All 16 Drizzle tables are actively populated.** See CLAUDE.md for the full table wiring reference.
 > **Status values are UPPERCASE** in PostgreSQL: Workflow (INIT, EXECUTE, DONE, FAILED...), Task (PENDING, RUNNING, DONE, FAILED), Plan (ACTIVE, PENDING, READY, DONE), Review (APPROVED, REWORK_REQUIRED, BLOCKED).
 
 1. OrchestratingEngine receives a task
