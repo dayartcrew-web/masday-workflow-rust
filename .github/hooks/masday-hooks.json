@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs agentic-mem-context",
+        "timeout": 15
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs pre-tool-use",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs tdd-guard",
+        "timeout": 30
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs post-tool-use",
+        "timeout": 30
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs on-stop",
+        "timeout": 60
+      }
+    ]
+  }
+}

@@ -160,10 +160,12 @@ else
   echo "  scripts/convert-agents.mjs not found — skipping agent conversion."
 fi
 
-# 9. MCP config for each platform
-echo "[9/10] Setting up MCP configs..."
+# 9. MCP config + Copilot agents/hooks for each platform
+echo "[9/10] Setting up MCP configs + Copilot customization..."
 
-# Project .mcp.json (Claude Code reads this)
+MCP_JS="apps/agent-runner/dist/runtime/mcp.js"
+
+# --- Claude Code: .mcp.json ---
 cat > .mcp.json << 'MCPEOF'
 {
   "mcpServers": {
@@ -177,9 +179,9 @@ cat > .mcp.json << 'MCPEOF'
   }
 }
 MCPEOF
-echo "  .mcp.json (Claude Code) — uses relative path to built JS"
+echo "  .mcp.json (Claude Code)"
 
-# .gemini/settings.json (already restored or copied in step 6)
+# --- Gemini CLI: .gemini/settings.json (already restored or copied in step 6) ---
 if [ ! -f ".gemini/settings.json" ]; then
   cat > .gemini/settings.json << 'GEMINI_EOF'
 {
@@ -197,26 +199,136 @@ if [ ! -f ".gemini/settings.json" ]; then
 }
 GEMINI_EOF
 fi
-echo "  .gemini/settings.json (Gemini CLI) — uses built JS with suppressed logging"
+echo "  .gemini/settings.json (Gemini CLI)"
 
-# .vscode/mcp.json (Copilot)
+# --- VS Code Copilot: .vscode/mcp.json ---
+# Docs: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
+# Format: { "servers": { "name": { "command": "...", "args": [...] } } }
+# No "type" field needed — stdio is inferred when "command" is present.
 mkdir -p .vscode
 cat > .vscode/mcp.json << 'VSCODEEOF'
 {
   "servers": {
     "masday": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+      "command": "node",
+      "args": [
+        "--no-warnings",
+        "apps/agent-runner/dist/runtime/mcp.js"
+      ]
     }
   }
 }
 VSCODEEOF
-echo "  .vscode/mcp.json (VS Code Copilot)"
+echo "  .vscode/mcp.json (VS Code Copilot) — node + built JS"
 
-# .github/agents/
+# --- VS Code Copilot: .github/agents/masday.agent.md ---
+# Docs: https://code.visualstudio.com/docs/copilot/customization/custom-agents
+# VS Code auto-discovers .agent.md files in .github/agents/
+# Also reads .claude/agents/*.md (Claude format) automatically.
 mkdir -p .github/agents
-echo "  .github/agents/ (GitHub Copilot) ready"
+cat > .github/agents/masday.agent.md << 'AGENTEOF'
+---
+name: masday
+description: masday-workflow-rebuild workflow orchestration agent with 87 MCP tools
+tools: ['*']
+model: ['Claude Sonnet 4.6', 'GPT-5.2']
+handoffs:
+  - label: Implement Plan
+    agent: agent
+    prompt: Implement the plan outlined above.
+    send: false
+---
+
+# masday Agent
+
+You are the masday-workflow-rebuild orchestration agent. You have access to 87 MCP tools across 16 namespaces.
+
+## Mandatory Protocol
+
+1. **Check masday MCP tools first** — use MCP tools before falling back to shell commands.
+2. **Follow the workflow lifecycle** — INIT > ANALYZE > PLAN > EXECUTE > VERIFY > DONE
+3. **Enforce review pipeline** — after completing work, run review_submit > policy_validate_completion > workflow_completeTask
+4. **Use underscore tool names** — all MCP tools use underscore format (e.g., `workflow_create`, `memory_store`)
+
+## Priority Order
+
+1. masday MCP tools (workflow, memory, search, policy, capability)
+2. Agent orchestrator for task routing
+3. Code skills for implementation
+
+## Pre-Commit Checks
+
+Before marking any task complete:
+- Run `pnpm typecheck` — must pass with zero errors
+- Run `pnpm test` — all tests must pass
+- No hardcoded secrets or credentials
+- No console.log statements in production code
+AGENTEOF
+echo "  .github/agents/masday.agent.md (VS Code Copilot custom agent)"
+
+# --- VS Code Copilot: .github/hooks/ ---
+# Docs: https://code.visualstudio.com/docs/copilot/customization/hooks
+# VS Code reads .github/hooks/*.json AND .claude/settings.json hooks.
+# Convert key hooks to Copilot-native format for best compatibility.
+# VS Code tool names differ from Claude: editFiles/createFile (not Edit/Write).
+mkdir -p .github/hooks
+
+cat > .github/hooks/masday-hooks.json << 'HOOKSEOF'
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs agentic-mem-context",
+        "timeout": 15
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs pre-tool-use",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs tdd-guard",
+        "timeout": 30
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs post-tool-use",
+        "timeout": 30
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/run-hook.mjs on-stop",
+        "timeout": 60
+      }
+    ]
+  }
+}
+HOOKSEOF
+echo "  .github/hooks/masday-hooks.json (VS Code Copilot hooks)"
+
+# --- Copilot user-level MCP registration (optional, uses `code` CLI) ---
+# This registers masday at the user profile level so it works across all workspaces.
+if command -v code &>/dev/null; then
+  ABS_MCP_JS="$(cd "$ROOT_DIR" && pwd)/${MCP_JS}"
+  code --add-mcp "{\"name\":\"masday\",\"command\":\"node\",\"args\":[\"--no-warnings\",\"${ABS_MCP_JS}\"]}" 2>/dev/null && \
+    echo "  User-level MCP registered via 'code --add-mcp'" || \
+    echo "  'code --add-mcp' skipped (VS Code not running or not available)"
+else
+  echo "  'code' CLI not found — skipping user-level MCP registration"
+fi
 
 # 10. Git hooks (cross-platform enforcement)
 echo "[10/10] Installing git hooks..."
@@ -231,9 +343,11 @@ mkdir -p .masday/cache/tasks .masday/reports
 echo ""
 echo "=== Setup complete ==="
 echo "  Claude Code:  .claude/settings.json (hooks) + .mcp.json (MCP)"
-echo "  Gemini CLI:   .gemini/settings.json (MCP via npx tsx)"
+echo "  Gemini CLI:   .gemini/settings.json (MCP via node)"
 echo "                ${HOME_GEMINI}/config/skills/ (${copied_gemini} skills)"
 echo "  VS Code:      .vscode/mcp.json (Copilot MCP)"
+echo "                .github/agents/masday.agent.md (custom agent)"
+echo "                .github/hooks/masday-hooks.json (Copilot hooks)"
 echo "  GitHub:       .github/agents/ (coding agent)"
 echo "  OpenCode:     .opencode/agent/ (${copied_opencode} agents converted)"
 echo "  Git hooks:    .git/hooks/pre-commit + pre-push (ALL platforms)"

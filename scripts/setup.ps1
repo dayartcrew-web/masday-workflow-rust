@@ -150,8 +150,10 @@ if (Test-Path "$RootDir\scripts\convert-agents.mjs") {
     Write-Host "  scripts/convert-agents.mjs not found — skipping." -ForegroundColor DarkGray
 }
 
-# 9. MCP config for each platform
-Write-Host "[9/10] Setting up MCP configs..." -ForegroundColor Yellow
+# 9. MCP config + Copilot agents/hooks for each platform
+Write-Host "[9/10] Setting up MCP configs + Copilot customization..." -ForegroundColor Yellow
+
+$McpJs = "apps/agent-runner/dist/runtime/mcp.js"
 
 # .mcp.json (Claude Code)
 $mcpJson = @{
@@ -164,7 +166,7 @@ $mcpJson = @{
     }
 } | ConvertTo-Json -Depth 5
 Set-Content -Path "$RootDir\.mcp.json" -Value $mcpJson -NoNewline
-Write-Host "  .mcp.json (Claude Code) — relative path to built JS" -ForegroundColor Cyan
+Write-Host "  .mcp.json (Claude Code)" -ForegroundColor Cyan
 
 # .gemini/settings.json (already restored or copied in step 6)
 if (-not (Test-Path $geminiSettingsPath)) {
@@ -180,25 +182,106 @@ if (-not (Test-Path $geminiSettingsPath)) {
     } | ConvertTo-Json -Depth 5
     Set-Content -Path $geminiSettingsPath -Value $geminiSettings -NoNewline
 }
-Write-Host "  .gemini/settings.json (Gemini CLI) — built JS with suppressed logging" -ForegroundColor Cyan
+Write-Host "  .gemini/settings.json (Gemini CLI)" -ForegroundColor Cyan
 
-# .vscode/mcp.json (Copilot)
+# .vscode/mcp.json (VS Code Copilot)
+# Docs: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
+# No "type" field needed — stdio is inferred when "command" is present.
 New-Item -ItemType Directory -Force -Path "$RootDir\.vscode" | Out-Null
 $vscodeMcp = @{
     servers = @{
         masday = @{
-            type = "stdio"
-            command = "npx"
-            args = @("tsx", "apps/agent-runner/src/runtime/mcp.ts")
+            command = "node"
+            args = @("--no-warnings", "apps/agent-runner/dist/runtime/mcp.js")
         }
     }
 } | ConvertTo-Json -Depth 5
 Set-Content -Path "$RootDir\.vscode\mcp.json" -Value $vscodeMcp -NoNewline
-Write-Host "  .vscode/mcp.json (VS Code Copilot)" -ForegroundColor Cyan
+Write-Host "  .vscode\mcp.json (VS Code Copilot) — node + built JS" -ForegroundColor Cyan
 
-# .github/agents/
+# .github/agents/masday.agent.md (VS Code Copilot custom agent)
+# Docs: https://code.visualstudio.com/docs/copilot/customization/custom-agents
 New-Item -ItemType Directory -Force -Path "$RootDir\.github\agents" | Out-Null
-Write-Host "  .github/agents/ (GitHub Copilot) ready" -ForegroundColor Cyan
+$agentContent = @"
+---
+name: masday
+description: masday-workflow-rebuild workflow orchestration agent with 87 MCP tools
+tools: ['*']
+model: ['Claude Sonnet 4.6', 'GPT-5.2']
+handoffs:
+  - label: Implement Plan
+    agent: agent
+    prompt: Implement the plan outlined above.
+    send: false
+---
+
+# masday Agent
+
+You are the masday-workflow-rebuild orchestration agent. You have access to 87 MCP tools across 16 namespaces.
+
+## Mandatory Protocol
+
+1. **Check masday MCP tools first** - use MCP tools before falling back to shell commands.
+2. **Follow the workflow lifecycle** - INIT > ANALYZE > PLAN > EXECUTE > VERIFY > DONE
+3. **Enforce review pipeline** - after completing work, run review_submit > policy_validate_completion > workflow_completeTask
+4. **Use underscore tool names** - all MCP tools use underscore format (e.g., ``workflow_create``, ``memory_store``)
+
+## Priority Order
+
+1. masday MCP tools (workflow, memory, search, policy, capability)
+2. Agent orchestrator for task routing
+3. Code skills for implementation
+
+## Pre-Commit Checks
+
+Before marking any task complete:
+- Run ``pnpm typecheck`` - must pass with zero errors
+- Run ``pnpm test`` - all tests must pass
+- No hardcoded secrets or credentials
+- No console.log statements in production code
+"@
+Set-Content -Path "$RootDir\.github\agents\masday.agent.md" -Value $agentContent -NoNewline
+Write-Host "  .github\agents\masday.agent.md (VS Code Copilot custom agent)" -ForegroundColor Cyan
+
+# .github/hooks/masday-hooks.json (VS Code Copilot hooks)
+# Docs: https://code.visualstudio.com/docs/copilot/customization/hooks
+New-Item -ItemType Directory -Force -Path "$RootDir\.github\hooks" | Out-Null
+$hooksJson = @"
+{
+  "hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs agentic-mem-context", "timeout": 15 }
+    ],
+    "PreToolUse": [
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs pre-tool-use", "timeout": 30 },
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs workflow-lock", "timeout": 30 },
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs tdd-guard", "timeout": 30 }
+    ],
+    "PostToolUse": [
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs post-tool-use", "timeout": 30 }
+    ],
+    "Stop": [
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs on-stop", "timeout": 60 }
+    ]
+  }
+}
+"@
+Set-Content -Path "$RootDir\.github\hooks\masday-hooks.json" -Value $hooksJson -NoNewline
+Write-Host "  .github\hooks\masday-hooks.json (VS Code Copilot hooks)" -ForegroundColor Cyan
+
+# Copilot user-level MCP registration (optional, uses `code` CLI)
+if (Get-Command code -ErrorAction SilentlyContinue) {
+    $absMcpJs = Join-Path $RootDir $McpJs
+    $addMcpJson = "{`"name`":`"masday`",`"command`":`"node`",`"args`":[`"--no-warnings`",`"$absMcpJs`"]}"
+    try {
+        code --add-mcp $addMcpJson 2>$null
+        Write-Host "  User-level MCP registered via 'code --add-mcp'" -ForegroundColor Cyan
+    } catch {
+        Write-Host "  'code --add-mcp' skipped (VS Code not running or not available)" -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "  'code' CLI not found - skipping user-level MCP registration" -ForegroundColor DarkGray
+}
 
 # 10. Git hooks + .masday state dirs
 Write-Host "[10/10] Installing git hooks..." -ForegroundColor Yellow
@@ -218,9 +301,11 @@ New-Item -ItemType Directory -Force -Path "$RootDir\.masday\reports" | Out-Null
 Write-Host ""
 Write-Host "=== Setup complete ===" -ForegroundColor Green
 Write-Host "  Claude Code:  .claude/settings.json (hooks) + .mcp.json (MCP)"
-Write-Host "  Gemini CLI:   .gemini/settings.json (MCP via npx tsx)"
+Write-Host "  Gemini CLI:   .gemini/settings.json (MCP via node)"
 Write-Host "                $geminiSkillsDir ($copiedGemini skills)"
 Write-Host "  VS Code:      .vscode\mcp.json (Copilot MCP)"
+Write-Host "                .github\agents\masday.agent.md (custom agent)"
+Write-Host "                .github\hooks\masday-hooks.json (Copilot hooks)"
 Write-Host "  GitHub:       .github\agents\ (coding agent)"
 Write-Host "  OpenCode:     .opencode\agent\ ($copiedOpencode agents converted)"
 Write-Host "  Git hooks:    .git\hooks\pre-commit + pre-push (ALL platforms)"

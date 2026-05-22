@@ -1,9 +1,11 @@
 {
   "servers": {
     "masday": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+      "command": "node",
+      "args": [
+        "--no-warnings",
+        "apps/agent-runner/dist/runtime/mcp.js"
+      ]
     }
   }
 }
