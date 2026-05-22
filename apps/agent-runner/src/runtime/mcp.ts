@@ -70,6 +70,7 @@ import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { db as drizzleDb, healthCheck as dbHealthCheck, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
 import * as path from "path";
 import * as fs from "fs";
+import { fileURLToPath } from "url";
 import { dotToUnderscore, ToolNameRegistry, createAgent, createSkill, runDoctor } from "@mcp-rebuild/shared-utils";
 
 const logger = createLogger("MCPServer");
@@ -121,6 +122,11 @@ const origRegister = server.registerTool.bind(server);
 
 const cwd = process.cwd();
 
+// Derive project root from this script's location so MCP works regardless of
+// the caller's cwd (Claude Desktop sets cwd to C:\WINDOWS\system32).
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(scriptDir, "..", "..", "..");
+
 /** Validate that a path passed by a model is safe — must exist and contain project markers. Falls back to startup cwd. */
 function safePath(input: string | undefined, fallback: string = cwd): string {
   if (!input || typeof input !== "string" || input.trim() === "") return fallback;
@@ -130,7 +136,7 @@ function safePath(input: string | undefined, fallback: string = cwd): string {
   return resolved;
 }
 
-const dataDir = path.join(cwd, ".masday", "state");
+const dataDir = path.join(projectRoot, ".masday", "state");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const { backend, type: backendType } = createBackend(dataDir);
