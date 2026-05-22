@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Suppress MaxListenersExceededWarning — DualWriteStore + PersistenceListener
+// register multiple exit handlers which triggers the default limit of 10.
+process.setMaxListeners(20);
 
 /**
  * Masday Workflow MCP Server (Local-First)
