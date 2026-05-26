@@ -5,18 +5,21 @@ import { createLogger } from '@mcp-rebuild/core';
 const logger = createLogger('DualWriteStore');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let prismaClient: any = null;
+let drizzleDb: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let schemaTables: any = null;
 
 export function setDualWritePrisma(client: unknown): void {
-  prismaClient = client;
+  drizzleDb = client;
+}
+
+export function setDualWriteSchemaTables(tables: unknown): void {
+  schemaTables = tables;
 }
 
 /**
  * DualWriteWorkflowStore wraps a primary sync store and replicates
- * writes to PostgreSQL via Prisma (async, fire-and-forget).
- *
- * Reads always go to the primary store (JsonBackend) for speed.
- * Writes go to both: primary (sync, for engine) + PostgreSQL (async, for MCP/dashboard).
+ * writes to PostgreSQL via Drizzle (async, fire-and-forget).
  */
 export class DualWriteWorkflowStore implements IWorkflowStore {
   private primary: IWorkflowStore;
@@ -49,9 +52,9 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
   }
 
   private async replicateWorkflow(workflow: Workflow): Promise<void> {
-    if (!prismaClient) return;
+    if (!drizzleDb || !schemaTables) return;
 
-    const status = workflow.state ?? 'INIT';
+    const status = (workflow.state ?? 'INIT').toUpperCase();
     const rawMeta = workflow.metadata ?? {};
     let metaObj: Record<string, unknown> = {};
     if (typeof rawMeta === 'string') {
@@ -61,25 +64,19 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
     }
 
     try {
-      await prismaClient.workflow.upsert({
-        where: { id: workflow.id },
-        update: {
+      await drizzleDb.insert(schemaTables.workflows).values({
+        id: workflow.id,
+        name: workflow.name,
+        status,
+        metadata: { description: workflow.description, traceId: workflow.traceId, ...metaObj },
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: schemaTables.workflows.id,
+        set: {
           name: workflow.name,
           status,
           metadata: { description: workflow.description, traceId: workflow.traceId, ...metaObj },
           updatedAt: new Date(),
-        },
-        create: {
-          id: workflow.id,
-          name: workflow.name,
-          status,
-          metadata: {
-            description: workflow.description,
-            traceId: workflow.traceId,
-            ...metaObj,
-          },
-          createdAt: typeof workflow.createdAt === 'string' ? new Date(workflow.createdAt) : workflow.createdAt,
-          updatedAt: typeof workflow.updatedAt === 'string' ? new Date(workflow.updatedAt) : workflow.updatedAt,
         },
       });
     } catch (err: unknown) {
@@ -93,24 +90,20 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
   }
 
   private async replicateTask(workflowId: string, task: Task): Promise<void> {
-    if (!prismaClient) return;
+    if (!drizzleDb || !schemaTables) return;
 
     const planId = `plan-default-${workflowId}`;
 
     try {
-      await prismaClient.plan.upsert({
-        where: { id: planId },
-        update: {},
-        create: {
-          id: planId,
-          workflowId,
-          version: 1,
-          status: 'active',
-          summary: 'Default auto-created plan',
-          content: { tasks: [] },
-          createdByAgent: 'system',
-        },
-      });
+      await drizzleDb.insert(schemaTables.plans).values({
+        id: planId,
+        workflowId,
+        version: 1,
+        status: 'ACTIVE',
+        summary: 'Default auto-created plan',
+        content: { tasks: [] },
+        createdByAgent: 'system',
+      }).onConflictDoNothing();
     } catch { /* plan may already exist */ }
 
     const rawStatus = task.state ?? 'pending';
@@ -118,25 +111,23 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
 
     try {
-      await prismaClient.task.upsert({
-        where: { id: task.id },
-        update: {
+      await drizzleDb.insert(schemaTables.tasks).values({
+        id: task.id,
+        workflowId,
+        planId,
+        title,
+        status,
+        ownerAgent: task.agent ?? null,
+        acceptanceCriteria: [],
+        requiredContext: [],
+        verificationSteps: [],
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: schemaTables.tasks.id,
+        set: {
           title,
           status,
           ownerAgent: task.agent ?? null,
-          updatedAt: new Date(),
-        },
-        create: {
-          id: task.id,
-          workflowId,
-          planId,
-          title,
-          status,
-          ownerAgent: task.agent ?? null,
-          acceptanceCriteria: [],
-          requiredContext: [],
-          verificationSteps: [],
-          createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
           updatedAt: new Date(),
         },
       });
@@ -146,14 +137,16 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
   }
 
   private replicateDelete(workflowId: string): void {
-    if (!prismaClient) return;
+    if (!drizzleDb || !schemaTables) return;
 
-    prismaClient.task.deleteMany({ where: { workflowId } })
-      .then(() => prismaClient.plan.deleteMany({ where: { workflowId } }))
-      .then(() => prismaClient.workflow.deleteMany({ where: { id: workflowId } }))
-      .catch((err: unknown) => {
-        logger.warn({ err: String(err), workflowId }, 'Failed to replicate workflow deletion to PostgreSQL');
-      });
+    import('drizzle-orm').then(({ eq }) => {
+      drizzleDb.delete(schemaTables.tasks).where(eq(schemaTables.tasks.workflowId, workflowId))
+        .then(() => drizzleDb.delete(schemaTables.plans).where(eq(schemaTables.plans.workflowId, workflowId)))
+        .then(() => drizzleDb.delete(schemaTables.workflows).where(eq(schemaTables.workflows.id, workflowId)))
+        .catch((err: unknown) => {
+          logger.warn({ err: String(err), workflowId }, 'Failed to replicate workflow deletion to PostgreSQL');
+        });
+    }).catch(() => {});
   }
 }
 
@@ -183,15 +176,17 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
 
   deleteTasks(workflowId: string): void {
     this.primary.deleteTasks(workflowId);
-    if (prismaClient) {
-      prismaClient.task.deleteMany({ where: { workflowId } }).catch((err: unknown) => {
-        logger.warn({ err: String(err), workflowId }, 'Failed to replicate task deletion to PostgreSQL');
-      });
+    if (drizzleDb && schemaTables) {
+      import('drizzle-orm').then(({ eq }) => {
+        drizzleDb.delete(schemaTables.tasks).where(eq(schemaTables.tasks.workflowId, workflowId)).catch((err: unknown) => {
+          logger.warn({ err: String(err), workflowId }, 'Failed to replicate task deletion to PostgreSQL');
+        });
+      }).catch(() => {});
     }
   }
 
   private async replicateTask(workflowId: string, task: Task): Promise<void> {
-    if (!prismaClient) return;
+    if (!drizzleDb || !schemaTables) return;
 
     const planId = `plan-default-${workflowId}`;
     const rawStatus = task.state ?? 'pending';
@@ -199,25 +194,23 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
     const title = task.name || `Task ${task.id.slice(0, 8)}`;
 
     try {
-      await prismaClient.task.upsert({
-        where: { id: task.id },
-        update: {
+      await drizzleDb.insert(schemaTables.tasks).values({
+        id: task.id,
+        workflowId,
+        planId,
+        title,
+        status,
+        ownerAgent: task.agent ?? null,
+        acceptanceCriteria: [],
+        requiredContext: [],
+        verificationSteps: [],
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: schemaTables.tasks.id,
+        set: {
           title,
           status,
           ownerAgent: task.agent ?? null,
-          updatedAt: new Date(),
-        },
-        create: {
-          id: task.id,
-          workflowId,
-          planId,
-          title,
-          status,
-          ownerAgent: task.agent ?? null,
-          acceptanceCriteria: [],
-          requiredContext: [],
-          verificationSteps: [],
-          createdAt: typeof task.createdAt === 'string' ? new Date(task.createdAt) : (task.createdAt ?? new Date()),
           updatedAt: new Date(),
         },
       });

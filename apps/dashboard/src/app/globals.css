@@ -442,6 +442,86 @@ body {
     background: var(--color-surface-elevated);
     color: var(--color-error);
   }
+
+  .header-menu-btn {
+    color: var(--color-text-secondary);
+    transition: var(--transition-base);
+  }
+
+  .header-menu-btn:hover {
+    background: var(--color-surface-elevated);
+    color: var(--color-text);
+  }
+}
+
+/* ==========================================================================
+   Mobile Drawer Component Styles
+   ========================================================================== */
+
+@layer components {
+  .drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .drawer-overlay--visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .drawer-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 50;
+    width: 280px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+    border-left: 1px solid var(--color-border);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    overflow: hidden;
+  }
+
+  .drawer-panel--open {
+    transform: translateX(0);
+  }
+
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  .drawer-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .drawer-close-btn:hover {
+    background: var(--color-surface-elevated);
+    color: var(--color-text);
+  }
 }
 
 /* ==========================================================================
@@ -455,8 +535,14 @@ body {
   }
 
   .shell-main {
-    padding: 24px;
+    padding: 16px;
     animation: fade-in 0.3s ease-out;
+  }
+
+  @media (min-width: 768px) {
+    .shell-main {
+      padding: 24px;
+    }
   }
 
   .shell-loader-icon {

@@ -47,7 +47,7 @@ export default function WorkflowsPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Workflows</h2>
           <Link
             href="/workflows/new"

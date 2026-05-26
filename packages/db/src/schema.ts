@@ -235,7 +235,7 @@ export const llmProviderConfigs = pgTable("LlmProviderConfig", {
   isDefault: boolean("isDefault").default(false),
   priority: integer("priority").default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export const tokenUsages = pgTable("TokenUsage", {

@@ -33,10 +33,10 @@ export default function MemoryDetailPage() {
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Memory Detail</h2>
         </div>
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 space-y-4">
-          <div className="flex items-center gap-2">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 md:p-4 space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs px-2 py-0.5 rounded bg-brand-600/10 text-brand-400">{selectedMemory.memoryType}</span>
-            <span className="text-xs text-[var(--text-secondary)]">ID: {selectedMemory.id}</span>
+            <span className="text-xs text-[var(--text-secondary)] truncate">ID: {selectedMemory.id}</span>
           </div>
 
           <div>
@@ -51,7 +51,7 @@ export default function MemoryDetailPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 text-sm">
             <div>
               <span className="text-[var(--text-secondary)]">Importance:</span>{' '}
               <span className="text-[var(--text-primary)]">{selectedMemory.importance}</span>

@@ -43,7 +43,7 @@ export default function AuditPage() {
         </div>
 
         {/* Workflow selector */}
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <SelectRoot value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
             <SelectTrigger className="flex-1">
               <SelectValue placeholder="Select workflow to audit..." />
@@ -90,7 +90,7 @@ export default function AuditPage() {
                   }
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-3 gap-2 md:gap-4 text-sm">
                 <div>
                   <span className="text-[var(--text-secondary)]">Stuck Tasks</span>
                   <p className="font-medium text-[var(--text-primary)]">{auditResult.stuckTasks.length}</p>
@@ -115,10 +115,10 @@ export default function AuditPage() {
                 </div>
                 <div className="space-y-2">
                   {auditResult.stuckTasks.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)]">
-                      <div>
-                        <span className="text-sm font-medium text-[var(--text-primary)]">{task.name}</span>
-                        <span className="ml-2 text-xs text-[var(--text-secondary)]">{task.agent}</span>
+                    <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)] gap-2">
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-[var(--text-primary)] truncate block">{task.name}</span>
+                        <span className="text-xs text-[var(--text-secondary)]">{task.agent}</span>
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-400">{task.state}</span>
                     </div>

@@ -6,19 +6,26 @@ set -euo pipefail
 # Or:    bash install.sh
 
 REPO_URL="${REPO_URL:-https://github.com/dayartcrew-web/masday-workflow-rebuild}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.masday-workflow-rebuild}"
+INSTALL_DIR="${INSTALL_DIR:-${XDG_DATA_HOME:-$HOME}/.masday-workflow-rebuild}"
 
 echo "=== masday-workflow-rebuild Installer ==="
 echo ""
 
 # Check prerequisites
-for cmd in node pnpm git; do
+for cmd in node git; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "ERROR: $cmd is required but not installed."
     echo "  Install: https://nodejs.org (includes npm), then: npm install -g pnpm"
     exit 1
   fi
 done
+
+# Ensure pnpm is available
+if ! command -v pnpm &>/dev/null; then
+  echo "pnpm not found — attempting to enable via corepack..."
+  corepack enable 2>/dev/null || npm install -g pnpm
+fi
+
 echo "[OK] Prerequisites: node $(node -v), pnpm $(pnpm -v), git $(git --version)"
 
 # Clone or update

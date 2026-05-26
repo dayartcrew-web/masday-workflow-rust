@@ -7,7 +7,7 @@ import { WorkflowDag } from '@/components/workflow-dag';
 import { DataTable } from '@/components/ui/data-table';
 import { useWorkflowStore } from '@/stores/workflow-store';
 import { useWebSocketStore } from '@/stores/websocket-store';
-import { ArrowLeft, Play, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Play, CheckCircle, AlertTriangle } from 'lucide-react';
 import type { Task } from '@/lib/types';
 
 export default function WorkflowDetailPage() {
@@ -22,6 +22,7 @@ export default function WorkflowDetailPage() {
   const latestEvent = useWebSocketStore((s) => s.latestEvent);
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const error = useWorkflowStore((s) => s.error);
 
   useEffect(() => {
     if (workflowId) fetchWorkflow(workflowId);
@@ -104,31 +105,39 @@ export default function WorkflowDetailPage() {
     );
   }
 
-  const selectedTask = selectedWorkflow.tasks.find((task) => task.id === selectedTaskId) ?? null;
-  const completedTasks = selectedWorkflow.tasks.filter((t) => t.state === 'done').length;
-  const totalTasks = selectedWorkflow.tasks.length;
+  const selectedTask = (selectedWorkflow.tasks ?? []).find((task) => task.id === selectedTaskId) ?? null;
+  const completedTasks = (selectedWorkflow.tasks ?? []).filter((t) => t.state === 'done').length;
+  const totalTasks = (selectedWorkflow.tasks ?? []).length;
   const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   return (
     <AppShell>
       <div className="space-y-4">
+        {/* Error */}
+        {error && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )}
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/workflows')} className="p-2 rounded-lg hover:bg-[var(--bg-card)]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => router.push('/workflows')} className="p-2 rounded-lg hover:bg-[var(--bg-card)] flex-shrink-0">
               <ArrowLeft className="w-4 h-4 text-[var(--text-secondary)]" />
             </button>
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedWorkflow.name}</h2>
-              <p className="text-sm text-[var(--text-secondary)]">{selectedWorkflow.description}</p>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{selectedWorkflow.name}</h2>
+              <p className="text-sm text-[var(--text-secondary)] truncate">{selectedWorkflow.description}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <span className={`text-xs px-2 py-1 rounded ${
               selectedWorkflow.state === 'DONE' ? 'bg-emerald-500/10 text-emerald-400' :
               selectedWorkflow.state === 'FAILED' ? 'bg-red-500/10 text-red-400' :
               'bg-blue-500/10 text-blue-400'
             }`}>{selectedWorkflow.state}</span>
+            {selectedWorkflow.state !== 'DONE' && selectedWorkflow.state !== 'FAILED' && (
             <button
               onClick={handleExecute}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 transition-colors"
@@ -136,11 +145,12 @@ export default function WorkflowDetailPage() {
               <Play className="w-3 h-3" />
               Execute
             </button>
+            )}
           </div>
         </div>
 
         {/* Progress */}
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-2 md:gap-4 text-sm">
           <div className="flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-500" />
             <span>{completedTasks}/{totalTasks} tasks</span>
@@ -169,11 +179,11 @@ export default function WorkflowDetailPage() {
                 Close
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
               <div><span className="text-[var(--text-secondary)]">State:</span> <span className="ml-1">{selectedTask.state}</span></div>
               <div><span className="text-[var(--text-secondary)]">Agent:</span> <span className="ml-1">{selectedTask.agent}</span></div>
               <div><span className="text-[var(--text-secondary)]">Skill:</span> <span className="ml-1">{selectedTask.skill}</span></div>
-              <div><span className="text-[var(--text-secondary)]">Dependencies:</span> <span className="ml-1">{selectedTask.dependencies.length}</span></div>
+              <div><span className="text-[var(--text-secondary)]">Dependencies:</span> <span className="ml-1">{(selectedTask.dependencies ?? []).length}</span></div>
             </div>
             {selectedTask.output != null ? (
               <div className="mt-3">
@@ -188,7 +198,7 @@ export default function WorkflowDetailPage() {
 
         {/* Tasks Table */}
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-          <div className="px-4 py-3 border-b border-[var(--border)]">
+          <div className="px-3 md:px-4 py-3 border-b border-[var(--border)]">
             <h3 className="text-sm font-medium text-[var(--text-secondary)]">Tasks</h3>
           </div>
           <DataTable
