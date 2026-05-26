@@ -69,7 +69,7 @@
       { "name": "masday-workflow-verify", "directory": ".claude/skills/masday-workflow-verify", "category": "workflow", "description": "Verify workflow completion: review status, evidence, and policy compliance." }
     ],
     "hooks": [
-      { "name": "agentic-mem-context", "file": ".claude/hooks/agentic-mem-context.js", "type": "executable", "description": "SessionStart hook that loads top memories and injects as context." },
+      { "name": "masday-mem-context", "file": ".claude/hooks/masday-mem-context.js", "type": "executable", "description": "SessionStart hook that loads top memories and injects as context." },
       { "name": "on-notification", "file": ".claude/hooks/on-notification.js", "type": "executable", "description": "Handles notification events from the session." },
       { "name": "on-stop", "file": ".claude/hooks/on-stop.js", "type": "executable", "description": "Runs cleanup and final verification when session ends." },
       { "name": "post-tool-use", "file": ".claude/hooks/post-tool-use.js", "type": "executable", "description": "Runs after tool execution for auto-formatting and checks." },

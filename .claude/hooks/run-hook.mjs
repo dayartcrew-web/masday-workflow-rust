@@ -13,7 +13,7 @@ const hookModules = {
   'post-tool-use': './post-tool-use.js',
   'on-notification': './on-notification.js',
   'on-stop': './on-stop.js',
-  'agentic-mem-context': './agentic-mem-context.js',
+  'masday-mem-context': './masday-mem-context.js',
   'pre-task-complete': './pre-task-complete.js',
   'skill-wrap-guard': './skill-wrap-guard.js',
   'pre-commit': './pre-commit.md',
