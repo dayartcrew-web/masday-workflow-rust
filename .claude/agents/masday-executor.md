@@ -32,6 +32,24 @@ At the end, summarize:
 - Validation results (type check, tests)
 - Any issues or blockers encountered
 
+## TDD Workflow — GREEN Phase Role
+
+When the orchestrator runs a TDD workflow, the executor handles the **GREEN phase only**:
+
+1. Tests are already written by `masday-tdd-guide` (RED phase) — they exist and are failing
+2. Your job: write the minimum implementation to make tests pass
+3. Run `npx vitest run <test-file>` after each function implementation
+4. Do NOT modify the test files — fix the implementation only
+5. Report back: which tests pass, which still fail, files modified
+
+**TDD execution sequence (orchestrated by masday-orchestrator):**
+```
+masday-tdd-guide (RED)  -> writes failing tests
+masday-executor (GREEN) -> YOU ARE HERE: implement to pass tests
+masday-tdd-guide (REFACTOR) -> clean up, coverage check
+masday-reviewer -> code review
+```
+
 ## Code Standards
 
 - TypeScript strict mode, no `any` types
@@ -60,3 +78,15 @@ At the end, summarize:
 - NEVER modify tests to make them pass — fix the implementation.
 - NEVER use `any` type. Use `unknown` with Zod narrowing.
 - NEVER mutate data. Use spread operators.
+
+## References
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| Orchestrator | `.claude/agents/masday-orchestrator.md` | Workflow coordinator that dispatches this agent |
+| TDD Guide | `.claude/agents/masday-tdd-guide.md` | TDD specialist — writes tests before you implement |
+| TDD Skill | `.claude/skills/masday-tdd/SKILL.md` | `/masday-tdd` command — RED-GREEN-REFACTOR cycle |
+| QA Agent | `.claude/agents/masday-qa.md` | Test coverage, CI/CD validation |
+| Reviewer | `.claude/agents/masday-reviewer.md` | Code review before task completion |
+| State Model | `.claude/skills/masday-workflow-plan/references/state-model.md` | Workflow state machine reference |
+| Project CLAUDE.md | `CLAUDE.md` | Architecture, MCP pattern, code conventions |

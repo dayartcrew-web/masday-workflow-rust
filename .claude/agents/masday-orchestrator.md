@@ -164,7 +164,7 @@ Phase 6: DONE
 
 ## Agent Delegation — Dynamic Discovery
 
-All 26 agents are registered in `.claude/registry.json`. Instead of hardcoding the full list,
+All 27 agents are registered in `.claude/registry.json`. Instead of hardcoding the full list,
 discover agents dynamically at runtime:
 
 ### Primary Discovery (always use first)
@@ -179,12 +179,13 @@ capability_match_agent({
 })
 ```
 
-### Core Workflow Agents (8)
+### Core Workflow Agents (9)
 
 | Category | Agent | When to Delegate |
 |----------|-------|------------------|
 | Planning | `masday-planner` | Task decomposition, dependency analysis |
 | Execution | `masday-executor` | Code implementation, file changes |
+| TDD | `masday-tdd-guide` | RED-GREEN-REFACTOR cycle, coverage enforcement, write tests BEFORE implementation |
 | QA | `masday-qa` | Test writing, coverage, CI integration |
 | Review | `masday-reviewer` | After any code change — quality gate |
 | Verification | `masday-verifier` | Before task completion — final check |
@@ -221,6 +222,53 @@ capability_match_agent({
 3. **Specialist agents** activate for domain-specific work
 4. **Multiple agents** can be dispatched in parallel for independent subtasks
 5. **Every code change** must go through `masday-reviewer` before completion
+6. **TDD-first**: For new features/bug fixes, delegate to `masday-tdd-guide` BEFORE `masday-executor`
+7. **Never skip TDD**: Use `masday-tdd-guide` skill `/masday-tdd` for any testable code change
+```
+
+## TDD-Aware Execution Flow
+
+When a task involves writing or modifying code, follow this sequence:
+
+```
+1. Delegate to masday-tdd-guide (or invoke /masday-tdd skill)
+   -> RED phase: write failing tests
+   -> Save progress (workflow_saveProgress)
+
+2. Delegate to masday-executor
+   -> GREEN phase: implement minimum code to pass tests
+   -> Run tests to verify
+   -> Save progress (workflow_saveProgress)
+
+3. Delegate to masday-tdd-guide (REFACTOR phase)
+   -> Clean up tests and implementation
+   -> Coverage check (80%+)
+   -> Regression check (full suite)
+   -> Save progress with test_evidence
+
+4. Delegate to masday-reviewer
+   -> Code review of both test and implementation files
+
+5. Validate and complete
+   -> policy_validate_completion
+   -> workflow_completeTask
+   -> local_sync
+```
+
+### TDD Task Plan Template
+
+```
+workflow_createPlan({
+  workflow_id: "<id>",
+  plan: {
+    tasks: [
+      { title: "RED: Write failing tests for <feature>", agent: "masday-tdd-guide", priority: "high", requires_tdd: true },
+      { title: "GREEN: Implement <feature>", agent: "masday-executor", priority: "high", depends_on: ["<red-task-id>"] },
+      { title: "REFACTOR + Coverage check", agent: "masday-tdd-guide", priority: "medium", depends_on: ["<green-task-id>"] },
+      { title: "Code review", agent: "masday-reviewer", priority: "high", depends_on: ["<refactor-task-id>"] }
+    ]
+  }
+})
 ```
 
 ## Parallel Execution
@@ -351,3 +399,16 @@ STEP 6: Sync local state
 - Never skip policy_validate_completion before completion
 - Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL
+
+## References
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| Agent Routing Table | `.claude/skills/masday-workflow-run/references/agent-routing.md` | Full agent-to-task mapping with tools |
+| State Machine Model | `.claude/skills/masday-workflow-plan/references/state-model.md` | Workflow states, transitions, events |
+| TDD Skill | `.claude/skills/masday-tdd/SKILL.md` | RED-GREEN-REFACTOR command with masday pipeline |
+| TDD Agent | `.claude/agents/masday-tdd-guide.md` | TDD specialist agent definition |
+| Agent Registry | `.claude/registry.json` | Full agent + skill registry (27 agents, 35 skills) |
+| Executor Agent | `.claude/agents/masday-executor.md` | Code-only implementation specialist |
+| QA Agent | `.claude/agents/masday-qa.md` | Testing, coverage, CI/CD specialist |
+| Project CLAUDE.md | `CLAUDE.md` | Project architecture, MCP pattern, conventions |

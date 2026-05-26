@@ -27,6 +27,7 @@
       { "name": "masday-reviewer", "file": ".claude/agents/masday-reviewer.md", "model": "sonnet", "category": "quality", "description": "Quality gate code reviewer. Returns APPROVED/REWORK_REQUIRED/BLOCKED verdicts against acceptance criteria." },
       { "name": "masday-security", "file": ".claude/agents/masday-security.md", "model": "sonnet", "category": "quality", "description": "Security vulnerability scanner. Detects OWASP Top 10, hardcoded secrets, injection risks, auth bypasses." },
       { "name": "masday-synthesizer", "file": ".claude/agents/masday-synthesizer.md", "model": "sonnet", "category": "orchestration", "description": "Merges parallel branch outputs. Detects contradictions, removes duplication, validates against acceptance criteria." },
+      { "name": "masday-tdd-guide", "file": ".claude/agents/masday-tdd-guide.md", "model": "sonnet", "category": "quality", "description": "Test-Driven Development specialist. Enforces strict RED-GREEN-REFACTOR with Vitest, 80%+ coverage, masday review pipeline." },
       { "name": "masday-verifier", "file": ".claude/agents/masday-verifier.md", "model": "sonnet", "category": "quality", "description": "Final validation specialist. Runs scope drift detection, checks review status, verifies evidence completeness." }
     ],
     "skills": [
@@ -52,6 +53,7 @@
       { "name": "masday-research", "directory": ".claude/skills/masday-research", "category": "analysis", "description": "Multi-source research: web search, documentation lookup, and codebase analysis." },
       { "name": "masday-sequential-thinking", "directory": ".claude/skills/masday-sequential-thinking", "category": "analysis", "description": "Structured multi-step reasoning for complex problems." },
       { "name": "masday-skill-builder", "directory": ".claude/skills/masday-skill-builder", "category": "scaffolding", "description": "Build and validate new skills with proper frontmatter and references." },
+      { "name": "masday-tdd", "directory": ".claude/skills/masday-tdd", "category": "testing", "description": "Test-Driven Development with strict RED-GREEN-REFACTOR cycle, Vitest, 80%+ coverage enforcement, and masday review pipeline." },
       { "name": "masday-web-research", "directory": ".claude/skills/masday-web-research", "category": "analysis", "description": "Web search and content fetching for research." },
       { "name": "masday-workflow-add-task", "directory": ".claude/skills/masday-workflow-add-task", "category": "workflow", "description": "Add a new task to an existing workflow." },
       { "name": "masday-workflow-audit", "directory": ".claude/skills/masday-workflow-audit", "category": "workflow", "description": "Audit workflow health, check for stale tasks, and verify policy compliance." },
@@ -84,6 +86,17 @@
     ],
     "mcpServers": [
       { "name": "agent-runner", "path": "apps/agent-runner", "description": "Main MCP server with 87 tools across 17 namespaces, PostgreSQL-backed via DualWriteStore." }
+    ],
+    "docs": [
+      { "name": "project-claude-md", "file": ".claude/CLAUDE.md", "category": "project", "description": "Project-level CLAUDE.md with agent orchestration, skill priority, and masday pipeline rules." },
+      { "name": "agent-routing", "file": ".claude/skills/masday-workflow-run/references/agent-routing.md", "category": "reference", "description": "Agent-to-task routing table with model, tools, and dispatch patterns." },
+      { "name": "state-model", "file": ".claude/skills/masday-workflow-plan/references/state-model.md", "category": "reference", "description": "Workflow state machine: states, transitions, events, runtime behaviors." },
+      { "name": "frontmatter-reference", "file": ".claude/skills/masday-skill-builder/references/frontmatter-reference.md", "category": "reference", "description": "SKILL.md frontmatter schema: fields, types, allowed values." },
+      { "name": "tdd-workflow", "file": ".claude/skills/masday-tdd/references/tdd-workflow.md", "category": "reference", "description": "TDD agent sequence, phase checklists, coverage thresholds, Vitest commands, pipeline integration." },
+      { "name": "execution-checklist", "file": ".claude/agents/references/execution-checklist.md", "category": "reference", "description": "Pre/during/post implementation checklists, quality gate table, report template." },
+      { "name": "post-task-complete", "file": ".claude/hooks/post-task-complete.md", "category": "advisory", "description": "Advisory hook for auto-verify and store progress after task completion." },
+      { "name": "pre-commit", "file": ".claude/hooks/pre-commit.md", "category": "advisory", "description": "Advisory quality gate hook before git commits." },
+      { "name": "pre-workflow-execute", "file": ".claude/hooks/pre-workflow-execute.md", "category": "advisory", "description": "Advisory hook for pre-execution workflow checks." }
     ]
   }
 }
