@@ -9,7 +9,7 @@ import type { RouteDefinition } from '../utils';
 export interface MonitoringServiceProvider {
   getHealth(): Promise<unknown>;
   getMetrics(): unknown;
-  getStats(): unknown;
+  getStats(): Promise<unknown>;
   getTokenUsage?(params: { groupBy?: string; from?: string; to?: string; route?: string; model?: string }): Promise<unknown>;
 }
 

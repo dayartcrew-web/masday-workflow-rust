@@ -3,23 +3,15 @@ import postgres from "postgres";
 import * as schema from "./schema.js";
 
 const connectionString = process.env.DATABASE_URL!;
-const client = postgres(connectionString, {
-  connect_timeout: 10,
-  idle_timeout: 20,
-  max_lifetime: 60 * 30,
-});
+const client = postgres(connectionString);
 export const db = drizzle(client, { schema });
 
-// Deprecated: apps/api still imports { prisma } — migrate to Drizzle db and remove this stub
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _prisma: any = null;
-export { _prisma as prisma };
 
 export async function disconnectDb(): Promise<void> {
   await client.end();
 }
 
-export async function healthCheck(timeoutMs = 5000): Promise<boolean> {
+export async function healthCheck(timeoutMs = 2000): Promise<boolean> {
   try {
     await Promise.race([
       client`SELECT 1`,
