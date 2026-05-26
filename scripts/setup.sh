@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if command -v realpath &>/dev/null; then
+  ROOT_DIR="$(realpath "$_SCRIPT_DIR/..")"
+else
+  ROOT_DIR="$_SCRIPT_DIR/.."
+fi
 cd "$ROOT_DIR"
 
 OS_NAME="$(uname -s 2>/dev/null || echo unknown)"
@@ -20,6 +25,11 @@ case "$OS_NAME" in
     echo "Warning: unrecognized OS '$OS_NAME' — attempting to continue."
     ;;
 esac
+
+CP_FLAGS='-r'
+if [ "$OS_NAME" = 'Linux' ]; then
+  CP_FLAGS='-a'
+fi
 
 HOME_CLAUDE="${HOME}/.claude"
 HOME_GEMINI="${HOME}/.gemini"
@@ -91,10 +101,10 @@ fi
 
 # Copy agents and skills to each platform
 for plat_dir in .agents .gemini .continue; do
-  cp -r .claude/agents/* "${plat_dir}/agents/" 2>/dev/null || true
+  cp $CP_FLAGS .claude/agents/* "${plat_dir}/agents/" 2>/dev/null || true
   for skill_dir in .claude/skills/masday-*/; do
     [ -d "$skill_dir" ] || continue
-    cp -r "$skill_dir" "${plat_dir}/skills/$(basename "$skill_dir")" 2>/dev/null || true
+    cp $CP_FLAGS "$skill_dir" "${plat_dir}/skills/$(basename "$skill_dir")" 2>/dev/null || true
   done
 done
 
@@ -104,7 +114,7 @@ for plat_dir in .agents .gemini .continue .opencode .codex; do
   mkdir -p "$plat_dir/rules"
   rm -rf "$plat_dir/rules"/*
   if [ -d ".claude/rules" ]; then
-    cp -r .claude/rules/* "$plat_dir/rules/" 2>/dev/null || true
+    cp $CP_FLAGS .claude/rules/* "$plat_dir/rules/" 2>/dev/null || true
   fi
 done
 
@@ -118,7 +128,7 @@ for skill_dir in .claude/skills/masday-*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
   rm -rf "${HOME_CLAUDE}/skills/${skill_name}"
-  cp -r "$skill_dir" "${HOME_CLAUDE}/skills/${skill_name}"
+  cp $CP_FLAGS "$skill_dir" "${HOME_CLAUDE}/skills/${skill_name}"
   copied_claude=$((copied_claude + 1))
 done
 echo "  Claude Code: ${copied_claude} skills → ${HOME_CLAUDE}/skills/"
@@ -130,7 +140,7 @@ for skill_dir in .claude/skills/masday-*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
   rm -rf "${HOME_GEMINI}/config/skills/${skill_name}"
-  cp -r "$skill_dir" "${HOME_GEMINI}/config/skills/${skill_name}"
+  cp $CP_FLAGS "$skill_dir" "${HOME_GEMINI}/config/skills/${skill_name}"
   copied_gemini=$((copied_gemini + 1))
 done
 echo "  Gemini CLI:  ${copied_gemini} skills → ${HOME_GEMINI}/config/skills/"
@@ -142,7 +152,7 @@ for skill_dir in .claude/skills/masday-*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
   rm -rf "${HOME_OPENCODE}/skills/${skill_name}"
-  cp -r "$skill_dir" "${HOME_OPENCODE}/skills/${skill_name}"
+  cp $CP_FLAGS "$skill_dir" "${HOME_OPENCODE}/skills/${skill_name}"
   copied_opencode=$((copied_opencode + 1))
 done
 echo "  OpenCode:    ${copied_opencode} skills → ${HOME_OPENCODE}/skills/"
@@ -321,13 +331,20 @@ echo "  .github/hooks/masday-hooks.json (VS Code Copilot hooks)"
 
 # --- Copilot user-level MCP registration (optional, uses `code` CLI) ---
 # This registers masday at the user profile level so it works across all workspaces.
-if command -v code &>/dev/null; then
+CODE_CLI=""
+for cli in code code-insiders codium; do
+  if command -v "$cli" &>/dev/null; then
+    CODE_CLI="$cli"
+    break
+  fi
+done
+if [ -n "$CODE_CLI" ]; then
   ABS_MCP_JS="$(cd "$ROOT_DIR" && pwd)/${MCP_JS}"
-  code --add-mcp "{\"name\":\"masday\",\"command\":\"node\",\"args\":[\"--no-warnings\",\"${ABS_MCP_JS}\"]}" 2>/dev/null && \
-    echo "  User-level MCP registered via 'code --add-mcp'" || \
-    echo "  'code --add-mcp' skipped (VS Code not running or not available)"
+  "$CODE_CLI" --add-mcp "{\"name\":\"masday\",\"command\":\"node\",\"args\":[\"--no-warnings\",\"${ABS_MCP_JS}\"]}" 2>/dev/null && \
+    echo "  User-level MCP registered via '$CODE_CLI --add-mcp'" || \
+    echo "  '$CODE_CLI --add-mcp' skipped (VS Code not running or not available)"
 else
-  echo "  'code' CLI not found — skipping user-level MCP registration"
+  echo "  No VS Code CLI found (tried code, code-insiders, codium) — skipping user-level MCP"
 fi
 
 # 10. Git hooks (cross-platform enforcement)
