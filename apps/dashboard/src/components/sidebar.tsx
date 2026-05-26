@@ -51,7 +51,7 @@ function NavLink({
     <li>
       <Link
         href={href}
-        className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium focus-ring sidebar-nav-link ${
+        className={`flex items-center gap-3 px-3 py-3 text-sm font-medium focus-ring sidebar-nav-link ${
           isActive ? 'sidebar-nav-link--active' : ''
         }`}
       >

@@ -41,7 +41,7 @@ export function Header() {
       <header className="header-root flex items-center justify-between px-4 md:px-6 sticky top-0 z-30">
         <div className="flex items-center gap-3">
           {/* Mobile menu button area */}
-          <Link href="/" className="md:hidden flex items-center gap-2">
+          <Link href="/" className="md:hidden flex items-center justify-center min-w-[44px] min-h-[44px]">
             <div className="w-7 h-7 flex items-center justify-center sidebar-logo-icon rounded-lg">
               <span className="text-white font-bold text-xs">M</span>
             </div>
@@ -58,14 +58,14 @@ export function Header() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="md:hidden p-2 rounded-lg header-menu-btn focus-ring"
+            className="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg header-menu-btn focus-ring"
             aria-label="Open navigation menu"
           >
             <Menu className="w-5 h-5" />
           </button>
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-lg header-theme-btn focus-ring"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg header-theme-btn focus-ring"
             aria-label="Toggle theme"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -85,7 +85,7 @@ export function Header() {
                   logout();
                   window.location.href = '/login';
                 }}
-                className="p-2 rounded-lg header-logout-btn focus-ring"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg header-logout-btn focus-ring"
                 aria-label="Logout"
               >
                 <LogOut className="w-4 h-4" />
