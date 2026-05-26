@@ -7,47 +7,42 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const PROJECT_DIR = process.cwd()
 const MEMORIES_FILE = path.join(PROJECT_DIR, '.masday', 'state', 'memories.json')
-const PACKAGE_JSON = path.join(PROJECT_DIR, 'package.json')
+const HOOK_DIR = path.dirname(fileURLToPath(import.meta.url))
+const CONFIG_FILE = path.join(HOOK_DIR, 'masday-mem-config.json')
 
-function loadProjectContext() {
+const DEFAULT_CONFIG = { maxMemories: 15, foreignDomains: {}, matchThreshold: 2 }
+
+function loadConfig() {
   try {
-    const raw = fs.readFileSync(PACKAGE_JSON, 'utf-8')
-    const pkg = JSON.parse(raw)
-    return {
-      name: pkg.name || '',
-      description: pkg.description || '',
-      keywords: [...(pkg.keywords || [])]
-    }
+    const raw = fs.readFileSync(CONFIG_FILE, 'utf-8')
+    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
   } catch {
-    return { name: '', description: '', keywords: [] }
+    return DEFAULT_CONFIG
   }
 }
 
-// Tags/content keywords that indicate a memory is from a different project domain
-const FOREIGN_DOMAINS = {
-  'mt5': ['mt5', 'metatrader', 'auto-trading', 'kill-switch', 'signal-flow', 'position-sizing', 'strategy-metrics', 'botconfig'],
-  'financial': ['forex', 'trading', 'broker', 'signal-price', 'llm-signals'],
-}
-
-function isForeignMemory(memory) {
+function isForeignMemory(memory, config) {
   const tags = (memory.tags || []).map(t => t.toLowerCase())
   const content = (memory.content || '').toLowerCase()
   const summary = (memory.summary || '').toLowerCase()
   const text = `${tags.join(' ')} ${content} ${summary}`
 
-  for (const domain of Object.values(FOREIGN_DOMAINS)) {
+  for (const domain of Object.values(config.foreignDomains)) {
     const matchCount = domain.filter(kw => text.includes(kw)).length
-    if (matchCount >= 2) return true
+    if (matchCount >= config.matchThreshold) return true
   }
   return false
 }
 
 try {
+  const config = loadConfig()
+
   if (!fs.existsSync(MEMORIES_FILE)) {
-    console.log('[agentic-mem] No memories stored yet. Memories will be saved as you work.')
+    console.log('[masday-mem] No memories stored yet. Memories will be saved as you work.')
     process.exit(0)
   }
 
@@ -56,7 +51,7 @@ try {
   const allMemories = Array.isArray(data) ? data : (data.memories ?? [])
 
   if (allMemories.length === 0) {
-    console.log('[agentic-mem] Memory store is empty. Start by asking me to remember something.')
+    console.log('[masday-mem] Memory store is empty. Start by asking me to remember something.')
     process.exit(0)
   }
 
@@ -64,7 +59,7 @@ try {
   const relevant = []
   const foreign = []
   for (const m of allMemories) {
-    if (isForeignMemory(m)) {
+    if (isForeignMemory(m, config)) {
       foreign.push(m)
     } else {
       relevant.push(m)
@@ -82,10 +77,10 @@ try {
 
   const scored = relevant.map(scoreMemory)
   scored.sort((a, b) => b.score - a.score)
-  const top = scored.slice(0, 15)
+  const top = scored.slice(0, config.maxMemories)
 
   // Output as context injection
-  console.log(`[agentic-mem] Loaded ${allMemories.length} memories (${foreign.length} foreign filtered), showing top ${top.length}:`)
+  console.log(`[masday-mem] Loaded ${allMemories.length} memories (${foreign.length} foreign filtered), showing top ${top.length}:`)
   console.log('')
 
   // Group by type
@@ -120,7 +115,7 @@ try {
   console.log('Use memory_search for specific queries, memory_store to store new context.')
 
 } catch (err) {
-  console.log(`[agentic-mem] Could not load memories: ${err.message}`)
+  console.log(`[masday-mem] Could not load memories: ${err.message}`)
 }
 
 export default function () {}
