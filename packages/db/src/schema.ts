@@ -2,7 +2,7 @@ import { pgTable, uuid, text, integer, doublePrecision, boolean, jsonb, timestam
 import { vector } from "./vector.js";
 
 export const workflows = pgTable("Workflow", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
   status: text("status").notNull(),
   projectPath: text("projectPath"),
@@ -18,7 +18,7 @@ export const workflows = pgTable("Workflow", {
 ]);
 
 export const plans = pgTable("Plan", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey(),
   workflowId: text("workflowId").notNull().references(() => workflows.id),
   version: integer("version").notNull(),
   status: text("status").notNull(),
@@ -31,7 +31,7 @@ export const plans = pgTable("Plan", {
 ]);
 
 export const tasks = pgTable("Task", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey(),
   workflowId: text("workflowId").notNull().references(() => workflows.id),
   planId: text("planId").notNull().references(() => plans.id),
   title: text("title").notNull(),
@@ -235,7 +235,7 @@ export const llmProviderConfigs = pgTable("LlmProviderConfig", {
   isDefault: boolean("isDefault").default(false),
   priority: integer("priority").default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export const tokenUsages = pgTable("TokenUsage", {
