@@ -9,7 +9,6 @@ export async function createWorkflow(input: {
 }) {
   const { db, workflows } = await import("@mcp-rebuild/db");
   const [row] = await db.insert(workflows).values({
-    id: crypto.randomUUID(),
     name: input.name,
     status: "INIT",
     projectPath: input.projectPath,
