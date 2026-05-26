@@ -1,0 +1,52 @@
+# =============================================================================
+# docker-compose.dev.yml — Development overrides
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# =============================================================================
+
+services:
+  postgres:
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  api:
+    build:
+      context: .
+      target: api
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+      - ./packages:/app/packages:ro
+    environment:
+      NODE_ENV: development
+      API_PORT: "3000"
+      API_WS_PORT: "3001"
+    command: ["npx", "tsx", "watch", "apps/api/src/main.ts"]
+
+  dashboard:
+    build:
+      context: .
+      target: dashboard
+    volumes:
+      - ./apps/dashboard/src:/app/apps/dashboard/src:ro
+      - ./apps/dashboard/public:/app/apps/dashboard/public:ro
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-3001}
+    command: ["node_modules/.bin/next", "dev", "-p", "3000"]
+
+  mcp:
+    build:
+      context: .
+      target: mcp
+    volumes:
+      - ./apps/agent-runner/src:/app/apps/agent-runner/src:ro
+      - ./packages:/app/packages:ro
+    environment:
+      NODE_ENV: development
+      MCP_TRANSPORT: stdio
+    command: ["npx", "tsx", "apps/agent-runner/src/runtime/mcp.ts"]
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
