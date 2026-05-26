@@ -91,7 +91,7 @@ export function ChatInterface({ onSend, messages, isLoading, memoryContext }: Ch
       </div>
 
       {/* Input */}
-      <div className="border-t border-[var(--border)] p-4">
+      <div className="border-t border-[var(--border)] p-3 md:p-4">
         <div className="flex gap-2">
           <input
             type="text"

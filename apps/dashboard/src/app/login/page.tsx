@@ -42,9 +42,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4 py-8">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6 md:mb-8">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ background: 'linear-gradient(135deg, #6366f1, #818cf8)', boxShadow: '0 0 20px rgba(99,102,241,0.4)' }}>
             <span className="text-white font-bold text-xl">M</span>
           </div>
@@ -52,7 +52,7 @@ export default function LoginPage() {
           <p className="text-sm text-[var(--color-text-secondary)] mt-1">Sign in to access the dashboard</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-6 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-[var(--shadow-card-depth)]">
+        <form onSubmit={handleSubmit} className="space-y-4 p-4 sm:p-6 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-[var(--shadow-card-depth)]">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
               Email

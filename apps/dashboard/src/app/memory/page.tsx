@@ -37,7 +37,7 @@ export default function MemoryExplorerPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Memory Explorer</h2>
           <button
             onClick={() => selectedWorkflow && fetchMemories(selectedWorkflow)}
@@ -49,9 +49,9 @@ export default function MemoryExplorerPage() {
         </div>
 
         {/* Workflow selector + tabs */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <SelectRoot value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
-            <SelectTrigger className="flex-1">
+            <SelectTrigger className="w-full sm:flex-1">
               <SelectValue placeholder="Select workflow..." />
             </SelectTrigger>
             <SelectContent>

@@ -95,12 +95,12 @@ export default function PolicyPage() {
 
         {/* Tabs (Radix UI) */}
         <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-          <Tabs.List className="flex gap-1 border-b border-[var(--border)]">
+          <Tabs.List className="flex gap-1 border-b border-[var(--border)] overflow-x-auto">
             {tabs.map((tab) => (
               <Tabs.Trigger
                 key={tab.key}
                 value={tab.key}
-                className="px-4 py-2 text-sm font-medium border-b-2 transition-colors data-[state=active]:border-brand-500 data-[state=active]:text-brand-400 border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className="px-3 md:px-4 py-2 text-xs md:text-sm font-medium border-b-2 transition-colors data-[state=active]:border-brand-500 data-[state=active]:text-brand-400 border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] whitespace-nowrap"
               >
                 {tab.label}
               </Tabs.Trigger>
@@ -112,7 +112,7 @@ export default function PolicyPage() {
         )}
 
           <Tabs.Content value="readiness" className="mt-4 space-y-3">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={sessionKey}
