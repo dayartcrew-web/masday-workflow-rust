@@ -84,7 +84,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
           </div>
           <button
             onClick={onClose}
-            className="drawer-close-btn focus-ring"
+            className="drawer-close-btn focus-ring min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Close navigation menu"
           >
             <X className="w-5 h-5" />
@@ -97,7 +97,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium focus-ring sidebar-nav-link ${
+                  className={`flex items-center gap-3 px-3 py-3 text-sm font-medium focus-ring sidebar-nav-link ${
                     pathname === item.href ||
                     (item.href !== '/' && pathname.startsWith(item.href))
                       ? 'sidebar-nav-link--active'
@@ -118,7 +118,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium focus-ring sidebar-nav-link ${
+                  className={`flex items-center gap-3 px-3 py-3 text-sm font-medium focus-ring sidebar-nav-link ${
                     pathname === item.href ||
                     (item.href !== '/' && pathname.startsWith(item.href))
                       ? 'sidebar-nav-link--active'

@@ -14,6 +14,7 @@ export default defineConfig({
       '**/dist/**',
       'apps/dashboard/**',
       '**/e2e/**',
+      '**/.masday/worktrees/**',
     ],
   },
 });
