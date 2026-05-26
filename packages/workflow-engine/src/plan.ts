@@ -21,7 +21,6 @@ export async function createPlan(input: {
 
   return db.transaction(async (tx) => {
     const [plan] = await tx.insert(plans).values({
-      id: crypto.randomUUID(),
       workflowId: input.workflowId,
       version: existingCount + 1,
       status: "ACTIVE",
@@ -32,7 +31,6 @@ export async function createPlan(input: {
 
     for (const task of input.content.tasks) {
       await tx.insert(tasksTable).values({
-        id: crypto.randomUUID(),
         workflowId: input.workflowId,
         planId: plan.id,
         title: task.title,

@@ -2,7 +2,7 @@ import { pgTable, uuid, text, integer, doublePrecision, boolean, jsonb, timestam
 import { vector } from "./vector.js";
 
 export const workflows = pgTable("Workflow", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   status: text("status").notNull(),
   projectPath: text("projectPath"),
@@ -18,7 +18,7 @@ export const workflows = pgTable("Workflow", {
 ]);
 
 export const plans = pgTable("Plan", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   workflowId: text("workflowId").notNull().references(() => workflows.id),
   version: integer("version").notNull(),
   status: text("status").notNull(),
@@ -31,7 +31,7 @@ export const plans = pgTable("Plan", {
 ]);
 
 export const tasks = pgTable("Task", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   workflowId: text("workflowId").notNull().references(() => workflows.id),
   planId: text("planId").notNull().references(() => plans.id),
   title: text("title").notNull(),
