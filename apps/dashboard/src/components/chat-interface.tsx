@@ -31,7 +31,7 @@ export function ChatInterface({ onSend, messages, isLoading, memoryContext }: Ch
     <div className="flex flex-col h-full">
       {/* Memory context toggle */}
       {memoryContext && memoryContext.length > 0 && (
-        <div className="border-b border-[var(--border)] px-4 py-2">
+        <div className="border-b border-[var(--border)] px-3 md:px-4 py-2">
           <button
             onClick={() => setShowContext(!showContext)}
             className="text-xs text-brand-400 hover:text-brand-300"
@@ -51,7 +51,7 @@ export function ChatInterface({ onSend, messages, isLoading, memoryContext }: Ch
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-[var(--text-secondary)] text-sm py-8">
             Send a message to start chatting
@@ -63,7 +63,7 @@ export function ChatInterface({ onSend, messages, isLoading, memoryContext }: Ch
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+              className={`max-w-[85%] md:max-w-[80%] rounded-lg px-3 md:px-4 py-2 text-sm ${
                 msg.role === 'user'
                   ? 'bg-brand-600 text-white'
                   : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-primary)]'
@@ -90,8 +90,8 @@ export function ChatInterface({ onSend, messages, isLoading, memoryContext }: Ch
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t border-[var(--border)] p-3 md:p-4">
+      {/* Input - sticky at bottom on mobile */}
+      <div className="border-t border-[var(--border)] p-3 md:p-4 sticky bottom-0 bg-[var(--bg-card)]">
         <div className="flex gap-2">
           <input
             type="text"
@@ -100,12 +100,12 @@ export function ChatInterface({ onSend, messages, isLoading, memoryContext }: Ch
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
             placeholder="Type a message..."
             disabled={isLoading}
-            className="flex-1 px-4 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
+            className="flex-1 px-3 md:px-4 py-2.5 md:py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
           />
           <button
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
-            className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-50 transition-colors"
+            className="px-3 md:px-4 py-2.5 md:py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-50 transition-colors min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
           >
             <Send className="w-4 h-4" />
           </button>

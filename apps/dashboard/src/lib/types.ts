@@ -95,8 +95,6 @@ export interface ProviderInfo {
   models: string[];
   status: 'available' | 'unavailable' | 'error';
   circuitState: 'closed' | 'open' | 'half-open';
-  source?: 'db' | 'env';
-  isDefault?: boolean;
 }
 
 export interface HealthStatus {
