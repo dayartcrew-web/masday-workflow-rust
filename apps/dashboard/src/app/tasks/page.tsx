@@ -41,10 +41,10 @@ export default function TasksPage() {
         'bg-gray-500/10 text-gray-400'
       }`}>{t.state}</span>
     )},
-    { key: 'agent', label: 'Agent', render: (t: Task) => (
+    { key: 'agent', label: 'Agent', hideOnMobile: true, render: (t: Task) => (
       <span className="text-sm text-[var(--text-secondary)]">{t.agent}</span>
     )},
-    { key: 'skill', label: 'Skill', render: (t: Task) => (
+    { key: 'skill', label: 'Skill', hideOnMobile: true, render: (t: Task) => (
       <span className="text-sm text-[var(--text-secondary)]">{t.skill}</span>
     )},
   ];
@@ -54,9 +54,9 @@ export default function TasksPage() {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Tasks</h2>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-2 overflow-x-auto">
             <Filter className="w-4 h-4 text-[var(--text-secondary)] flex-shrink-0" />
-            <div className="flex gap-1 flex-shrink-0">
+            <div className="flex gap-1">
               {states.map((s) => (
                 <button
                   key={s}

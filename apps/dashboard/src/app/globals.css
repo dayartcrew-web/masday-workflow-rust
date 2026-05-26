@@ -38,6 +38,7 @@
   --brand-200: #c7d2fe;
 
   --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', ui-monospace, monospace;
 
   --font-size-display: 42px;
   --font-size-h1: 32px;
@@ -443,85 +444,6 @@ body {
     color: var(--color-error);
   }
 
-  .header-menu-btn {
-    color: var(--color-text-secondary);
-    transition: var(--transition-base);
-  }
-
-  .header-menu-btn:hover {
-    background: var(--color-surface-elevated);
-    color: var(--color-text);
-  }
-}
-
-/* ==========================================================================
-   Mobile Drawer Component Styles
-   ========================================================================== */
-
-@layer components {
-  .drawer-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 45;
-    background: rgba(0, 0, 0, 0.5);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-    -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
-  }
-
-  .drawer-overlay--visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .drawer-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    z-index: 50;
-    width: 280px;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--color-bg);
-    border-left: 1px solid var(--color-border);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-    overflow: hidden;
-  }
-
-  .drawer-panel--open {
-    transform: translateX(0);
-  }
-
-  .drawer-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    border-bottom: 1px solid var(--color-border-subtle);
-  }
-
-  .drawer-close-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6px;
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: var(--transition-base);
-  }
-
-  .drawer-close-btn:hover {
-    background: var(--color-surface-elevated);
-    color: var(--color-text);
-  }
 }
 
 /* ==========================================================================
@@ -695,6 +617,75 @@ body {
   .badge--pill {
     border-radius: var(--radius-full);
     padding: 2px var(--spacing-3);
+  }
+}
+
+/* ==========================================================================
+   Mobile Navigation Styles
+   ========================================================================== */
+
+@layer components {
+  .mobile-nav-root {
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border-subtle);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .mobile-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    transition: color 0.15s ease;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-tab--active {
+    color: var(--color-primary);
+  }
+
+  .mobile-tab-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s ease;
+  }
+
+  .mobile-tab--active .mobile-tab-icon-wrap {
+    background: rgba(99, 102, 241, 0.1);
+  }
+
+  .mobile-tab-dot {
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
+  }
+
+  .mobile-tab-label {
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    font-weight: 500;
+    font-family: var(--font-family-mono);
   }
 }
 

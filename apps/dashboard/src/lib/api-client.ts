@@ -238,17 +238,8 @@ export const providerApi = {
   list(): Promise<{ providers: ProviderInfo[] }> {
     return request('GET', '/api/providers');
   },
-  save(input: { providerName: string; providerType: string; baseUrl: string; apiKey: string; models: string[]; isDefault?: boolean }): Promise<unknown> {
-    return request('POST', '/api/providers', input);
-  },
-  delete(providerName: string): Promise<unknown> {
-    return request('DELETE', `/api/providers/${providerName}`);
-  },
   test(name: string, input?: { model?: string; prompt?: string }): Promise<unknown> {
     return request('POST', `/api/providers/${name}/test`, input || {});
-  },
-  setDefault(name: string): Promise<unknown> {
-    return request('PATCH', `/api/providers/${name}/default`);
   },
 };
 
