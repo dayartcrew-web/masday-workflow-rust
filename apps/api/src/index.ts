@@ -23,6 +23,7 @@ import {
   createChatRoutes, createProviderRoutes,
   createMonitoringRoutes,
 } from './routes';
+import type { DbReader } from './routes/workflows';
 import type {
   MemoryServiceProvider, SearchServiceProvider,
   PolicyServiceProvider, CapabilityServiceProvider,
@@ -49,6 +50,7 @@ interface ServerDeps {
   chatProvider: ChatServiceProvider;
   providerService: ProviderServiceProvider;
   monitoringProvider: MonitoringServiceProvider;
+  dbReader?: DbReader;
 }
 
 interface RequestLog {
@@ -94,7 +96,7 @@ export class APIServer {
   private buildRoutes(): RouteDefinition[] {
     return [
       ...authRoutes,
-      ...createWorkflowRoutes(this.deps.engine),
+      ...createWorkflowRoutes(this.deps.engine, this.deps.dbReader),
       ...createMemoryRoutes(this.deps.memoryProvider),
       ...createSearchRoutes(this.deps.searchProvider),
       ...createPolicyRoutes(this.deps.policyProvider),

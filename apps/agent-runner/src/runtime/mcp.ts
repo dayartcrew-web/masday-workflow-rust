@@ -59,9 +59,10 @@ process.setMaxListeners(20);
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
-import { EventBus, createLogger, setPrismaClient as setTokenPrisma, trackTokens } from "@mcp-rebuild/core";
+import { EventBus, createLogger, setPrismaClient, trackTokens } from "@mcp-rebuild/core";
 import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
 import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
@@ -172,15 +173,33 @@ const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com"
 let _embedModel: any = null;
 async function getFastembedModel() {
   if (!_embedModel) {
-    const { FlagEmbedding, EmbeddingModel } = await import("fastembed");
-    const modelId = (EMBEDDING_MODEL as typeof EmbeddingModel[keyof typeof EmbeddingModel]) || EmbeddingModel.BGEBaseENV15;
-    _embedModel = await FlagEmbedding.init({ model: modelId });
+    // Use createRequire for CJS import (ESM dynamic import fails with tar module)
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    const { FlagEmbedding, EmbeddingModel } = require("fastembed");
+    const modelId = (EMBEDDING_MODEL as any) || EmbeddingModel.BGEBaseENV15;
+    const cacheDir = path.resolve(import.meta.dirname, "../../../local_cache");
+    _embedModel = await FlagEmbedding.init({ model: modelId, cacheDir });
   }
   return _embedModel;
 }
 
+function mockEmbedding(text: string, dims: number): number[] {
+  const vec = new Array(dims);
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  for (let i = 0; i < dims; i++) vec[i] = Math.sin(hash * (i + 1) * 0.0001);
+  const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
+  return vec.map(v => v / mag);
+}
+
 async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
+    if (EMBEDDING_PROVIDER === "mock") {
+      const dims = parseInt(process.env.EMBEDDING_DIMENSIONS ?? "768", 10);
+      return mockEmbedding(text, dims);
+    }
+
     if (EMBEDDING_PROVIDER === "ollama") {
       const model = EMBEDDING_MODEL || "nomic-embed-text";
       const res = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
@@ -229,7 +248,7 @@ async function initDb(): Promise<void> {
     }
     dbReady = true;
     setDualWritePrisma(drizzleDb as never);
-    setTokenPrisma(drizzleDb as never);
+    setPrismaClient(drizzleDb as never);
     setEpisodicPrisma(drizzleDb as never);
     setGraphPrisma(drizzleDb as never);
     setReminderDb(drizzleDb);
@@ -710,6 +729,7 @@ server.registerTool("filesystem.stat", { description: "File stat", inputSchema: 
 server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional(), tests_verified: z.boolean().optional(), test_summary: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional() }).optional() } }, async (a) => {
   if (dbReady) {
     const [review] = await drizzleDb.insert(reviewDecisionsTable).values({
+      id: randomUUID(),
       workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent,
       decision: a.decision, notes: a.notes, gaps: a.gaps ?? [] as never,
       testsVerified: a.tests_verified ?? false, testSummary: a.test_summary ?? {} as never,
@@ -758,6 +778,7 @@ server.registerTool("session.patch_state", { description: "Patch session state",
       return ok({ sessionKey: session_key, patched: true, patch });
     }
     await drizzleDb.insert(sessionStates).values({
+      id: randomUUID(),
       sessionKey: session_key, metadata: patch as never,
       workflowId: (patch as Record<string, unknown>).workflowId as string ?? null,
       planId: (patch as Record<string, unknown>).planId as string ?? null,

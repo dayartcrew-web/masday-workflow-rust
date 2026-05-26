@@ -10,7 +10,7 @@
 import fs from 'fs';
 import net from 'net';
 import path from 'path';
-import { EventBus, createLogger, getMetrics, HealthChecker, getRouteTokenBreakdown, trackLLMTokens, setPrismaClient } from '@mcp-rebuild/core';
+import { EventBus, createLogger, getMetrics, HealthChecker, getRouteTokenBreakdown, trackLLMTokens, setTokenDb } from '@mcp-rebuild/core';
 import type { MemoryType } from '@mcp-rebuild/core';
 import { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
 import type { ISkillRegistry } from '@mcp-rebuild/workflow-engine';
@@ -21,8 +21,8 @@ import {
   PersistenceListener,
   DualWriteWorkflowStore,
   DualWriteTaskResultStore,
-  setDualWritePrisma,
-  setDualWriteMemoryPrisma,
+  setDualWriteDb,
+  setDualWriteMemoryDb,
   replicateMemory,
   replicateMemoryDelete,
 } from '@mcp-rebuild/store';
@@ -128,12 +128,12 @@ async function main(): Promise<void> {
   // --- Core runtime plumbing (EventBus + persistence + workflow engine) ---
   const eventBus = new EventBus();
 
-  // Wire Prisma client for token usage persistence and dual-write sync
+  // Wire Drizzle client for token usage persistence and dual-write sync
   try {
-    const { prisma } = await import('@mcp-rebuild/db');
-    setPrismaClient(prisma);
-    setDualWritePrisma(prisma);
-    setDualWriteMemoryPrisma(prisma);
+    const { db, memories, tokenUsages, ...schema } = await import('@mcp-rebuild/db');
+    setTokenDb(db, { tokenUsages });
+    setDualWriteDb(db);
+    setDualWriteMemoryDb(db, { memories });
     logger.info('Token usage persistence + dual-write sync: PostgreSQL connected');
   } catch (err) {
     logger.warn({ err: String(err) }, 'Token usage persistence: falling back to in-memory (DB unavailable)');
@@ -501,59 +501,82 @@ async function main(): Promise<void> {
   const monitoringProvider: MonitoringServiceProvider = {
     getHealth: async () => healthChecker.check(),
     getMetrics: () => ({ points: getMetrics().getPoints() }),
-    getStats: () => {
-      const allWorkflows = engine.listWorkflows();
-      const workflowsDone = allWorkflows.filter((w) => w.state === 'DONE').length;
-      const workflowsFailed = allWorkflows.filter((w) => w.state === 'FAILED').length;
-      const workflowsActive = allWorkflows.length - workflowsDone - workflowsFailed;
-      const allTasks = allWorkflows.flatMap((w) => w.tasks ?? []);
-      const tasksCompleted = allTasks.filter((t) => t.state === 'done').length;
-      const tasksFailed = allTasks.filter((t) => t.state === 'failed').length;
-      const allMemories = memoryStore.getAll();
-      return {
-        engine: {
-          workflows: allWorkflows.length,
-          workflowsActive,
-          workflowsDone,
-          workflowsFailed,
-          tasksTotal: allTasks.length,
-          tasksCompleted,
-          tasksFailed,
-          memoriesTotal: allMemories.length,
-          tokensUsed: getMetrics().getCounter('llm.tokens_used').sum,
-          tokenBreakdown: Object.fromEntries(getRouteTokenBreakdown()),
-        },
-        api: apiServer ? apiServer.getStats() : { started: false },
-      };
+    getStats: async () => {
+      try {
+        const { db, workflows, tasks, memories } = await import('@mcp-rebuild/db');
+        const { count: cnt, eq: eqOp, desc: descOp, and: andOp, gte, lte } = await import('drizzle-orm');
+        const [wc] = await db.select({ total: cnt() }).from(workflows);
+        const [tc] = await db.select({ total: cnt() }).from(tasks);
+        const [mc] = await db.select({ total: cnt() }).from(memories);
+        const [doneCount] = await db.select({ total: cnt() }).from(workflows).where(eqOp(workflows.status, 'DONE'));
+        const [failCount] = await db.select({ total: cnt() }).from(workflows).where(eqOp(workflows.status, 'FAILED'));
+        const activeCount = wc.total - doneCount.total - failCount.total;
+        const [tasksDone] = await db.select({ total: cnt() }).from(tasks).where(eqOp(tasks.status, 'DONE'));
+        const [tasksFail] = await db.select({ total: cnt() }).from(tasks).where(eqOp(tasks.status, 'FAILED'));
+        return {
+          engine: {
+            workflows: wc.total,
+            workflowsActive: activeCount,
+            workflowsDone: doneCount.total,
+            workflowsFailed: failCount.total,
+            tasksTotal: tc.total,
+            tasksCompleted: tasksDone.total,
+            tasksFailed: tasksFail.total,
+            memoriesTotal: mc.total,
+            tokensUsed: getMetrics().getCounter('llm.tokens_used').sum,
+            tokenBreakdown: Object.fromEntries(getRouteTokenBreakdown()),
+          },
+          api: apiServer ? apiServer.getStats() : { started: false },
+        };
+      } catch {
+        const allWorkflows = engine.listWorkflows();
+        const workflowsDone = allWorkflows.filter((w) => w.state === 'DONE').length;
+        const workflowsFailed = allWorkflows.filter((w) => w.state === 'FAILED').length;
+        const workflowsActive = allWorkflows.length - workflowsDone - workflowsFailed;
+        const allTasks = allWorkflows.flatMap((w) => w.tasks ?? []);
+        const allMemories = memoryStore.getAll();
+        return {
+          engine: {
+            workflows: allWorkflows.length,
+            workflowsActive,
+            workflowsDone,
+            workflowsFailed,
+            tasksTotal: allTasks.length,
+            tasksCompleted: allTasks.filter((t) => t.state === 'done').length,
+            tasksFailed: allTasks.filter((t) => t.state === 'failed').length,
+            memoriesTotal: allMemories.length,
+            tokensUsed: getMetrics().getCounter('llm.tokens_used').sum,
+            tokenBreakdown: Object.fromEntries(getRouteTokenBreakdown()),
+          },
+          api: apiServer ? apiServer.getStats() : { started: false },
+        };
+      }
     },
     getTokenUsage: async (params) => {
       try {
-        const { prisma } = await import('@mcp-rebuild/db');
-        const where: Record<string, unknown> = {};
-        if (params.from || params.to) {
-          const createdAt: Record<string, Date> = {};
-          if (params.from) createdAt.gte = new Date(params.from);
-          if (params.to) createdAt.lte = new Date(params.to);
-          where.createdAt = createdAt;
-        }
-        if (params.route) where.route = params.route;
-        if (params.model) where.model = params.model;
+        const { db, tokenUsages } = await import('@mcp-rebuild/db');
+        const { eq: eqOp, desc: descOp, and: andOp, gte, lte } = await import('drizzle-orm');
+        const conditions = [];
+        if (params.from) conditions.push(gte(tokenUsages.createdAt, new Date(params.from)));
+        if (params.to) conditions.push(lte(tokenUsages.createdAt, new Date(params.to)));
+        if (params.route) conditions.push(eqOp(tokenUsages.route, params.route));
+        if (params.model) conditions.push(eqOp(tokenUsages.model, params.model));
+
+        const whereClause = conditions.length > 0 ? andOp(...conditions) : undefined;
+        const records = whereClause
+          ? await db.select().from(tokenUsages).where(whereClause).orderBy(descOp(tokenUsages.createdAt)).limit(1000)
+          : await db.select().from(tokenUsages).orderBy(descOp(tokenUsages.createdAt)).limit(1000);
 
         const groupBy = params.groupBy ?? 'route';
-        const records = await prisma.tokenUsage.findMany({
-          where,
-          orderBy: { createdAt: 'desc' },
-          take: 1000,
-        });
 
         if (groupBy === 'model') {
           const buckets = new Map<string, { totalTokens: number; promptTokens: number; completionTokens: number; count: number }>();
           for (const r of records) {
             const key = r.model ?? 'unknown';
             const b = buckets.get(key) ?? { totalTokens: 0, promptTokens: 0, completionTokens: 0, count: 0 };
-            b.totalTokens += r.totalTokens;
-            b.promptTokens += r.promptTokens;
-            b.completionTokens += r.completionTokens;
+            b.totalTokens += r.totalTokens ?? 0;
+            b.promptTokens += r.promptTokens ?? 0;
+            b.completionTokens += r.completionTokens ?? 0;
             b.count += 1;
             buckets.set(key, b);
           }
@@ -565,9 +588,9 @@ async function main(): Promise<void> {
           for (const r of records) {
             const key = r.createdAt.toISOString().slice(0, 10);
             const b = buckets.get(key) ?? { totalTokens: 0, promptTokens: 0, completionTokens: 0, count: 0 };
-            b.totalTokens += r.totalTokens;
-            b.promptTokens += r.promptTokens;
-            b.completionTokens += r.completionTokens;
+            b.totalTokens += r.totalTokens ?? 0;
+            b.promptTokens += r.promptTokens ?? 0;
+            b.completionTokens += r.completionTokens ?? 0;
             b.count += 1;
             buckets.set(key, b);
           }
@@ -579,9 +602,9 @@ async function main(): Promise<void> {
         for (const r of records) {
           const key = r.route;
           const b = buckets.get(key) ?? { totalTokens: 0, promptTokens: 0, completionTokens: 0, count: 0 };
-          b.totalTokens += r.totalTokens;
-          b.promptTokens += r.promptTokens;
-          b.completionTokens += r.completionTokens;
+          b.totalTokens += r.totalTokens ?? 0;
+          b.promptTokens += r.promptTokens ?? 0;
+          b.completionTokens += r.completionTokens ?? 0;
           b.count += 1;
           buckets.set(key, b);
         }
@@ -590,6 +613,25 @@ async function main(): Promise<void> {
         logger.warn({ err: String(err) }, 'Token usage aggregation failed');
         return { error: 'Token usage aggregation unavailable', buckets: {}, totalRecords: 0 };
       }
+    },
+  };
+
+  const dbReader = {
+    listWorkflows: async () => {
+      const { db, workflows } = await import('@mcp-rebuild/db');
+      const { desc } = await import('drizzle-orm');
+      return db.select().from(workflows).orderBy(desc(workflows.createdAt));
+    },
+    getWorkflow: async (id: string) => {
+      const { db, workflows } = await import('@mcp-rebuild/db');
+      const { eq } = await import('drizzle-orm');
+      const [row] = await db.select().from(workflows).where(eq(workflows.id, id));
+      return row ?? null;
+    },
+    getWorkflowTasks: async (workflowId: string) => {
+      const { db, tasks } = await import('@mcp-rebuild/db');
+      const { eq, desc } = await import('drizzle-orm');
+      return db.select().from(tasks).where(eq(tasks.workflowId, workflowId)).orderBy(desc(tasks.createdAt));
     },
   };
 
@@ -604,6 +646,7 @@ async function main(): Promise<void> {
       chatProvider,
       providerService,
       monitoringProvider,
+      dbReader,
     },
     {
       httpPort,

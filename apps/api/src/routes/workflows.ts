@@ -7,7 +7,13 @@ import { sendJson } from '../utils';
 import type { RouteDefinition } from '../utils';
 import type { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
 
-export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefinition[] {
+export interface DbReader {
+  listWorkflows(): Promise<unknown[]>;
+  getWorkflow(id: string): Promise<unknown | null>;
+  getWorkflowTasks(workflowId: string): Promise<unknown[]>;
+}
+
+export function createWorkflowRoutes(engine: OrchestratingEngine, dbReader?: DbReader): RouteDefinition[] {
   return [
     // GET /api/workflows — List workflows
     {
@@ -15,6 +21,13 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
       pattern: '/api/workflows',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        if (dbReader) {
+          try {
+            const workflows = await dbReader.listWorkflows();
+            sendJson(res, 200, { workflows });
+            return;
+          } catch { /* fall through to engine */ }
+        }
         const workflows = engine.listWorkflows();
         sendJson(res, 200, { workflows });
       },
@@ -40,6 +53,16 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
       pattern: '/api/workflows/active',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
+        if (dbReader) {
+          try {
+            const workflows = await dbReader.listWorkflows() as Array<Record<string, unknown>>;
+            const active = workflows.find(
+              (w) => w.status !== 'DONE' && w.status !== 'FAILED' && w.status !== 'PAUSED',
+            );
+            sendJson(res, 200, { workflow: active || null });
+            return;
+          } catch { /* fall through to engine */ }
+        }
         const workflows = engine.listWorkflows();
         const active = workflows.find(
           (w) => w.state !== 'DONE' && w.state !== 'FAILED',
@@ -67,6 +90,15 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
       pattern: '/api/workflows/:id',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+        if (dbReader) {
+          try {
+            const workflow = await dbReader.getWorkflow(params.id);
+            if (workflow) {
+              sendJson(res, 200, { workflow });
+              return;
+            }
+          } catch { /* fall through to engine */ }
+        }
         const workflow = engine.getWorkflow(params.id);
         if (!workflow) {
           sendJson(res, 404, { error: 'Workflow not found' });
@@ -126,6 +158,15 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
       pattern: '/api/workflows/:id/tasks',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+        if (dbReader) {
+          try {
+            const tasks = await dbReader.getWorkflowTasks(params.id);
+            if (tasks.length > 0) {
+              sendJson(res, 200, { tasks });
+              return;
+            }
+          } catch { /* fall through to engine */ }
+        }
         const workflow = engine.getWorkflow(params.id);
         if (!workflow) {
           sendJson(res, 404, { error: 'Workflow not found' });
@@ -172,9 +213,8 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
           sendJson(res, 404, { error: 'Task not found' });
           return;
         }
-        task.state = 'running';
-        task.startedAt = new Date();
-        sendJson(res, 200, { task });
+        const updatedTask = { ...task, state: 'running' as const, startedAt: new Date() };
+        sendJson(res, 200, { task: updatedTask });
       },
     },
     // POST /api/workflows/:id/tasks/:taskId/complete — Complete task (update state)
@@ -194,10 +234,8 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
           sendJson(res, 404, { error: 'Task not found' });
           return;
         }
-        task.state = 'done';
-        task.output = input.output;
-        task.completedAt = new Date();
-        sendJson(res, 200, { task });
+        const updatedTask = { ...task, state: 'done' as const, output: input.output, completedAt: new Date() };
+        sendJson(res, 200, { task: updatedTask });
       },
     },
     // POST /api/workflows/:id/tasks/:taskId/progress — Save progress (acknowledge)
@@ -207,7 +245,6 @@ export function createWorkflowRoutes(engine: OrchestratingEngine): RouteDefiniti
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>, body?: Record<string, unknown>) => {
         const input = body || {};
-        // Progress is logged via the memory/event system — acknowledge receipt
         sendJson(res, 200, {
           saved: true,
           workflowId: params.id,

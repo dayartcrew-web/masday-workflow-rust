@@ -9,7 +9,7 @@ import type { RouteDefinition } from '../utils';
 export interface MonitoringServiceProvider {
   getHealth(): Promise<unknown>;
   getMetrics(): unknown;
-  getStats(): unknown;
+  getStats(): Promise<unknown>;
   getTokenUsage?(params: { groupBy?: string; from?: string; to?: string; route?: string; model?: string }): Promise<unknown>;
 }
 
@@ -68,7 +68,7 @@ export function createMonitoringRoutes(provider: MonitoringServiceProvider): Rou
       pattern: '/api/stats',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
-        const result = provider.getStats();
+        const result = await provider.getStats();
         sendJson(res, 200, result);
       },
     },
@@ -78,7 +78,7 @@ export function createMonitoringRoutes(provider: MonitoringServiceProvider): Rou
       pattern: '/api/monitoring/stats',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
-        const result = provider.getStats();
+        const result = await provider.getStats();
         sendJson(res, 200, result);
       },
     },

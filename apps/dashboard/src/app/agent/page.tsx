@@ -34,7 +34,7 @@ export default function AgentTracePage() {
   return (
     <AppShell>
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Agent Trace</h2>
           {connected && (
             <span className="flex items-center gap-1 text-xs text-emerald-500">
@@ -45,7 +45,7 @@ export default function AgentTracePage() {
         </div>
 
         {/* Goal input */}
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={goal}
@@ -54,11 +54,12 @@ export default function AgentTracePage() {
             disabled={isRunning}
             className="flex-1 px-4 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
           />
-          <button
-            onClick={handleStart}
-            disabled={isRunning || !goal.trim()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
-          >
+          <div className="flex gap-2">
+            <button
+              onClick={handleStart}
+              disabled={isRunning || !goal.trim()}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
+            >
             {isRunning ? (
               <>
                 <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -79,6 +80,7 @@ export default function AgentTracePage() {
               <RotateCcw className="w-4 h-4" />
             </button>
           )}
+          </div>
         </div>
 
         {error && (
