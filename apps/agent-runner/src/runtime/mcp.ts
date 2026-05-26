@@ -981,7 +981,7 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
 
   await Promise.race([
     initDb(),
-    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 2.5s, continuing without DB"); resolve(); }, 2500)),
+    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 8s, continuing without DB"); resolve(); }, 8000)),
   ]);
 
   // Auto-run reminder check on startup
