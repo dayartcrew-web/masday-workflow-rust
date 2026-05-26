@@ -58,14 +58,22 @@ Create and execute a workflow end-to-end in a single session.
    - Call `semantic-search_search_hybrid_context_pack` with the workflow ID
    - Call `memory_recall_documents` for stored research
 
-5. **Plan tasks**
-   - Call `capability_list_agents` to see available agents
-   - Call `capability_match_agent` for each task type
+5. **Match the best agent**
+   - Call `capability_list_agents` to see all available agents
+   - Call `capability_match_agent` with a description of the each task type
+    - For example, if the workflow involves coding, match an agent with strong coding capabilities
+   - Select the agent with the highest relevance score
+
+6. **Verify the skill exists**
+   - Call `capability_list_skills` to confirm the required skill is registered
+   - If the skill does not exist, suggest creating it with `masday-create-skill`
+
+7. **Plan tasks**
    - Call `workflow_createPlan` with `workflow_id` and `plan: { tasks: [...] }`
    - Call `workflow_addTask` for each planned task
    - Present the plan briefly and ask for confirmation before executing
 
-6. **Execute the workflow**
+8. **Execute the workflow**
    - Call `workflow_execute` with the workflow ID
    - For each task:
      - Call `policy_validate_execution` before starting
@@ -77,10 +85,10 @@ Create and execute a workflow end-to-end in a single session.
      - Call `policy_validate_completion` after completing
      - Call `workflow_completeTask` to mark done
 
-7. **Store artifacts**
+9. **Store artifacts**
    - Call `memory_store` with key decisions and outputs
 
-8. **Report final status**
+10. **Report final status**
    - Call `workflow_getStatus` for the final state
    - Summarize all tasks, any failures, and recommended follow-ups
 

@@ -7,6 +7,7 @@
 | Workflow coordination | orchestrator | sonnet | workflow.*, policy.*, memory.* |
 | Planning/analysis | planner | sonnet | Read, Grep, Glob, Bash |
 | Code implementation | executor | sonnet | Read, Write, Edit, Bash |
+| TDD (RED-GREEN-REFACTOR) | tdd-guide | sonnet | Read, Write, Edit, Bash, tests_run, search, memory.* |
 | Code review | reviewer | sonnet | Read, Grep, Glob, Bash |
 | Final validation | verifier | sonnet | Read, Grep, Glob, Bash |
 | Bug investigation | debugger | sonnet | Read, Write, Edit, Bash |

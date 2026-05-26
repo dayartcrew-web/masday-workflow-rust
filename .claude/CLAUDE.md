@@ -32,6 +32,7 @@ Before any substantive response or action:
 | Research | `masday-research` / `masday-web-research` skill | WebSearch tool |
 | Parallel tasks | `masday-parallel-execution` / `masday-parallel-research` skill | Agent tool dispatch |
 | Code analysis | `mcp__masday__capability_system_readiness` | Manual exploration |
+| TDD before coding | `masday-tdd` skill / `masday-tdd-guide` agent | tdd-guide agent |
 | Review code | `mcp__masday__review_submit` | code-reviewer agent |
 | Verify completion | `mcp__masday__policy_validate_completion` | verification skill |
 
@@ -42,7 +43,7 @@ For non-trivial work, follow this order:
 3. Research codebase patterns via `mcp__masday__semantic-search_code_search`
 4. Plan via `masday-workflow-plan` or `masday-workflow-new` skill
 5. Execute with masday agents/sub-agents for multi-step work
-6. Use `test-driven-development` before testable code changes
+6. Use `masday-tdd` skill before testable code changes
 7. Use `verification-before-completion` before any completion claim
 
 ### Non-Masday Skill Wrap Rule
@@ -74,14 +75,14 @@ If unsure whether a task is trivial, treat it as non-trivial.
 Skills are auto-discovered by the Claude Code Skill tool. Full list available in system-reminder.
 
 **Skill invocation priority (follows masday-first rule):**
-1. `masday-*` skills first (masday-workflow-new, masday-research, masday-create-*, etc.)
+1. `masday-*` skills first (masday-workflow-new, masday-research, masday-tdd, masday-create-*, etc.)
 2. Process skills (brainstorming, systematic-debugging, tdd)
 3. Implementation skills (executing-plans, writing-plans, verification)
 4. Platform skills (ecc:*, navigator:*, superpowers:*) — last resort
 
 **Key skill triggers:**
 - Before creative work → `brainstorming`
-- Before writing code → `test-driven-development`
+- Before writing code → `masday-tdd` skill / `masday-tdd-guide` agent
 - Before claiming done → `verification-before-completion`
 - Bug/failure → `systematic-debugging`
 - Multi-step plan → `executing-plans` or `masday-workflow-new`
