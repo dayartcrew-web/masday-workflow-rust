@@ -5,7 +5,7 @@ const logger = createLogger('DualWriteMemory');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prismaClient: any = null;
 
-export function setDualWriteMemoryPrisma(client: unknown): void {
+export function setDualWriteMemoryDb(client: unknown): void {
   prismaClient = client;
 }
 

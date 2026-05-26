@@ -9,7 +9,7 @@ const logger = createLogger('memory:graph');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prismaClient: any = null;
 
-export function setGraphPrisma(client: unknown): void {
+export function setGraphDb(client: unknown): void {
   prismaClient = client;
 }
 
