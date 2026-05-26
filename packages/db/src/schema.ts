@@ -19,7 +19,7 @@ export const workflows = pgTable("Workflow", {
 
 export const plans = pgTable("Plan", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: text("workflowId").notNull().references(() => workflows.id),
+  workflowId: text("workflowId").notNull(),
   version: integer("version").notNull(),
   status: text("status").notNull(),
   summary: text("summary").notNull(),
@@ -32,8 +32,8 @@ export const plans = pgTable("Plan", {
 
 export const tasks = pgTable("Task", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: text("workflowId").notNull().references(() => workflows.id),
-  planId: text("planId").notNull().references(() => plans.id),
+  workflowId: text("workflowId").notNull(),
+  planId: text("planId").notNull(),
   title: text("title").notNull(),
   status: text("status").notNull(),
   priority: text("priority"),
@@ -54,8 +54,8 @@ export const tasks = pgTable("Task", {
 
 export const taskProgressLogs = pgTable("TaskProgressLog", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: text("workflowId").notNull().references(() => workflows.id),
-  taskId: text("taskId").notNull().references(() => tasks.id),
+  workflowId: text("workflowId").notNull(),
+  taskId: text("taskId").notNull(),
   agentName: text("agentName").notNull(),
   statusBefore: text("statusBefore"),
   statusAfter: text("statusAfter"),
@@ -69,8 +69,8 @@ export const taskProgressLogs = pgTable("TaskProgressLog", {
 
 export const reviewDecisions = pgTable("ReviewDecision", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: text("workflowId").notNull().references(() => workflows.id),
-  taskId: text("taskId").notNull().references(() => tasks.id),
+  workflowId: text("workflowId").notNull(),
+  taskId: text("taskId").notNull(),
   reviewerAgent: text("reviewerAgent").notNull(),
   decision: text("decision").notNull(),
   notes: text("notes").notNull(),
@@ -138,7 +138,7 @@ export const retrievalLogs = pgTable("RetrievalLog", {
 
 export const memories = pgTable("Memory", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: text("workflowId").references(() => workflows.id),
+  workflowId: text("workflowId"),
   taskId: text("taskId"),
   memoryType: text("memoryType").notNull(),
   summary: text("summary").notNull(),
@@ -161,7 +161,7 @@ export const memories = pgTable("Memory", {
 
 export const contextDocuments = pgTable("ContextDocument", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: text("workflowId").references(() => workflows.id),
+  workflowId: text("workflowId"),
   sourceType: text("sourceType").notNull(),
   sourceRef: text("sourceRef"),
   title: text("title"),

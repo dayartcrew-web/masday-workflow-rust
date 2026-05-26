@@ -62,11 +62,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
-import { EventBus, createLogger, setTokenDb, trackTokens } from "@mcp-rebuild/core";
-import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
+import { EventBus, createLogger, setPrismaClient, trackTokens } from "@mcp-rebuild/core";
+import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
 import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
-import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
+import { setEpisodicPrisma, setGraphPrisma, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { db as drizzleDb, healthCheck as dbHealthCheck, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
 import * as path from "path";
@@ -247,10 +247,10 @@ async function initDb(): Promise<void> {
       logger.info("Synced " + cached.length + " memories from PostgreSQL to cache");
     }
     dbReady = true;
-    setDualWriteDb(drizzleDb as never);
-    setTokenDb(drizzleDb as never);
-    setEpisodicDb(drizzleDb as never);
-    setGraphDb(drizzleDb as never);
+    setDualWritePrisma(drizzleDb as never);
+    setPrismaClient(drizzleDb as never);
+    setEpisodicPrisma(drizzleDb as never);
+    setGraphPrisma(drizzleDb as never);
     setReminderDb(drizzleDb);
     logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
   } catch (err) {
@@ -729,7 +729,6 @@ server.registerTool("filesystem.stat", { description: "File stat", inputSchema: 
 server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional(), tests_verified: z.boolean().optional(), test_summary: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional() }).optional() } }, async (a) => {
   if (dbReady) {
     const [review] = await drizzleDb.insert(reviewDecisionsTable).values({
-      id: randomUUID(),
       workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent,
       decision: a.decision, notes: a.notes, gaps: a.gaps ?? [] as never,
       testsVerified: a.tests_verified ?? false, testSummary: a.test_summary ?? {} as never,
