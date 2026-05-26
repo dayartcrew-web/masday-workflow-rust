@@ -68,7 +68,7 @@ export function createMonitoringRoutes(provider: MonitoringServiceProvider): Rou
       pattern: '/api/stats',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
-        const result = provider.getStats();
+        const result = await provider.getStats();
         sendJson(res, 200, result);
       },
     },
@@ -78,7 +78,7 @@ export function createMonitoringRoutes(provider: MonitoringServiceProvider): Rou
       pattern: '/api/monitoring/stats',
       authRequired: true,
       handler: async (_req: IncomingMessage, res: ServerResponse) => {
-        const result = provider.getStats();
+        const result = await provider.getStats();
         sendJson(res, 200, result);
       },
     },
