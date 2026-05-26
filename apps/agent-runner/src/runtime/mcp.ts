@@ -729,6 +729,7 @@ server.registerTool("filesystem.stat", { description: "File stat", inputSchema: 
 server.registerTool("review.submit", { description: "Submit review", inputSchema: { workflow_id: z.string(), task_id: z.string(), reviewer_agent: z.string(), decision: z.string(), notes: z.string(), gaps: z.array(z.string()).optional(), tests_verified: z.boolean().optional(), test_summary: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional() }).optional() } }, async (a) => {
   if (dbReady) {
     const [review] = await drizzleDb.insert(reviewDecisionsTable).values({
+      id: randomUUID(),
       workflowId: a.workflow_id, taskId: a.task_id, reviewerAgent: a.reviewer_agent,
       decision: a.decision, notes: a.notes, gaps: a.gaps ?? [] as never,
       testsVerified: a.tests_verified ?? false, testSummary: a.test_summary ?? {} as never,
