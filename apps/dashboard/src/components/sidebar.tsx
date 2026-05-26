@@ -56,7 +56,7 @@ function NavLink({
         }`}
       >
         <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-        {label}
+        <span className="flex-1">{label}</span>
       </Link>
     </li>
   );
