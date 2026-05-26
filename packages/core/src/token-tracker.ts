@@ -27,7 +27,7 @@ const routeTokenMap: Map<string, number> = new Map();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prismaClient: any = null;
 
-export function setPrismaClient(client: unknown): void {
+export function setDrizzleDb(client: unknown): void {
   prismaClient = client;
 }
 

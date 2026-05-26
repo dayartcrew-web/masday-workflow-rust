@@ -62,11 +62,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
-import { EventBus, createLogger, setPrismaClient, trackTokens } from "@mcp-rebuild/core";
-import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWritePrisma } from "@mcp-rebuild/store";
+import { EventBus, createLogger, setDrizzleDb as setTokenDb, trackTokens } from "@mcp-rebuild/core";
+import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
 import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
-import { setEpisodicPrisma, setGraphPrisma, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
+import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { db as drizzleDb, healthCheck as dbHealthCheck, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
 import * as path from "path";
@@ -247,10 +247,10 @@ async function initDb(): Promise<void> {
       logger.info("Synced " + cached.length + " memories from PostgreSQL to cache");
     }
     dbReady = true;
-    setDualWritePrisma(drizzleDb as never);
-    setPrismaClient(drizzleDb as never);
-    setEpisodicPrisma(drizzleDb as never);
-    setGraphPrisma(drizzleDb as never);
+    setDualWriteDb(drizzleDb as never);
+    setTokenDb(drizzleDb as never);
+    setEpisodicDb(drizzleDb as never);
+    setGraphDb(drizzleDb as never);
     setReminderDb(drizzleDb);
     logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
   } catch (err) {

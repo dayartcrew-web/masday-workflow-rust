@@ -63,7 +63,7 @@ export default function GraphPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Knowledge Graph</h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--text-secondary)]">
@@ -87,13 +87,13 @@ export default function GraphPage() {
         </div>
 
         {/* Graph visualization */}
-        <GraphVisualizer height={500} />
+        <GraphVisualizer width={900} height={500} />
 
         {/* Selected node detail */}
         {selectedNode && (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <h3 className="font-medium text-[var(--text-primary)] mb-2">{selectedNode.label}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-2 gap-2 text-sm">
               <div><span className="text-[var(--text-secondary)]">Type:</span> <span className="ml-1">{selectedNode.type}</span></div>
               <div><span className="text-[var(--text-secondary)]">ID:</span> <span className="ml-1 text-xs font-mono">{selectedNode.id}</span></div>
               {Object.entries(selectedNode.properties).map(([key, val]) => (

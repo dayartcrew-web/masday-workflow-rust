@@ -37,7 +37,7 @@ export default function WorkflowsPage() {
     { key: 'tasks', label: 'Tasks', render: (w: Workflow) => (
       <span className="text-[var(--text-secondary)]">{w.tasks?.length || 0}</span>
     )},
-    { key: 'createdAt', label: 'Created', sortable: true, render: (w: Workflow) => (
+    { key: 'createdAt', label: 'Created', sortable: true, hideOnMobile: true, render: (w: Workflow) => (
       <span className="text-xs text-[var(--text-secondary)]">
         {w.createdAt ? new Date(w.createdAt).toLocaleDateString() : '-'}
       </span>
@@ -47,11 +47,11 @@ export default function WorkflowsPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Workflows</h2>
           <Link
             href="/workflows/new"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors min-h-[44px] sm:min-h-0"
           >
             <Plus className="w-4 h-4" />
             New Workflow

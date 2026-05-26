@@ -34,7 +34,7 @@ export default function AgentTracePage() {
   return (
     <AppShell>
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Agent Trace</h2>
           {connected && (
             <span className="flex items-center gap-1 text-xs text-emerald-500">
@@ -52,13 +52,13 @@ export default function AgentTracePage() {
             onChange={(e) => setGoal(e.target.value)}
             placeholder="Enter agent goal..."
             disabled={isRunning}
-            className="flex-1 px-4 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
+            className="flex-1 px-4 py-2.5 sm:py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
           />
           <div className="flex gap-2">
             <button
               onClick={handleStart}
               disabled={isRunning || !goal.trim()}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
+              className="flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2.5 sm:py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors min-h-[44px] sm:min-h-0"
             >
             {isRunning ? (
               <>
@@ -75,7 +75,7 @@ export default function AgentTracePage() {
           {steps.length > 0 && !isRunning && (
             <button
               onClick={() => { setSteps([]); setGoal(''); }}
-              className="px-3 py-2 rounded-lg text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
+              className="px-3 py-2.5 sm:py-2 rounded-lg text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
             >
               <RotateCcw className="w-4 h-4" />
             </button>

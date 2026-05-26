@@ -10,15 +10,11 @@ interface SettingsState {
   providers: ProviderInfo[];
   testResult: Record<string, unknown> | null;
   isTesting: boolean;
-  isSaving: boolean;
   isLoading: boolean;
   error: string | null;
   theme: 'light' | 'dark';
   fetchProviders: () => Promise<void>;
   testProvider: (name: string, input?: { model?: string; prompt?: string }) => Promise<void>;
-  saveProvider: (input: { providerName: string; providerType: string; baseUrl: string; apiKey: string; models: string[]; isDefault?: boolean }) => Promise<boolean>;
-  deleteProvider: (providerName: string) => Promise<boolean>;
-  setDefaultProvider: (providerName: string) => Promise<boolean>;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
   clearError: () => void;
@@ -28,7 +24,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   providers: [],
   testResult: null,
   isTesting: false,
-  isSaving: false,
   isLoading: false,
   error: null,
   theme: (typeof window !== 'undefined' && localStorage.getItem('theme') as 'light' | 'dark') || 'dark',
@@ -57,43 +52,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ testResult: result as Record<string, unknown>, isTesting: false });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Provider test failed', isTesting: false });
-    }
-  },
-
-  saveProvider: async (input) => {
-    set({ isSaving: true });
-    try {
-      await providerApi.save(input);
-      await get().fetchProviders();
-      set({ isSaving: false });
-      return true;
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to save provider', isSaving: false });
-      return false;
-    }
-  },
-
-  deleteProvider: async (providerName) => {
-    set({ isSaving: true });
-    try {
-      await providerApi.delete(providerName);
-      await get().fetchProviders();
-      set({ isSaving: false });
-      return true;
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to delete provider', isSaving: false });
-      return false;
-    }
-  },
-
-  setDefaultProvider: async (providerName) => {
-    try {
-      await providerApi.setDefault(providerName);
-      await get().fetchProviders();
-      return true;
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to set default' });
-      return false;
     }
   },
 

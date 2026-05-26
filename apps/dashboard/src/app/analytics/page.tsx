@@ -47,8 +47,8 @@ export default function AnalyticsPage() {
 
   return (
     <AppShell>
-      <div className="space-y-4 md:space-y-6">
-        <div className="flex items-center justify-between gap-3">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Analytics</h2>
           <button
             onClick={refreshAll}
@@ -61,7 +61,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Top metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Total Workflows"
             value={metrics?.workflowsTotal ?? 0}
@@ -85,9 +85,9 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Workflow status chart */}
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 md:p-4">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">Workflow Status</h3>
             {workflowData.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
@@ -105,7 +105,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Task performance chart */}
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 md:p-4">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">Task Performance</h3>
             {taskData.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
@@ -128,9 +128,9 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Server stats */}
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 md:p-4">
-          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3 md:mb-4">Server Performance</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 text-sm">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">Server Performance</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-[var(--text-secondary)]">Uptime</span>
               <p className="font-medium text-[var(--text-primary)]">
@@ -158,7 +158,7 @@ export default function AnalyticsPage() {
 
         {/* Health status */}
         {health && (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 md:p-4">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Health Status</h3>
             <div className="flex items-center gap-3 mb-3">
               <span className={`w-3 h-3 rounded-full ${
@@ -168,8 +168,8 @@ export default function AnalyticsPage() {
               <span className="text-sm font-medium text-[var(--text-primary)] capitalize">{health.status}</span>
             </div>
             {Object.entries(health.checks || {}).map(([name, check]) => (
-              <div key={name} className="flex items-center justify-between text-sm py-1 gap-2">
-                <span className="text-[var(--text-secondary)] truncate">{name}</span>
+              <div key={name} className="flex items-center justify-between text-sm py-1">
+                <span className="text-[var(--text-secondary)]">{name}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[var(--text-secondary)]">{check.latencyMs}ms</span>
                   <span className={`text-xs px-2 py-0.5 rounded ${

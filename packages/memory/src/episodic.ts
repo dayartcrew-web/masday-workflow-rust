@@ -5,7 +5,7 @@ const logger = createLogger('memory:episodic');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prismaClient: any = null;
 
-export function setEpisodicPrisma(client: unknown): void {
+export function setEpisodicDb(client: unknown): void {
   prismaClient = client;
 }
 
