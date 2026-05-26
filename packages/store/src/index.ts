@@ -8,6 +8,6 @@ export { WorkflowStore } from './workflow-store.js';
 export { TaskResultStore } from './task-result-store.js';
 export { ConfigStore } from './config-store.js';
 export { PersistenceListener } from './persistence-listener.js';
-export { DualWriteWorkflowStore, DualWriteTaskResultStore, setDualWritePrisma, setDualWriteSchemaTables } from './dual-write-store.js';
-export { replicateMemory, replicateMemoryDelete, setDualWriteMemoryPrisma } from './dual-write-memory.js';
+export { DualWriteWorkflowStore, DualWriteTaskResultStore, setDualWriteDb, setDualWriteSchema } from './dual-write-store.js';
+export { replicateMemory, replicateMemoryDelete, setDualWriteMemoryDb } from './dual-write-memory.js';
 export type { DualWriteMemoryEntry } from './dual-write-memory.js';

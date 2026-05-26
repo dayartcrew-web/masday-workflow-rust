@@ -14,7 +14,7 @@ function ScoreBar({ label, value, max = 1 }: { label: string; value: number; max
   const pct = Math.round((value / max) * 100);
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-16 md:w-20 text-[var(--text-secondary)] flex-shrink-0">{label}</span>
+      <span className="w-20 text-[var(--text-secondary)]">{label}</span>
       <div className="flex-1 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
         <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
       </div>
@@ -34,7 +34,7 @@ export function MemorySearch({ onSearch, results, isLoading }: MemorySearchProps
   return (
     <div className="space-y-4">
       {/* Search input */}
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex gap-2">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
           <input

@@ -141,9 +141,9 @@ export const PROJECT_RULES: RuleSet = {
     },
     {
       id: "TOOLS-003",
-      title: "setDualWritePrisma and setTokenPrisma called on startup",
+      title: "setDualWriteDb and setTokenDb called on startup",
       description:
-        "After Prisma connects, call setDualWritePrisma(prisma) and setTokenPrisma(prisma).",
+        "After Drizzle db connects, call setDualWriteDb(db) and setTokenDb(db).",
       category: "TOOLS",
       severity: "HIGH",
     },

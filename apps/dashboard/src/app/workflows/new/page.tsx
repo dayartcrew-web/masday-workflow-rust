@@ -106,33 +106,31 @@ export default function NewWorkflowPage() {
             </div>
             <div className="space-y-2">
               {tasks.map((task, idx) => (
-                <div key={idx} className="flex flex-col sm:flex-row gap-2 items-start p-3 rounded-lg bg-[var(--bg-secondary)]">
+                <div key={idx} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-start p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
                   <input
                     type="text"
                     value={task.name}
                     onChange={(e) => updateTask(idx, 'name', e.target.value)}
                     placeholder="Task name"
-                    className="w-full sm:flex-1 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="flex-1 px-3 py-2 sm:py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <input
-                      type="text"
-                      value={task.agent}
-                      onChange={(e) => updateTask(idx, 'agent', e.target.value)}
-                      placeholder="Agent"
-                      className="flex-1 sm:w-24 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                    <input
-                      type="text"
-                      value={task.skill}
-                      onChange={(e) => updateTask(idx, 'skill', e.target.value)}
-                      placeholder="Skill"
-                      className="flex-1 sm:w-24 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                    <button type="button" onClick={() => removeTaskRow(idx)} className="p-1.5 text-red-400 hover:text-red-300 flex-shrink-0">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <input
+                    type="text"
+                    value={task.agent}
+                    onChange={(e) => updateTask(idx, 'agent', e.target.value)}
+                    placeholder="Agent"
+                    className="w-full sm:w-28 px-3 py-2 sm:py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <input
+                    type="text"
+                    value={task.skill}
+                    onChange={(e) => updateTask(idx, 'skill', e.target.value)}
+                    placeholder="Skill"
+                    className="w-full sm:w-28 px-3 py-2 sm:py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <button type="button" onClick={() => removeTaskRow(idx)} className="p-2 sm:p-1.5 text-red-400 hover:text-red-300 self-center min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               ))}
             </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useGraphStore } from '@/stores/graph-store';
 import type { GraphNode, GraphEdge } from '@/lib/types';
@@ -13,22 +13,9 @@ interface GraphVisualizerProps {
 type SimulationNode = GraphNode & d3.SimulationNodeDatum;
 type SimulationLink = Omit<GraphEdge, 'source' | 'target'> & d3.SimulationLinkDatum<SimulationNode>;
 
-export function GraphVisualizer({ width: _width = 900, height = 500 }: GraphVisualizerProps) {
+export function GraphVisualizer({ width = 900, height = 600 }: GraphVisualizerProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(900);
-
-  // Track container width for responsive rendering
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(Math.floor(entry.contentRect.width));
-      }
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
   const selectNode = useGraphStore((s) => s.selectNode);
@@ -62,13 +49,21 @@ export function GraphVisualizer({ width: _width = 900, height = 500 }: GraphVisu
 
     const g = svg.append('g');
 
-    // Zoom behavior
+    // Zoom behavior with touch support
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 3])
+      .touchable(true)
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
       });
     svg.call(zoom);
+
+    // Prevent default touch behavior for better pan/zoom on mobile
+    svgRef.current.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    }, { passive: false });
 
     // RAG Graph node colors
     const nodeColors: Record<string, string> = {
@@ -97,7 +92,7 @@ export function GraphVisualizer({ width: _width = 900, height = 500 }: GraphVisu
     const simulation = d3.forceSimulation<SimulationNode>(simNodes)
       .force('link', d3.forceLink<SimulationNode, SimulationLink>(simLinks).id((d) => d.id).distance(140))
       .force('charge', d3.forceManyBody().strength(-350))
-      .force('center', d3.forceCenter(containerWidth / 2, height / 2))
+      .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide().radius(50));
 
     // Links with edge styles: solid (strong), dashed (weak), animated (active)
@@ -122,13 +117,14 @@ export function GraphVisualizer({ width: _width = 900, height = 500 }: GraphVisu
         return 'none';
       });
 
-    // Node groups
+    // Node groups with touch-friendly drag
     const node = g.append('g')
       .selectAll<SVGGElement, SimulationNode>('g')
       .data(simNodes)
       .join('g')
       .style('cursor', 'pointer')
       .call(d3.drag<SVGGElement, SimulationNode>()
+        .touchable(true)
         .on('start', (event, d) => {
           if (!event.active) simulation.alphaTarget(0.3).restart();
           d.fx = d.x;
@@ -213,19 +209,19 @@ export function GraphVisualizer({ width: _width = 900, height = 500 }: GraphVisu
     return () => {
       simulation.stop();
     };
-  }, [nodes, edges, containerWidth, height, selectNode]);
+  }, [nodes, edges, width, height, selectNode]);
 
   if (nodes.length === 0) {
     return (
-      <div className="glass-surface flex items-center justify-center h-96 text-[var(--color-text-secondary)] text-body">
+      <div className="glass-surface flex items-center justify-center h-64 md:h-96 text-[var(--color-text-secondary)] text-body">
         No graph data available. Connect to the API to load the knowledge graph.
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="glass-surface glow-card overflow-hidden">
-      <svg ref={svgRef} width={containerWidth} height={height} className="w-full" style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)' }} />
+    <div ref={containerRef} className="glass-surface glow-card overflow-hidden touch-pan-x touch-pan-y">
+      <svg ref={svgRef} width={width} height={height} className="w-full" style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)' }} />
     </div>
   );
 }

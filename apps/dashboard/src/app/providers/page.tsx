@@ -42,7 +42,7 @@ export default function ProvidersPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">LLM Providers</h2>
           <button
             onClick={() => fetchProviders()}
@@ -76,7 +76,7 @@ export default function ProvidersPage() {
                 key={provider.name}
                 className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     {statusIcon(provider.status)}
                     <div>
@@ -84,7 +84,7 @@ export default function ProvidersPage() {
                       <p className="text-xs text-[var(--text-secondary)]">{provider.type}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-0.5 rounded ${circuitColor(provider.circuitState)}`}>
                       Circuit: {provider.circuitState}
                     </span>

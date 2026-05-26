@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useWebSocketStore } from '@/stores/websocket-store';
 import { Sidebar } from '@/components/sidebar';
 import { Header } from '@/components/header';
+import { MobileNav } from '@/components/mobile-nav';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -55,10 +56,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="md:ml-[260px]">
         <Header />
-        <main className="shell-main">
+        <main className="shell-main pb-20 md:pb-0">
           {children}
         </main>
       </div>
+      <MobileNav />
     </div>
   );
 }

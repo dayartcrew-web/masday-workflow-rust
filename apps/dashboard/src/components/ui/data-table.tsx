@@ -10,6 +10,7 @@ interface Column<T extends object> {
   label: string;
   sortable?: boolean;
   render?: (item: T) => ReactNode;
+  hideOnMobile?: boolean;
 }
 
 interface DataTableProps<T extends object> {
@@ -64,14 +65,14 @@ export function DataTable<T extends object>({
   }, [page, totalPages]);
 
   return (
-    <div className="overflow-x-auto glass-surface scrollbar-thin">
-      <table className="w-full text-sm min-w-[480px]">
+    <div className="overflow-x-auto glass-surface">
+      <table className="w-full text-sm">
         <thead>
           <tr style={{ background: 'var(--color-surface-elevated)', borderBottom: '1px solid var(--color-border-subtle)' }}>
             {columns.map((col) => (
               <th
                 key={col.key}
-                className="text-left py-2.5 px-3 md:px-4 text-[var(--color-text-secondary)] font-medium whitespace-nowrap uppercase tracking-wider"
+                className={`text-left py-3 px-4 text-[var(--color-text-secondary)] font-medium whitespace-nowrap uppercase tracking-wider ${col.hideOnMobile ? 'hidden md:table-cell' : ''}`}
                 style={{ fontSize: 'var(--font-size-small)' }}
                 onClick={col.sortable ? () => handleSort(col.key) : undefined}
               >
@@ -113,7 +114,7 @@ export function DataTable<T extends object>({
                 onClick={onRowClick ? () => onRowClick(item) : undefined}
               >
                 {columns.map((col) => (
-                  <td key={String(col.key)} className="py-2 px-3 md:px-4 text-[var(--color-text)]">
+                  <td key={String(col.key)} className={`py-2 px-3 md:px-4 text-[var(--color-text)] ${col.hideOnMobile ? 'hidden md:table-cell' : ''}`}>
                     {col.render ? col.render(item) : String(item[col.key as keyof T] ?? '')}
                   </td>
                 ))}
@@ -123,7 +124,7 @@ export function DataTable<T extends object>({
         </tbody>
       </table>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-3 md:px-4 py-3 text-xs text-[var(--color-text-secondary)]" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+        <div className="flex items-center justify-between px-4 py-3 text-xs text-[var(--color-text-secondary)]" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           <span>Page {page + 1} of {totalPages}</span>
           <div className="flex gap-2">
             <button

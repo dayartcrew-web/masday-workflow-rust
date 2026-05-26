@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EpisodicMemory, setEpisodicPrisma, type ChatMessage } from '../episodic.js';
+import { EpisodicMemory, setEpisodicDb, type ChatMessage } from '../episodic.js';
 
 function freezeTime(ts: number) {
   vi.setSystemTime(ts);
@@ -11,7 +11,7 @@ function advanceTime(ms: number) {
 
 describe('EpisodicMemory', () => {
   beforeEach(() => {
-    setEpisodicPrisma(null);
+    setEpisodicDb(null);
     vi.useFakeTimers();
     freezeTime(0);
   });

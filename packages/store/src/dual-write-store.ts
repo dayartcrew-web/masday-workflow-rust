@@ -9,11 +9,11 @@ let drizzleDb: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let schemaTables: any = null;
 
-export function setDualWritePrisma(client: unknown): void {
+export function setDualWriteDb(client: unknown): void {
   drizzleDb = client;
 }
 
-export function setDualWriteSchemaTables(tables: unknown): void {
+export function setDualWriteSchema(tables: unknown): void {
   schemaTables = tables;
 }
 

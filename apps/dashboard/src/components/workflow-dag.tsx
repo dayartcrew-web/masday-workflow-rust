@@ -72,7 +72,7 @@ export function WorkflowDag({ tasks, onTaskClick }: WorkflowDagProps) {
 
   if (tasks.length === 0) {
     return (
-      <div className="glass-surface flex items-center justify-center h-64 text-[var(--color-text-secondary)] text-body">
+      <div className="glass-surface flex items-center justify-center h-48 md:h-64 text-[var(--color-text-secondary)] text-body">
         No tasks to display
       </div>
     );
@@ -84,7 +84,7 @@ export function WorkflowDag({ tasks, onTaskClick }: WorkflowDagProps) {
   const height = Math.max(200, Math.max(...allY) + 80);
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="glass-surface overflow-hidden" style={{ background: 'var(--color-surface)' }}>
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="glass-surface overflow-hidden touch-pan-x touch-pan-y" style={{ background: 'var(--color-surface)' }}>
       {/* SVG Defs: arrowhead marker + glow filter + pulse animation */}
       <defs>
         <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
