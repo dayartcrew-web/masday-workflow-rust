@@ -7,10 +7,10 @@ import { createLogger } from '@mcp-rebuild/core';
 const logger = createLogger('memory:graph');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let prismaClient: any = null;
+let drizzleDb: any = null;
 
 export function setGraphDb(client: unknown): void {
-  prismaClient = client;
+  drizzleDb = client;
 }
 
 export interface GraphStoreConfig {
@@ -366,30 +366,15 @@ export class GraphStore {
   }
 
   private persistNode(node: GraphNodeRecord): void {
-    if (!prismaClient?.graphNode) return;
-    prismaClient.graphNode.create({
-      data: {
-        id: node.id,
-        nodeType: node.type,
-        name: node.label,
-        properties: node.properties ?? {},
-      },
-    }).catch((err: unknown) => {
+    if (!drizzleDb) return;
+    drizzleDb`INSERT INTO "GraphNode" (id, "nodeType", name, properties) VALUES (${node.id}, ${node.type}, ${node.label}, ${JSON.stringify(node.properties ?? {})})`.catch((err: unknown) => {
       logger.warn({ err: String(err), id: node.id }, 'Failed to persist graph node to PostgreSQL');
     });
   }
 
   private persistEdge(edge: GraphEdgeRecord): void {
-    if (!prismaClient?.graphEdge) return;
-    prismaClient.graphEdge.create({
-      data: {
-        id: edge.id,
-        sourceNodeId: edge.from,
-        targetNodeId: edge.to,
-        relationType: edge.relation,
-        weight: edge.weight,
-      },
-    }).catch((err: unknown) => {
+    if (!drizzleDb) return;
+    drizzleDb`INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight) VALUES (${edge.id}, ${edge.from}, ${edge.to}, ${edge.relation}, ${edge.weight})`.catch((err: unknown) => {
       logger.warn({ err: String(err), id: edge.id }, 'Failed to persist graph edge to PostgreSQL');
     });
   }
