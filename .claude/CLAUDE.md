@@ -95,12 +95,16 @@ Two PreToolUse hooks enforce step ordering by tracking real evidence:
 | Hook | Purpose | Blocks |
 |------|---------|--------|
 | `masday-skill-checkpoint.js` | MCP tool call sequence for workflow-new | `workflow_execute` without steps 1-6 |
-| `skill-step-guard.cjs` | Multi-skill step transitions (TDD, workflow, research) | Source writes in TDD RED, `workflow_execute` at GATE |
+| `skill-step-guard.cjs` | Multi-skill step transitions (30 skills) | Source writes in TDD RED, `workflow_execute` at GATE, gate violations |
 
-Skills with enforced step chains:
-- **masday-tdd**: RED → RED_VERIFY → GREEN → GREEN_VERIFY → REFACTOR → COVERAGE
-- **masday-workflow-new**: READINESS → CONTEXT → CREATE → CONTEXT_PACK → AGENT_MATCH → SKILL_VERIFY → EXECUTE → STORE
-- **masday-workflow-plan**: ANALYZE → MEMORY → PLAN → TASKS
-- **masday-research**: SEARCH → CODEBASE → STORE
+Skills with enforced step chains (30):
+- **TDD**: masday-tdd (RED → RED_VERIFY → GREEN → GREEN_VERIFY → REFACTOR → COVERAGE)
+- **Workflow lifecycle**: masday-workflow-new (8 steps), masday-workflow-plan (4), masday-workflow-run (5), masday-workflow-init (5), masday-workflow-fix (4), masday-workflow-verify (5), masday-workflow-audit (3), masday-workflow-add-task (4), masday-workflow-discipline (5), masday-workflow-continue (4), masday-workflow-next (4)
+- **Research & analysis**: masday-research (3), masday-web-research (4), masday-code-analyze (4), masday-context-retrieval (4), masday-memory-search (3)
+- **Scaffolding**: masday-create-agent (3), masday-create-skill (3), masday-create-mcp-skill (4), masday-create-command (2)
+- **Parallel**: masday-parallel-execution (5), masday-parallel-research (4)
+- **Ops**: masday-deploy-check (5), masday-docker-ops (4), masday-cicd-ops (3), masday-git-workflow (3), masday-github-flow (5), masday-github-pr (5)
+- **Autopilot**: masday-autopilot (6)
+- **Analysis**: masday-sequential-thinking (3), masday-e2e (4)
 
 Agents with `## Step Checkpoint Protocol` sections: masday-tdd-guide, masday-executor, masday-qa, masday-orchestrator, masday-reviewer, masday-verifier, masday-debugger, masday-frontend, masday-planner.
