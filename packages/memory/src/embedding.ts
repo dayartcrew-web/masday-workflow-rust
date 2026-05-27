@@ -39,6 +39,9 @@ export class EmbeddingService {
       const cached = this.cache.get(text);
       if (cached) {
         logger.debug('Embedding cache hit');
+        // LRU: re-insert to move to end (most recently used)
+        this.cache.delete(text);
+        this.cache.set(text, cached);
         return [...cached];
       }
     }
@@ -48,9 +51,10 @@ export class EmbeddingService {
 
     if (this.config.cacheEnabled) {
       if (this.cache.size >= this.config.maxCacheSize) {
-        const firstKey = this.cache.keys().next().value;
-        if (firstKey !== undefined) {
-          this.cache.delete(firstKey);
+        // LRU: delete the oldest (first/least-recently-used) entry
+        const lruKey = this.cache.keys().next().value;
+        if (lruKey !== undefined) {
+          this.cache.delete(lruKey);
         }
       }
       this.cache.set(text, [...result]);

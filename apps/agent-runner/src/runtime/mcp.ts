@@ -395,9 +395,39 @@ server.registerTool("workflow.listParallelBranches", { description: "List branch
 });
 server.registerTool("workflow.delete", { description: "Delete workflow", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => ok({ deleted: engine.deleteWorkflow(workflow_id) }));
 server.registerTool("workflow.ping", { description: "Health check", inputSchema: {} }, async () => ok({ pong: true, backend: backendType, postgresql: dbReady }));
-server.registerTool("workflow.set_execution_mode", { description: "Set execution mode", inputSchema: { session_key: z.string(), mode: z.string() } }, async ({ session_key, mode }) => ok({ sessionKey: session_key, mode }));
-server.registerTool("workflow.mark_synthesis_ready", { description: "Mark synthesis ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => ok({ sessionKey: session_key, synthesisReady: ready }));
-server.registerTool("workflow.mark_verification_ready", { description: "Mark verification ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => ok({ sessionKey: session_key, verificationReady: ready }));
+server.registerTool("workflow.set_execution_mode", { description: "Set execution mode", inputSchema: { session_key: z.string(), mode: z.string() } }, async ({ session_key, mode }) => {
+  if (dbReady) {
+    const [existing] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
+    if (existing) {
+      await drizzleDb.update(sessionStates).set({ executionMode: mode }).where(eq(sessionStates.sessionKey, session_key));
+    } else {
+      await drizzleDb.insert(sessionStates).values({ sessionKey: session_key, executionMode: mode });
+    }
+  }
+  return ok({ sessionKey: session_key, mode });
+});
+server.registerTool("workflow.mark_synthesis_ready", { description: "Mark synthesis ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => {
+  if (dbReady) {
+    const [existing] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
+    if (existing) {
+      await drizzleDb.update(sessionStates).set({ synthesisReady: ready }).where(eq(sessionStates.sessionKey, session_key));
+    } else {
+      await drizzleDb.insert(sessionStates).values({ sessionKey: session_key, synthesisReady: ready });
+    }
+  }
+  return ok({ sessionKey: session_key, synthesisReady: ready });
+});
+server.registerTool("workflow.mark_verification_ready", { description: "Mark verification ready", inputSchema: { session_key: z.string(), ready: z.boolean() } }, async ({ session_key, ready }) => {
+  if (dbReady) {
+    const [existing] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
+    if (existing) {
+      await drizzleDb.update(sessionStates).set({ verificationReady: ready }).where(eq(sessionStates.sessionKey, session_key));
+    } else {
+      await drizzleDb.insert(sessionStates).values({ sessionKey: session_key, verificationReady: ready });
+    }
+  }
+  return ok({ sessionKey: session_key, verificationReady: ready });
+});
 server.registerTool("workflow.resume_suggestion", { description: "Get resume suggestion", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => ok({ workflowId: workflow_id, suggestion: "continue" }));
 
 server.registerTool("memory.store", { description: "Store memory", inputSchema: { workflow_id: z.string().optional(), task_id: z.string().optional(), memory_type: z.string(), summary: z.string(), content: z.string(), created_by_agent: z.string(), importance_score: z.number().optional(), tags: z.array(z.string()).optional() } }, async (a) => {
@@ -592,8 +622,28 @@ server.registerTool("semantic-search.search_context_fingerprint", { description:
   return ok({ fingerprint: [a.workflow_id, a.plan_id, a.task_id].join("-"), contextSufficient: true });
 });
 server.registerTool("semantic-search.code_search", { description: "Code search", inputSchema: { query: z.string() } }, async ({ query }) => {
-  if (dbReady) { try { await logRetrieval({ agentName: "mcp", query, source: "code_search", results: {} }); } catch { /* non-critical */ } }
-  return ok({ query, results: [] });
+  const results: Array<{ file: string; line: number; content: string; match: string }> = [];
+  try {
+    const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const out = execFileSync("rg", ["-n", "--max-count", "20", "--no-heading", "-e", safeQuery, projectRoot], {
+      encoding: "utf-8", timeout: 10000, maxBuffer: 1024 * 1024,
+    }).trim();
+    if (out) {
+      for (const line of out.split("\n").slice(0, 50)) {
+        const sep = line.indexOf(":");
+        const sep2 = line.indexOf(":", sep + 1);
+        if (sep < 0 || sep2 < 0) continue;
+        results.push({
+          file: line.slice(0, sep).replace(projectRoot + path.sep, ""),
+          line: parseInt(line.slice(sep + 1, sep2), 10),
+          content: line.slice(sep2 + 1).slice(0, 200),
+          match: query,
+        });
+      }
+    }
+  } catch { /* rg returns exit code 1 when no matches */ }
+  if (dbReady) { try { await logRetrieval({ agentName: "mcp", query, source: "code_search", results: { count: results.length } }); } catch { /* non-critical */ } }
+  return ok({ query, results });
 });
 server.registerTool("semantic-search.make_fingerprint", {
   description: "Generate a deterministic SHA-256 fingerprint from structured context data. All array fields are sorted before hashing to ensure stable output.",
@@ -661,14 +711,42 @@ server.registerTool("policy.validate_parallel_completion", { description: "Valid
   return ok({ valid: true, ...a });
 });
 server.registerTool("policy.detect_scope_drift", { description: "Detect drift", inputSchema: { workflowId: z.string().optional(), taskId: z.string().optional(), outputText: z.string() } }, async (a) => {
+  const outputLower = a.outputText.toLowerCase();
   const outputLen = a.outputText.length;
+
+  // Keyword-based signal (supplementary)
   const suspiciousKeywords = ["unrelated", "off-topic", "completely different"];
-  const driftDetected = suspiciousKeywords.some(k => a.outputText.toLowerCase().includes(k));
-  if (dbReady && a.workflowId) {
-    const [task] = a.taskId ? await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.taskId)).limit(1) : [null];
-    return ok({ driftDetected, outputLength: outputLen, taskTitle: task?.title ?? null });
+  const keywordDrift = suspiciousKeywords.some(k => outputLower.includes(k));
+
+  let criteriaOverlap = 1;
+  let taskTitle: string | null = null;
+  let acceptanceCriteria: string[] = [];
+  const scopeTerms = new Set<string>();
+
+  if (dbReady && a.taskId) {
+    const [task] = await drizzleDb.select().from(tasksTable).where(eq(tasksTable.id, a.taskId)).limit(1);
+    if (task) {
+      taskTitle = task.title ?? null;
+      acceptanceCriteria = Array.isArray((task as Record<string, unknown>).acceptanceCriteria) ? (task as Record<string, unknown>).acceptanceCriteria as string[] : [];
+
+      // Extract key terms from task title and acceptance criteria
+      const tokenize = (text: string) => text.toLowerCase().split(/\W+/).filter(t => t.length > 3);
+      tokenize(task.title ?? "").forEach(t => scopeTerms.add(t));
+      acceptanceCriteria.forEach(c => tokenize(c).forEach(t => scopeTerms.add(t)));
+
+      if (scopeTerms.size > 0) {
+        let matched = 0;
+        for (const term of scopeTerms) {
+          if (outputLower.includes(term)) matched++;
+        }
+        criteriaOverlap = matched / scopeTerms.size;
+      }
+    }
   }
-  return ok({ driftDetected, outputLength: outputLen });
+
+  // Drift if: keyword match OR less than 20% of scope terms appear in output (with at least 5 scope terms)
+  const driftDetected = keywordDrift || (scopeTerms.size >= 5 && criteriaOverlap < 0.2);
+  return ok({ driftDetected, outputLength: outputLen, taskTitle, criteriaOverlap: Math.round(criteriaOverlap * 100) / 100, keywordDrift, scopeTermsCount: scopeTerms.size });
 });
 server.registerTool("policy.require_context_refresh", { description: "Context refresh", inputSchema: { workflowId: z.string().optional(), planId: z.string().optional(), taskId: z.string().optional(), last_fingerprint: z.string().optional() } }, async (a) => {
   if (dbReady && a.workflowId) {
