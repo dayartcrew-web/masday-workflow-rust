@@ -1,5 +1,7 @@
 import type { StorageBackend, RunResult } from './types.js';
 import { createLogger } from '@mcp-rebuild/core';
+import { createRequire } from 'node:module';
+const esmRequire = createRequire(import.meta.url);
 
 const logger = createLogger('SqliteBackend');
 
@@ -54,7 +56,7 @@ export class SqliteBackend implements StorageBackend {
     let Database: any;
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      Database = require('better-sqlite3');
+      Database = esmRequire('better-sqlite3');
     } catch (err) {
       throw new Error(
         `better-sqlite3 is not installed. Install it to use SqliteBackend. Under Node 24 on Windows this may require Visual Studio Build Tools. Original error: ${String(err)}`
