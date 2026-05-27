@@ -153,6 +153,8 @@ import { execSync, execFileSync } from "child_process";
 const SAFE_SCRIPT_RE = /^[a-zA-Z0-9_-]+$/;
 const SAFE_IMAGE_RE = /^[a-zA-Z0-9._:/-]+$/;
 const SAFE_PIPELINE_RE = /^[a-zA-Z0-9_.-]+$/;
+const SAFE_PACKAGE_RE = /^(@[a-zA-Z0-9_-]+\/)?[a-zA-Z0-9_.-]+$/;
+const SAFE_PATTERN_RE = /^[a-zA-Z0-9_./\\*-]+$/;
 function restrictToProject(userPath: string): string {
   const resolved = path.resolve(userPath);
   if (!resolved.startsWith(cwd)) throw new Error(`Path "${userPath}" is outside project root`);
@@ -903,8 +905,9 @@ server.registerTool("git.commit", { description: "Git commit", inputSchema: { me
 
 // npm (2)
 server.registerTool("npm.install", { description: "NPM install", inputSchema: { packages: z.array(z.string()).optional() } }, async ({ packages }) => {
-  const cmd = packages?.length ? `pnpm add ${packages.join(" ")}` : "pnpm install";
-  try { const stdout = execSync(cmd, { encoding: "utf-8", timeout: 120000 }); return ok({ stdout, exitCode: 0, packages: packages ?? [] }); }
+  if (packages?.some(p => !SAFE_PACKAGE_RE.test(p))) return ok({ stdout: "", stderr: "Invalid package name", exitCode: 1, packages: packages ?? [] });
+  const args = packages?.length ? ["add", ...packages] : ["install"];
+  try { const stdout = execFileSync("pnpm", args, { encoding: "utf-8", timeout: 120000 }); return ok({ stdout, exitCode: 0, packages: packages ?? [] }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, packages: packages ?? [] }); }
 });
 server.registerTool("npm.run", { description: "NPM run script", inputSchema: { script: z.string() } }, async ({ script }) => {
@@ -961,8 +964,9 @@ server.registerTool("github.issue_list", { description: "List GitHub issues", in
 
 // tests (1)
 server.registerTool("tests.run", { description: "Run tests", inputSchema: { pattern: z.string().optional() } }, async ({ pattern }) => {
-  const cmd = pattern ? `pnpm test -- ${pattern}` : "pnpm test";
-  try { const stdout = execSync(cmd, { encoding: "utf-8", timeout: 120000 }); return ok({ stdout, exitCode: 0, pattern }); }
+  if (pattern && !SAFE_PATTERN_RE.test(pattern)) return ok({ stdout: "", stderr: "Invalid test pattern", exitCode: 1, pattern });
+  const args = pattern ? ["test", "--", pattern] : ["test"];
+  try { const stdout = execFileSync("pnpm", args, { encoding: "utf-8", timeout: 120000 }); return ok({ stdout, exitCode: 0, pattern }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, pattern }); }
 });
 
