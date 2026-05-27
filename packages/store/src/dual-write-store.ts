@@ -181,7 +181,9 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
         .catch((err: unknown) => {
           logger.warn({ err: String(err), workflowId }, 'Failed to replicate workflow deletion to PostgreSQL');
         });
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      logger.warn({ err: String(err), workflowId }, 'Failed to import drizzle-orm for workflow deletion');
+    });
   }
 }
 
@@ -216,7 +218,9 @@ export class DualWriteTaskResultStore implements ITaskResultStore {
         drizzleDb.delete(schemaTables.tasks).where(eq(schemaTables.tasks.workflowId, workflowId)).catch((err: unknown) => {
           logger.warn({ err: String(err), workflowId }, 'Failed to replicate task deletion to PostgreSQL');
         });
-      }).catch(() => {});
+      }).catch((err: unknown) => {
+        logger.warn({ err: String(err), workflowId }, 'Failed to import drizzle-orm for task deletion');
+      });
     }
   }
 
