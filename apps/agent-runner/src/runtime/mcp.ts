@@ -57,6 +57,7 @@ process.setMaxListeners(20);
  * SYNC: All masday skill and agent .md files must use camelCase tool names.
  */
 
+import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { randomUUID } from "node:crypto";
@@ -89,11 +90,13 @@ const skillRegistry: ISkillRegistry = {
 
 function createBackend(dbDir: string): { backend: JsonBackend | SqliteBackend; type: string } {
   try {
-    require.resolve("better-sqlite3");
+    const resolved = require.resolve("better-sqlite3");
+    logger.info({ resolved }, "better-sqlite3 resolved");
     const b = new SqliteBackend(path.join(dbDir, "masday.db"));
     b.initialize();
     return { backend: b, type: "sqlite" };
-  } catch {
+  } catch (err) {
+    logger.warn({ err }, "SQLite fallback to JSON");
     const b = new JsonBackend(path.join(dbDir, "masday.json"));
     b.initialize();
     return { backend: b, type: "json" };
@@ -1017,7 +1020,7 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
 
   await Promise.race([
     initDb(),
-    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 2.5s, continuing without DB"); resolve(); }, 2500)),
+    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 10s, continuing without DB"); resolve(); }, 10000)),
   ]);
 
   // Auto-run reminder check on startup

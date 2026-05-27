@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@mcp-rebuild/core": "workspace:*",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.7"
   },
   "optionalDependencies": {
     "better-sqlite3": "^12.10.0"

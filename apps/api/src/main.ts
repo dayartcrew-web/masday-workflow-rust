@@ -10,7 +10,7 @@
 import fs from 'fs';
 import net from 'net';
 import path from 'path';
-import { EventBus, createLogger, getMetrics, HealthChecker, getRouteTokenBreakdown, trackLLMTokens, setTokenDb } from '@mcp-rebuild/core';
+import { EventBus, createLogger, getMetrics, HealthChecker, getRouteTokenBreakdown, trackLLMTokens, setDrizzleDb as setTokenDb } from '@mcp-rebuild/core';
 import type { MemoryType } from '@mcp-rebuild/core';
 import { OrchestratingEngine } from '@mcp-rebuild/workflow-engine';
 import type { ISkillRegistry } from '@mcp-rebuild/workflow-engine';
@@ -130,10 +130,10 @@ async function main(): Promise<void> {
 
   // Wire Drizzle client for token usage persistence and dual-write sync
   try {
-    const { db, memories, tokenUsages, ...schema } = await import('@mcp-rebuild/db');
-    setTokenDb(db, { tokenUsages });
+    const { db } = await import('@mcp-rebuild/db');
+    setTokenDb(db);
     setDualWriteDb(db);
-    setDualWriteMemoryDb(db, { memories });
+    setDualWriteMemoryDb(db);
     logger.info('Token usage persistence + dual-write sync: PostgreSQL connected');
   } catch (err) {
     logger.warn({ err: String(err) }, 'Token usage persistence: falling back to in-memory (DB unavailable)');

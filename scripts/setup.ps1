@@ -250,7 +250,7 @@ $hooksJson = @"
 {
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "node .claude/hooks/run-hook.mjs agentic-mem-context", "timeout": 15 }
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs masday-mem-context", "timeout": 15 }
     ],
     "PreToolUse": [
       { "type": "command", "command": "node .claude/hooks/run-hook.mjs pre-tool-use", "timeout": 30 },

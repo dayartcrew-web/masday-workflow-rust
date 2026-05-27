@@ -14,12 +14,12 @@ WORKDIR /app
 # deps: Install all dependencies (cached unless lockfile changes)
 # ---------------------------------------------------------------------------
 FROM base AS deps
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
+COPY package.json pnpm-lock.yaml turbo.json ./
 
-# Copy package.json files for every workspace package and app so pnpm can
-# resolve the workspace graph before installing.
+# Write a workspace config that excludes apps/desktop (Tauri needs native toolchain)
+RUN printf 'packages:\n  - "apps/api"\n  - "apps/dashboard"\n  - "apps/agent-runner"\n  - "packages/*"\n' > pnpm-workspace.yaml
+
 COPY packages/capability/package.json     ./packages/capability/
-COPY packages/cli/package.json            ./packages/cli/
 COPY packages/code-skills/package.json    ./packages/code-skills/
 COPY packages/core/package.json           ./packages/core/
 COPY packages/db/package.json             ./packages/db/
@@ -39,13 +39,12 @@ RUN pnpm install --frozen-lockfile
 
 # ---------------------------------------------------------------------------
 # build: Full Turbo build (produces dist/ and .next/ outputs)
+# Inherits node_modules from deps stage, then overlays source code
 # ---------------------------------------------------------------------------
-FROM base AS build
-COPY --from=deps /app/node_modules         ./node_modules
-COPY --from=deps /app/packages             ./packages
-COPY --from=deps /app/apps                 ./apps
+FROM deps AS build
 COPY . .
-RUN pnpm build
+RUN printf 'packages:\n  - "apps/api"\n  - "apps/dashboard"\n  - "apps/agent-runner"\n  - "packages/*"\n' > pnpm-workspace.yaml
+RUN pnpm build && pnpm build:apps
 
 # ---------------------------------------------------------------------------
 # api: Hono HTTP + WebSocket server (defaults: HTTP 3000, WS 3001)
@@ -65,7 +64,6 @@ COPY --from=build /app/apps/api/package.json      ./apps/api/
 COPY --from=build /app/apps/api/node_modules      ./apps/api/node_modules
 
 ENV NODE_ENV=production
-# HTTP port default 3000; WS port default 3001
 ENV API_PORT=3000
 ENV API_WS_PORT=3001
 EXPOSE 3000 3001
@@ -82,10 +80,9 @@ FROM node:20-slim AS dashboard
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-# Next.js standalone output bundles only the required files
 COPY --from=build /app/apps/dashboard/.next/standalone ./apps/dashboard/.next/standalone
 COPY --from=build /app/apps/dashboard/.next/static     ./apps/dashboard/.next/static
-COPY --from=build /app/apps/dashboard/public           ./apps/dashboard/public
+RUN mkdir -p ./apps/dashboard/public
 
 ENV NODE_ENV=production
 ENV PORT=3000

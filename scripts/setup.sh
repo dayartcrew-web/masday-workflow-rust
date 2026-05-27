@@ -289,7 +289,7 @@ cat > .github/hooks/masday-hooks.json << 'HOOKSEOF'
     "SessionStart": [
       {
         "type": "command",
-        "command": "node .claude/hooks/run-hook.mjs agentic-mem-context",
+        "command": "node .claude/hooks/run-hook.mjs masday-mem-context",
         "timeout": 15
       }
     ],

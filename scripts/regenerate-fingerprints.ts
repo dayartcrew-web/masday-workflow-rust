@@ -8,6 +8,9 @@ import { createHash } from 'crypto';
 import { db, disconnectDb } from '../packages/db/src/index.js';
 import { tasks, memories, contextDocuments } from '../packages/db/src/schema.js';
 import { isNull, or, eq, desc } from 'drizzle-orm';
+import { createLogger } from '../packages/core/src/logger.js';
+
+const logger = createLogger('regenerate-fingerprints');
 
 function makeFingerprint(input: {
   workflowId: string;
@@ -37,7 +40,7 @@ async function main() {
   const nullTasks = await db.select().from(tasks)
     .where(or(isNull(tasks.contextFingerprint), eq(tasks.contextFingerprint, '')));
 
-  console.log('Found', nullTasks.length, 'tasks with null fingerprints');
+  logger.info('Found ' + nullTasks.length + ' tasks with null fingerprints');
 
   let updated = 0;
   let skipped = 0;
@@ -70,17 +73,17 @@ async function main() {
       updated++;
     } catch (e: unknown) {
       skipped++;
-      console.error('Failed for task', task.id, ':', e instanceof Error ? e.message : String(e));
+      logger.error('Failed for task ' + task.id + ': ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
-  console.log('Updated:', updated, '| Skipped:', skipped);
+  logger.info('Updated: ' + updated + ' | Skipped: ' + skipped);
 
   const remaining = await db.select().from(tasks)
     .where(or(isNull(tasks.contextFingerprint), eq(tasks.contextFingerprint, '')));
-  console.log('Remaining null fingerprints:', remaining.length);
+  logger.info('Remaining null fingerprints: ' + remaining.length);
 
   await disconnectDb();
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(e => { logger.error(String(e)); process.exit(1); });

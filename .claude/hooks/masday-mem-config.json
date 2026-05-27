@@ -1,8 +1,32 @@
 {
   "maxMemories": 15,
   "foreignDomains": {
-    "mt5": ["mt5", "metatrader", "auto-trading", "kill-switch", "signal-flow", "position-sizing", "strategy-metrics", "botconfig"],
-    "financial": ["forex", "trading", "broker", "signal-price", "llm-signals"]
+    "mt5": [
+      "mt5", "metatrader", "pytrader", "mt5broker",
+      "unitstolots", "venue-registration", "broker-connection",
+      "autotraderworker", "killswitch", "riskmanager"
+    ],
+    "auto-trading": [
+      "auto-trading", "kill-switch", "signal-flow", "position-sizing",
+      "strategy-metrics", "botconfig", "botconfig-crud",
+      "signal-prices", "signal-generator", "risk-alerts",
+      "strategy-runner", "pickSignalForStrategy", "buildOrderRequest"
+    ],
+    "financial": [
+      "forex", "trading", "broker", "signal-price", "llm-signals",
+      "xauusd", "eursd", "leverage", "margin", "equity",
+      "pnl", "drawdown", "winrate", "profit-factor",
+      "position-sizer", "stop-loss", "take-profit", "ohlc"
+    ],
+    "rtk": [
+      "rtk", "rust-token-killer", "tracking.db",
+      "token-compression", "rtk-gain", "rtk-integration"
+    ],
+    "frontend-02": [
+      "frontend-02", "use-positions", "use-account",
+      "usestrategies", "usesignals", "useautotraderstatus",
+      "trading-mode-switcher", "usetradingmode"
+    ]
   },
   "matchThreshold": 2
 }

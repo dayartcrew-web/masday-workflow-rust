@@ -1,49 +1,15 @@
-# Version control
-.git
-.gitignore
-
-# Masday workflow state
-.masday
-
-# Screenshots and docs
-screenshots
-docs/plans
-
-# Build artifacts
-*.tsbuildinfo
-.turbo
-.next
-coverage
-dist
-
-# Dependencies (rebuilt in Docker)
 node_modules
-
-# Environment files (use .env.docker instead)
+**/node_modules
+.next
+dist
+.git
+.msd
+.masday
+*.log
 .env
 .env.local
-.env.*.local
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# MCP stderr logs
+coverage
+.turbo
+screenshots
+docs/plans
 mcp-stderr.txt
-
-# Docker files (avoid recursive context)
-docker-compose*.yml
-Dockerfile
-.dockerignore
-
-# Test artifacts
-__tests__
-tests
-*.test.ts
-*.spec.ts

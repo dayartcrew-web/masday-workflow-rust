@@ -1,9 +1,7 @@
 import { execSync } from "child_process";
 import { existsSync, readdirSync, rmSync, readFileSync, renameSync } from "fs";
 import { join } from "path";
-import { createLogger } from "@mcp-rebuild/core";
-
-const logger = createLogger("Doctor");
+import { logger } from "./logger.js";
 
 export interface DoctorDiagnosis {
   check: string;
