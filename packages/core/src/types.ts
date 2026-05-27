@@ -30,6 +30,7 @@ export interface Workflow {
   tasks: Task[];
   metadata: Record<string, unknown>;
   traceId?: string;
+  projectPath?: string;
   createdAt: Date;
   updatedAt: Date;
 }

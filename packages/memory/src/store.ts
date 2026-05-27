@@ -126,6 +126,12 @@ export class MemoryStore {
 
     this.memories.set(record.id, record);
     this.dirty = true;
+
+    const pruned = this.prune();
+    if (pruned.length > 0) {
+      logger.info({ pruned: pruned.length, total: this.memories.size }, 'Auto-pruned memories after add');
+    }
+
     logger.debug({ id: record.id, type: record.type }, 'Added new memory');
     return { ...record };
   }

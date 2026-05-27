@@ -1,8 +1,9 @@
-import { pgTable, uuid, text, integer, doublePrecision, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { randomUUID } from "node:crypto";
+import { pgTable, text, integer, doublePrecision, boolean, jsonb, timestamp, index } from "drizzle-orm/pg-core";
 import { vector } from "./vector.js";
 
 export const workflows = pgTable("Workflow", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   name: text("name").notNull(),
   status: text("status").notNull(),
   projectPath: text("projectPath"),
@@ -18,7 +19,7 @@ export const workflows = pgTable("Workflow", {
 ]);
 
 export const plans = pgTable("Plan", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId").notNull(),
   version: integer("version").notNull(),
   status: text("status").notNull(),
@@ -31,7 +32,7 @@ export const plans = pgTable("Plan", {
 ]);
 
 export const tasks = pgTable("Task", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId").notNull(),
   planId: text("planId").notNull(),
   title: text("title").notNull(),
@@ -53,7 +54,7 @@ export const tasks = pgTable("Task", {
 ]);
 
 export const taskProgressLogs = pgTable("TaskProgressLog", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId").notNull(),
   taskId: text("taskId").notNull(),
   agentName: text("agentName").notNull(),
@@ -68,7 +69,7 @@ export const taskProgressLogs = pgTable("TaskProgressLog", {
 ]);
 
 export const reviewDecisions = pgTable("ReviewDecision", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId").notNull(),
   taskId: text("taskId").notNull(),
   reviewerAgent: text("reviewerAgent").notNull(),
@@ -84,7 +85,7 @@ export const reviewDecisions = pgTable("ReviewDecision", {
 ]);
 
 export const sessionStates = pgTable("SessionState", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   sessionKey: text("sessionKey").notNull().unique(),
   workflowId: text("workflowId"),
   planId: text("planId"),
@@ -108,7 +109,7 @@ export const sessionStates = pgTable("SessionState", {
 ]);
 
 export const parallelBranches = pgTable("ParallelBranch", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId").notNull(),
   taskId: text("taskId").notNull(),
   branchKey: text("branchKey").notNull(),
@@ -124,7 +125,7 @@ export const parallelBranches = pgTable("ParallelBranch", {
 ]);
 
 export const retrievalLogs = pgTable("RetrievalLog", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId"),
   taskId: text("taskId"),
   agentName: text("agentName").notNull(),
@@ -137,7 +138,7 @@ export const retrievalLogs = pgTable("RetrievalLog", {
 ]);
 
 export const memories = pgTable("Memory", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId"),
   taskId: text("taskId"),
   memoryType: text("memoryType").notNull(),
@@ -160,7 +161,7 @@ export const memories = pgTable("Memory", {
 ]);
 
 export const contextDocuments = pgTable("ContextDocument", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId"),
   sourceType: text("sourceType").notNull(),
   sourceRef: text("sourceRef"),
@@ -176,7 +177,7 @@ export const contextDocuments = pgTable("ContextDocument", {
 ]);
 
 export const graphNodes = pgTable("GraphNode", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   nodeType: text("nodeType").notNull(),
   name: text("name").notNull(),
   properties: jsonb("properties"),
@@ -187,7 +188,7 @@ export const graphNodes = pgTable("GraphNode", {
 ]);
 
 export const graphEdges = pgTable("GraphEdge", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   sourceNodeId: text("sourceNodeId").notNull(),
   targetNodeId: text("targetNodeId").notNull(),
   relationType: text("relationType").notNull(),
@@ -201,7 +202,7 @@ export const graphEdges = pgTable("GraphEdge", {
 ]);
 
 export const episodicMemories = pgTable("EpisodicMemory", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   sessionId: text("sessionId").notNull(),
   role: text("role").notNull(),
   content: text("content").notNull(),
@@ -212,7 +213,7 @@ export const episodicMemories = pgTable("EpisodicMemory", {
 ]);
 
 export const workflowReminders = pgTable("WorkflowReminder", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   workflowId: text("workflowId").notNull(),
   taskId: text("taskId"),
   type: text("type").notNull(),
@@ -227,7 +228,7 @@ export const workflowReminders = pgTable("WorkflowReminder", {
 ]);
 
 export const llmProviderConfigs = pgTable("LlmProviderConfig", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   providerName: text("providerName").notNull().unique(),
   baseUrl: text("baseUrl").notNull(),
   apiKeyEnvVar: text("apiKeyEnvVar").notNull(),
@@ -239,7 +240,7 @@ export const llmProviderConfigs = pgTable("LlmProviderConfig", {
 });
 
 export const tokenUsages = pgTable("TokenUsage", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
   source: text("source").notNull(),
   route: text("route").notNull(),
   model: text("model"),

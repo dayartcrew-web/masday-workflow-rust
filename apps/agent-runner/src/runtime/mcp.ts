@@ -64,7 +64,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { EventBus, createLogger, setDrizzleDb as setTokenDb, trackTokens } from "@mcp-rebuild/core";
-import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
+import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWriteDb, setDualWriteSchema, flushEarlyBuffer } from "@mcp-rebuild/store";
 import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
 import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
@@ -246,11 +246,21 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 }
 
 let dbReady = false;
-async function initDb(): Promise<void> {
+
+function activateDbSubsystems(): void {
+  dbReady = true;
+  setDualWriteDb(drizzleDb as never);
+  setDualWriteSchema({ workflows: workflowsTable, plans: plansTable, tasks: tasksTable });
+  flushEarlyBuffer();
+  setTokenDb(drizzleDb as never);
+  setEpisodicDb(drizzleDb as never);
+  setGraphDb(drizzleDb as never);
+  setReminderDb(drizzleDb);
+}
+
+async function syncMemoriesFromDb(): Promise<void> {
   try {
-    const healthy = await dbHealthCheck();
-    if (!healthy) { logger.warn("PostgreSQL not reachable, using JSON-only mode"); return; }
-    const rows = await drizzleDb.select().from(memoriesTable).orderBy(desc(memoriesTable.createdAt));
+    const rows = await drizzleDb.select().from(memoriesTable).orderBy(desc(memoriesTable.createdAt)).limit(5000);
     if (rows.length > 0) {
       const cached: MemRec[] = rows.map(r => ({
         id: r.id, type: r.memoryType, content: r.content, summary: r.summary,
@@ -260,16 +270,42 @@ async function initDb(): Promise<void> {
       saveMem(cached);
       logger.info("Synced " + cached.length + " memories from PostgreSQL to cache");
     }
-    dbReady = true;
-    setDualWriteDb(drizzleDb as never);
-    setTokenDb(drizzleDb as never);
-    setEpisodicDb(drizzleDb as never);
-    setGraphDb(drizzleDb as never);
-    setReminderDb(drizzleDb);
-    logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
   } catch (err) {
-    logger.warn("Drizzle init failed, falling back to JSON-only: " + (err instanceof Error ? err.message : String(err)));
+    logger.warn("Memory sync from DB failed (non-fatal): " + (err instanceof Error ? err.message : String(err)));
   }
+}
+
+async function initDb(): Promise<void> {
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const healthy = await dbHealthCheck(8000);
+      if (!healthy) {
+        logger.warn({ attempt, max: MAX_RETRIES }, "PostgreSQL not reachable");
+        if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, attempt * 2000));
+        continue;
+      }
+      activateDbSubsystems();
+      await syncMemoriesFromDb();
+      logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
+      return;
+    } catch (err) {
+      logger.warn({ err: String(err), attempt, max: MAX_RETRIES }, "Drizzle init attempt failed");
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+  }
+  logger.warn("All initDb() attempts failed — running in JSON-only mode. Periodic reconnect will retry.");
+}
+
+async function tryReconnectDb(): Promise<void> {
+  if (dbReady) return;
+  try {
+    const healthy = await dbHealthCheck(8000);
+    if (!healthy) return;
+    activateDbSubsystems();
+    await syncMemoriesFromDb();
+    logger.info("Reconnect succeeded — hybrid mode active");
+  } catch { /* silent — will retry next interval */ }
 }
 
 async function persistToDb(rec: MemRec, workflowId?: string, taskId?: string): Promise<void> {
@@ -300,7 +336,7 @@ async function persistToDb(rec: MemRec, workflowId?: string, taskId?: string): P
   }
 }
 
-server.registerTool("workflow.create", { description: "Create workflow", inputSchema: { name: z.string(), description: z.string().optional(), metadata: z.record(z.any()).optional() } }, async ({ name, description, metadata }) => { const w = engine.createWorkflow(name, description ?? "", metadata); workflowStore.save(w); try { graphStore.addNode({ type: "workflow", label: name, properties: { workflowId: w.id, description: description ?? "" } }); } catch { /* non-critical */ } return ok(w); });
+server.registerTool("workflow.create", { description: "Create workflow", inputSchema: { name: z.string(), description: z.string().optional(), metadata: z.record(z.any()).optional(), projectPath: z.string().optional() } }, async ({ name, description, metadata, projectPath }) => { const w = engine.createWorkflow(name, description ?? "", metadata, projectPath); workflowStore.save(w); try { graphStore.addNode({ type: "workflow", label: name, properties: { workflowId: w.id, description: description ?? "", projectPath: projectPath ?? "" } }); } catch { /* non-critical */ } return ok(w); });
 server.registerTool("workflow.execute", { description: "Execute workflow", inputSchema: { id: z.string() } }, async ({ id }) => {
   const w = engine.getWorkflow(id);
   if (!w) throw new Error("Not found: " + id);
@@ -327,7 +363,7 @@ server.registerTool("workflow.saveProgress", { description: "Save progress", inp
 server.registerTool("workflow.listTasks", { description: "List tasks", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks); });
 server.registerTool("workflow.getCurrentTask", { description: "Current task", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks.find(x => x.state === "running") ?? w.tasks.find(x => x.state === "pending") ?? null); });
 server.registerTool("workflow.getPlan", { description: "Get plan", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok({ workflowId: w.id, name: w.name, state: w.state, tasks: w.tasks, metadata: w.metadata }); });
-server.registerTool("workflow.getActive", { description: "Active workflow", inputSchema: { cwd: z.string().optional() } }, async () => { const a = engine.listWorkflows().filter(w => ["EXECUTE","PLAN","VERIFY"].includes(w.state)); return ok(a[0] ?? null); });
+server.registerTool("workflow.getActive", { description: "Active workflow", inputSchema: { cwd: z.string().optional() } }, async ({ cwd }) => { const all = engine.listWorkflows().filter(w => ["EXECUTE","PLAN","VERIFY"].includes(w.state)); const match = cwd ? all.find(w => w.projectPath === cwd) : undefined; return ok(match ?? all[0] ?? null); });
 server.registerTool("workflow.createPlan", { description: "Create plan (stores metadata only — use workflow.addTask to create tasks)", inputSchema: { workflow_id: z.string(), plan: z.record(z.any()) } }, async ({ workflow_id, plan }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); w.metadata = { ...w.metadata, plan }; workflowStore.save(w); return ok({ created: true, planStored: true, tasksInPlan: Array.isArray((plan as any)?.tasks) ? (plan as any).tasks.length : 0, note: "Plan stored. Call workflow.addTask for each task to instantiate them." }); });
 server.registerTool("workflow.createParallelBranches", { description: "Create parallel branches", inputSchema: { workflow_id: z.string(), branches: z.array(z.object({ branchKey: z.string(), role: z.string(), scope: z.string() })) } }, async ({ workflow_id, branches }) => {
   const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found");
@@ -780,27 +816,27 @@ server.registerTool("session.get_state", { description: "Get session state", inp
 });
 server.registerTool("session.patch_state", { description: "Patch session state", inputSchema: { session_key: z.string(), patch: z.record(z.any()) } }, async ({ session_key, patch }) => {
   if (dbReady) {
-    const [existing] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
-    if (existing) {
-      const merged = { ...(existing.metadata as Record<string, unknown>), ...patch };
-      await drizzleDb.update(sessionStates).set({
-        metadata: merged as never,
-        workflowId: (patch as Record<string, unknown>).workflowId as string ?? existing.workflowId,
-        planId: (patch as Record<string, unknown>).planId as string ?? existing.planId,
-        taskId: (patch as Record<string, unknown>).taskId as string ?? existing.taskId,
-      }).where(eq(sessionStates.sessionKey, session_key));
-      return ok({ sessionKey: session_key, patched: true, patch });
+    try {
+      const [existing] = await drizzleDb.select().from(sessionStates).where(eq(sessionStates.sessionKey, session_key)).limit(1);
+      if (existing) {
+        const merged = { ...(existing.metadata as Record<string, unknown>), ...patch };
+        await drizzleDb.update(sessionStates).set({
+          metadata: merged as never,
+          workflowId: ((patch as Record<string, unknown>).workflowId as string | undefined) || existing.workflowId,
+          planId: ((patch as Record<string, unknown>).planId as string | undefined) || existing.planId,
+          taskId: ((patch as Record<string, unknown>).taskId as string | undefined) || existing.taskId,
+        }).where(eq(sessionStates.sessionKey, session_key));
+        return ok({ sessionKey: session_key, patched: true, patch });
+      }
+      await drizzleDb.insert(sessionStates).values({
+        sessionKey: session_key, metadata: patch as never,
+      });
+      return ok({ sessionKey: session_key, patched: true, patch, created: true });
+    } catch (err) {
+      return ok({ sessionKey: session_key, patched: false, error: String(err) });
     }
-    await drizzleDb.insert(sessionStates).values({
-      id: randomUUID(),
-      sessionKey: session_key, metadata: patch as never,
-      workflowId: (patch as Record<string, unknown>).workflowId as string ?? null,
-      planId: (patch as Record<string, unknown>).planId as string ?? null,
-      taskId: (patch as Record<string, unknown>).taskId as string ?? null,
-    });
-    return ok({ sessionKey: session_key, patched: true, patch, created: true });
   }
-  return ok({ sessionKey: session_key, patched: true, patch });
+  return ok({ sessionKey: session_key, patched: true, patch, fallback: true });
 });
 server.registerTool("session.init_context", { description: "Init session context — also checks for stale/stuck/failed workflows and returns reminders", inputSchema: { cwd: z.string() } }, async ({ cwd: rawCwd }) => {
   const dir = safePath(rawCwd);
@@ -1020,29 +1056,26 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
 
   await Promise.race([
     initDb(),
-    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 10s, continuing without DB"); resolve(); }, 10000)),
+    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 30s, continuing without DB"); resolve(); }, 30000)),
   ]);
 
-  // Auto-run reminder check on startup
-  if (dbReady) {
+  // Periodic background: reconnect if DB failed + reminder check
+  const BG_INTERVAL_MS = 30_000;
+  const bgTimer = setInterval(async () => {
     try {
-      const startupReminders = await checkReminders();
-      if (startupReminders.length > 0) {
-        logger.info({ count: startupReminders.length }, "Startup: detected stale/stuck/failed items");
-        for (const r of startupReminders) logger.info(`  [${r.severity}] ${r.type}: ${r.message}`);
+      if (!dbReady) {
+        await tryReconnectDb();
+        if (dbReady) {
+          const startupReminders = await checkReminders();
+          if (startupReminders.length > 0) logger.info({ count: startupReminders.length }, "Post-reconnect: reminders detected");
+        }
+        return;
       }
-    } catch (e) { logger.warn("Startup reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
+      const reminders = await checkReminders();
+      if (reminders.length > 0) logger.info({ count: reminders.length }, "Periodic reminder check: items detected");
+    } catch (e) { /* non-critical */ }
+  }, BG_INTERVAL_MS);
+  bgTimer.unref();
 
-    // Periodic background check every 15 minutes
-    const REMINDER_INTERVAL_MS = 15 * 60_000;
-    const reminderTimer = setInterval(async () => {
-      try {
-        const reminders = await checkReminders();
-        if (reminders.length > 0) logger.info({ count: reminders.length }, "Periodic reminder check: items detected");
-      } catch (e) { logger.warn("Periodic reminder check failed: " + (e instanceof Error ? e.message : String(e))); }
-    }, REMINDER_INTERVAL_MS);
-    reminderTimer.unref(); // Don't keep process alive for timer
-  }
-
-  logger.info("Background init complete" + (dbReady ? " (PostgreSQL + EpisodicMemory + Reminders(auto:15m))" : " (JSON-only mode)"));
+  logger.info("Background init complete" + (dbReady ? " (PostgreSQL + EpisodicMemory + Reminders(auto:30s))" : " (JSON-only mode, reconnect every 30s)"));
 })();
