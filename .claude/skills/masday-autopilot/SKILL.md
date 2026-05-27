@@ -76,6 +76,8 @@ Ask the user with these options:
 
 ## Sequential Mode
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
 ```
 For each task in pending (ordered by priority, then createdAt), up to max_tasks:
 
@@ -207,6 +209,8 @@ For each task in pending (ordered by priority, then createdAt), up to max_tasks:
   === TASK LOOP END ===
 ```
 
+**GATE**: Pre-completion checkpoint. Verify all prior steps are fully complete.
+
 ## Parallel Mode
 
 ```
@@ -276,6 +280,9 @@ Next: /masday-workflow-status for overview
 - Never ignore BLOCKED verdicts — always stop
 - Never exceed max_tasks or max_rework limits
 - Never remove worktrees with unmerged PRs
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 ## Mandatory Review Pipeline
 

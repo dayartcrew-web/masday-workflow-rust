@@ -27,6 +27,9 @@ Pre-flight checks before deployment.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Install dependencies**
    - Call `npm_install` if pnpm-lock.yaml has changed
    - Verify no vulnerability warnings in output
@@ -55,6 +58,9 @@ Pre-flight checks before deployment.
    - Call `npm_run` with script `lint` (or `eslint` via Bash)
    - Verify no critical lint issues
    - Check for: unused imports, missing return types, console.log statements
+
+
+**GATE**: Verify steps 1-6 are complete before proceeding.
 
 7. **Docker verification** (if Dockerfile exists)
    - Call `docker_build` with appropriate tag to verify image builds
@@ -90,6 +96,9 @@ Pre-flight checks before deployment.
     - Call `github_pr_create` if PR workflow is used
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never deploy if build or tests are failing
 - Never skip the git diff review before committing

@@ -30,6 +30,9 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Check existing skills**
    - Call `capability_list_skills` to see all registered skills
    - Verify the proposed skill name does not conflict with existing ones
@@ -56,6 +59,9 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
      - actual.mcp.tool.name
    ---
    ```
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Register the skill**
    - Call `capability_create_skill` with:
@@ -88,6 +94,9 @@ Validation is enforced by `createSkill()` in `@mcp-rebuild/shared-utils`.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never use fake MCP tool names -- only use actual tool names from the project
 - Never create a skill without a clear trigger condition

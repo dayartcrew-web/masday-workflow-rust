@@ -24,6 +24,9 @@ Run independent subtasks in parallel using agent dispatch.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Identify parallelizable tasks**
    - Call `workflow_get` and `workflow_listTasks` to see the current plan
    - Identify tasks with no dependencies on each other
@@ -59,6 +62,9 @@ Run independent subtasks in parallel using agent dispatch.
    - Call `workflow_saveProgress` for each branch milestone
    - Do not wait for all branches -- process completions as they arrive
 
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
+
 6. **Complete each branch**
    - As each agent finishes, call `workflow_completeParallelBranch` with:
      - `branch_id`: the completed branch ID
@@ -91,6 +97,9 @@ Run independent subtasks in parallel using agent dispatch.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never create branches with dependencies between them -- branches must be independent
 - Never allow branches to modify the same files simultaneously

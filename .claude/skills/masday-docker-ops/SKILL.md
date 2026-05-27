@@ -19,6 +19,9 @@ Build, run, and manage Docker containers.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Check running containers**
    - Call `docker_ps` with `all: true` to see all containers (running and stopped)
    - Identify any containers relevant to the current task
@@ -53,6 +56,9 @@ Build, run, and manage Docker containers.
      })
      ```
 
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
+
 5. **Verify container is running**
    - Call `docker_ps` to confirm the container is in "running" state
    - Check the port mappings are correct
@@ -73,6 +79,9 @@ Build, run, and manage Docker containers.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never expose sensitive ports to 0.0.0.0 without user confirmation
 - Never hardcode secrets in Dockerfiles or environment variables

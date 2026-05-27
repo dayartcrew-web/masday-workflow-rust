@@ -19,6 +19,9 @@ Git operations integrated with Masday workflow tracking.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Check current state**
    - Call `git_status` to see: current branch, staged files, unstaged files, untracked files
    - Identify the working context: feature branch, main, detached HEAD
@@ -47,6 +50,9 @@ Git operations integrated with Masday workflow tracking.
    - Description: imperative mood, under 72 characters
    - Body: explain the "why" not the "what"
 
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
+
 5. **Verify commit**
    - Call `git_status` to confirm clean working tree
    - Call `git_diff` to verify no leftover unstaged changes
@@ -72,6 +78,9 @@ Git operations integrated with Masday workflow tracking.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never commit .env files, credentials, or API keys
 - Never skip reviewing the diff with `git_diff` before committing

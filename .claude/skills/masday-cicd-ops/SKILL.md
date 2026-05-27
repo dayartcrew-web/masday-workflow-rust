@@ -32,6 +32,8 @@ Manage CI/CD pipelines, inspect build results, run security audits, and debug fa
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
 ### 1. Check Pipeline Status
 
 ```
@@ -140,6 +142,8 @@ memory_store({
 })
 ```
 
+**GATE**: Pre-completion checkpoint. Verify all prior steps are fully complete.
+
 ### 7. Report
 
 ```
@@ -185,6 +189,9 @@ PRs:
 - Always call `workflow_saveProgress` after completing pipeline operations to persist results
 - Never expose secrets in workflow files or memory
 - Never run `pnpm audit` with `--audit-level=low` in CI (too noisy, use moderate+)
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 ## Mandatory Review Pipeline
 

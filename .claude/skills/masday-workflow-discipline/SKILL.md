@@ -32,6 +32,9 @@ Enforce policy, detect drift, and maintain workflow discipline.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Get current workflow state**
    - Call `workflow_get` to retrieve the workflow details
    - Call `workflow_getStatus` to see the current state machine position
@@ -60,6 +63,9 @@ Enforce policy, detect drift, and maintain workflow discipline.
      - What was planned (original scope)
      - What was delivered (actual output)
      - The specific deviation
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
 
 6. **Validate task completion**
    - Call `policy_validate_completion` with workflow ID and task ID
@@ -96,6 +102,9 @@ Enforce policy, detect drift, and maintain workflow discipline.
     ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never skip policy validation -- even if the task looks complete
 - Never auto-approve a task that fails policy validation

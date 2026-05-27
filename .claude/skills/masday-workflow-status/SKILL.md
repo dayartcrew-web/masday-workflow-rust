@@ -20,6 +20,9 @@ Show a dashboard of workflow progress and system state.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **List all workflows**
    - Call `workflow_list` to get all workflows with their statuses
    - Group by status: EXECUTE, PLAN, READY, BLOCKED, DONE
@@ -31,6 +34,9 @@ Show a dashboard of workflow progress and system state.
 
 3. **Get memory statistics**
    - Call `memory_stats` to show total memories, breakdown by type, and average importance
+
+
+**GATE**: Verify steps 1-3 are complete before proceeding.
 
 4. **Check recent activity**
    - Call `memory_recall_recent` to show the latest context entries
@@ -59,6 +65,9 @@ Show a dashboard of workflow progress and system state.
    - Suggest next actions for blocked workflows
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never modify workflow state -- this is a read-only dashboard
 - Never show raw JSON -- always format as a human-readable summary

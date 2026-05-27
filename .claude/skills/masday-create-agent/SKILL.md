@@ -30,6 +30,9 @@ Validation is enforced by `createAgent()` in `@mcp-rebuild/shared-utils`.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Check existing agents**
    - Call `capability_list_agents` to see all registered agents
    - Verify the proposed agent name does not conflict with existing ones
@@ -60,6 +63,9 @@ Validation is enforced by `createAgent()` in `@mcp-rebuild/shared-utils`.
      - Generates YAML frontmatter with name, role, description, optional model and tools
      - Writes the markdown file
 
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
+
 5. **Save to project location**
    - Call `filesystem_write` to save the agent definition:
      - `$ROOT/.claude/agents/<name>.md`
@@ -77,6 +83,9 @@ Validation is enforced by `createAgent()` in `@mcp-rebuild/shared-utils`.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never create an agent with the same name as an existing one
 - Never omit the task routing rules -- agents need clear routing criteria

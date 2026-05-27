@@ -26,6 +26,9 @@ Initialize a new Masday workflow. Searches memory and relevant code, creates the
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Parse the user's prompt**
    - If user provided a prompt: extract intent, scope, and constraints. Use key nouns/verbs as search terms.
    - If invoked without a prompt (bare command): use "recent project work" as default search term and continue through all steps automatically.
@@ -44,6 +47,9 @@ Initialize a new Masday workflow. Searches memory and relevant code, creates the
 4. **Check system readiness**
    - Call `capability_system_readiness` to verify database connection, schema, and dependencies
    - If any check fails, report the specific issue and stop
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Create the workflow**
    - Call `workflow_create` with:
@@ -73,6 +79,9 @@ Initialize a new Masday workflow. Searches memory and relevant code, creates the
    - "Continue with another task"
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never create a workflow if system readiness checks fail
 - Never skip the memory search — always search local AND remote

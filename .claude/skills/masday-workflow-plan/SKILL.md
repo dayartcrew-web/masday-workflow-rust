@@ -28,6 +28,9 @@ Generate a task plan for a Masday workflow. No execution -- planning only.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Get or create workflow**
    - If the user provides a workflow ID: call `workflow_get` to verify it exists
    - Otherwise: call `workflow_create` with a descriptive name and metadata from the prompt
@@ -51,6 +54,9 @@ Generate a task plan for a Masday workflow. No execution -- planning only.
    - For each identified task type, call `capability_match_agent` with a task description
    - Record the best-matching agent for each task
 
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
+
 6. **Create the plan**
    - Call `workflow_createPlan` with:
      - `workflow_id`: the workflow ID
@@ -71,6 +77,9 @@ Generate a task plan for a Masday workflow. No execution -- planning only.
    - Ask the user to review before proceeding to execution
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never execute tasks -- this skill is planning only
 - Never skip the readiness check

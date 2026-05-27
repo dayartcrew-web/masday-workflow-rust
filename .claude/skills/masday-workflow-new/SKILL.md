@@ -41,6 +41,9 @@ Create and execute a workflow end-to-end in a single session.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Parse the prompt and check readiness**
    - Extract intent, scope, and constraints from the user's request
    - Call `capability_system_readiness` to verify the system is ready
@@ -63,6 +66,9 @@ Create and execute a workflow end-to-end in a single session.
    - Call `capability_match_agent` with a description of the each task type
     - For example, if the workflow involves coding, match an agent with strong coding capabilities
    - Select the agent with the highest relevance score
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
 
 6. **Verify the skill exists**
    - Call `capability_list_skills` to confirm the required skill is registered
@@ -93,6 +99,9 @@ Create and execute a workflow end-to-end in a single session.
    - Summarize all tasks, any failures, and recommended follow-ups
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never skip user confirmation between planning and execution
 - Never skip policy validation at task boundaries

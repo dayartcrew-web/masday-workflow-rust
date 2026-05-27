@@ -25,6 +25,9 @@ Use only when the task naturally splits into 2+ independent research questions.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Get workflow context**
    - Call `workflow_getActive`.
    - Call `workflow_getCurrentTask`.
@@ -42,6 +45,9 @@ Use only when the task naturally splits into 2+ independent research questions.
    - Give each branch worker only its branch scope plus the shared workflow context.
    - Branch workers persist findings via `memory_store_research` for synthesis.
 
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
+
 5. **Monitor and complete branches**
    - Call `workflow_listParallelBranches` to monitor progress.
    - Call `workflow_completeParallelBranch` as each branch finishes.
@@ -56,6 +62,9 @@ Use only when the task naturally splits into 2+ independent research questions.
    - Write exactly one final local report with `local_save_artifact`.
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never use this for a single research question.
 - Never create dependent branches.

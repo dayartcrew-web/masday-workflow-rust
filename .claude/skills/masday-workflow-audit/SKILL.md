@@ -24,6 +24,9 @@ Audit workflows for issues and provide a health report.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Run system audit**
    - Call `capability_workflow_audit` with `maxAgeMinutes: 30` (configurable)
    - This detects: stuck tasks, missing reviews, scope drift, stale sessions
@@ -38,6 +41,9 @@ Audit workflows for issues and provide a health report.
      - Call `workflow_getStatus` for current state
      - Call `workflow_listTasks` to check individual task statuses
    - Identify: tasks stuck in EXECUTING for too long, tasks in FAILED state, missing reviews
+
+
+**GATE**: Verify steps 1-3 are complete before proceeding.
 
 4. **Check memory health**
    - Call `memory_stats` for total entries, type distribution, and average importance
@@ -75,6 +81,9 @@ Audit workflows for issues and provide a health report.
    - "Continue with another task"
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never modify workflow state during an audit -- read-only analysis
 - Never ignore stale sessions in the report
