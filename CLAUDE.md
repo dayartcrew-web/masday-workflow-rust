@@ -215,6 +215,24 @@ await server.connect(transport);
 - **All agents and skills enforce review pipeline:** review_submit → policy_validate_completion → workflow_completeTask → local_sync (with rework loop on REWORK_REQUIRED, max 2 attempts)
 - **Reminder auto-run:** checkReminders() runs on startup after Drizzle db connects + every 15 minutes via setInterval. session_init_context returns active reminders.
 
+## Step Enforcement Hooks
+
+Two PreToolUse hooks enforce skill/agent step ordering by tracking real evidence (file creation, test execution, MCP tool calls):
+
+**`masday-skill-checkpoint.js`** — Tracks MCP tool call sequences for `masday-workflow-new`:
+- Blocks `workflow_execute` if steps 1-6 tools not called (capability_system_readiness, memory_search, memory_recall_recent, semantic-search_code_search, etc.)
+- Warns on `workflow_getStatus` if `memory_store` not called (step 9)
+- State stored in `os.tmpdir()/masday-skill-checkpoints/session-*.json`
+
+**`skill-step-guard.cjs`** — Validates step transitions for multi-step skills using real evidence:
+- **TDD enforcement**: Blocks source code writes before test files during RED phase. Tracks RED → RED_VERIFY → GREEN → GREEN_VERIFY → REFACTOR → COVERAGE transitions.
+- **Workflow GATE**: Blocks `workflow_execute` until all pre-execution steps complete. Tracks READINESS → CONTEXT → CREATE → CONTEXT_PACK → AGENT_MATCH → SKILL_VERIFY → EXECUTE → STORE.
+- **Planning enforcement**: Blocks `workflow_createPlan` without `semantic-search_code_search` evidence.
+- **Research enforcement**: Tracks SEARCH → CODEBASE → STORE with MCP tool evidence.
+- State stored in `os.tmpdir()/masday-step-guard/skill-<name>.json` — auto-created, session-scoped.
+- Registered in `.claude/settings.json` PreToolUse matcher for Write, Edit, Bash, Skill, and all tracked MCP tools.
+- Also registered in `.github/hooks/masday-hooks.json` for VS Code Copilot compatibility.
+
 ## Testing
 
 - Vitest with globals enabled
