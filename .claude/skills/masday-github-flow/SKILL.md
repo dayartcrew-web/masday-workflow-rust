@@ -21,6 +21,9 @@ Manage GitHub PRs and issues as part of workflow execution.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Review current changes**
    - Call `git_status` to see branch, staged, and unstaged files
    - Call `git_diff` to review the exact changes
@@ -37,6 +40,9 @@ Manage GitHub PRs and issues as part of workflow execution.
 4. **Find related issues**
    - Call `github_issue_list` with relevant labels
    - Match issues to the current changes for linking in the PR body
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Commit changes**
    - Call `git_commit` with a conventional commit message:
@@ -72,6 +78,9 @@ Manage GitHub PRs and issues as part of workflow execution.
      - Summary of changes
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never create a PR with uncommitted changes
 - Never include secrets or .env files in the commit

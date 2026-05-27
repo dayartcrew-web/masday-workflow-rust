@@ -55,6 +55,8 @@ If services are down, report which are down and suggest start commands from pack
 
 ## Testing Flow
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
 ### Phase 1: Smoke Test
 
 1. `browser_navigate({ url: FRONTEND_URL })`
@@ -118,6 +120,8 @@ Test complete user flows that cross frontend-backend boundary.
 4. Verify redirect to detail or list with new item
 5. Verify via network request that backend stored the data
 ```
+
+**GATE**: Pre-completion checkpoint. Verify all prior steps are fully complete.
 
 ### Phase 4: Responsive Testing
 
@@ -265,3 +269,6 @@ STEP 6: Sync local state
 - Never skip policy_validate_completion before completion
 - Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order

@@ -66,6 +66,9 @@ Example path: `.claude/skills/masday-frontend-library/library-design-md/dashboar
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 ### Phase 1: Load Design Reference
 
 1. **Identify the design reference** — the user provides a file path (or directory containing design files).
@@ -158,6 +161,9 @@ If the design.md includes a "Suggested Tech Stack" section, present those as the
 ### Phase 4: Build Components
 
 **Implementation delegate**: If running inside a workflow, delegate component building to the `masday-frontend` agent. Pass extracted design tokens to the agent as context so it uses them as source of truth.
+
+
+**GATE**: Verify steps 1-9 are complete before proceeding.
 
 1. **Create design token file** — Extract tokens into theme/constants.
 2. **Build layout shell** — Create the main layout matching the grid structure.
@@ -278,6 +284,9 @@ STEP 6: Sync local state
 `
 
 ### Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 - Never call workflow_completeTask without review_submit (APPROVED)
 - Never skip policy_validate_completion before completion
 - Never skip local_sync after completing a task

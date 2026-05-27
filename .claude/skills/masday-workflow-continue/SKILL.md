@@ -43,6 +43,8 @@ Resume an interrupted workflow. Detects the last known state and picks up from t
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
 ### 1. Detect Active Workflow
 
 ```
@@ -167,6 +169,8 @@ This transitions INIT -> ANALYZE -> PLAN -> EXECUTE automatically.
 Then follow the task execution loop.
 ```
 
+**GATE**: Pre-completion checkpoint. Verify all prior steps are fully complete.
+
 ### 8. Save Progress After Each Action
 
 ```
@@ -278,3 +282,6 @@ STEP 6: Sync local state
 - Never skip policy_validate_completion before completion
 - Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order

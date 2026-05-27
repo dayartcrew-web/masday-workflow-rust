@@ -34,6 +34,9 @@ Execute a Masday workflow that has been planned and is ready to run.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Verify workflow exists and is ready**
    - Call `workflow_get` with the workflow ID to confirm it exists
    - Call `workflow_getStatus` to check it is in a runnable state (not already completed or blocked)
@@ -59,6 +62,9 @@ Execute a Masday workflow that has been planned and is ready to run.
      - Call `policy_validate_completion` after each task completes
      - Call `workflow_completeTask` to mark it done
 
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
+
 5. **Handle parallel branches** (if applicable)
    - Call `workflow_createParallelBranches` for independent tasks
    - Monitor each branch independently
@@ -74,6 +80,9 @@ Execute a Masday workflow that has been planned and is ready to run.
    - Summarize: completed tasks, failures, warnings, and recommended next steps
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never execute a workflow that is already in DONE or EXECUTE state without user confirmation
 - Never skip policy validation between tasks

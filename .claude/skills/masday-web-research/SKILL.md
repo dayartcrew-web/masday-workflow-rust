@@ -20,6 +20,9 @@ Web research with storage and codebase cross-referencing.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Parse the research query**
    - Extract the core topic and scope from the user's request
    - Identify if this is: a technology lookup, a how-to question, a comparison, or a debugging search
@@ -39,6 +42,9 @@ Web research with storage and codebase cross-referencing.
    - Call `semantic-search_code_search` with related queries
    - Call `semantic-search_search_hybrid_context_pack` for deeper context
    - Identify where external findings relate to existing code
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Synthesize findings**
    - Combine web results with codebase context
@@ -77,6 +83,9 @@ Web research with storage and codebase cross-referencing.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never fabricate URLs or search results
 - Only cite URLs returned by the `WebSearch` tool

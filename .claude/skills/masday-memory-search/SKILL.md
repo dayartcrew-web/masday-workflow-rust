@@ -21,6 +21,9 @@ Search and manage Masday workflow memory.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **If type is specified** (e.g., "show decisions", "show artifacts")
    - Call `memory_recall_document_by_type` with:
      - `workflow_id`: if scoped to a specific workflow
@@ -44,6 +47,9 @@ Search and manage Masday workflow memory.
    - Call `memory_recall_by_task` with:
      - `task_id`: the task ID to recall context for
      - `limit`: max results
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Memory statistics**
    - Call `memory_stats` to show:
@@ -72,6 +78,9 @@ Search and manage Masday workflow memory.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never delete memories without user confirmation
 - Never show raw JSON -- format as human-readable results

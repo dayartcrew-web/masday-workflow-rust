@@ -73,6 +73,8 @@ Smart auto-detect: figures out what you should work on next and does it. One com
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
 ### 1. Scan Workflow State
 
 ```
@@ -261,6 +263,8 @@ If no review:
   Report: "All tasks completed but awaiting review. Run /masday-workflow-verify."
 ```
 
+**GATE**: Pre-completion checkpoint. Verify all prior steps are fully complete.
+
 ### 9. Save Progress
 
 ```
@@ -370,3 +374,6 @@ STEP 6: Sync local state
 - Never skip policy_validate_completion before completion
 - Never skip local_sync after completing a task
 - Never claim done without saving progress to PostgreSQL
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order

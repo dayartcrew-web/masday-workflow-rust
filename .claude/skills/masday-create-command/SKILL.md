@@ -15,6 +15,9 @@ Create a new Masday slash command.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Check existing commands**
    - Call `filesystem_list` on `.claude/commands/` to see existing commands
    - Verify the proposed command name does not conflict
@@ -45,8 +48,14 @@ Create a new Masday slash command.
    <numbered steps with tool call examples>
 
    ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
    <constraints>
    ```
+
+
+**GATE**: Verify steps 1-3 are complete before proceeding.
 
 4. **Save to project location**
    - Call `filesystem_write` to save:

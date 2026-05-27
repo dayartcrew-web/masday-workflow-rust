@@ -28,6 +28,9 @@ Verify that a completed workflow meets all acceptance criteria and quality stand
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Get workflow state**
    - Call `workflow_get` with the workflow ID
    - Call `workflow_getStatus` to confirm it is in VERIFY or DONE state
@@ -53,6 +56,9 @@ Verify that a completed workflow meets all acceptance criteria and quality stand
    - Call `git_diff` to review the full change set
    - Use `filesystem_read` to inspect changed files for quality issues
    - Check for: hardcoded values, missing error handling, deep nesting, large functions
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
 
 6. **Detect scope drift**
    - Call `policy_detect_scope_drift` with the workflow output and original task scope
@@ -80,6 +86,9 @@ Verify that a completed workflow meets all acceptance criteria and quality stand
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never skip running the test suite during verification
 - Never mark verification as passed if tests are failing

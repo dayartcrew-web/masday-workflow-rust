@@ -30,6 +30,8 @@ Before starting, gather context:
 
 ## The RED-GREEN-REFACTOR Cycle
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
 ### Phase 1: RED — Write Failing Tests
 
 **Goal:** Write tests that define expected behavior. ALL new tests must FAIL.
@@ -164,6 +166,8 @@ Enforce 80% minimum across statements, branches, functions, and lines.
 
 If below threshold: identify uncovered lines, write additional tests, re-run.
 
+**GATE**: Pre-completion checkpoint. Verify all prior steps are fully complete.
+
 ### Phase 5: Regression Check
 
 Run the full test suite to ensure no regressions:
@@ -274,3 +278,6 @@ STEP 7: Persist findings
 - Never write implementation before tests (RED must come first)
 - Never accept coverage below 80%
 - Never skip the full regression suite check
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order

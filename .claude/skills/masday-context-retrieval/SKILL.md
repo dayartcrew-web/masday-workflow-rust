@@ -24,6 +24,9 @@ Build comprehensive context packs for workflow task execution.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Identify the active workflow**
    - Call `workflow_getActive` to find the current workflow
    - If no active workflow, ask the user which workflow to build context for
@@ -46,6 +49,9 @@ Build comprehensive context packs for workflow task execution.
      - `workflow_id`, `plan_id`, `task_id`
    - This checks if the current context is sufficient or needs refresh
    - Compare fingerprint against prior executions to detect staleness
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Augment with memory**
    - Call `memory_recall_documents` for stored research related to the workflow
@@ -79,6 +85,9 @@ Build comprehensive context packs for workflow task execution.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never execute tasks -- this skill only retrieves context
 - Never skip the fingerprint check -- stale context leads to errors

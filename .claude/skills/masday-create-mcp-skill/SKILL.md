@@ -27,6 +27,9 @@ Create a new MCP-executable skill (TypeScript) for the Masday server.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Determine target package**
    - `packages/skills/src/` -- filesystem-type skills (read, write, list, delete, stat)
    - `packages/code-skills/src/` -- code-related skills (git, tests, npm, docker, github, cicd)
@@ -69,6 +72,9 @@ Create a new MCP-executable skill (TypeScript) for the Masday server.
    - Follow vitest pattern with describe/it blocks
    - Test success and failure cases
 
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
+
 6. **Register in package index**
    - Call `filesystem_read` on the package's `index.ts`
    - Add the new skill export
@@ -88,6 +94,9 @@ Create a new MCP-executable skill (TypeScript) for the Masday server.
    - Report the new skill name, package location, and registered tool count
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never skip writing the test file
 - Never use `any` types -- use Zod schemas for all inputs and outputs

@@ -22,6 +22,9 @@ Add a new task to an existing workflow.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Verify the workflow exists**
    - Call `workflow_get` with the workflow ID to confirm it exists
    - Call `workflow_getStatus` to check it is not in DONE state
@@ -43,6 +46,9 @@ Add a new task to an existing workflow.
 
 5. **Recall related context**
    - Call `memory_recall_by_task` with related task IDs for context
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
 
 6. **Determine dependencies**
    - Based on the task description, determine which existing tasks must complete first
@@ -73,6 +79,9 @@ Add a new task to an existing workflow.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never add tasks to a completed (DONE) workflow
 - Never skip the agent matching step

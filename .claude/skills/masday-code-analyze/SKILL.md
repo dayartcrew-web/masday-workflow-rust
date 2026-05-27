@@ -20,6 +20,9 @@ Analyze codebase for Masday workflow context.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Scan project structure**
    - Call `filesystem_list` with `recursive: true` on the project root
    - Identify top-level directories and package structure
@@ -41,6 +44,9 @@ Analyze codebase for Masday workflow context.
 5. **Build context fingerprint**
    - Call `semantic-search_search_hybrid_context_pack` with the relevant workflow/task IDs
    - This generates a comprehensive context bundle for downstream tasks
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
 
 6. **Check git state**
    - Call `git_status` for current branch and uncommitted changes
@@ -67,6 +73,9 @@ Analyze codebase for Masday workflow context.
    - Call `filesystem_delete` for any temporary files created during analysis
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never modify source files during analysis -- read-only operation
 - Never skip the git state check -- uncommitted changes affect context

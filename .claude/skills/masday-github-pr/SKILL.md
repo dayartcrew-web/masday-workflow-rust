@@ -21,6 +21,9 @@ Create a GitHub pull request from current changes.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Review changes**
    - Call `git_status` to see all staged, unstaged, and untracked files
    - Call `git_diff` to review the full diff of all changes
@@ -37,6 +40,9 @@ Create a GitHub pull request from current changes.
 4. **Recall workflow context**
    - Call `memory_recall_documents` to load workflow decisions and artifacts
    - Use this context to write a comprehensive PR description
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Commit with conventional message**
    - Call `git_commit` with a message following the format:
@@ -74,6 +80,9 @@ Create a GitHub pull request from current changes.
      - PR number, URL, branch name, and change summary
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never create a PR without reviewing the diff first
 - Never include .env, credentials, or secrets in the commit

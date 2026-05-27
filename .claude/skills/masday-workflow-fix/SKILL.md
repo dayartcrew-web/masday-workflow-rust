@@ -33,6 +33,9 @@ Diagnose and fix issues in a failed or incomplete workflow.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Get workflow state**
    - Call `workflow_get` with the workflow ID
    - Call `workflow_getStatus` to see current state (BLOCKED, EXECUTE with failures)
@@ -54,6 +57,9 @@ Diagnose and fix issues in a failed or incomplete workflow.
    - **Code bug**: Analyze the code, fix the issue, then call `workflow_startTask` to retry
    - **Dependency issue**: Adjust task dependency ordering, re-add tasks with corrected deps
    - **Agent timeout**: Consider splitting the task into smaller subtasks
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Validate before re-execution**
    - Call `policy_validate_execution` to ensure the fix is sound
@@ -87,6 +93,9 @@ Diagnose and fix issues in a failed or incomplete workflow.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never blindly retry without diagnosing the root cause first
 - Never modify completed tasks -- only fix failed or pending ones

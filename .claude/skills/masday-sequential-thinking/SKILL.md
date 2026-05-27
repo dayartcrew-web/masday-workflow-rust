@@ -17,6 +17,9 @@ Step-by-step reasoning with codebase analysis.
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Define the problem**
    - Parse the user's question or problem statement
    - Break it into sequential analysis steps
@@ -41,6 +44,9 @@ Step-by-step reasoning with codebase analysis.
    - Look for recurring patterns: error handling, state management, type definitions
    - Note conventions: naming, file organization, export structure
    - Check for consistency across modules
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
 
 6. **Step 5: Locate the relevant code**
    - Focus reading on the files most relevant to the problem
@@ -72,6 +78,9 @@ Step-by-step reasoning with codebase analysis.
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never skip steps -- each step builds on the previous one
 - Never read more than needed -- focus on files relevant to the problem

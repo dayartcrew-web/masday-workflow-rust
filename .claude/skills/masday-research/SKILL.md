@@ -23,6 +23,9 @@ If the task requires 2+ independent research questions with separate branch outp
 
 ## Steps
 
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
 1. **Parse the research question**
    - Extract the core topic, keywords, and scope
    - Identify libraries, frameworks, or patterns to investigate
@@ -43,6 +46,9 @@ If the task requires 2+ independent research questions with separate branch outp
    - Call `semantic-search_code_search` with queries matching the research topic
    - Call `semantic-search_search_hybrid_context_pack` for deep context on related code
    - Identify existing implementations, patterns, and gaps
+
+
+**GATE**: Verify steps 1-4 are complete before proceeding.
 
 5. **Synthesize findings**
    - Cross-reference external findings with codebase state
@@ -76,6 +82,9 @@ If the task requires 2+ independent research questions with separate branch outp
    ```
 
 ## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
 
 - Never fabricate URLs -- only cite URLs returned by search tools
 - Never skip the codebase cross-reference step
