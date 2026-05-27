@@ -87,3 +87,20 @@ Skills are auto-discovered by the Claude Code Skill tool. Full list available in
 - Bug/failure → `systematic-debugging`
 - Multi-step plan → `executing-plans` or `masday-workflow-new`
 - After any non-masday skill → wrap back to masday pipeline (see Non-Masday Skill Wrap Rule above)
+
+## Step Enforcement
+
+Two PreToolUse hooks enforce step ordering by tracking real evidence:
+
+| Hook | Purpose | Blocks |
+|------|---------|--------|
+| `masday-skill-checkpoint.js` | MCP tool call sequence for workflow-new | `workflow_execute` without steps 1-6 |
+| `skill-step-guard.cjs` | Multi-skill step transitions (TDD, workflow, research) | Source writes in TDD RED, `workflow_execute` at GATE |
+
+Skills with enforced step chains:
+- **masday-tdd**: RED → RED_VERIFY → GREEN → GREEN_VERIFY → REFACTOR → COVERAGE
+- **masday-workflow-new**: READINESS → CONTEXT → CREATE → CONTEXT_PACK → AGENT_MATCH → SKILL_VERIFY → EXECUTE → STORE
+- **masday-workflow-plan**: ANALYZE → MEMORY → PLAN → TASKS
+- **masday-research**: SEARCH → CODEBASE → STORE
+
+Agents with `## Step Checkpoint Protocol` sections: masday-tdd-guide, masday-executor, masday-qa, masday-orchestrator, masday-reviewer, masday-verifier, masday-debugger, masday-frontend, masday-planner.

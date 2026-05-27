@@ -308,6 +308,11 @@ cat > .github/hooks/masday-hooks.json << 'HOOKSEOF'
         "type": "command",
         "command": "node .claude/hooks/run-hook.mjs tdd-guard",
         "timeout": 30
+      },
+      {
+        "type": "command",
+        "command": "node .claude/hooks/skill-step-guard.cjs",
+        "timeout": 30
       }
     ],
     "PostToolUse": [
@@ -327,7 +332,7 @@ cat > .github/hooks/masday-hooks.json << 'HOOKSEOF'
   }
 }
 HOOKSEOF
-echo "  .github/hooks/masday-hooks.json (VS Code Copilot hooks)"
+echo "  .github/hooks/masday-hooks.json (VS Code Copilot hooks + skill-step-guard)"
 
 # --- Copilot user-level MCP registration (optional, uses `code` CLI) ---
 # This registers masday at the user profile level so it works across all workspaces.
