@@ -1,4 +1,5 @@
 import { createLogger } from '@mcp-rebuild/core';
+import { sql } from 'drizzle-orm';
 
 const logger = createLogger('memory:episodic');
 
@@ -97,7 +98,7 @@ export class EpisodicMemory {
 
   private persistToDb(msg: ChatMessage): void {
     if (!drizzleDb) return;
-    drizzleDb`INSERT INTO "EpisodicMemory" ("sessionId", role, content, "sequenceOrder") VALUES (${this.sessionId}, ${msg.role}, ${msg.content}, ${++this.seq})`.catch((err: unknown) => {
+    drizzleDb.execute(sql`INSERT INTO "EpisodicMemory" ("sessionId", role, content, "sequenceOrder") VALUES (${this.sessionId}, ${msg.role}, ${msg.content}, ${++this.seq})`).catch((err: unknown) => {
       logger.warn({ err: String(err) }, 'Failed to persist episodic memory to PostgreSQL');
     });
   }
