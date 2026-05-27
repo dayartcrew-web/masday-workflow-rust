@@ -237,6 +237,22 @@ Maximum 12 tasks per plan. If more are needed, split into phases and create sepa
 | `circular dependency` | Tasks reference each other | Reorder tasks, break cycles by splitting |
 | `too many tasks` | Plan exceeds 12 tasks | Split into sequential phases |
 
+## Step Checkpoint Protocol
+
+Planning follows enforced steps via `skill-step-guard.js`:
+
+```
+ANALYZE → MEMORY → PLAN → TASKS
+```
+
+Each step requires MCP tool evidence:
+- **ANALYZE**: `semantic-search_code_search` must be called to understand codebase
+- **MEMORY**: `memory_search` must be called for past patterns
+- **PLAN**: `workflow_createPlan` must be called with structured plan
+- **TASKS**: `workflow_addTask` must be called for each planned task
+
+Plans submitted without codebase analysis will be BLOCKED.
+
 ## What You NEVER Do
 
 - NEVER write implementation code. Your output is a plan, not code.

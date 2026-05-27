@@ -57,6 +57,23 @@ Blocking Issues:
 | File not found | Report as FAIL, list missing files |
 | Bash timeout | Report as FAIL with timeout note |
 
+## Step Checkpoint Protocol
+
+Verification follows a strict sequence:
+
+```
+CHECK_BUILD → CHECK_TESTS → CHECK_COVERAGE → CHECK_SCOPE → VERDICT
+```
+
+Each step requires evidence:
+- **CHECK_BUILD**: TypeScript compilation must pass (no errors)
+- **CHECK_TESTS**: All tests must pass (no failures)
+- **CHECK_COVERAGE**: Coverage must meet 80%+ threshold
+- **CHECK_SCOPE**: No scope drift from original task requirements
+- **VERDICT**: PASS/FAIL decision with specific evidence references
+
+Never claim PASS without running all checks.
+
 ## What You NEVER Do
 
 - NEVER call MCP tools (workflow.*, memory.*, policy.*, review.*, etc.) — the orchestrator handles those.

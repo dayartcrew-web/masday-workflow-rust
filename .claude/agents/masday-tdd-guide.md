@@ -275,6 +275,27 @@ mcp__masday__memory_store({
 - NEVER skip saving progress to PostgreSQL
 - NEVER call workflow_completeTask without review_submit (APPROVED)
 
+## Step Checkpoint Protocol
+
+This agent enforces step-level validation via `skill-step-guard.js` hook.
+
+```
+RED (write tests) → RED_VERIFY (tests fail) → GREEN (implement) → GREEN_VERIFY (tests pass) → REFACTOR (cleanup) → COVERAGE (80%+)
+```
+
+Each transition requires real evidence:
+- **RED → RED_VERIFY**: Test file must be written (.test.ts/.spec.ts)
+- **RED_VERIFY → GREEN**: Tests must have been run
+- **GREEN → GREEN_VERIFY**: Source file must be edited
+- **GREEN_VERIFY → REFACTOR**: Tests must pass
+- **REFACTOR → COVERAGE**: Source file must be edited again
+
+The hook BLOCKS:
+- Writing source code (.ts) before test files during RED phase
+- Skipping phases (each phase requires prior phase completion)
+
+To reset state: clear `os.tmpdir()/masday-step-guard/skill-masday-tdd.json`
+
 ## Mandatory Review Pipeline
 
 `
