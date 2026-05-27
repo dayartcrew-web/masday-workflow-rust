@@ -29,8 +29,9 @@ export class WorkflowEngine extends BaseWorkflowEngine {
     name: string,
     description: string,
     metadata: Record<string, unknown> = {},
+    projectPath?: string,
   ): Workflow {
-    const workflow = this.createWorkflowObject(name, description, metadata);
+    const workflow = this.createWorkflowObject(name, description, metadata, projectPath);
     this.eventBus.emit("workflow.started", { workflow });
     return workflow;
   }

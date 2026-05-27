@@ -76,6 +76,7 @@ export abstract class BaseWorkflowEngine {
     name: string,
     description: string,
     metadata: Record<string, unknown> = {},
+    projectPath?: string,
   ): Workflow {
     const id = this.generateWorkflowId();
     const workflow: Workflow = {
@@ -86,6 +87,7 @@ export abstract class BaseWorkflowEngine {
       tasks: [],
       metadata,
       traceId: `trace_${randomUUID()}`,
+      projectPath,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
