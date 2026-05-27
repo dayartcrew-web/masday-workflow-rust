@@ -31,7 +31,9 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
 
   save(workflow: Workflow): void {
     this.primary.save(workflow);
-    this.pendingReplication = this.pendingReplication.then(() => this.replicateWorkflow(workflow)).catch(() => {});
+    this.pendingReplication = this.pendingReplication.then(() => this.replicateWorkflow(workflow)).catch((err: unknown) => {
+      logger.warn({ err: String(err), workflowId: workflow.id }, 'Replication failed in save queue');
+    });
   }
 
   load(id: string): Workflow | undefined {

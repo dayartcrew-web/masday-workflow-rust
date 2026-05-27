@@ -3,10 +3,10 @@ import { createLogger } from '@mcp-rebuild/core';
 const logger = createLogger('memory:episodic');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let prismaClient: any = null;
+let drizzleDb: any = null;
 
 export function setEpisodicDb(client: unknown): void {
-  prismaClient = client;
+  drizzleDb = client;
 }
 
 export interface ChatMessage {
@@ -45,7 +45,7 @@ export class EpisodicMemory {
     }
 
     this.buffer.push(message);
-    this.persistToPrisma(message);
+    this.persistToDb(message);
     logger.debug({ role, bufferSize: this.buffer.length }, 'Added message to episodic buffer');
   }
 
@@ -95,17 +95,9 @@ export class EpisodicMemory {
   private seq = 0;
   private sessionId = `session-${Date.now()}`;
 
-  private persistToPrisma(msg: ChatMessage): void {
-    if (!prismaClient?.episodicMemory) return;
-    prismaClient.episodicMemory.create({
-      data: {
-        sessionId: this.sessionId,
-        role: msg.role,
-        content: msg.content,
-        sequenceOrder: ++this.seq,
-        createdAt: new Date(msg.timestamp),
-      },
-    }).catch((err: unknown) => {
+  private persistToDb(msg: ChatMessage): void {
+    if (!drizzleDb) return;
+    drizzleDb`INSERT INTO "EpisodicMemory" ("sessionId", role, content, "sequenceOrder") VALUES (${this.sessionId}, ${msg.role}, ${msg.content}, ${++this.seq})`.catch((err: unknown) => {
       logger.warn({ err: String(err) }, 'Failed to persist episodic memory to PostgreSQL');
     });
   }

@@ -132,8 +132,8 @@ const projectRoot = path.resolve(scriptDir, "..", "..", "..");
 function safePath(input: string | undefined, fallback: string = cwd): string {
   if (!input || typeof input !== "string" || input.trim() === "") return fallback;
   const resolved = path.resolve(input);
+  if (!resolved.startsWith(cwd)) return fallback;
   if (!fs.existsSync(resolved)) return fallback;
-  if (!resolved.includes(".masday") && !resolved.includes(".claude") && !fs.existsSync(path.join(resolved, "package.json"))) return fallback;
   return resolved;
 }
 
@@ -143,7 +143,16 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const { backend, type: backendType } = createBackend(dataDir);
 logger.info("Storage: " + backendType);
 
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
+
+const SAFE_SCRIPT_RE = /^[a-zA-Z0-9_-]+$/;
+const SAFE_IMAGE_RE = /^[a-zA-Z0-9._:/-]+$/;
+const SAFE_PIPELINE_RE = /^[a-zA-Z0-9_.-]+$/;
+function restrictToProject(userPath: string): string {
+  const resolved = path.resolve(userPath);
+  if (!resolved.startsWith(cwd)) throw new Error(`Path "${userPath}" is outside project root`);
+  return resolved;
+}
 
 const eventBus = new EventBus();
 const primaryStore = new WorkflowStore(backend);
@@ -177,7 +186,7 @@ async function getFastembedModel() {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
     const { FlagEmbedding, EmbeddingModel } = require("fastembed");
-    const modelId = (EMBEDDING_MODEL as any) || EmbeddingModel.BGEBaseENV15;
+    const modelId = (EMBEDDING_MODEL as string) || EmbeddingModel.BGEBaseENV15;
     const cacheDir = path.resolve(import.meta.dirname, "../../../local_cache");
     _embedModel = await FlagEmbedding.init({ model: modelId, cacheDir });
   }
@@ -300,8 +309,8 @@ server.registerTool("workflow.getStatus", { description: "Get workflow status", 
 server.registerTool("workflow.get", { description: "Get workflow by ID", inputSchema: { id: z.string() } }, async ({ id }) => { const w = engine.getWorkflow(id); if (!w) throw new Error("Not found: " + id); return ok(w); });
 server.registerTool("workflow.list", { description: "List workflows", inputSchema: {} }, async () => ok(engine.listWorkflows()));
 server.registerTool("workflow.addTask", { description: "Add task", inputSchema: { workflowId: z.string(), name: z.string(), agent: z.string(), skill: z.string(), dependencies: z.array(z.string()).optional(), input: z.record(z.any()).optional(), requires_tdd: z.boolean().optional() } }, async (a) => { const t = engine.addTask(a.workflowId, { name: a.name, agent: a.agent, skill: a.skill, dependencies: a.dependencies ?? [], input: a.input ?? {} }); try { const node = graphStore.addNode({ type: "task", label: a.name, properties: { taskId: t.id, workflowId: a.workflowId, agent: a.agent, skill: a.skill } }); const wfNodes = graphStore.findNodes(n => n.properties.workflowId === a.workflowId && n.type === "workflow"); if (wfNodes.length > 0 && node) graphStore.addEdge({ from: wfNodes[0].id, to: node.id, relation: "contains", weight: 1.0 }); } catch { /* non-critical */ } return ok(t); });
-server.registerTool("workflow.startTask", { description: "Start task", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async ({ workflow_id, task_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "running"; t.startedAt = new Date(); workflowStore.save(w); return ok(t); });
-server.registerTool("workflow.completeTask", { description: "Complete task", inputSchema: { workflow_id: z.string(), task_id: z.string(), result: z.record(z.any()).optional() } }, async ({ workflow_id, task_id, result }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find((x: any) => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "done"; t.completedAt = new Date(); if (result) t.output = result; const allDone = w.tasks.length > 0 && w.tasks.every((x: any) => x.state === "done"); if (allDone && w.state !== "DONE") { w.state = "DONE"; w.updatedAt = new Date(); } workflowStore.save(w); return ok(t); });
+server.registerTool("workflow.startTask", { description: "Start task", inputSchema: { workflow_id: z.string(), task_id: z.string() } }, async ({ workflow_id, task_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find(x => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "running"; t.startedAt = new Date(); workflowStore.save(w); return ok(t); });
+server.registerTool("workflow.completeTask", { description: "Complete task", inputSchema: { workflow_id: z.string(), task_id: z.string(), result: z.record(z.any()).optional() } }, async ({ workflow_id, task_id, result }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); const t = w.tasks.find(x => x.id === task_id); if (!t) throw new Error("Task not found"); t.state = "done"; t.completedAt = new Date(); if (result) t.output = result; const allDone = w.tasks.length > 0 && w.tasks.every(x => x.state === "done"); if (allDone && w.state !== "DONE") { w.state = "DONE"; w.updatedAt = new Date(); } workflowStore.save(w); return ok(t); });
 server.registerTool("workflow.saveProgress", { description: "Save progress", inputSchema: { workflow_id: z.string(), task_id: z.string(), agent_name: z.string(), progress_note: z.string(), evidence: z.array(z.string()).optional(), test_evidence: z.object({ testFiles: z.array(z.string()), testsPassed: z.boolean(), coveragePercent: z.number().optional(), testOutput: z.string().optional() }).optional() } }, async (a) => {
     if (dbReady) { try { await saveProgressDb({ workflowId: a.workflow_id, taskId: a.task_id, agentName: a.agent_name, progressNote: a.progress_note, evidence: a.evidence ?? [] }); } catch (e) { logger.warn("TaskProgressLog write failed: " + (e instanceof Error ? e.message : String(e))); } }
     // Update task testEvidence if provided
@@ -311,9 +320,9 @@ server.registerTool("workflow.saveProgress", { description: "Save progress", inp
     return ok({ saved: true });
   });
 server.registerTool("workflow.listTasks", { description: "List tasks", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks); });
-server.registerTool("workflow.getCurrentTask", { description: "Current task", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks.find((x: any) => x.state === "running") ?? w.tasks.find((x: any) => x.state === "pending") ?? null); });
+server.registerTool("workflow.getCurrentTask", { description: "Current task", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok(w.tasks.find(x => x.state === "running") ?? w.tasks.find(x => x.state === "pending") ?? null); });
 server.registerTool("workflow.getPlan", { description: "Get plan", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); return ok({ workflowId: w.id, name: w.name, state: w.state, tasks: w.tasks, metadata: w.metadata }); });
-server.registerTool("workflow.getActive", { description: "Active workflow", inputSchema: { cwd: z.string().optional() } }, async () => { const a = engine.listWorkflows().filter((w: any) => ["EXECUTE","PLAN","VERIFY"].includes(w.state)); return ok(a[0] ?? null); });
+server.registerTool("workflow.getActive", { description: "Active workflow", inputSchema: { cwd: z.string().optional() } }, async () => { const a = engine.listWorkflows().filter(w => ["EXECUTE","PLAN","VERIFY"].includes(w.state)); return ok(a[0] ?? null); });
 server.registerTool("workflow.createPlan", { description: "Create plan (stores metadata only — use workflow.addTask to create tasks)", inputSchema: { workflow_id: z.string(), plan: z.record(z.any()) } }, async ({ workflow_id, plan }) => { const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found"); w.metadata = { ...w.metadata, plan }; workflowStore.save(w); return ok({ created: true, planStored: true, tasksInPlan: Array.isArray((plan as any)?.tasks) ? (plan as any).tasks.length : 0, note: "Plan stored. Call workflow.addTask for each task to instantiate them." }); });
 server.registerTool("workflow.createParallelBranches", { description: "Create parallel branches", inputSchema: { workflow_id: z.string(), branches: z.array(z.object({ branchKey: z.string(), role: z.string(), scope: z.string() })) } }, async ({ workflow_id, branches }) => {
   const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found");
@@ -332,7 +341,7 @@ server.registerTool("workflow.createParallelBranches", { description: "Create pa
 });
 server.registerTool("workflow.completeParallelBranch", { description: "Complete branch", inputSchema: { workflow_id: z.string(), branch_key: z.string() } }, async ({ workflow_id, branch_key }) => {
   const w = engine.getWorkflow(workflow_id); if (!w) throw new Error("Not found");
-  const b = ((w.metadata.parallelBranches ?? []) as any[]).find(x => x.branchKey === branch_key); if (b) b.completed = true; workflowStore.save(w);
+  const b = ((w.metadata.parallelBranches ?? []) as Array<{ branchKey: string; role: string; scope: string; completed?: boolean }>).find(x => x.branchKey === branch_key); if (b) b.completed = true; workflowStore.save(w);
   if (dbReady) { try { await drizzleDb.update(parallelBranchesTable).set({ status: "COMPLETED", output: { completedAt: new Date().toISOString() } as never }).where(and(eq(parallelBranchesTable.workflowId, workflow_id), eq(parallelBranchesTable.branchKey, branch_key))); } catch (e) { logger.warn("ParallelBranch complete Drizzle failed: " + (e instanceof Error ? e.message : String(e))); } }
   return ok({ completed: true });
 });
@@ -447,9 +456,9 @@ server.registerTool("memory.search", { description: "Search memories with compos
           FROM "Memory" WHERE embedding IS NOT NULL ORDER BY composite_score DESC LIMIT ${limit ?? 10}
         `) as Array<Record<string, unknown>>;
         if (Array.isArray(rows) && rows.length > 0) {
-          if (Array.isArray(rows) && rows.length > 0 && rows[0] && "rows" in (rows as any)) {
+          if (Array.isArray(rows) && rows.length > 0 && rows[0] && !("id" in rows[0]) && "rows" in (rows as unknown as Record<string, unknown>)) {
             // drizzle execute returns {rows: [...]} for postgres driver
-            const actualRows = (rows as any).rows as Array<Record<string, unknown>>;
+            const actualRows = (rows as unknown as { rows: Array<Record<string, unknown>> }).rows;
             const ids = actualRows.map((r: Record<string, unknown>) => String(r.id));
             if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
             return ok(actualRows);
@@ -500,7 +509,7 @@ server.registerTool("semantic-search.search_hybrid_context_pack", { description:
             SELECT id, content, "importanceScore", 1 - (embedding <=> ${vecStr}::vector) as score FROM "Memory" WHERE embedding IS NOT NULL ORDER BY embedding <=> ${vecStr}::vector LIMIT ${opts?.limit ?? 6}
           `) as Array<Record<string, unknown>>;
           // Handle drizzle execute returning {rows: [...]} for postgres driver
-          const actualRows = (rows as any)?.rows ?? rows;
+          const actualRows = "rows" in (rows as unknown as Record<string, unknown>) ? (rows as unknown as { rows: Array<Record<string, unknown>> }).rows : rows;
           return (Array.isArray(actualRows) ? actualRows : []).map((r: Record<string, unknown>) => ({ memory: { id: String(r.id), content: String(r.content), type: "memory", importance: Number(r.importanceScore ?? 0) }, score: Number(r.score ?? 0) }));
         }
       };
@@ -718,11 +727,11 @@ server.registerTool("capability.scaffold_mcp_server", { description: "Scaffold M
   return ok({ ok: true, createdDir: serverDir, ...a });
 });
 
-server.registerTool("filesystem.read", { description: "Read file", inputSchema: { path: z.string() } }, async ({ path: fp }) => ({ content: [{ type: "text" as const, text: fs.readFileSync(fp, "utf-8") }] }));
-server.registerTool("filesystem.write", { description: "Write file", inputSchema: { path: z.string(), content: z.string() } }, async ({ path: fp, content }) => { const d = path.dirname(fp); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(fp, content); return ok({ ok: true }); });
-server.registerTool("filesystem.list", { description: "List dir", inputSchema: { path: z.string() } }, async ({ path: fp }) => ok(fs.readdirSync(fp, { withFileTypes: true }).map(e => ({ name: e.name, type: e.isDirectory() ? "dir" : "file" }))));
-server.registerTool("filesystem.delete", { description: "Delete file", inputSchema: { path: z.string() } }, async ({ path: fp }) => { fs.unlinkSync(fp); return ok({ ok: true }); });
-server.registerTool("filesystem.stat", { description: "File stat", inputSchema: { path: z.string() } }, async ({ path: fp }) => { const s = fs.statSync(fp); return ok({ size: s.size, isFile: s.isFile() }); });
+server.registerTool("filesystem.read", { description: "Read file", inputSchema: { path: z.string() } }, async ({ path: fp }) => { const safe = restrictToProject(fp); return { content: [{ type: "text" as const, text: fs.readFileSync(safe, "utf-8") }] }; });
+server.registerTool("filesystem.write", { description: "Write file", inputSchema: { path: z.string(), content: z.string() } }, async ({ path: fp, content }) => { const safe = restrictToProject(fp); const d = path.dirname(safe); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(safe, content); return ok({ ok: true }); });
+server.registerTool("filesystem.list", { description: "List dir", inputSchema: { path: z.string() } }, async ({ path: fp }) => { const safe = restrictToProject(fp); return ok(fs.readdirSync(safe, { withFileTypes: true }).map(e => ({ name: e.name, type: e.isDirectory() ? "dir" : "file" }))); });
+server.registerTool("filesystem.delete", { description: "Delete file", inputSchema: { path: z.string() } }, async ({ path: fp }) => { const safe = restrictToProject(fp); fs.unlinkSync(safe); return ok({ ok: true }); });
+server.registerTool("filesystem.stat", { description: "File stat", inputSchema: { path: z.string() } }, async ({ path: fp }) => { const safe = restrictToProject(fp); const s = fs.statSync(safe); return ok({ size: s.size, isFile: s.isFile() }); });
 
 // --- REAL TOOLS: Review, Session, Local, Shell (29) ---
 // review (2)
@@ -847,7 +856,7 @@ server.registerTool("git.diff", { description: "Git diff", inputSchema: {} }, as
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1 }); }
 });
 server.registerTool("git.commit", { description: "Git commit", inputSchema: { message: z.string() } }, async ({ message }) => {
-  try { const stdout = execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { encoding: "utf-8", timeout: 15000 }); return ok({ stdout, exitCode: 0, message }); }
+  try { const stdout = execFileSync("git", ["commit", "-m", message], { encoding: "utf-8", timeout: 15000 }); return ok({ stdout, exitCode: 0, message }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, message }); }
 });
 
@@ -858,18 +867,21 @@ server.registerTool("npm.install", { description: "NPM install", inputSchema: { 
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, packages: packages ?? [] }); }
 });
 server.registerTool("npm.run", { description: "NPM run script", inputSchema: { script: z.string() } }, async ({ script }) => {
-  try { const stdout = execSync(`pnpm run ${script}`, { encoding: "utf-8", timeout: 120000 }); return ok({ stdout, exitCode: 0, script }); }
+  if (!SAFE_SCRIPT_RE.test(script)) return ok({ stdout: "", stderr: "Invalid script name", exitCode: 1, script });
+  try { const stdout = execFileSync("pnpm", ["run", script], { encoding: "utf-8", timeout: 120000 }); return ok({ stdout, exitCode: 0, script }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, script }); }
 });
 
 // docker (3)
 server.registerTool("docker.build", { description: "Docker build", inputSchema: { tag: z.string().optional() } }, async ({ tag }) => {
-  const cmd = tag ? `docker build -t ${tag} .` : "docker build .";
-  try { const stdout = execSync(cmd, { encoding: "utf-8", timeout: 300000 }); return ok({ stdout, exitCode: 0, tag }); }
+  if (tag && !SAFE_IMAGE_RE.test(tag)) return ok({ stdout: "", stderr: "Invalid tag format", exitCode: 1, tag });
+  const args = tag ? ["build", "-t", tag, "."] : ["build", "."];
+  try { const stdout = execFileSync("docker", args, { encoding: "utf-8", timeout: 300000 }); return ok({ stdout, exitCode: 0, tag }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, tag }); }
 });
 server.registerTool("docker.run", { description: "Docker run", inputSchema: { image: z.string() } }, async ({ image }) => {
-  try { const stdout = execSync(`docker run --rm ${image}`, { encoding: "utf-8", timeout: 300000 }); return ok({ stdout, exitCode: 0, image }); }
+  if (!SAFE_IMAGE_RE.test(image)) return ok({ stdout: "", stderr: "Invalid image format", exitCode: 1, image });
+  try { const stdout = execFileSync("docker", ["run", "--rm", image], { encoding: "utf-8", timeout: 300000 }); return ok({ stdout, exitCode: 0, image }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, image }); }
 });
 server.registerTool("docker.ps", { description: "Docker ps", inputSchema: {} }, async () => {
@@ -883,7 +895,8 @@ server.registerTool("cicd.pipeline_status", { description: "CI/CD pipeline statu
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ pipelines: [], stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1 }); }
 });
 server.registerTool("cicd.pipeline_trigger", { description: "Trigger CI/CD pipeline", inputSchema: { pipeline: z.string() } }, async ({ pipeline }) => {
-  try { const stdout = execSync(`gh workflow run ${pipeline}`, { encoding: "utf-8", timeout: 30000 }); return ok({ triggered: true, stdout, exitCode: 0, pipeline }); }
+  if (!SAFE_PIPELINE_RE.test(pipeline)) return ok({ triggered: false, exitCode: 1, error: "Invalid pipeline name", pipeline });
+  try { const stdout = execFileSync("gh", ["workflow", "run", pipeline], { encoding: "utf-8", timeout: 30000 }); return ok({ triggered: true, stdout, exitCode: 0, pipeline }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ triggered: false, stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, pipeline }); }
 });
 server.registerTool("cicd.runs_view", { description: "View CI/CD runs", inputSchema: {} }, async () => {
@@ -893,7 +906,7 @@ server.registerTool("cicd.runs_view", { description: "View CI/CD runs", inputSch
 
 // github (3)
 server.registerTool("github.pr_create", { description: "Create GitHub PR", inputSchema: { title: z.string(), body: z.string().optional() } }, async ({ title, body }) => {
-  try { const stdout = execSync(`gh pr create --title "${title.replace(/"/g, '\\"')}" --body "${(body ?? "").replace(/"/g, '\\"')}"`, { encoding: "utf-8", timeout: 30000 }); return ok({ created: true, stdout, exitCode: 0, title }); }
+  try { const stdout = execFileSync("gh", ["pr", "create", "--title", title, "--body", body ?? ""], { encoding: "utf-8", timeout: 30000 }); return ok({ created: true, stdout, exitCode: 0, title }); }
   catch (e: unknown) { const err = e as { stdout?: string; stderr?: string; status?: number }; return ok({ created: false, stdout: err.stdout ?? "", stderr: err.stderr ?? "", exitCode: err.status ?? 1, title }); }
 });
 server.registerTool("github.pr_list", { description: "List GitHub PRs", inputSchema: {} }, async () => {
