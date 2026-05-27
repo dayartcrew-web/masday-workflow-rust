@@ -3,6 +3,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { GraphNodeRecord, GraphEdgeRecord } from '@mcp-rebuild/core';
 import { createLogger } from '@mcp-rebuild/core';
+import { sql } from 'drizzle-orm';
 
 const logger = createLogger('memory:graph');
 
@@ -367,14 +368,14 @@ export class GraphStore {
 
   private persistNode(node: GraphNodeRecord): void {
     if (!drizzleDb) return;
-    drizzleDb`INSERT INTO "GraphNode" (id, "nodeType", name, properties) VALUES (${node.id}, ${node.type}, ${node.label}, ${JSON.stringify(node.properties ?? {})})`.catch((err: unknown) => {
+    drizzleDb.execute(sql`INSERT INTO "GraphNode" (id, "nodeType", name, properties) VALUES (${node.id}, ${node.type}, ${node.label}, ${JSON.stringify(node.properties ?? {})}::jsonb)`).catch((err: unknown) => {
       logger.warn({ err: String(err), id: node.id }, 'Failed to persist graph node to PostgreSQL');
     });
   }
 
   private persistEdge(edge: GraphEdgeRecord): void {
     if (!drizzleDb) return;
-    drizzleDb`INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight) VALUES (${edge.id}, ${edge.from}, ${edge.to}, ${edge.relation}, ${edge.weight})`.catch((err: unknown) => {
+    drizzleDb.execute(sql`INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight) VALUES (${edge.id}, ${edge.from}, ${edge.to}, ${edge.relation}, ${edge.weight})`).catch((err: unknown) => {
       logger.warn({ err: String(err), id: edge.id }, 'Failed to persist graph edge to PostgreSQL');
     });
   }
