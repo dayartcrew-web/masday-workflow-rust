@@ -351,6 +351,26 @@ Check memory store health:
 memory_stats({})
 ```
 
+## Step Checkpoint Protocol
+
+The orchestrator enforces the workflow lifecycle via `skill-step-guard.js`:
+
+```
+READINESS → CONTEXT → CREATE → CONTEXT_PACK → AGENT_MATCH → SKILL_VERIFY → EXECUTE (GATE) → STORE
+```
+
+Each transition requires real MCP tool call evidence:
+- **READINESS**: `capability_system_readiness` must be called
+- **CONTEXT**: `memory_search` + `memory_recall_recent` + `semantic-search_code_search` must all be called
+- **CREATE**: `workflow_create` must be called
+- **CONTEXT_PACK**: `semantic-search_search_hybrid_context_pack` + `memory_recall_documents` must be called
+- **AGENT_MATCH**: `capability_list_agents` + `capability_match_agent` must be called
+- **SKILL_VERIFY**: `capability_list_skills` must be called
+- **EXECUTE (GATE)**: ALL prior steps must be complete — hook BLOCKS execution if any are missing
+- **STORE**: `memory_store` must be called before final status
+
+The GATE at EXECUTE is enforced by the hook — `workflow_execute` will be BLOCKED if any prerequisite step is incomplete.
+
 ## Mandatory Review Pipeline
 
 When this agent completes work on a workflow task, it MUST follow this pipeline:

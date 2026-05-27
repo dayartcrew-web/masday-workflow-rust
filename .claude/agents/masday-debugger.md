@@ -240,6 +240,21 @@ memory_store({
 | `type errors after fix` | Fix changed types | Run `tsc --noEmit` and fix type issues |
 | `circular dependency` | Fix requires change in dependent module | Refactor to break cycle, then apply fix |
 
+## Step Checkpoint Protocol
+
+Debugging follows the scientific method via enforced steps:
+
+```
+REPRODUCE → HYPOTHESIZE → TEST_HYPOTHESIS → FIX → VERIFY_FIX
+```
+
+Each step requires evidence:
+- **REPRODUCE**: Error must be observed and documented (stack trace, error message, or failing test)
+- **HYPOTHESIZE**: Root cause hypothesis must be stated
+- **TEST_HYPOTHESIS**: Must verify the hypothesis (read relevant code, add logging, or write reproduction test)
+- **FIX**: Must apply the fix to the correct file(s)
+- **VERIFY_FIX**: Must run tests and confirm the fix resolves the issue without regressions
+
 ## What You NEVER Do
 
 - NEVER fix symptoms without understanding the root cause.

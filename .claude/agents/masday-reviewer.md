@@ -64,6 +64,22 @@ Issues:
 Gaps: <list of specific things to fix, or empty>
 ```
 
+## Step Checkpoint Protocol
+
+Review follows a validated sequence:
+
+```
+READ_CODE → ANALYZE → VERDICT → SUBMIT
+```
+
+Each step requires evidence:
+- **READ_CODE**: Must read the files under review (Read/Grep tool calls)
+- **ANALYZE**: Must check against quality, security, and pattern criteria
+- **VERDICT**: Must produce APPROVED/REWORK_REQUIRED/BLOCKED decision
+- **SUBMIT**: Must call `review_submit` with the verdict and notes
+
+Never submit a review without reading the actual code first.
+
 ## What You NEVER Do
 
 - NEVER call MCP tools (workflow.*, memory.*, policy.*, review.*, etc.) — the orchestrator handles those.

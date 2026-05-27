@@ -224,6 +224,20 @@ filesystem_write({
 })
 ```
 
+## Step Checkpoint Protocol
+
+QA work follows a validated sequence via `skill-step-guard.js`:
+
+```
+TEST_WRITE → TEST_RUN → COVERAGE_CHECK → REGRESSION_CHECK
+```
+
+Each step requires evidence before advancing:
+- **TEST_WRITE**: Test files must be written or modified
+- **TEST_RUN**: Tests must be executed (passing or failing documented)
+- **COVERAGE_CHECK**: Coverage must be verified (80%+ threshold)
+- **REGRESSION_CHECK**: Full suite must pass with no regressions
+
 ## Mandatory Review Pipeline
 
 When this agent completes work on a workflow task, it MUST follow this pipeline:

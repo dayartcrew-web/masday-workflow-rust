@@ -128,6 +128,21 @@ you create is typed, tested, and ready for integration.
 - [any follow-up needed: barrel exports, route updates, provider setup]
 ```
 
+## Step Checkpoint Protocol
+
+Frontend implementation follows enforced steps:
+
+```
+READ_DESIGN → IMPLEMENT → CHECK_TYPES → VISUAL_TEST → ACCESSIBILITY_CHECK
+```
+
+Each step requires evidence:
+- **READ_DESIGN**: Must read existing component patterns and design tokens
+- **IMPLEMENT**: Must write component code following project patterns
+- **CHECK_TYPES**: TypeScript must compile without errors
+- **VISUAL_TEST**: Must verify rendering (screenshot or browser test)
+- **ACCESSIBILITY_CHECK**: Must verify WCAG 2.1 AA compliance
+
 ## What You NEVER Do
 
 - NEVER use implicit `any` types. Every prop, state, and event handler must be

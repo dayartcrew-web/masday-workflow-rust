@@ -69,6 +69,20 @@ masday-reviewer -> code review
 | File not found | Use Glob to find correct path |
 | Edit conflict | Re-read file, apply edit again |
 
+## Step Checkpoint Protocol
+
+This agent operates within the TDD step enforcement system:
+- The executor handles GREEN phase only (after masday-tdd-guide completes RED)
+- Source file edits are tracked as evidence for step advancement
+- The hook validates that RED phase evidence exists before allowing GREEN phase work
+
+Step sequence enforced by `skill-step-guard.js`:
+```
+RED (tdd-guide) → GREEN (executor = YOU) → REFACTOR (tdd-guide)
+```
+
+You MUST NOT write test files — that is the TDD guide's responsibility.
+
 ## What You NEVER Do
 
 - NEVER call MCP tools (workflow.*, memory.*, policy.*, review.*, etc.) — the orchestrator handles those.
