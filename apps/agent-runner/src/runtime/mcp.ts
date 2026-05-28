@@ -14,10 +14,10 @@ process.setMaxListeners(20);
  *   - Tool names registered as underscore: workflow_create, memory_store (universal provider compatibility)
  *   - Source code uses dot notation internally: server.registerTool("workflow.create", ...) → wrapper converts to workflow_create
  *   - OpenAI/Nemotron/Qwen regex `^[a-zA-Z0-9_-]+$` rejects dots — underscore-only registration avoids this
- *   - Single registration (not dot+underscore double) keeps tool count at 88 (under OpenAI's 128 limit)
+ *   - Single registration (not dot+underscore double) keeps tool count at 89 (under OpenAI's 128 limit)
  *   - NEVER use snake_case: workflow.get_active is WRONG → use workflow.getActive (dot in code, underscore on wire)
  *
- * TOTAL TOOLS: 88 (all real implementations)
+ * TOTAL TOOLS: 89 (all real implementations)
  *
  * Persistence:
  *   - DualWriteWorkflowStore: all workflow operations replicate to PostgreSQL in real-time via Drizzle
@@ -187,17 +187,40 @@ const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _embedModel: any = null;
-async function getFastembedModel() {
-  if (!_embedModel) {
-    // Use createRequire for CJS import (ESM dynamic import fails with tar module)
-    const { createRequire } = await import("node:module");
-    const require = createRequire(import.meta.url);
-    const { FlagEmbedding, EmbeddingModel } = require("fastembed");
-    const modelId = (EMBEDDING_MODEL as string) || EmbeddingModel.BGEBaseENV15;
-    const cacheDir = path.resolve(import.meta.dirname, "../../../local_cache");
-    _embedModel = await FlagEmbedding.init({ model: modelId, cacheDir });
+let _embedModelPromise: Promise<any> | null = null;
+
+async function getFastembedModel(timeoutMs = 30_000): Promise<any> {
+  if (_embedModel) return _embedModel;
+  if (!_embedModelPromise) {
+    _embedModelPromise = (async () => {
+      const { createRequire } = await import("node:module");
+      const require = createRequire(import.meta.url);
+      const { FlagEmbedding, EmbeddingModel } = require("fastembed");
+      const modelId = (EMBEDDING_MODEL as string) || EmbeddingModel.BGEBaseENV15;
+      const cacheDir = path.resolve(import.meta.dirname, "../../../local_cache");
+      _embedModel = await FlagEmbedding.init({ model: modelId, cacheDir });
+      return _embedModel;
+    })();
   }
-  return _embedModel;
+  const result = await Promise.race([
+    _embedModelPromise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+  if (!result) {
+    logger.warn(`FastEmbed model init timed out after ${timeoutMs}ms`);
+    _embedModelPromise = null;
+  }
+  return result;
+}
+
+function prewarmFastembed(): void {
+  if (EMBEDDING_PROVIDER !== "fastembed" || _embedModel) return;
+  getFastembedModel(60_000).then((m) => {
+    if (m) logger.info("FastEmbed model pre-warmed successfully");
+  }).catch((err) => {
+    logger.warn("FastEmbed pre-warm failed: " + (err instanceof Error ? err.message : String(err)));
+    _embedModelPromise = null;
+  });
 }
 
 function mockEmbedding(text: string, dims: number): number[] {
@@ -210,40 +233,51 @@ function mockEmbedding(text: string, dims: number): number[] {
 }
 
 async function generateEmbedding(text: string): Promise<number[] | null> {
+  const EMBED_TIMEOUT = 45_000;
   try {
-    if (EMBEDDING_PROVIDER === "mock") {
-      const dims = parseInt(process.env.EMBEDDING_DIMENSIONS ?? "768", 10);
-      return mockEmbedding(text, dims);
-    }
+    const result = await Promise.race([
+      (async () => {
+        if (EMBEDDING_PROVIDER === "mock") {
+          const dims = parseInt(process.env.EMBEDDING_DIMENSIONS ?? "768", 10);
+          return mockEmbedding(text, dims);
+        }
 
-    if (EMBEDDING_PROVIDER === "ollama") {
-      const model = EMBEDDING_MODEL || "nomic-embed-text";
-      const res = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, prompt: text }),
-      });
-      if (!res.ok) return null;
-      const json = await res.json() as { embedding?: number[] };
-      return json.embedding ?? null;
-    }
+        if (EMBEDDING_PROVIDER === "ollama") {
+          const model = EMBEDDING_MODEL || "nomic-embed-text";
+          const res = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model, prompt: text }),
+          });
+          if (!res.ok) return null;
+          const json = await res.json() as { embedding?: number[] };
+          return json.embedding ?? null;
+        }
 
-    if (EMBEDDING_PROVIDER === "openai") {
-      if (!OPENAI_API_KEY) return null;
-      const model = EMBEDDING_MODEL || "text-embedding-3-small";
-      const res = await fetch(`${OPENAI_BASE_URL}/v1/embeddings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({ model, input: text }),
-      });
-      if (!res.ok) return null;
-      const json = await res.json() as { data?: Array<{ embedding: number[] }> };
-      return json.data?.[0]?.embedding ?? null;
-    }
+        if (EMBEDDING_PROVIDER === "openai") {
+          if (!OPENAI_API_KEY) return null;
+          const model = EMBEDDING_MODEL || "text-embedding-3-small";
+          const res = await fetch(`${OPENAI_BASE_URL}/v1/embeddings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+            body: JSON.stringify({ model, input: text }),
+          });
+          if (!res.ok) return null;
+          const json = await res.json() as { data?: Array<{ embedding: number[] }> };
+          return json.data?.[0]?.embedding ?? null;
+        }
 
-    // default: fastembed
-    const model = await getFastembedModel();
-    return await model.queryEmbed(text);
+        // default: fastembed
+        const model = await getFastembedModel();
+        if (!model) return null;
+        return await model.queryEmbed(text);
+      })(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), EMBED_TIMEOUT)),
+    ]);
+    if (result === null) {
+      logger.warn(`generateEmbedding timed out or failed after ${EMBED_TIMEOUT}ms`);
+    }
+    return result;
   } catch { return null; }
 }
 
@@ -1121,6 +1155,57 @@ server.registerTool("projectRules.check", {
   } catch (e) { return ok({ error: String(e) }); }
 });
 
+// ── use_masday: Universal entry point for any user instruction ──
+server.registerTool("use_masday", {
+  description: "Universal entry point — parse any user instruction and return a routing plan with recommended skill, agent, and workflow strategy. Called before dispatching to specific masday skills.",
+  inputSchema: {
+    prompt: z.string().describe("The user's raw instruction (natural language, any intent)"),
+    context: z.string().optional().describe("Optional additional context (current file, project state, etc.)"),
+  },
+}, async ({ prompt }) => {
+  const p = prompt.toLowerCase();
+
+  // Intent classification
+  type Intent = "fix" | "build" | "test" | "deploy" | "research" | "scaffold" | "analyze" | "workflow" | "git" | "quick";
+  let intent: Intent = "quick";
+  let skill = "";
+  let agent = "masday-executor";
+  let complexity: "quick" | "workflow" = "quick";
+
+  if (/fix|bug|error|broken|crash|fail|issue|debug|patch|hotfix/.test(p)) { intent = "fix"; skill = "masday-workflow-fix"; agent = "masday-debugger"; complexity = "workflow"; }
+  else if (/build|add feature|implement|create|new|develop|construct|scaffold/.test(p)) { intent = "build"; skill = "masday-workflow-new"; agent = "masday-orchestrator"; complexity = "workflow"; }
+  else if (/test|spec|coverage|tdd|unit test|integration|e2e/.test(p)) { intent = "test"; skill = "masday-tdd"; agent = "masday-tdd-guide"; complexity = "workflow"; }
+  else if (/deploy|release|ship|publish|push to prod|staging/.test(p)) { intent = "deploy"; skill = "masday-deploy-check"; agent = "masday-executor"; complexity = "workflow"; }
+  else if (/research|lookup|find|search|docs|documentation|how to|what is/.test(p)) { intent = "research"; skill = "masday-research"; agent = "masday-researcher"; complexity = "workflow"; }
+  else if (/create agent|create skill|scaffold|mcp skill|new command/.test(p)) { intent = "scaffold"; skill = "masday-create-skill"; agent = "masday-executor"; complexity = "workflow"; }
+  else if (/analyze|review|audit|inspect|check quality|code review/.test(p)) { intent = "analyze"; skill = "masday-code-analyze"; agent = "masday-reviewer"; complexity = "workflow"; }
+  else if (/workflow|plan|execute|run task|continue workflow/.test(p)) { intent = "workflow"; skill = "masday-workflow-run"; agent = "masday-orchestrator"; complexity = "workflow"; }
+  else if (/commit|push|pr|pull request|merge|branch|git/.test(p)) { intent = "git"; skill = "masday-git-workflow"; agent = "masday-git-master"; complexity = "workflow"; }
+  else { intent = "quick"; skill = ""; agent = "masday-executor"; complexity = "quick"; }
+
+  // For quick tasks, recommend direct MCP tool usage
+  const tools = complexity === "quick"
+    ? { recommended: ["semantic-search_code_search", "memory_search"], skipWorkflow: true }
+    : { recommended: ["capability_system_readiness", "memory_search", "semantic-search_code_search", "capability_match_agent"], skipWorkflow: false };
+
+  const plan = {
+    intent,
+    skill,
+    agent,
+    complexity,
+    tools,
+    prompt: prompt.substring(0, 200),
+    routingNote: complexity === "quick"
+      ? `Quick task detected (${intent}). Use MCP tools directly.`
+      : `Complex task detected (${intent}). Invoke skill "${skill}" or create workflow with agent "${agent}".`,
+  };
+
+  // Log to episodic memory
+  episodicMemory.add("system", `[use_masday] intent=${intent} skill=${skill} agent=${agent} complexity=${complexity}`);
+
+  return ok(plan);
+});
+
 // Connect transport FIRST so MCP health check passes within 3s,
 // then run heavy init (doctor, DB, reminders) in background.
 const transport = new StdioServerTransport();
@@ -1141,10 +1226,19 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
     new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 30s, continuing without DB"); resolve(); }, 30000)),
   ]);
 
-  // Periodic background: reconnect if DB failed + reminder check
+  prewarmFastembed();
+
+  // Periodic background: stale detection + reconnect if DB failed + reminder check
   const BG_INTERVAL_MS = 30_000;
   const bgTimer = setInterval(async () => {
     try {
+      if (dbReady) {
+        const alive = await dbHealthCheck(5000).catch(() => false);
+        if (!alive) {
+          logger.warn("PostgreSQL connection stale — switching to JSON-only mode");
+          dbReady = false;
+        }
+      }
       if (!dbReady) {
         await tryReconnectDb();
         if (dbReady) {

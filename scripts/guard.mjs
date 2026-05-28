@@ -131,7 +131,7 @@ function checkConsoleLog(filePath) {
 const KNOWN_NAMESPACES = [
   "workflow", "memory", "semantic-search", "policy", "capability",
   "filesystem", "review", "session", "local", "git", "npm",
-  "docker", "cicd", "github", "tests", "reminder", "projectRules",
+  "docker", "cicd", "github", "tests", "reminder", "projectRules", "use",
 ];
 
 function checkToolNames(mcpFilePath) {

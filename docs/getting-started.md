@@ -32,7 +32,7 @@ pnpm db:pgvector
 ## What this starts
 
 - The local MCP stdio server from `apps/agent-runner`
-- **87 MCP tools** across 17 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests, reminder, projectRules)
+- **89 MCP tools** across 18 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests, reminder, projectRules, use_masday)
 - Workflow orchestration via OrchestratingEngine with full agent dispatch
 - **PostgreSQL-backed runtime state via DualWriteStore** -- all 16 Drizzle tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder, LlmProviderConfig)
 - DualWrite pattern: PostgreSQL primary + JSON cache fallback for resilience

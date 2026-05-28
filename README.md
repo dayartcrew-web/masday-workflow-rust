@@ -12,7 +12,7 @@ Merges the best of two projects:
 - **msd-mcp** -- Official MCP SDK, 5 domain servers, Drizzle/PostgreSQL persistence
 - **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
 
-The result is a modular monorepo of 13 packages and a single unified MCP server exposing 87 tools over stdio to any MCP-compatible client.
+The result is a modular monorepo of 13 packages and a single unified MCP server exposing 89 tools over stdio to any MCP-compatible client.
 
 ---
 
@@ -139,7 +139,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 | App | Tools | Description |
 |-----|-------|-------------|
-| `apps/agent-runner` | 87 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
+| `apps/agent-runner` | 89 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
 
 ### Tool Namespaces (87 tools)
 
@@ -162,6 +162,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | tests | 1 | Real `execSync` calls to pnpm test runner |
 | reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Drizzle WorkflowReminder table) |
 | projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
+| use_masday | 1 | Universal entry point — parses any user instruction, returns routing plan (intent, skill, agent, complexity) |
 
 ### MCP Pattern
 
@@ -217,7 +218,7 @@ Status values are ALL UPPERCASE in PostgreSQL:
 ### Starting the Server
 
 ```bash
-# Unified MCP server (all 87 tools)
+# Unified MCP server (all 89 tools)
 npx tsx apps/agent-runner/src/runtime/mcp.ts
 ```
 
