@@ -20,7 +20,7 @@ export const env = z
     DB_NAME: z.string().default("claude_agent_platform"),
 
     // ── Embedding ──
-    EMBEDDING_PROVIDER: z.enum(["mock", "openai", "ollama"]).default("mock"),
+    EMBEDDING_PROVIDER: z.enum(["mock", "fastembed", "openai", "ollama"]).default("fastembed"),
     EMBEDDING_DIMENSIONS: z.coerce.number().int().min(1).default(768),
     EMBEDDING_MODEL: z.string().default("nomic-embed-text"),
 
