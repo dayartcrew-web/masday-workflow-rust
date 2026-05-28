@@ -17,6 +17,21 @@ import type {
 } from './types.js';
 const logger = createLogger('intelligence:context');
 
+/** ~4 chars per token is a standard approximation for English text + code. */
+const CHARS_PER_TOKEN = 4;
+const DEFAULT_MAX_CONTEXT_TOKENS = 150_000;
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
+/** Truncate text to fit within a token budget, appending "..." if truncated. */
+function truncateToTokens(text: string, maxTokens: number): string {
+  const maxChars = maxTokens * CHARS_PER_TOKEN;
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars - 3) + '...';
+}
+
 /** Provider interface for memory search in context building. */
 export interface MemoryProvider {
   search(query: string, options?: { limit?: number; threshold?: number }): Promise<Array<{
@@ -54,8 +69,9 @@ export function buildContextPack(
     memory?: MemoryProvider;
     documents?: DocumentProvider;
   },
+  options?: { maxContextTokens?: number },
 ): Promise<ContextPackResult> {
-  return buildContextPackImpl(input, providers, false);
+  return buildContextPackImpl(input, providers, false, options?.maxContextTokens);
 }
 
 /**
@@ -73,8 +89,9 @@ export function buildHybridContextPack(
     embedding?: EmbeddingProvider;
     chunks?: ChunkProvider;
   },
+  options?: { maxContextTokens?: number },
 ): Promise<HybridContextPackResult> {
-  return buildHybridContextPackImpl(input, providers);
+  return buildHybridContextPackImpl(input, providers, options?.maxContextTokens);
 }
 
 /** Compute a SHA-256 fingerprint for context pack contents. */
@@ -109,6 +126,7 @@ async function buildContextPackImpl(
     documents?: DocumentProvider;
   },
   _hybrid: boolean,
+  maxContextTokens: number = DEFAULT_MAX_CONTEXT_TOKENS,
 ): Promise<ContextPackResult> {
   const { workflowId, planId, taskId } = input;
 
@@ -153,6 +171,45 @@ async function buildContextPackImpl(
 
   const contextSufficient = semanticMemories.length > 0 || semanticDocs.length > 0;
 
+  // Enforce token budget — truncate largest items first
+  let budgetUsed = estimateTokens([
+    input.planSummary ?? '',
+    input.taskTitle,
+    input.recentProgress ?? '',
+    ...input.acceptanceCriteria,
+    ...input.requiredContext,
+  ].join('\n'));
+  const truncatedMemories: ContextPackMemory[] = [];
+  for (const m of semanticMemories) {
+    if (budgetUsed >= maxContextTokens) break;
+    const remaining = maxContextTokens - budgetUsed;
+    const mTokens = estimateTokens(m.content);
+    if (mTokens > remaining) {
+      truncatedMemories.push({ ...m, content: truncateToTokens(m.content, remaining) });
+      budgetUsed = maxContextTokens;
+    } else {
+      truncatedMemories.push(m);
+      budgetUsed += mTokens;
+    }
+  }
+  const truncatedDocs: ContextPackDoc[] = [];
+  for (const d of semanticDocs) {
+    if (budgetUsed >= maxContextTokens) break;
+    const remaining = maxContextTokens - budgetUsed;
+    const dTokens = estimateTokens(d.content);
+    if (dTokens > remaining) {
+      truncatedDocs.push({ ...d, content: truncateToTokens(d.content, remaining) });
+      budgetUsed = maxContextTokens;
+    } else {
+      truncatedDocs.push(d);
+      budgetUsed += dTokens;
+    }
+  }
+
+  if (budgetUsed >= maxContextTokens) {
+    logger.info({ budgetUsed, max: maxContextTokens }, 'Context pack truncated to fit token budget');
+  }
+
   return {
     workflowId,
     planId,
@@ -162,8 +219,8 @@ async function buildContextPackImpl(
     acceptanceCriteria: input.acceptanceCriteria,
     requiredContext: input.requiredContext,
     recentProgress: input.recentProgress,
-    semanticMemories,
-    semanticDocs,
+    semanticMemories: truncatedMemories,
+    semanticDocs: truncatedDocs,
     fingerprint,
     contextSufficient,
   };
@@ -177,9 +234,10 @@ async function buildHybridContextPackImpl(
     embedding?: EmbeddingProvider;
     chunks?: ChunkProvider;
   },
+  maxContextTokens: number = DEFAULT_MAX_CONTEXT_TOKENS,
 ): Promise<HybridContextPackResult> {
   // Start with the base context pack
-  const basePack = await buildContextPackImpl(input, providers, true);
+  const basePack = await buildContextPackImpl(input, providers, true, maxContextTokens);
 
   // Enhance with vector search if embedding provider is available
   if (providers.embedding) {
@@ -195,14 +253,23 @@ async function buildHybridContextPackImpl(
       // Re-rank memories by vector similarity if we have embeddings
       if (providers.chunks) {
         const codeResults = providers.chunks.search(queryText, { limit: 3 });
-        // Add code results as additional docs
+        // Estimate remaining budget after base pack
+        let currentTokens = basePack.semanticMemories.reduce((s, m) => s + estimateTokens(m.content), 0)
+          + basePack.semanticDocs.reduce((s, d) => s + estimateTokens(d.content), 0);
         for (const result of codeResults) {
+          const chunkTokens = estimateTokens(result.chunk.content);
+          const remaining = maxContextTokens - currentTokens;
+          if (remaining <= 0) break;
+          const content = chunkTokens > remaining
+            ? truncateToTokens(result.chunk.content, remaining)
+            : result.chunk.content;
           basePack.semanticDocs.push({
             id: result.chunk.id,
             title: result.chunk.filePath,
-            content: result.chunk.content,
+            content,
             score: result.score,
           });
+          currentTokens += Math.min(chunkTokens, remaining);
         }
       }
 

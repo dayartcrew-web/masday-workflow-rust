@@ -131,7 +131,7 @@ const cwd = process.cwd();
 // Derive project root from this script's location so MCP works regardless of
 // the caller's cwd (Claude Desktop sets cwd to C:\WINDOWS\system32).
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(scriptDir, "..", "..", "..");
+const projectRoot = path.resolve(scriptDir, "..", "..", "..", "..");
 
 /** Validate that a path passed by a model is safe — must exist and contain project markers. Falls back to startup cwd. */
 function safePath(input: string | undefined, fallback: string = cwd): string {
