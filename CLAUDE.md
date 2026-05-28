@@ -22,7 +22,7 @@ User -> MCP Protocol (stdio) -> Domain MCP Servers -> Workflow Engine -> Core In
       v
  +-------------+                +------------------+
  |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (87 tools)       |
+ | (Dashboard/  |   stdio       |  (89 tools)       |
  |  CLI/MCP)    |               +--------+----------+
  +-------------+                         |
                                         v
@@ -101,9 +101,9 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 | `packages/project-rules` | Refactor rules engine, 14 automated checks, checklist validator |
 | `packages/cli` | CLI entry point + setup templates |
 
-## MCP Server — `apps/agent-runner` (87 tools)
+## MCP Server — `apps/agent-runner` (89 tools)
 
-Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tools are real implementations connected to PostgreSQL via DualWriteStore.
+Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 89 tools are real implementations connected to PostgreSQL via DualWriteStore.
 
 | Namespace | Tools | Implementation |
 |-----------|-------|----------------|
@@ -124,6 +124,7 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 87 tool
 | tests | 1 | Real `execSync` calls to pnpm test runner |
 | reminder | 3 | Auto-run on startup + periodic 15min check. Detects stale/stuck/failed workflows. session_init_context returns reminders. Drizzle WorkflowReminder table |
 | projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
+| use_masday | 1 | Universal entry point — parses any user instruction, returns routing plan (intent, skill, agent, complexity) |
 
 **Persistence:** DualWriteWorkflowStore wraps WorkflowStore and replicates all workflow operations to PostgreSQL in real-time via Drizzle. Memory uses hybrid mode: Drizzle first, JSON cache fallback when PostgreSQL is unavailable. All 16 Drizzle tables are actively populated:
 

@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 87 real tools across 17 namespaces, all connected to PostgreSQL via DualWriteStore.
+This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 89 real tools across 18 namespaces, all connected to PostgreSQL via DualWriteStore.
 
 ## Persistence
 
@@ -181,6 +181,12 @@ Stale/stuck workflow detection, reminder listing, and acknowledgment (Drizzle Wo
 Real refactor rules validation from `@mcp-rebuild/project-rules`.
 
 - `projectRules_check` -- Validate project against refactor rules and conventions (14 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
+
+## use_masday (1 tool)
+
+Universal entry point -- parses any user instruction, classifies intent, and returns routing plan with recommended skill/agent/complexity.
+
+- `use_masday` -- Parse user instruction, classify intent (fix/build/test/deploy/research/scaffold/analyze/workflow/git/quick), return routing plan (intent, recommendedSkill, recommendedAgent, complexity)
 
 ## Workflow lifecycle behavior
 

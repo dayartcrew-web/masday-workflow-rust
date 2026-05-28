@@ -25,6 +25,7 @@ Before any substantive response or action:
 
 | Situation | First Choice | Fallback |
 |-----------|--------------|----------|
+| **ANY instruction** | `mcp__masday__use_masday` | `masday-active` skill |
 | Create/manage workflow | `mcp__masday__workflow_create` | `masday-workflow-new` skill |
 | Search codebase | `mcp__masday__semantic-search_code_search` | Grep/Glob tools |
 | Store/recall memory | `mcp__masday__memory_store` / `mcp__masday__memory_search` | File-based memory |

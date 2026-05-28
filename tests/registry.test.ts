@@ -64,7 +64,7 @@ describe.skipIf(!registryExists)('Registry consistency', () => {
 
   it('registry has correct component counts', () => {
     expect(registry.components.agents.length).toBe(27)
-    expect(registry.components.skills.length).toBe(36)
+    expect(registry.components.skills.length).toBe(37)
     expect(registry.components.hooks.length).toBe(14)
     expect(registry.components.mcpServers.length).toBe(1)
   })
