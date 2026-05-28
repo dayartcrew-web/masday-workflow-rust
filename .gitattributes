@@ -1,0 +1,7 @@
+# Shell scripts must always use LF line endings (CRLF breaks Linux/macOS)
+*.sh text eol=lf
+*.mjs text eol=lf
+*.bash text eol=lf
+
+# Auto-detect for other text files
+* text=auto

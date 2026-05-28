@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, chmodSync } from 'fs';
 import { join, basename } from 'path';
 
 const CLAUDE_TOOL_TO_OPENCODE = {
@@ -171,7 +171,16 @@ function convertAll(sourceDir, targetDir) {
     const content = readFileSync(src, 'utf-8');
     const result = convertClaudeAgentToOpencode(content, file);
     if (result) {
-      writeFileSync(dst, result, 'utf-8');
+      // Remove existing file if unreadable/unwritable (e.g. wrong owner from prior sudo run)
+      if (existsSync(dst)) {
+        try { chmodSync(dst, 0o644); } catch { /* ignore */ }
+        try { writeFileSync(dst, result, 'utf-8'); } catch {
+          try { unlinkSync(dst); } catch { /* ignore */ }
+          writeFileSync(dst, result, 'utf-8');
+        }
+      } else {
+        writeFileSync(dst, result, 'utf-8');
+      }
       converted++;
     } else {
       skipped++;
