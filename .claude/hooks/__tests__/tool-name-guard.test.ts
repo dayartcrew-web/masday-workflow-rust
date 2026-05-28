@@ -18,7 +18,7 @@ describe("tool-name-guard", () => {
 
     const result = await guard();
     if (result) {
-      console.log("Current unknown namespaces:", result.systemMessage);
+      // intentional: guard may return known namespaces depending on env
     }
     expect(result === undefined || typeof result.systemMessage === "string").toBe(true);
   });
@@ -44,7 +44,7 @@ describe("tool-name-guard", () => {
     ]);
 
     const unknown: string[] = [];
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = TOOL_RE.exec(content)) !== null) {
       if (!knownNamespaces.has(match[1])) {
         unknown.push(`${match[1]}.${match[2]}`);
