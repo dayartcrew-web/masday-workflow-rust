@@ -88,8 +88,10 @@ if [ -f ".gemini/settings.json" ]; then
 fi
 
 for dir in .agents .gemini .continue; do
-  rm -rf "$dir"
   mkdir -p "$dir/agents" "$dir/skills"
+  # Only remove masday-* prefixed items to preserve other agents/skills
+  rm -rf "$dir/agents/masday-"* 2>/dev/null || true
+  rm -rf "$dir/skills/masday-"* 2>/dev/null || true
 done
 
 # Restore .gemini/settings.json
@@ -112,7 +114,7 @@ done
 echo "  Syncing .claude/rules/ to all platform directories..."
 for plat_dir in .agents .gemini .continue .opencode .codex; do
   mkdir -p "$plat_dir/rules"
-  rm -rf "$plat_dir/rules"/*
+  rm -rf "$plat_dir/rules/masday-"* 2>/dev/null || true
   if [ -d ".claude/rules" ]; then
     cp $CP_FLAGS .claude/rules/* "$plat_dir/rules/" 2>/dev/null || true
   fi
