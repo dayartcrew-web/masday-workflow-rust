@@ -59,6 +59,7 @@ export {
 } from "./vector-search.js";
 
 export {
+  FastEmbedEmbeddingProvider,
   MockEmbeddingProvider,
   OpenAIEmbeddingProvider,
   createEmbeddingProvider,

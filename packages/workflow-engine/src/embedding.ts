@@ -87,12 +87,60 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
+export class FastEmbedEmbeddingProvider implements EmbeddingProvider {
+  private modelPromise: Promise<unknown> | null = null;
+  private modelId: string;
+  private cacheDir: string;
+  private timeoutMs: number;
+
+  constructor(opts?: { model?: string; cacheDir?: string; timeoutMs?: number }) {
+    this.modelId = opts?.model ?? env.EMBEDDING_MODEL;
+    this.cacheDir = opts?.cacheDir ?? "local_cache";
+    this.timeoutMs = opts?.timeoutMs ?? 30_000;
+  }
+
+  private async getModel(): Promise<unknown> {
+    if (!this.modelPromise) {
+      this.modelPromise = (async () => {
+        const { createRequire } = await import("node:module");
+        const require = createRequire(import.meta.url);
+        const { FlagEmbedding, EmbeddingModel } = require("fastembed") as {
+          FlagEmbedding: { init(opts: { model: string; cacheDir: string }): Promise<unknown> };
+          EmbeddingModel: Record<string, string>;
+        };
+        const id = this.modelId || EmbeddingModel.BGEBaseENV15;
+        return FlagEmbedding.init({ model: id, cacheDir: this.cacheDir });
+      })();
+    }
+    const result = await Promise.race([
+      this.modelPromise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), this.timeoutMs)),
+    ]);
+    if (!result) {
+      this.modelPromise = null;
+      throw new Error(`FastEmbed model init timed out after ${this.timeoutMs}ms`);
+    }
+    return result;
+  }
+
+  async embed(text: string): Promise<number[]> {
+    const m = await this.getModel();
+    return (m as { queryEmbed(text: string): Promise<number[]> }).queryEmbed(text);
+  }
+
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    return Promise.all(texts.map((t) => this.embed(t)));
+  }
+}
+
 export function createEmbeddingProvider(
   provider?: string,
 ): EmbeddingProvider {
   const p = provider ?? env.EMBEDDING_PROVIDER;
 
   switch (p) {
+    case "fastembed":
+      return new FastEmbedEmbeddingProvider();
     case "ollama":
       return new OpenAIEmbeddingProvider({
         apiKey: "ollama",
