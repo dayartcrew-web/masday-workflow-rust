@@ -634,7 +634,7 @@ server.registerTool("semantic-search.code_search", { description: "Code search",
         const sep2 = line.indexOf(":", sep + 1);
         if (sep < 0 || sep2 < 0) continue;
         results.push({
-          file: line.slice(0, sep).replace(projectRoot + path.sep, ""),
+          file: line.slice(0, sep).replace(projectRoot, "").replace(/^[\\/]/, ""),
           line: parseInt(line.slice(sep + 1, sep2), 10),
           content: line.slice(sep2 + 1).slice(0, 200),
           match: query,
