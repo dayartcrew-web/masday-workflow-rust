@@ -33,7 +33,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { EventBus, createLogger, setDrizzleDb as setTokenDb, trackTokens } from "@mcp-rebuild/core";
-import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
+import { JsonBackend, SqliteBackend, WorkflowStore, TaskResultStore, PersistenceListener, DualWriteWorkflowStore, setDualWriteDb, setDualWriteSchema, flushEarlyBuffer } from "@mcp-rebuild/store";
 import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setReminderDb, checkReminders, listReminders as listRemindersDb, acknowledgeReminder, dismissWorkflowReminders, reminderStats, makeFingerprint } from "@mcp-rebuild/workflow-engine";
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
 import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
@@ -127,8 +127,9 @@ if (orphans > 0) logger.info("Restored " + orphans + " orphaned workflows");
 
 // Memory file cache
 const MEMORY_FILE = path.join(dataDir, "memories.json");
-interface MemRec { id: string; type: string; content: string; summary: string; source: string; importance: number; tags: string[]; createdAt: number }
+interface MemRec { id: string; type: string; content: string; summary: string; source: string; importance: number; tags: string[]; createdAt: number; projectPath?: string }
 function loadMem(): MemRec[] { return fs.existsSync(MEMORY_FILE) ? JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8")) : []; }
+function loadMemProject(pp: string): MemRec[] { return loadMem().filter(m => !m.projectPath || m.projectPath === pp); }
 function saveMem(m: MemRec[]) { fs.writeFileSync(MEMORY_FILE, JSON.stringify(m, null, 2)); }
 let mic = 0;
 function nid() { return "mem_" + Date.now() + "_" + (++mic); }
@@ -216,6 +217,8 @@ async function initDb(): Promise<void> {
     }
     dbReady = true;
     setDualWriteDb(drizzleDb as never);
+    setDualWriteSchema({ workflows: workflowsTable, plans: plansTable, tasks: tasksTable });
+    flushEarlyBuffer();
     setTokenDb(drizzleDb as never);
     setEpisodicDb(drizzleDb as never);
     setGraphDb(drizzleDb as never);
@@ -312,13 +315,13 @@ server.registerTool("workflow.resume_suggestion", { description: "Get resume sug
 
 // Memory
 server.registerTool("memory.store", { description: "Store memory", inputSchema: { workflow_id: z.string().optional(), task_id: z.string().optional(), memory_type: z.string(), summary: z.string(), content: z.string(), created_by_agent: z.string(), importance_score: z.number().optional(), tags: z.array(z.string()).optional() } }, async (a) => {
-  const r: MemRec = { id: nid(), type: a.memory_type, content: a.content, summary: a.summary, source: a.created_by_agent, importance: a.importance_score ?? 0.5, tags: [...(a.tags ?? []), a.workflow_id, a.task_id].filter(Boolean) as string[], createdAt: Date.now() };
+  const r: MemRec = { id: nid(), type: a.memory_type, content: a.content, summary: a.summary, source: a.created_by_agent, importance: a.importance_score ?? 0.5, tags: [...(a.tags ?? []), a.workflow_id, a.task_id].filter(Boolean) as string[], createdAt: Date.now(), projectPath: projectRoot };
   await persistToDb(r, a.workflow_id, a.task_id); const m = loadMem(); m.push(r); saveMem(m);
   try { graphStore.addNode({ type: "memory", label: a.summary, properties: { memoryId: r.id, memoryType: a.memory_type, tags: a.tags ?? [], workflowId: a.workflow_id, taskId: a.task_id, content: a.content.substring(0, 500) } }); } catch { /* non-critical */ }
   return ok(r);
 });
 server.registerTool("memory.store_research", { description: "Store research", inputSchema: { workflow_id: z.string().optional(), summary: z.string(), content: z.string(), created_by_agent: z.string() } }, async (a) => {
-  const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now() };
+  const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now(), projectPath: projectRoot };
   await persistToDb(r, a.workflow_id);
   if (dbReady) { try {
     const emb = await generateEmbedding(a.content);
@@ -331,23 +334,23 @@ server.registerTool("memory.store_research", { description: "Store research", in
 });
 server.registerTool("memory.recall_recent", { description: "Recall recent", inputSchema: { limit: z.number().optional(), type: z.string().optional() } }, async ({ limit, type }) => {
   if (dbReady) { try { const whereCond = type ? eq(memoriesTable.memoryType, type) : undefined; const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10); const ids = rows.map(r => r.id); if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`); return ok(rows); } catch { /* fall through to cache */ } }
-  let m = loadMem(); if (type) m = m.filter(x => x.type === type); return ok(m.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
+  let m = loadMemProject(projectRoot); if (type) m = m.filter(x => x.type === type); return ok(m.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_documents", { description: "Recall docs", inputSchema: { workflow_id: z.string(), limit: z.number().optional() } }, async ({ workflow_id, limit }) => {
   if (dbReady) { try { const rows = await drizzleDb.select().from(memoriesTable).where(eq(memoriesTable.workflowId, workflow_id)).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10); const ids = rows.map(r => r.id); if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`); return ok(rows); } catch { /* fall through to cache */ } }
-  return ok(loadMem().filter(m => m.tags.includes(workflow_id)).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
+  return ok(loadMemProject(projectRoot).filter(m => m.tags.includes(workflow_id)).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_document_by_type", { description: "Recall by type", inputSchema: { workflow_id: z.string(), source_type: z.string(), limit: z.number().optional() } }, async ({ workflow_id, source_type, limit }) => {
   if (dbReady) { try { const rows = await drizzleDb.select().from(memoriesTable).where(and(eq(memoriesTable.workflowId, workflow_id), eq(memoriesTable.memoryType, source_type))).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10); const ids = rows.map(r => r.id); if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`); return ok(rows); } catch { /* fall through */ } }
-  return ok(loadMem().filter(m => m.tags.includes(workflow_id) && m.type === source_type).slice(0, limit ?? 10));
+  return ok(loadMemProject(projectRoot).filter(m => m.tags.includes(workflow_id) && m.type === source_type).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_by_task", { description: "Recall by task", inputSchema: { task_id: z.string(), limit: z.number().optional() } }, async ({ task_id, limit }) => {
   if (dbReady) { try { const rows = await drizzleDb.select().from(memoriesTable).where(eq(memoriesTable.taskId, task_id)).orderBy(desc(memoriesTable.createdAt)).limit(limit ?? 10); const ids = rows.map(r => r.id); if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`); return ok(rows); } catch { /* fall through */ } }
-  return ok(loadMem().filter(m => m.tags.includes(task_id)).slice(0, limit ?? 10));
+  return ok(loadMemProject(projectRoot).filter(m => m.tags.includes(task_id)).slice(0, limit ?? 10));
 });
 server.registerTool("memory.update", { description: "Update memory", inputSchema: { id: z.string(), content: z.string().optional(), importance: z.number().optional() } }, async ({ id, content, importance }) => {
   if (dbReady) { try { const data: Record<string, unknown> = {}; if (content) data.content = content; if (importance !== undefined) data.importanceScore = importance; if (Object.keys(data).length > 0) await drizzleDb.update(memoriesTable).set(data).where(eq(memoriesTable.id, id)); } catch { /* fall through */ } }
-  const m = loadMem(); const r = m.find(x => x.id === id); if (!r) throw new Error("Not found"); if (content) r.content = content; if (importance !== undefined) r.importance = importance; saveMem(m); return ok(r);
+  const all = loadMem(); const r = all.find(x => x.id === id); if (!r) throw new Error("Not found"); if (content) r.content = content; if (importance !== undefined) r.importance = importance; saveMem(all); return ok(r);
 });
 server.registerTool("memory.delete", { description: "Delete memory", inputSchema: { id: z.string() } }, async ({ id }) => {
   if (dbReady) { try { await drizzleDb.delete(memoriesTable).where(eq(memoriesTable.id, id)); } catch { /* fall through */ } }
@@ -355,7 +358,7 @@ server.registerTool("memory.delete", { description: "Delete memory", inputSchema
 });
 server.registerTool("memory.delete_by_workflow", { description: "Delete by workflow", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => {
   if (dbReady) { try { const result = await drizzleDb.delete(memoriesTable).where(eq(memoriesTable.workflowId, workflow_id)).returning({ id: memoriesTable.id }); return ok({ deleted: result.length }); } catch { /* fall through */ } }
-  const m = loadMem(); const n = m.length; saveMem(m.filter(x => !x.tags.includes(workflow_id))); return ok({ deleted: n - m.filter(x => !x.tags.includes(workflow_id)).length });
+  const m = loadMem(); const n = m.length; saveMem(m.filter(x => x.projectPath !== projectRoot || !x.tags.includes(workflow_id))); return ok({ deleted: n - m.filter(x => x.projectPath !== projectRoot || !x.tags.includes(workflow_id)).length });
 });
 server.registerTool("memory.search", { description: "Search memories with composite scoring", inputSchema: { query: z.string(), limit: z.number().optional() } }, async ({ query, limit }) => {
   if (dbReady) { try { await logRetrieval({ agentName: "mcp", query, source: "memory.search", results: { limit: limit ?? 10 } }); } catch { /* non-critical */ } }
@@ -391,7 +394,7 @@ server.registerTool("memory.search", { description: "Search memories with compos
       if (rows.length > 0) return ok(rows);
     } catch { /* fall through */ }
   }
-  const q = query.toLowerCase(); return ok(loadMem().map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
+  const q = query.toLowerCase(); return ok(loadMemProject(projectRoot).map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
 });
 server.registerTool("memory.stats", { description: "Memory stats", inputSchema: {} }, async () => {
   if (dbReady) { try { const [{ value: total }] = await drizzleDb.select({ value: count() }).from(memoriesTable); const byTypeRows = await drizzleDb.select({ memoryType: memoriesTable.memoryType, count: count() }).from(memoriesTable).groupBy(memoriesTable.memoryType); return ok({ total, byType: Object.fromEntries(byTypeRows.map(b => [b.memoryType, b.count])), source: "postgresql" }); } catch { /* fall through */ } }
@@ -500,7 +503,7 @@ server.registerTool("session.init_context", { description: "Init session context
 
 // Local
 server.registerTool("local.init", { description: "Init local state dir", inputSchema: { cwd: z.string() } }, async ({ cwd: rawCwd }) => { const dir = safePath(rawCwd); const p = path.join(dir, ".masday"); if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); return ok({ initialized: true, path: p }); });
-server.registerTool("local.sync", { description: "Sync local state from DB", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => { const dir = safePath(rawCwd); if (!dbReady) return ok({ synced: false, error: "PostgreSQL not connected" }); const whereCond = workflow_id ? eq(memoriesTable.workflowId, workflow_id) : undefined; const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt)); const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore ?? 0.5, tags: r.tags, createdAt: r.createdAt.getTime() })); const memDir = path.join(dir, ".masday", "state"); if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true }); saveMem(cached); return ok({ synced: true, records: cached.length, workflowId: workflow_id ?? "all" }); });
+server.registerTool("local.sync", { description: "Sync local state from DB", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => { const dir = safePath(rawCwd); if (!dbReady) return ok({ synced: false, error: "PostgreSQL not connected" }); const whereCond = workflow_id ? eq(memoriesTable.workflowId, workflow_id) : undefined; const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt)); const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore ?? 0.5, tags: r.tags, createdAt: r.createdAt.getTime(), projectPath: dir })); const existing = (fs.existsSync(MEMORY_FILE) ? JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8")) as MemRec[] : []).filter(m => m.projectPath !== dir); const merged = [...existing, ...cached]; const memDir = path.join(dir, ".masday", "state"); if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true }); saveMem(merged); return ok({ synced: true, records: cached.length, preserved: existing.length, workflowId: workflow_id ?? "all" }); });
 server.registerTool("local.push", { description: "Push local state to DB", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => { const dir = safePath(rawCwd); if (!dbReady) return ok({ pushed: false, error: "PostgreSQL not connected" }); const memFile = path.join(dir, ".masday", "state", "memories.json"); const local: MemRec[] = fs.existsSync(memFile) ? JSON.parse(fs.readFileSync(memFile, "utf-8")) : []; let created = 0, skipped = 0; for (const r of local) { const [existing] = await drizzleDb.select({ id: memoriesTable.id }).from(memoriesTable).where(eq(memoriesTable.id, r.id)).limit(1); if (existing) { skipped++; continue; } try { await drizzleDb.insert(memoriesTable).values({ id: r.id, memoryType: r.type, summary: r.summary, content: r.content, importanceScore: r.importance, createdByAgent: r.source, tags: r.tags, createdAt: new Date(r.createdAt) }); created++; } catch { skipped++; } } return ok({ pushed: true, created, skipped, total: local.length, workflowId: workflow_id }); });
 server.registerTool("local.save_artifact", { description: "Save artifact file locally", inputSchema: { cwd: z.string(), category: z.string(), filename: z.string(), content: z.string() } }, async ({ cwd: rawCwd, category, filename, content }) => { const dir = safePath(rawCwd); const d = path.join(dir, ".masday", category); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, filename), content); return ok({ saved: true, path: path.join(d, filename) }); });
 

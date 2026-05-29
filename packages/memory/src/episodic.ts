@@ -98,8 +98,16 @@ export class EpisodicMemory {
 
   private persistToDb(msg: ChatMessage): void {
     if (!drizzleDb) return;
-    drizzleDb.execute(sql`INSERT INTO "EpisodicMemory" ("sessionId", role, content, "sequenceOrder") VALUES (${this.sessionId}, ${msg.role}, ${msg.content}, ${++this.seq})`).catch((err: unknown) => {
-      logger.warn({ err: String(err) }, 'Failed to persist episodic memory to PostgreSQL');
-    });
+    const attempt = (retriesLeft: number): void => {
+      drizzleDb.execute(sql`INSERT INTO "EpisodicMemory" ("sessionId", role, content, "sequenceOrder") VALUES (${this.sessionId}, ${msg.role}, ${msg.content}, ${++this.seq})`).catch((err: unknown) => {
+        if (retriesLeft > 0) {
+          logger.debug({ retriesLeft }, 'Retrying episodic memory persist');
+          setTimeout(() => attempt(retriesLeft - 1), 500);
+        } else {
+          logger.warn({ err: String(err) }, 'Failed to persist episodic memory to PostgreSQL after retries');
+        }
+      });
+    };
+    attempt(2);
   }
 }

@@ -1,6 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 
 describe("db client config", () => {
+  beforeAll(() => {
+    if (!process.env.DATABASE_URL) {
+      process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/masday_test";
+    }
+  });
+
   it("exports db as a drizzle instance", async () => {
     const mod = await import("../client.js");
     expect(mod.db).toBeDefined();

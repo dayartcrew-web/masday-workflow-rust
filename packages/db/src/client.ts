@@ -2,13 +2,20 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
-const connectionString = process.env.DATABASE_URL!;
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL environment variable is required");
+}
 const client = postgres(connectionString, {
   prepare: false,
   connect_timeout: 15,
-  idle_timeout: 30,
+  idle_timeout: 120,
   max_lifetime: 60 * 30,
+  max: 20,
   keep_alive: 10_000,
+  connection: {
+    application_name: "masday",
+  },
 });
 export const db = drizzle(client, { schema });
 
