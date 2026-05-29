@@ -123,51 +123,65 @@ done
 # 7. Install masday-* skills to global directories
 echo "[7/10] Installing masday-* skills to global directories..."
 
+# Helper: copy skill safely — skip if target dir not writable (e.g. owned by root)
+_safe_cp_skill() {
+  local src="$1" dest="$2"
+  local dest_parent
+  dest_parent="$(dirname "$dest")"
+  [ -d "$dest_parent" ] && [ -w "$dest_parent" ] || {
+    echo "  Skip: $dest_parent not writable"
+    return 1
+  }
+  rm -rf "$dest" 2>/dev/null || true
+  cp $CP_FLAGS "$src" "$dest"
+}
+
 # Claude Code: ~/.claude/skills/
-mkdir -p "${HOME_CLAUDE}/skills"
+mkdir -p "${HOME_CLAUDE}/skills" 2>/dev/null || true
 copied_claude=0
 for skill_dir in .claude/skills/masday-*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
-  rm -rf "${HOME_CLAUDE}/skills/${skill_name}"
-  cp $CP_FLAGS "$skill_dir" "${HOME_CLAUDE}/skills/${skill_name}"
-  copied_claude=$((copied_claude + 1))
+  _safe_cp_skill "$skill_dir" "${HOME_CLAUDE}/skills/${skill_name}" && copied_claude=$((copied_claude + 1))
 done
 echo "  Claude Code: ${copied_claude} skills → ${HOME_CLAUDE}/skills/"
 
 # Gemini: ~/.gemini/config/skills/
-mkdir -p "${HOME_GEMINI}/config/skills"
+mkdir -p "${HOME_GEMINI}/config/skills" 2>/dev/null || true
 copied_gemini=0
 for skill_dir in .claude/skills/masday-*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
-  rm -rf "${HOME_GEMINI}/config/skills/${skill_name}"
-  cp $CP_FLAGS "$skill_dir" "${HOME_GEMINI}/config/skills/${skill_name}"
-  copied_gemini=$((copied_gemini + 1))
+  _safe_cp_skill "$skill_dir" "${HOME_GEMINI}/config/skills/${skill_name}" && copied_gemini=$((copied_gemini + 1))
 done
 echo "  Gemini CLI:  ${copied_gemini} skills → ${HOME_GEMINI}/config/skills/"
 
 # OpenCode: ~/.config/opencode/skills/
-mkdir -p "${HOME_OPENCODE}/skills"
+mkdir -p "${HOME_OPENCODE}/skills" 2>/dev/null || true
 copied_opencode=0
 for skill_dir in .claude/skills/masday-*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
-  rm -rf "${HOME_OPENCODE}/skills/${skill_name}"
-  cp $CP_FLAGS "$skill_dir" "${HOME_OPENCODE}/skills/${skill_name}"
-  copied_opencode=$((copied_opencode + 1))
+  _safe_cp_skill "$skill_dir" "${HOME_OPENCODE}/skills/${skill_name}" && copied_opencode=$((copied_opencode + 1))
 done
 echo "  OpenCode:    ${copied_opencode} skills → ${HOME_OPENCODE}/skills/"
 
 # 8. Convert and install agents to OpenCode
 echo "[8/10] Converting agents to opencode format (global + project)..."
-mkdir -p "${HOME_OPENCODE}/agent"
+
+# Project-local dir (always writable)
 mkdir -p "${ROOT_DIR}/.opencode/agent"
+
+# Global dir (may be owned by root — skip if not writable)
+if mkdir -p "${HOME_OPENCODE}/agent" 2>/dev/null; then
+  echo "  Global OpenCode dir: ${HOME_OPENCODE}/agent"
+else
+  echo "  Skip: cannot create ${HOME_OPENCODE}/agent (permission denied) — project-local only."
+fi
 
 if [ -f "${ROOT_DIR}/scripts/convert-agents.mjs" ]; then
   node "${ROOT_DIR}/scripts/convert-agents.mjs" convert \
-    "${ROOT_DIR}/.claude/agents"
-  echo "  OpenCode agents converted."
+    "${ROOT_DIR}/.claude/agents" 2>/dev/null && echo "  OpenCode agents converted." || echo "  Agent conversion had errors (some dirs may not be writable)."
 else
   echo "  scripts/convert-agents.mjs not found — skipping agent conversion."
 fi
