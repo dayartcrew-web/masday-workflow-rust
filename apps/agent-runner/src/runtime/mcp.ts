@@ -57,7 +57,26 @@ process.setMaxListeners(20);
  * SYNC: All masday skill and agent .md files must use camelCase tool names.
  */
 
-import "dotenv/config";
+// Load .env from project root explicitly — don't rely on cwd.
+// Claude Code / MCP clients may set cwd to unexpected directories.
+import { config as dotenvConfig } from "dotenv";
+import * as path from "path";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
+import { createRequire } from "node:module";
+
+// Resolve project root from this script's location: dist/runtime/mcp.js → ../../../../ (project root)
+const __scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const __projectRoot = path.resolve(__scriptDir, "..", "..", "..", "..");
+
+// Try .env from project root first, then cwd as fallback
+const envPath = path.join(__projectRoot, ".env");
+if (fs.existsSync(envPath)) {
+  dotenvConfig({ path: envPath });
+} else {
+  dotenvConfig(); // fallback to cwd
+}
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { randomUUID } from "node:crypto";
@@ -70,10 +89,6 @@ import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelli
 import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
 import { db as drizzleDb, healthCheck as dbHealthCheck, disconnectDb, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
-import * as path from "path";
-import * as fs from "fs";
-import { fileURLToPath } from "url";
-import { createRequire } from "node:module";
 import { dotToUnderscore, ToolNameRegistry, createAgent, createSkill, runDoctor } from "@mcp-rebuild/shared-utils";
 const require = createRequire(import.meta.url);
 
