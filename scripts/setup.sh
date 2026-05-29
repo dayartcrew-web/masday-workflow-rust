@@ -178,7 +178,10 @@ echo "[9/10] Setting up MCP configs + Copilot customization..."
 MCP_JS="apps/agent-runner/dist/runtime/mcp.js"
 
 # --- Claude Code: .mcp.json ---
-cat > .mcp.json << 'MCPEOF'
+# IMPORTANT: cwd and env are required so dotenv resolves .env correctly
+# when Claude Code launches the MCP server from an arbitrary directory.
+# The MCP server also resolves .env from its own script location as fallback.
+cat > .mcp.json << MCPEOF
 {
   "mcpServers": {
     "masday": {
@@ -186,16 +189,21 @@ cat > .mcp.json << 'MCPEOF'
       "command": "node",
       "args": [
         "apps/agent-runner/dist/runtime/mcp.js"
-      ]
+      ],
+      "cwd": "${ROOT_DIR}",
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL:-}",
+        "NODE_ENV": "development"
+      }
     }
   }
 }
 MCPEOF
-echo "  .mcp.json (Claude Code)"
+echo "  .mcp.json (Claude Code) — with cwd + env for reliable .env resolution"
 
 # --- Gemini CLI: .gemini/settings.json (already restored or copied in step 6) ---
 if [ ! -f ".gemini/settings.json" ]; then
-  cat > .gemini/settings.json << 'GEMINI_EOF'
+  cat > .gemini/settings.json << GEMINI_EOF
 {
   "context": "This project uses masday-workflow-rebuild MCP server for workflow management.",
   "mcpServers": {
@@ -205,7 +213,12 @@ if [ ! -f ".gemini/settings.json" ]; then
       "args": [
         "--no-warnings",
         "apps/agent-runner/dist/runtime/mcp.js"
-      ]
+      ],
+      "cwd": "${ROOT_DIR}",
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL:-}",
+        "NODE_ENV": "development"
+      }
     }
   }
 }
@@ -218,7 +231,7 @@ echo "  .gemini/settings.json (Gemini CLI)"
 # Format: { "servers": { "name": { "command": "...", "args": [...] } } }
 # No "type" field needed — stdio is inferred when "command" is present.
 mkdir -p .vscode
-cat > .vscode/mcp.json << 'VSCODEEOF'
+cat > .vscode/mcp.json << VSCODEEOF
 {
   "servers": {
     "masday": {
@@ -226,12 +239,17 @@ cat > .vscode/mcp.json << 'VSCODEEOF'
       "args": [
         "--no-warnings",
         "apps/agent-runner/dist/runtime/mcp.js"
-      ]
+      ],
+      "cwd": "${ROOT_DIR}",
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL:-}",
+        "NODE_ENV": "development"
+      }
     }
   }
 }
 VSCODEEOF
-echo "  .vscode/mcp.json (VS Code Copilot) — node + built JS"
+echo "  .vscode/mcp.json (VS Code Copilot) — node + built JS + cwd + env"
 
 # --- VS Code Copilot: .github/agents/masday.agent.md ---
 # Docs: https://code.visualstudio.com/docs/copilot/customization/custom-agents

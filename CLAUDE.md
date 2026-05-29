@@ -156,11 +156,55 @@ Single unified MCP server at `apps/agent-runner/src/runtime/mcp.ts`. All 89 tool
 
 ## MCP Pattern
 
-Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore for PostgreSQL persistence:
+Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore for PostgreSQL persistence.
+
+### Environment Resolution (Critical)
+
+`import "dotenv/config"` only reads `.env` from `process.cwd()`. When Claude Code launches the MCP server from an arbitrary directory, `DATABASE_URL` is undefined and PostgreSQL features are disabled. Two-layer fix:
+
+**Layer 1 — Explicit dotenv from script location** (`mcp.ts` lines 1-16):
+```typescript
+import { config as dotenvConfig } from "dotenv";
+import * as path from "path";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
+import { createRequire } from "node:module";
+
+const __scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const __projectRoot = path.resolve(__scriptDir, "..", "..", "..", ".."); // dist/runtime/ → root
+
+const envPath = path.join(__projectRoot, ".env");
+if (fs.existsSync(envPath)) {
+  dotenvConfig({ path: envPath });  // explicit path
+} else {
+  dotenvConfig();                    // fallback to cwd
+}
+// ALL other imports come AFTER dotenv loads
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+```
+
+**Layer 2 — MCP config `cwd` + `env`** (`.claude.json`, `.mcp.json`, `.gemini/settings.json`, `.vscode/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "command": "node",
+      "args": ["apps/agent-runner/dist/runtime/mcp.js"],
+      "cwd": "/absolute/path/to/project-root",
+      "env": {
+        "DATABASE_URL": "postgresql://...",
+        "NODE_ENV": "development"
+      }
+    }
+  }
+}
+```
+
+Both layers are required: `cwd` + `env` in config ensures `DATABASE_URL` is set even if `.env` is missing; explicit dotenv ensures the server works standalone (`node mcp.js`) from any directory.
+
+### Server Initialization
 
 ```typescript
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { db } from "@mcp-rebuild/db";
 import { DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
 import { setPrismaClient as setTokenDb, trackTokens } from "@mcp-rebuild/core";
@@ -174,7 +218,7 @@ const graphStore = new GraphStore({ autoLinkThreshold: 0.3 });
 const primaryStore = new WorkflowStore(backend);
 const workflowStore = new DualWriteWorkflowStore(primaryStore);
 
-// After Drizzle db connects:
+// After Drizzle db connects (3 retries, 8s health check timeout):
 setDualWriteDb(db);             // workflow/task/plan replication
 setTokenDb(db);                 // token usage tracking
 setEpisodicDb(db);              // episodic memory persistence
@@ -188,6 +232,8 @@ server.registerTool("workflow_create", { description: "...", inputSchema: {...} 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 ```
+
+When PostgreSQL is unreachable, `dbReady` flag is `false` and all `if (dbReady)` guards fall back to JSON-only mode. Background reconnect attempts every 15s via `initDb()`.
 
 ## Commands
 
