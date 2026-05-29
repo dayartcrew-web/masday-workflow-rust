@@ -91,7 +91,7 @@ function fixStalePgConnections(): DoctorDiagnosis {
   }
   try {
     const result = execSync(
-      'psql "$DATABASE_URL" -c "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state = \'idle\' AND query_start < now() - interval \'5 minutes\';" -t 2>&1 || echo "psql_failed"',
+      'psql "$DATABASE_URL" -c "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state = \'idle\' AND query_start < now() - interval \'5 minutes\' AND application_name = \'masday\';" -t 2>&1 || echo "psql_failed"',
       { encoding: "utf-8", timeout: 5000 },
     );
     if (result.includes("psql_failed")) {
@@ -100,7 +100,7 @@ function fixStalePgConnections(): DoctorDiagnosis {
     const count = parseInt(result.trim(), 10) || 0;
     if (count > 0) {
       execSync(
-        'psql "$DATABASE_URL" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state = \'idle\' AND query_start < now() - interval \'5 minutes\';" -t 2>&1 || true',
+        'psql "$DATABASE_URL" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state = \'idle\' AND query_start < now() - interval \'5 minutes\' AND application_name = \'masday\';" -t 2>&1 || true',
         { encoding: "utf-8", timeout: 5000 },
       );
       return {

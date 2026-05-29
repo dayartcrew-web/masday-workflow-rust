@@ -368,14 +368,14 @@ export class GraphStore {
 
   private persistNode(node: GraphNodeRecord): void {
     if (!drizzleDb) return;
-    drizzleDb.execute(sql`INSERT INTO "GraphNode" (id, "nodeType", name, properties) VALUES (${node.id}, ${node.type}, ${node.label}, ${JSON.stringify(node.properties ?? {})}::jsonb)`).catch((err: unknown) => {
+    drizzleDb.execute(sql`INSERT INTO "GraphNode" (id, "nodeType", name, properties) VALUES (${node.id}, ${node.type}, ${node.label}, ${JSON.stringify(node.properties ?? {})}::jsonb) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, properties = EXCLUDED.properties`).catch((err: unknown) => {
       logger.warn({ err: String(err), id: node.id }, 'Failed to persist graph node to PostgreSQL');
     });
   }
 
   private persistEdge(edge: GraphEdgeRecord): void {
     if (!drizzleDb) return;
-    drizzleDb.execute(sql`INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight) VALUES (${edge.id}, ${edge.from}, ${edge.to}, ${edge.relation}, ${edge.weight})`).catch((err: unknown) => {
+    drizzleDb.execute(sql`INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight) VALUES (${edge.id}, ${edge.from}, ${edge.to}, ${edge.relation}, ${edge.weight}) ON CONFLICT (id) DO UPDATE SET weight = EXCLUDED.weight`).catch((err: unknown) => {
       logger.warn({ err: String(err), id: edge.id }, 'Failed to persist graph edge to PostgreSQL');
     });
   }

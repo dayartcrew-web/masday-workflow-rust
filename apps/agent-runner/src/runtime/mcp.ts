@@ -69,7 +69,7 @@ import { OrchestratingEngine, saveProgress as saveProgressDb, logRetrieval, setR
 import { buildHybridContextPack, computeFingerprint } from "@mcp-rebuild/intelligence";
 import { setEpisodicDb, setGraphDb, EpisodicMemory, GraphStore } from "@mcp-rebuild/memory";
 import type { ISkillRegistry } from "@mcp-rebuild/workflow-engine";
-import { db as drizzleDb, healthCheck as dbHealthCheck, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
+import { db as drizzleDb, healthCheck as dbHealthCheck, disconnectDb, memories as memoriesTable, contextDocuments as contextDocsTable, tasks as tasksTable, workflows as workflowsTable, plans as plansTable, taskProgressLogs, reviewDecisions as reviewDecisionsTable, sessionStates, parallelBranches as parallelBranchesTable, graphNodes as graphNodesTable, graphEdges as graphEdgesTable, workflowReminders as workflowRemindersTable } from "@mcp-rebuild/db";
 import * as path from "path";
 import * as fs from "fs";
 import { fileURLToPath } from "url";
@@ -172,8 +172,9 @@ const orphans = engine.restoreWorkflows(workflowStore.loadAll());
 if (orphans > 0) logger.info("Restored " + orphans + " orphaned workflows");
 
 const MEMORY_FILE = path.join(dataDir, "memories.json");
-interface MemRec { id: string; type: string; content: string; summary: string; source: string; importance: number; tags: string[]; createdAt: number }
+interface MemRec { id: string; type: string; content: string; summary: string; source: string; importance: number; tags: string[]; createdAt: number; projectPath?: string }
 function loadMem(): MemRec[] { return fs.existsSync(MEMORY_FILE) ? JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8")) : []; }
+function loadMemProject(pp: string): MemRec[] { return loadMem().filter(m => !m.projectPath || m.projectPath === pp); }
 function saveMem(m: MemRec[]) { fs.writeFileSync(MEMORY_FILE, JSON.stringify(m, null, 2)); }
 let mic = 0;
 function nid() { return "mem_" + Date.now() + "_" + (++mic); }
@@ -465,14 +466,14 @@ server.registerTool("workflow.mark_verification_ready", { description: "Mark ver
 server.registerTool("workflow.resume_suggestion", { description: "Get resume suggestion", inputSchema: { workflow_id: z.string() } }, async ({ workflow_id }) => ok({ workflowId: workflow_id, suggestion: "continue" }));
 
 server.registerTool("memory.store", { description: "Store memory", inputSchema: { workflow_id: z.string().optional(), task_id: z.string().optional(), memory_type: z.string(), summary: z.string(), content: z.string(), created_by_agent: z.string(), importance_score: z.number().optional(), tags: z.array(z.string()).optional() } }, async (a) => {
-  const r: MemRec = { id: nid(), type: a.memory_type, content: a.content, summary: a.summary, source: a.created_by_agent, importance: a.importance_score ?? 0.5, tags: [...(a.tags ?? []), a.workflow_id, a.task_id].filter(Boolean) as string[], createdAt: Date.now() };
+  const r: MemRec = { id: nid(), type: a.memory_type, content: a.content, summary: a.summary, source: a.created_by_agent, importance: a.importance_score ?? 0.5, tags: [...(a.tags ?? []), a.workflow_id, a.task_id].filter(Boolean) as string[], createdAt: Date.now(), projectPath: projectRoot };
   await persistToDb(r, a.workflow_id, a.task_id);
   const m = loadMem(); m.push(r); saveMem(m);
   try { graphStore.addNode({ type: "memory", label: a.summary, properties: { memoryId: r.id, memoryType: a.memory_type, tags: a.tags ?? [], workflowId: a.workflow_id, taskId: a.task_id, content: a.content.substring(0, 500) } }); } catch { /* non-critical */ }
   return ok(r);
 });
 server.registerTool("memory.store_research", { description: "Store research", inputSchema: { workflow_id: z.string().optional(), summary: z.string(), content: z.string(), created_by_agent: z.string() } }, async (a) => {
-  const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now() };
+  const r: MemRec = { id: nid(), type: "research", content: a.content, summary: a.summary, source: a.created_by_agent, importance: 0.5, tags: ["research", a.workflow_id].filter(Boolean) as string[], createdAt: Date.now(), projectPath: projectRoot };
   await persistToDb(r, a.workflow_id);
   if (dbReady) { try {
     const emb = await generateEmbedding(a.content);
@@ -499,7 +500,7 @@ server.registerTool("memory.recall_recent", { description: "Recall recent", inpu
     if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
     return ok(rows);
   } catch { /* fall through to cache */ } }
-  let m = loadMem(); if (type) m = m.filter(x => x.type === type); return ok(m.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
+  let m = loadMemProject(projectRoot); if (type) m = m.filter(x => x.type === type); return ok(m.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_documents", { description: "Recall docs", inputSchema: { workflow_id: z.string(), limit: z.number().optional() } }, async ({ workflow_id, limit }) => {
   if (dbReady) { try {
@@ -508,7 +509,7 @@ server.registerTool("memory.recall_documents", { description: "Recall docs", inp
     if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
     return ok(rows);
   } catch { /* fall through to cache */ } }
-  return ok(loadMem().filter(m => m.tags.includes(workflow_id)).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
+  return ok(loadMemProject(projectRoot).filter(m => m.tags.includes(workflow_id)).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_document_by_type", { description: "Recall by type", inputSchema: { workflow_id: z.string(), source_type: z.string(), limit: z.number().optional() } }, async ({ workflow_id, source_type, limit }) => {
   if (dbReady) { try {
@@ -517,7 +518,7 @@ server.registerTool("memory.recall_document_by_type", { description: "Recall by 
     if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
     return ok(rows);
   } catch { /* fall through to cache */ } }
-  return ok(loadMem().filter(m => m.tags.includes(workflow_id) && m.type === source_type).slice(0, limit ?? 10));
+  return ok(loadMemProject(projectRoot).filter(m => m.tags.includes(workflow_id) && m.type === source_type).slice(0, limit ?? 10));
 });
 server.registerTool("memory.recall_by_task", { description: "Recall by task", inputSchema: { task_id: z.string(), limit: z.number().optional() } }, async ({ task_id, limit }) => {
   if (dbReady) { try {
@@ -526,14 +527,14 @@ server.registerTool("memory.recall_by_task", { description: "Recall by task", in
     if (ids.length > 0) await drizzleDb.execute(sql`UPDATE "Memory" SET "accessCount" = "accessCount" + 1, "accessedAt" = NOW() WHERE id = ANY(${ids}::text[])`);
     return ok(rows);
   } catch { /* fall through to cache */ } }
-  return ok(loadMem().filter(m => m.tags.includes(task_id)).slice(0, limit ?? 10));
+  return ok(loadMemProject(projectRoot).filter(m => m.tags.includes(task_id)).slice(0, limit ?? 10));
 });
 server.registerTool("memory.update", { description: "Update memory", inputSchema: { id: z.string(), content: z.string().optional(), importance: z.number().optional() } }, async ({ id, content, importance }) => {
   if (dbReady) { try {
     const data: Record<string, unknown> = {}; if (content) data.content = content; if (importance !== undefined) data.importanceScore = importance;
     if (Object.keys(data).length > 0) await drizzleDb.update(memoriesTable).set(data).where(eq(memoriesTable.id, id));
   } catch { /* fall through to cache */ } }
-  const m = loadMem(); const r = m.find(x => x.id === id); if (!r) throw new Error("Not found"); if (content) r.content = content; if (importance !== undefined) r.importance = importance; saveMem(m); return ok(r);
+  const m = loadMemProject(projectRoot); const r = m.find(x => x.id === id); if (!r) throw new Error("Not found"); if (content) r.content = content; if (importance !== undefined) r.importance = importance; saveMem([...loadMem().filter(x => x.id !== id), r]); return ok(r);
 });
 server.registerTool("memory.delete", { description: "Delete memory", inputSchema: { id: z.string() } }, async ({ id }) => {
   if (dbReady) { try { await drizzleDb.delete(memoriesTable).where(eq(memoriesTable.id, id)); } catch { /* fall through to cache */ } }
@@ -544,7 +545,7 @@ server.registerTool("memory.delete_by_workflow", { description: "Delete by workf
     const result = await drizzleDb.delete(memoriesTable).where(eq(memoriesTable.workflowId, workflow_id)).returning({ id: memoriesTable.id });
     return ok({ deleted: result.length });
   } catch { /* fall through to cache */ } }
-  const m = loadMem(); const n = m.length; saveMem(m.filter(x => !x.tags.includes(workflow_id))); return ok({ deleted: n - m.filter(x => !x.tags.includes(workflow_id)).length });
+  const m = loadMem(); const n = m.length; const kept = m.filter(x => !x.tags.includes(workflow_id) || x.projectPath !== projectRoot); saveMem(kept); return ok({ deleted: n - kept.length });
 });
 server.registerTool("memory.search", { description: "Search memories with composite scoring", inputSchema: { query: z.string(), limit: z.number().optional() } }, async ({ query, limit }) => {
   if (dbReady) { try { await logRetrieval({ agentName: "mcp", query, source: "memory.search", results: { limit: limit ?? 10 } }); } catch { /* non-critical */ } }
@@ -582,7 +583,7 @@ server.registerTool("memory.search", { description: "Search memories with compos
       if (rows.length > 0) return ok(rows);
     } catch { /* fall through to cache */ }
   }
-  const q = query.toLowerCase(); return ok(loadMem().map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
+  const q = query.toLowerCase(); return ok(loadMemProject(projectRoot).map(x => ({ ...x, score: q.split(/\s+/).filter(w => (x.content + x.summary).toLowerCase().includes(w)).length })).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit ?? 10));
 });
 server.registerTool("memory.stats", { description: "Memory stats", inputSchema: {} }, async () => {
   if (dbReady) { try {
@@ -971,13 +972,17 @@ server.registerTool("local.init", { description: "Init local state dir", inputSc
 server.registerTool("local.sync", { description: "Sync local state from DB (download PostgreSQL → JSON cache)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => {
   const dir = safePath(rawCwd);
   if (!dbReady) return ok({ synced: false, error: "PostgreSQL not connected" });
-  const whereCond = workflow_id ? eq(memoriesTable.workflowId, workflow_id) : undefined;
+  const whereParts = [];
+  if (workflow_id) whereParts.push(eq(memoriesTable.workflowId, workflow_id));
+  const whereCond = whereParts.length > 0 ? and(...whereParts) : undefined;
   const rows = await drizzleDb.select().from(memoriesTable).where(whereCond).orderBy(desc(memoriesTable.createdAt));
   const memFile = path.join(dir, ".masday", "state", "memories.json");
-  const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore ?? 0.5, tags: r.tags, createdAt: r.createdAt.getTime() }));
+  const cached: MemRec[] = rows.map(r => ({ id: r.id, type: r.memoryType, content: r.content, summary: r.summary, source: r.createdByAgent, importance: r.importanceScore ?? 0.5, tags: r.tags, createdAt: r.createdAt.getTime(), projectPath: dir }));
   const memDir = path.dirname(memFile); if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true });
-  saveMem(cached);
-  return ok({ synced: true, records: cached.length, workflowId: workflow_id ?? "all" });
+  const existing = (fs.existsSync(memFile) ? JSON.parse(fs.readFileSync(memFile, "utf-8")) as MemRec[] : []).filter(m => m.projectPath !== dir);
+  const merged = [...existing, ...cached];
+  fs.writeFileSync(memFile, JSON.stringify(merged, null, 2));
+  return ok({ synced: true, records: cached.length, workflowId: workflow_id ?? "all", projectPath: dir });
 });
 server.registerTool("local.push", { description: "Push local state to DB (upload JSON cache → PostgreSQL)", inputSchema: { cwd: z.string(), workflow_id: z.string().optional() } }, async ({ cwd: rawCwd, workflow_id }) => {
   const dir = safePath(rawCwd);
@@ -1229,7 +1234,7 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
   prewarmFastembed();
 
   // Periodic background: stale detection + reconnect if DB failed + reminder check
-  const BG_INTERVAL_MS = 30_000;
+  const BG_INTERVAL_MS = 15_000;
   const bgTimer = setInterval(async () => {
     try {
       if (dbReady) {
@@ -1251,7 +1256,15 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
       if (reminders.length > 0) logger.info({ count: reminders.length }, "Periodic reminder check: items detected");
     } catch (e) { /* non-critical */ }
   }, BG_INTERVAL_MS);
-  bgTimer.unref();
+
+  // Graceful shutdown: close PostgreSQL connections on exit
+  const shutdown = async (): Promise<void> => {
+    clearInterval(bgTimer);
+    try { await disconnectDb(); } catch { /* already closed */ }
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 
   logger.info("Background init complete" + (dbReady ? " (PostgreSQL + EpisodicMemory + Reminders(auto:30s))" : " (JSON-only mode, reconnect every 30s)"));
 })();

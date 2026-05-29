@@ -10,6 +10,7 @@ let drizzleDb: any = null;
 let schemaTables: any = null;
 
 const earlyBuffer: Workflow[] = [];
+const MAX_EARLY_BUFFER = 100;
 
 export function setDualWriteDb(client: unknown): void {
   drizzleDb = client;
@@ -138,7 +139,11 @@ export class DualWriteWorkflowStore implements IWorkflowStore {
   save(workflow: Workflow): void {
     this.primary.save(workflow);
     if (!drizzleDb || !schemaTables) {
-      earlyBuffer.push(workflow);
+      if (earlyBuffer.length < MAX_EARLY_BUFFER) {
+        earlyBuffer.push(workflow);
+      } else {
+        logger.warn({ bufferLen: earlyBuffer.length, workflowId: workflow.id }, 'Early buffer full — dropping write');
+      }
       return;
     }
     if (this.pendingCount >= MAX_PENDING) {
