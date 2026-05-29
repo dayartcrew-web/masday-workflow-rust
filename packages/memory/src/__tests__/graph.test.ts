@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { GraphStore } from '../graph.js';
+import { GraphStore, setGraphDb } from '../graph.js';
 import type { GraphNodeRecord, GraphEdgeRecord } from '@mcp-rebuild/core';
 import fs from 'fs';
 import path from 'path';
@@ -892,6 +892,89 @@ describe('GraphStore', () => {
       const result = store.getShortestPath(s.id, t.id);
       expect(result!.path).toEqual([s.id, a.id, t.id]);
       expect(result!.distance).toBe(2);
+    });
+  });
+
+  // --- setGraphDb & persistNode/persistEdge ---
+
+  describe('setGraphDb and persistence', () => {
+    afterEach(() => {
+      setGraphDb(null);
+    });
+
+    it('setGraphDb enables node persistence to PostgreSQL', () => {
+      const execute = vi.fn().mockResolvedValue(undefined);
+      setGraphDb({ execute });
+
+      const store = new GraphStore({ autoLinkThreshold: 999 });
+      store.addNode(createNode({ label: 'persist-test' }));
+
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('setGraphDb enables edge persistence to PostgreSQL', () => {
+      const execute = vi.fn().mockResolvedValue(undefined);
+      setGraphDb({ execute });
+
+      const store = new GraphStore({ autoLinkThreshold: 999 });
+      const n1 = store.addNode(createNode({ label: 'from' }));
+      const n2 = store.addNode(createNode({ label: 'to' }));
+      execute.mockClear();
+
+      store.addEdge(createEdge(n1.id, n2.id, { relation: 'linked', weight: 0.8 }));
+
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('persistNode is a no-op when drizzleDb is null', () => {
+      setGraphDb(null);
+      const store = new GraphStore({ autoLinkThreshold: 999 });
+      expect(() => store.addNode(createNode({ label: 'no db' }))).not.toThrow();
+    });
+
+    it('persistNode catches and logs errors without throwing', async () => {
+      const execute = vi.fn().mockRejectedValue(new Error('db error'));
+      setGraphDb({ execute });
+
+      const store = new GraphStore({ autoLinkThreshold: 999 });
+      expect(() => store.addNode(createNode({ label: 'fail gracefully' }))).not.toThrow();
+
+      await new Promise(r => setTimeout(r, 50));
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('persistEdge catches and logs errors without throwing', async () => {
+      const execute = vi.fn()
+        .mockResolvedValue(undefined)
+        .mockRejectedValueOnce(new Error('node persist fail'))
+        .mockRejectedValueOnce(new Error('edge persist fail'));
+      setGraphDb({ execute });
+
+      const store = new GraphStore({ autoLinkThreshold: 999 });
+      const n1 = store.addNode(createNode({ label: 'a' }));
+      const n2 = store.addNode(createNode({ label: 'b' }));
+      execute.mockClear();
+      execute.mockRejectedValue(new Error('edge fail'));
+
+      expect(() => store.addEdge(createEdge(n1.id, n2.id))).not.toThrow();
+
+      await new Promise(r => setTimeout(r, 50));
+      expect(execute).toHaveBeenCalled();
+    });
+
+    it('auto-link triggers persistence for auto-generated edges', () => {
+      const execute = vi.fn().mockResolvedValue(undefined);
+      setGraphDb({ execute });
+
+      const store = new GraphStore({ autoLinkThreshold: 0.1 });
+      store.addNode(createNode({ label: 'machine learning model' }));
+      execute.mockClear();
+
+      store.addNode(createNode({ label: 'deep learning model training' }));
+
+      const edges = store.findEdges(e => e.relation === 'similar');
+      expect(edges.length).toBeGreaterThan(0);
+      expect(execute).toHaveBeenCalled();
     });
   });
 });

@@ -1,9 +1,17 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 
 describe("db client config", () => {
+  const originalDbUrl = process.env.DATABASE_URL;
+
   beforeAll(() => {
     if (!process.env.DATABASE_URL) {
       process.env.DATABASE_URL = "postgresql://USER:PASS@localhost:5432/masday_test";
+    }
+  });
+
+  afterEach(() => {
+    if (originalDbUrl) {
+      process.env.DATABASE_URL = originalDbUrl;
     }
   });
 
@@ -40,5 +48,25 @@ describe("db client config", () => {
     await healthCheck(100);
     const elapsed = Date.now() - start;
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  it("disconnectDb resolves without error", async () => {
+    const { disconnectDb } = await import("../client.js");
+    await expect(disconnectDb()).resolves.toBeUndefined();
+  });
+});
+
+describe("db client throws without DATABASE_URL", () => {
+  it("should throw at import time when DATABASE_URL is not set", async () => {
+    const originalUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+
+    try {
+      vi.resetModules();
+      await expect(import("../client.js")).rejects.toThrow("DATABASE_URL");
+    } finally {
+      if (originalUrl) process.env.DATABASE_URL = originalUrl;
+      vi.resetModules();
+    }
   });
 });
