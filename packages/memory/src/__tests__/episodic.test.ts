@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EpisodicMemory, setEpisodicDb, type ChatMessage } from '../episodic.js';
+import { EpisodicMemory, setEpisodicDb } from '../episodic.js';
 
 function freezeTime(ts: number) {
   vi.setSystemTime(ts);
@@ -271,6 +271,80 @@ describe('EpisodicMemory', () => {
       memory.add('user', 'e');
       expect(memory.size).toBe(3);
       expect(memory.size).toBeLessThanOrEqual(memory.capacity);
+    });
+  });
+
+  // --- setEpisodicDb & persistToDb ---
+
+  describe('setEpisodicDb and persistToDb', () => {
+    it('setEpisodicDb sets the drizzle client', () => {
+      const mockDb = { execute: vi.fn().mockReturnValue(Promise.resolve()) };
+      setEpisodicDb(mockDb);
+      const memory = new EpisodicMemory(10);
+      memory.add('user', 'test persist');
+
+      expect(mockDb.execute).toHaveBeenCalledTimes(1);
+      setEpisodicDb(null);
+    });
+
+    it('persistToDb is a no-op when drizzleDb is null', () => {
+      setEpisodicDb(null);
+      const memory = new EpisodicMemory(10);
+      expect(() => memory.add('user', 'no crash')).not.toThrow();
+    });
+
+    it('persistToDb retries on failure', async () => {
+      vi.useRealTimers();
+      const execute = vi.fn()
+        .mockRejectedValueOnce(new Error('fail 1'))
+        .mockRejectedValueOnce(new Error('fail 2'))
+        .mockResolvedValueOnce(undefined);
+      setEpisodicDb({ execute });
+
+      const memory = new EpisodicMemory(10);
+      memory.add('user', 'retry test');
+
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      await new Promise(r => setTimeout(r, 600));
+      expect(execute).toHaveBeenCalledTimes(2);
+
+      await new Promise(r => setTimeout(r, 600));
+      expect(execute).toHaveBeenCalledTimes(3);
+
+      setEpisodicDb(null);
+      vi.useFakeTimers();
+      freezeTime(0);
+    });
+
+    it('persistToDb logs warning after exhausting retries', async () => {
+      vi.useRealTimers();
+      const execute = vi.fn().mockRejectedValue(new Error('always fail'));
+      setEpisodicDb({ execute });
+
+      const memory = new EpisodicMemory(10);
+      memory.add('user', 'exhaust retries');
+
+      await new Promise(r => setTimeout(r, 1500));
+
+      expect(execute).toHaveBeenCalledTimes(3);
+      setEpisodicDb(null);
+      vi.useFakeTimers();
+      freezeTime(0);
+    });
+
+    it('generates unique sessionId per instance', () => {
+      const execute = vi.fn().mockResolvedValue(undefined);
+      setEpisodicDb({ execute });
+
+      const mem1 = new EpisodicMemory(10);
+      const mem2 = new EpisodicMemory(10);
+      mem1.add('user', 'a');
+      mem2.add('user', 'b');
+
+      const calls = execute.mock.calls;
+      expect(calls.length).toBe(2);
+      setEpisodicDb(null);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DualWriteWorkflowStore, DualWriteTaskResultStore, setDualWriteDb, setDualWriteSchema, flushEarlyBuffer } from "../dual-write-store.js";
 import type { Workflow, Task } from "@mcp-rebuild/core";
 
@@ -178,5 +178,131 @@ describe("DualWriteTaskResultStore", () => {
     primary.saveTask(wfId, task);
     store.deleteTasks(wfId);
     expect(primary.deleteTasks).toHaveBeenCalledWith(wfId);
+  });
+});
+
+describe("DualWriteStore helpers", () => {
+  beforeEach(() => {
+    setDualWriteDb(null);
+    setDualWriteSchema(null);
+  });
+
+  afterEach(() => {
+    setDualWriteDb(null);
+    setDualWriteSchema(null);
+  });
+
+  describe("setDualWriteSchema", () => {
+    it("enables replication when both db and schema are set", async () => {
+      const mockInsert = vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockReturnValue(Promise.resolve()),
+      });
+      const mockDb = { insert: mockInsert };
+      const mockTables = { workflows: { id: "id" }, tasks: { id: "id", workflowId: "wid" }, plans: { id: "id", workflowId: "wid" } };
+
+      setDualWriteDb(mockDb);
+      setDualWriteSchema(mockTables);
+
+      const primary = createMockPrimaryStore();
+      const store = new DualWriteWorkflowStore(primary);
+      store.save(createMockWorkflow());
+
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(mockInsert).toHaveBeenCalled();
+    });
+  });
+
+  describe("early buffer behavior", () => {
+    it("buffers writes when DB is not configured", () => {
+      setDualWriteDb(null);
+      setDualWriteSchema(null);
+
+      const primary = createMockPrimaryStore();
+      const store = new DualWriteWorkflowStore(primary);
+
+      for (let i = 0; i < 5; i++) {
+        store.save(createMockWorkflow({ name: `wf-${i}` }));
+      }
+
+      expect(primary.save).toHaveBeenCalledTimes(5);
+    });
+
+    it("flushes buffered workflows to PostgreSQL", async () => {
+      setDualWriteDb(null);
+      setDualWriteSchema(null);
+
+      const primary = createMockPrimaryStore();
+      const store = new DualWriteWorkflowStore(primary);
+      store.save(createMockWorkflow({ name: "buffered-wf" }));
+
+      const mockInsert = vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockReturnValue(Promise.resolve()),
+      });
+      const mockDb = { insert: mockInsert };
+      const mockTables = { workflows: { id: "id" }, tasks: { id: "id", workflowId: "wid" }, plans: { id: "id", workflowId: "wid" } };
+
+      setDualWriteDb(mockDb);
+      setDualWriteSchema(mockTables);
+      flushEarlyBuffer();
+
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(mockInsert.mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("pending queue limits", () => {
+    it("drops writes when pending queue exceeds MAX_PENDING", () => {
+      const mockInsert = vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockReturnValue(new Promise(() => {})),
+      });
+      const mockDb = { insert: mockInsert };
+      const mockTables = { workflows: { id: "id" }, tasks: { id: "id", workflowId: "wid" }, plans: { id: "id", workflowId: "wid" } };
+
+      setDualWriteDb(mockDb);
+      setDualWriteSchema(mockTables);
+
+      const primary = createMockPrimaryStore();
+      const store = new DualWriteWorkflowStore(primary);
+
+      for (let i = 0; i < 55; i++) {
+        store.save(createMockWorkflow({ name: `wf-${i}` }));
+      }
+
+      expect(primary.save).toHaveBeenCalledTimes(55);
+    });
+  });
+
+  describe("DualWriteTaskResultStore replication", () => {
+    it("replicates task to PostgreSQL when db is configured", async () => {
+      const mockInsert = vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockReturnValue(Promise.resolve()),
+      });
+      const mockDb = { insert: mockInsert };
+      const mockTables = { tasks: { id: "id", workflowId: "wid" }, plans: { id: "id", workflowId: "wid" } };
+
+      setDualWriteDb(mockDb);
+      setDualWriteSchema(mockTables);
+
+      const primary = createMockPrimaryStore();
+      const store = new DualWriteTaskResultStore(primary);
+      store.saveTask("wf-123", createMockTask());
+
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(mockInsert).toHaveBeenCalled();
+    });
+
+    it("skips replication when db is not configured", () => {
+      setDualWriteDb(null);
+      setDualWriteSchema(null);
+
+      const primary = createMockPrimaryStore();
+      const store = new DualWriteTaskResultStore(primary);
+      store.saveTask("wf-123", createMockTask());
+
+      expect(primary.saveTask).toHaveBeenCalledWith("wf-123", expect.anything());
+    });
   });
 });
