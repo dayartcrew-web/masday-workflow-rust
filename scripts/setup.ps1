@@ -69,9 +69,11 @@ $platforms = @(
     @{Dest = ".continue"; Agents = ".continue\agents"; Skills = ".continue\skills" }
 )
 foreach ($p in $platforms) {
-    if (Test-Path $p.Dest) { Remove-Item -Path $p.Dest -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $p.Agents | Out-Null
-    New-Item -ItemType Directory -Force -Path $p.Skills | Out-Null
+    New-Item -ItemType Directory -Force -Path $p.Agents -ErrorAction SilentlyContinue | Out-Null
+    New-Item -ItemType Directory -Force -Path $p.Skills -ErrorAction SilentlyContinue | Out-Null
+    # Only remove masday-* prefixed items to preserve other agents/skills
+    Get-ChildItem -Path $p.Agents -Filter "masday-*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $p.Skills -Filter "masday-*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item -Path "$RootDir\.claude\agents\*" -Destination $p.Agents -Recurse -Force -ErrorAction SilentlyContinue
     foreach ($skill in $masdaySkills) {
         Copy-Item -Path $skill.FullName -Destination $p.Skills -Recurse -Force -ErrorAction SilentlyContinue
@@ -101,39 +103,42 @@ foreach ($platDir in $platDirs) {
 # 7. Install masday-* skills to global directories
 Write-Host "[7/10] Installing masday-* skills to global directories..." -ForegroundColor Yellow
 
+# Helper: copy skill safely — skip on permission error
+function Safe-InstallSkill {
+    param([string]$Src, [string]$Dest, [ref]$Counter)
+    try {
+        if (Test-Path $Dest) { Remove-Item -Path $Dest -Recurse -Force -ErrorAction Stop }
+        Copy-Item -Path $Src -Destination $Dest -Recurse -Force -ErrorAction Stop
+        ($Counter.Value)++
+    } catch {
+        Write-Host "  Skip: cannot write to $Dest" -ForegroundColor DarkGray
+    }
+}
+
 # Claude Code: ~/.claude/skills/
 $claudeSkillsDir = Join-Path $HomeClaude "skills"
-New-Item -ItemType Directory -Force -Path $claudeSkillsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $claudeSkillsDir -ErrorAction SilentlyContinue | Out-Null
 $copiedClaude = 0
 foreach ($skill in $masdaySkills) {
-    $dest = Join-Path $claudeSkillsDir $skill.Name
-    if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
-    Copy-Item -Path $skill.FullName -Destination $dest -Recurse -Force
-    $copiedClaude++
+    Safe-InstallSkill -Src $skill.FullName -Dest (Join-Path $claudeSkillsDir $skill.Name) -Counter ([ref]$copiedClaude)
 }
 Write-Host "  Claude Code: $copiedClaude skills -> $claudeSkillsDir" -ForegroundColor Cyan
 
 # Gemini: ~/.gemini/config/skills/
 $geminiSkillsDir = Join-Path (Join-Path $HomeGemini "config") "skills"
-New-Item -ItemType Directory -Force -Path $geminiSkillsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $geminiSkillsDir -ErrorAction SilentlyContinue | Out-Null
 $copiedGemini = 0
 foreach ($skill in $masdaySkills) {
-    $dest = Join-Path $geminiSkillsDir $skill.Name
-    if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
-    Copy-Item -Path $skill.FullName -Destination $dest -Recurse -Force
-    $copiedGemini++
+    Safe-InstallSkill -Src $skill.FullName -Dest (Join-Path $geminiSkillsDir $skill.Name) -Counter ([ref]$copiedGemini)
 }
 Write-Host "  Gemini CLI:  $copiedGemini skills -> $geminiSkillsDir" -ForegroundColor Cyan
 
 # OpenCode: ~/.config/opencode/skills/
 $opencodeSkillsDir = Join-Path $HomeOpencode "skills"
-New-Item -ItemType Directory -Force -Path $opencodeSkillsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $opencodeSkillsDir -ErrorAction SilentlyContinue | Out-Null
 $copiedOpencode = 0
 foreach ($skill in $masdaySkills) {
-    $dest = Join-Path $opencodeSkillsDir $skill.Name
-    if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
-    Copy-Item -Path $skill.FullName -Destination $dest -Recurse -Force
-    $copiedOpencode++
+    Safe-InstallSkill -Src $skill.FullName -Dest (Join-Path $opencodeSkillsDir $skill.Name) -Counter ([ref]$copiedOpencode)
 }
 Write-Host "  OpenCode:    $copiedOpencode skills -> $opencodeSkillsDir" -ForegroundColor Cyan
 
@@ -141,11 +146,21 @@ Write-Host "  OpenCode:    $copiedOpencode skills -> $opencodeSkillsDir" -Foregr
 Write-Host "[8/10] Converting agents to opencode format (global + project)..." -ForegroundColor Yellow
 $opencodeAgentsDir = Join-Path $HomeOpencode "agent"
 $projectAgentsDir = "$RootDir\.opencode\agent"
-New-Item -ItemType Directory -Force -Path $opencodeAgentsDir | Out-Null
-New-Item -ItemType Directory -Force -Path $projectAgentsDir | Out-Null
+# Project-local dir (always writable)
+New-Item -ItemType Directory -Force -Path $projectAgentsDir -ErrorAction SilentlyContinue | Out-Null
+# Global dir (may be owned by another user — skip if not writable)
+try {
+    New-Item -ItemType Directory -Force -Path $opencodeAgentsDir -ErrorAction Stop | Out-Null
+} catch {
+    Write-Host "  Skip: cannot create $opencodeAgentsDir — project-local only." -ForegroundColor DarkGray
+}
 if (Test-Path "$RootDir\scripts\convert-agents.mjs") {
-    node "$RootDir\scripts\convert-agents.mjs" convert "$RootDir\.claude\agents"
-    Write-Host "  OpenCode agents converted." -ForegroundColor Cyan
+    try {
+        node "$RootDir\scripts\convert-agents.mjs" convert "$RootDir\.claude\agents" 2>$null
+        Write-Host "  OpenCode agents converted." -ForegroundColor Cyan
+    } catch {
+        Write-Host "  Agent conversion had errors (some dirs may not be writable)." -ForegroundColor DarkGray
+    }
 } else {
     Write-Host "  scripts/convert-agents.mjs not found — skipping." -ForegroundColor DarkGray
 }
@@ -154,19 +169,26 @@ if (Test-Path "$RootDir\scripts\convert-agents.mjs") {
 Write-Host "[9/10] Setting up MCP configs + Copilot customization..." -ForegroundColor Yellow
 
 $McpJs = "apps/agent-runner/dist/runtime/mcp.js"
+$DbUrl = if ($env:DATABASE_URL) { $env:DATABASE_URL } else { "" }
 
 # .mcp.json (Claude Code)
+# IMPORTANT: cwd and env are required so dotenv resolves .env correctly
 $mcpJson = @{
     mcpServers = @{
         masday = @{
             type = "stdio"
             command = "node"
             args = @("apps/agent-runner/dist/runtime/mcp.js")
+            cwd = $RootDir
+            env = @{
+                DATABASE_URL = $DbUrl
+                NODE_ENV = "development"
+            }
         }
     }
 } | ConvertTo-Json -Depth 5
 Set-Content -Path "$RootDir\.mcp.json" -Value $mcpJson -NoNewline
-Write-Host "  .mcp.json (Claude Code)" -ForegroundColor Cyan
+Write-Host "  .mcp.json (Claude Code) — with cwd + env for reliable .env resolution" -ForegroundColor Cyan
 
 # .gemini/settings.json (already restored or copied in step 6)
 if (-not (Test-Path $geminiSettingsPath)) {
@@ -177,6 +199,11 @@ if (-not (Test-Path $geminiSettingsPath)) {
                 type = "stdio"
                 command = "node"
                 args = @("--no-warnings", "apps/agent-runner/dist/runtime/mcp.js")
+                cwd = $RootDir
+                env = @{
+                    DATABASE_URL = $DbUrl
+                    NODE_ENV = "development"
+                }
             }
         }
     } | ConvertTo-Json -Depth 5
@@ -193,11 +220,16 @@ $vscodeMcp = @{
         masday = @{
             command = "node"
             args = @("--no-warnings", "apps/agent-runner/dist/runtime/mcp.js")
+            cwd = $RootDir
+            env = @{
+                DATABASE_URL = $DbUrl
+                NODE_ENV = "development"
+            }
         }
     }
 } | ConvertTo-Json -Depth 5
 Set-Content -Path "$RootDir\.vscode\mcp.json" -Value $vscodeMcp -NoNewline
-Write-Host "  .vscode\mcp.json (VS Code Copilot) — node + built JS" -ForegroundColor Cyan
+Write-Host "  .vscode\mcp.json (VS Code Copilot) — node + built JS + cwd + env" -ForegroundColor Cyan
 
 # .github/agents/masday.agent.md (VS Code Copilot custom agent)
 # Docs: https://code.visualstudio.com/docs/copilot/customization/custom-agents
@@ -255,7 +287,8 @@ $hooksJson = @"
     "PreToolUse": [
       { "type": "command", "command": "node .claude/hooks/run-hook.mjs pre-tool-use", "timeout": 30 },
       { "type": "command", "command": "node .claude/hooks/run-hook.mjs workflow-lock", "timeout": 30 },
-      { "type": "command", "command": "node .claude/hooks/run-hook.mjs tdd-guard", "timeout": 30 }
+      { "type": "command", "command": "node .claude/hooks/run-hook.mjs tdd-guard", "timeout": 30 },
+      { "type": "command", "command": "node .claude/hooks/skill-step-guard.cjs", "timeout": 30 }
     ],
     "PostToolUse": [
       { "type": "command", "command": "node .claude/hooks/run-hook.mjs post-tool-use", "timeout": 30 }
