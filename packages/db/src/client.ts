@@ -2,12 +2,21 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
+// Prevent MaxListenersExceededWarning — postgres registers exit handlers
+// in its constructor. ESM hoists imports above top-level code in consumers,
+// so this must run BEFORE the postgres() call here in client.ts.
+if (process.getMaxListeners() !== 0) {
+  process.setMaxListeners(Math.max(process.getMaxListeners(), 20));
+}
+
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error("DATABASE_URL environment variable is required");
 }
+const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
 const client = postgres(connectionString, {
   prepare: false,
+  ssl: isLocal ? false : { rejectUnauthorized: false },
   connect_timeout: 15,
   idle_timeout: 120,
   max_lifetime: 60 * 30,
