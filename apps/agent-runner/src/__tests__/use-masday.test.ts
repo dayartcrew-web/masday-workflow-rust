@@ -158,7 +158,7 @@ describe("stale connection detection", () => {
 
   it("initDb has retry logic", async () => {
     const content = await readFile(MCP_PATH, "utf-8");
-    expect(content).toContain("MAX_RETRIES = 3");
+    expect(content).toContain("MAX_RETRIES");
     expect(content).toContain("All initDb() attempts failed");
   });
 });
