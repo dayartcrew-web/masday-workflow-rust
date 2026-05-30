@@ -328,14 +328,13 @@ async function syncMemoriesFromDb(): Promise<void> {
 }
 
 async function initDb(): Promise<void> {
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // Supabase pooler (asia) takes ~3s for first connection; give generous timeout
-      const healthy = await dbHealthCheck(12_000);
+      const healthy = await dbHealthCheck(10_000);
       if (!healthy) {
         logger.warn({ attempt, max: MAX_RETRIES }, "PostgreSQL not reachable");
-        if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 3000));
+        if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 5000));
         continue;
       }
       activateDbSubsystems();
@@ -345,7 +344,7 @@ async function initDb(): Promise<void> {
       return;
     } catch (err) {
       logger.warn({ err: String(err), attempt, max: MAX_RETRIES }, "Drizzle init attempt failed");
-      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 3000));
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 5000));
     }
   }
   logger.warn("All initDb() attempts failed — running in JSON-only mode. Periodic reconnect will retry.");
@@ -1245,7 +1244,7 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
 
   await Promise.race([
     initDb(),
-    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 30s, continuing without DB"); resolve(); }, 30000)),
+    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 60s, continuing without DB"); resolve(); }, 60_000)),
   ]);
 
   prewarmFastembed();
