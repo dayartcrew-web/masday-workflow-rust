@@ -2,14 +2,18 @@ import pino from 'pino';
 
 // Default to 'warn' — MCP clients (Gemini, Copilot) read stdout for JSON-RPC
 // and choke on any non-JSON output. Use MCP_LOG_LEVEL=info to restore verbose logging.
-export const createLogger = (name: string, level: string = 'warn') => {
-  const effectiveLevel = process.env.MCP_LOG_LEVEL ?? level;
 
-  if (process.env.NODE_ENV === 'development') {
-    return pino(
-      {
-        name,
-        level: effectiveLevel,
+// Singleton root logger — ensures ONE pino-pretty transport (one set of exit listeners).
+// Without this, each createLogger() call spawns a new transport worker thread,
+// registering 11+ process exit listeners per call and triggering MaxListenersExceededWarning.
+let _root: pino.Logger | null = null;
+
+function getRootLogger(): pino.Logger {
+  if (!_root) {
+    const defaultLevel = process.env.MCP_LOG_LEVEL ?? 'warn';
+    if (process.env.NODE_ENV === 'development') {
+      _root = pino({
+        level: defaultLevel,
         transport: {
           target: 'pino-pretty',
           options: {
@@ -18,9 +22,15 @@ export const createLogger = (name: string, level: string = 'warn') => {
             destination: 2, // fd 2 = stderr
           },
         },
-      },
-    );
+      });
+    } else {
+      _root = pino({ level: defaultLevel }, process.stderr);
+    }
   }
+  return _root;
+}
 
-  return pino({ name, level: effectiveLevel }, process.stderr);
+export const createLogger = (name: string, level: string = 'warn') => {
+  const effectiveLevel = process.env.MCP_LOG_LEVEL ?? level;
+  return getRootLogger().child({ name }, { level: effectiveLevel });
 };

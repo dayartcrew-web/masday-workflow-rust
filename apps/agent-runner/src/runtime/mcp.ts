@@ -338,8 +338,9 @@ async function initDb(): Promise<void> {
         continue;
       }
       activateDbSubsystems();
-      await syncMemoriesFromDb();
       logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
+      // Non-blocking: sync memories in background so it doesn't hold up the 30s initDb timeout
+      syncMemoriesFromDb().catch(() => {});
       return;
     } catch (err) {
       logger.warn({ err: String(err), attempt, max: MAX_RETRIES }, "Drizzle init attempt failed");
