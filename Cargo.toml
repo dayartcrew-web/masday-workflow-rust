@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "masday-core",
+    "masday-db",
+    "masday-service",
+    "masday-api",
+    "masday-mcp",
+    "masday-cli",
+]
+resolver = "2"
+
+[profile.dev]
+debug = 1
+incremental = true
+
+[profile.release]
+debug = 0
+lto = "thin"
+strip = true
+opt-level = "s"
+panic = "abort"
+codegen-units = 1

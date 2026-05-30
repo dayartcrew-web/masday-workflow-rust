@@ -1,0 +1,18 @@
+[package]
+name = "masday-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+masday-core = { path = "../masday-core" }
+masday-db = { path = "../masday-db" }
+masday-service = { path = "../masday-service" }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing-subscriber = "0.3"
+uuid = { version = "1.0", features = ["serde"] }
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
