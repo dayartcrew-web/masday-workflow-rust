@@ -328,23 +328,24 @@ async function syncMemoriesFromDb(): Promise<void> {
 }
 
 async function initDb(): Promise<void> {
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 2;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const healthy = await dbHealthCheck(8000);
+      // Supabase pooler (asia) takes ~3s for first connection; give generous timeout
+      const healthy = await dbHealthCheck(12_000);
       if (!healthy) {
         logger.warn({ attempt, max: MAX_RETRIES }, "PostgreSQL not reachable");
-        if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, attempt * 2000));
+        if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 3000));
         continue;
       }
       activateDbSubsystems();
       logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
-      // Non-blocking: sync memories in background so it doesn't hold up the 30s initDb timeout
+      // Non-blocking: sync memories in background so it doesn't hold up initDb
       syncMemoriesFromDb().catch(() => {});
       return;
     } catch (err) {
       logger.warn({ err: String(err), attempt, max: MAX_RETRIES }, "Drizzle init attempt failed");
-      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, attempt * 2000));
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 3000));
     }
   }
   logger.warn("All initDb() attempts failed — running in JSON-only mode. Periodic reconnect will retry.");
