@@ -21,3 +21,9 @@ screenshots/
 mcp-stderr.txt
 e2e-results.json
 docs/plans/*/
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+.sqlx/
