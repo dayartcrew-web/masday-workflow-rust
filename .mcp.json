@@ -5,12 +5,7 @@
       "command": "node",
       "args": [
         "apps/agent-runner/dist/runtime/mcp.js"
-      ],
-      "cwd": "/c/Users/AQR STD/Documents/GitHub/vibe-masday-workflow/masday-workflow-rebuild",
-      "env": {
-        "DATABASE_URL": "",
-        "NODE_ENV": "development"
-      }
+      ]
     }
   }
 }

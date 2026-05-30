@@ -1,4 +1,4 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
@@ -22,41 +22,72 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Prevent MaxListenersExceededWarning — postgres registers exit handlers
-// in its constructor. ESM hoists imports above top-level code in consumers,
-// so this must run BEFORE the postgres() call here in client.ts.
+// in its constructor. Lazy init means this runs once when pool is created.
 if (process.getMaxListeners() !== 0) {
   process.setMaxListeners(Math.max(process.getMaxListeners(), 20));
 }
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("DATABASE_URL environment variable is required");
+// Lazy pool: postgres() constructor is deferred until first use.
+// Module import is free — zero TCP connections until getDb() or healthCheck().
+type PgPool = ReturnType<typeof postgres>;
+let _pool: PgPool | null = null;
+let _db: PostgresJsDatabase<typeof schema> | null = null;
+
+function createPool(): PgPool {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL environment variable is required");
+  }
+  const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+  return postgres(connectionString, {
+    prepare: false,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    connect_timeout: 15,
+    idle_timeout: 120,
+    max_lifetime: 60 * 30,
+    max: isLocal ? 20 : 10,
+    keep_alive: 10_000,
+    connection: {
+      application_name: "masday",
+    },
+  });
 }
-const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
-const client = postgres(connectionString, {
-  prepare: false,
-  ssl: isLocal ? false : { rejectUnauthorized: false },
-  connect_timeout: 15,
-  idle_timeout: 120,
-  max_lifetime: 60 * 30,
-  // Supabase pooler session mode limits pool_size to 15; keep max below that.
-  max: isLocal ? 20 : 10,
-  keep_alive: 10_000,
-  connection: {
-    application_name: "masday",
+
+/** Ensure pool exists, creating it lazily on first call. */
+function ensurePool(): PgPool {
+  if (!_pool) {
+    _pool = createPool();
+    _db = drizzle(_pool, { schema });
+  }
+  return _pool;
+}
+
+/** Get or create the Drizzle instance (lazy — first call creates the pool). */
+export function getDb(): PostgresJsDatabase<typeof schema> {
+  ensurePool();
+  return _db!;
+}
+
+/** Eager export for backward compat — proxies to lazy getDb(). */
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get(_target, prop) {
+    return (getDb() as never)[prop];
   },
 });
-export const db = drizzle(client, { schema });
-
 
 export async function disconnectDb(): Promise<void> {
-  await client.end();
+  if (_pool) {
+    await _pool.end();
+    _pool = null;
+    _db = null;
+  }
 }
 
 export async function healthCheck(timeoutMs = 5000): Promise<boolean> {
   try {
+    const pool = ensurePool();
     await Promise.race([
-      client`SELECT 1`,
+      pool`SELECT 1`,
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)),
     ]);
     return true;

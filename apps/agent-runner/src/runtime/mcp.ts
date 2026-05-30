@@ -129,6 +129,8 @@ const origRegister = server.registerTool.bind(server);
 (server as any).registerTool = function(name: string, schema: any, handler: (args: any) => Promise<any>) {
   const canonicalName = dotToUnderscore(name);
   const wrappedHandler = async (args: any) => {
+    // Lazy DB activation: first tool call triggers PostgreSQL connection
+    await ensureDbReady().catch(() => {});
     episodicMemory.add("user", `[${canonicalName}] ${JSON.stringify(args).substring(0, 500)}`);
     const result = await handler(args);
     const resultText = typeof result === "object" && result !== null && "content" in result
@@ -298,6 +300,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 }
 
 let dbReady = false;
+let dbActivationPromise: Promise<void> | null = null;
 
 function activateDbSubsystems(): void {
   dbReady = true;
@@ -327,27 +330,33 @@ async function syncMemoriesFromDb(): Promise<void> {
   }
 }
 
-async function initDb(): Promise<void> {
-  const MAX_RETRIES = 3;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const healthy = await dbHealthCheck(10_000);
-      if (!healthy) {
-        logger.warn({ attempt, max: MAX_RETRIES }, "PostgreSQL not reachable");
-        if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 5000));
-        continue;
+/** Lazy DB activation — connects PostgreSQL on first tool call that needs it, not at startup. */
+async function ensureDbReady(): Promise<void> {
+  if (dbReady) return;
+  if (!dbActivationPromise) {
+    dbActivationPromise = (async () => {
+      const MAX_RETRIES = 3;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const healthy = await dbHealthCheck(10_000);
+          if (!healthy) {
+            logger.warn({ attempt, max: MAX_RETRIES }, "PostgreSQL not reachable (lazy connect)");
+            if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 3000));
+            continue;
+          }
+          activateDbSubsystems();
+          logger.info("Drizzle connected (lazy) — hybrid mode active");
+          syncMemoriesFromDb().catch(() => {});
+          return;
+        } catch (err) {
+          logger.warn({ err: String(err), attempt, max: MAX_RETRIES }, "Lazy connect failed");
+          if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 3000));
+        }
       }
-      activateDbSubsystems();
-      logger.info("Drizzle connected — hybrid mode active (DualWriteStore + TokenUsage + EpisodicMemory + GraphStore + Reminders enabled)");
-      // Non-blocking: sync memories in background so it doesn't hold up initDb
-      syncMemoriesFromDb().catch(() => {});
-      return;
-    } catch (err) {
-      logger.warn({ err: String(err), attempt, max: MAX_RETRIES }, "Drizzle init attempt failed");
-      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 5000));
-    }
+      logger.warn("Lazy connect failed — tool will run in JSON-only mode");
+    })();
   }
-  logger.warn("All initDb() attempts failed — running in JSON-only mode. Periodic reconnect will retry.");
+  await dbActivationPromise;
 }
 
 async function tryReconnectDb(): Promise<void> {
@@ -355,6 +364,7 @@ async function tryReconnectDb(): Promise<void> {
   try {
     const healthy = await dbHealthCheck(8000);
     if (!healthy) return;
+    dbActivationPromise = null; // reset so ensureDbReady can retry
     activateDbSubsystems();
     await syncMemoriesFromDb();
     logger.info("Reconnect succeeded — hybrid mode active");
@@ -1242,10 +1252,9 @@ logger.info("MCP Server running on stdio (" + backendType + " backend) — " + t
     }
   }
 
-  await Promise.race([
-    initDb(),
-    new Promise<void>(resolve => setTimeout(() => { logger.warn("initDb() timed out after 60s, continuing without DB"); resolve(); }, 60_000)),
-  ]);
+  // Lazy DB: no eager health check at startup. First tool call triggers connection via ensureDbReady().
+  // Background timer handles stale detection, reconnect, and reminders.
+  logger.info("MCP server ready — PostgreSQL will connect on first tool call (lazy mode)");
 
   prewarmFastembed();
 
