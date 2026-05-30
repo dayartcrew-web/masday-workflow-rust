@@ -156,9 +156,9 @@ describe("stale connection detection", () => {
     expect(content).toContain("activateDbSubsystems");
   });
 
-  it("initDb has retry logic", async () => {
+  it("ensureDbReady has retry logic", async () => {
     const content = await readFile(MCP_PATH, "utf-8");
     expect(content).toContain("MAX_RETRIES");
-    expect(content).toContain("All initDb() attempts failed");
+    expect(content).toContain("ensureDbReady");
   });
 });
