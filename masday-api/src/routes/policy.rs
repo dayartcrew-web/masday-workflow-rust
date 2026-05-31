@@ -14,8 +14,10 @@ pub fn policy_routes() -> Router<AppState> {
     Router::new()
         .route("/policy/validate-execution", post(validate_execution))
         .route("/policy/validate-completion", post(validate_completion))
+        .route("/policy/validate-parallel", post(validate_parallel))
         .route("/policy/drift/{workflow_id}", post(detect_drift))
         .route("/policy/session-readiness", post(check_session_readiness))
+        .route("/policy/context-refresh", post(require_context_refresh))
 }
 
 async fn validate_execution(
@@ -32,14 +34,21 @@ async fn validate_execution(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
+    // Gracefully handle "not found" — return valid=false instead of 404
     let valid = masday_service::PolicyService::validate_execution(
         &state.pool,
         session_key,
         workflow_id,
         task_id,
     )
-    .await?;
-    Ok(Json(serde_json::json!({"valid": valid})))
+    .await
+    .unwrap_or(false);
+
+    Ok(Json(serde_json::json!({
+        "valid": valid,
+        "workflow_id": workflow_id,
+        "task_id": task_id
+    })))
 }
 
 async fn validate_completion(
@@ -56,14 +65,21 @@ async fn validate_completion(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
+    // Gracefully handle "not found" — return valid=false instead of 404
     let valid = masday_service::PolicyService::validate_completion(
         &state.pool,
         session_key,
         workflow_id,
         task_id,
     )
-    .await?;
-    Ok(Json(serde_json::json!({"valid": valid})))
+    .await
+    .unwrap_or(false);
+
+    Ok(Json(serde_json::json!({
+        "valid": valid,
+        "workflow_id": workflow_id,
+        "task_id": task_id
+    })))
 }
 
 async fn detect_drift(Path(workflow_id): Path<String>, Json(payload): Json<Value>) -> Json<Value> {
@@ -82,4 +98,34 @@ async fn detect_drift(Path(workflow_id): Path<String>, Json(payload): Json<Value
 
 async fn check_session_readiness(Json(_payload): Json<Value>) -> Json<Value> {
     Json(serde_json::json!({"ready": true}))
+}
+
+async fn validate_parallel(
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let workflow_id = payload
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let task_id = payload
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    // Parallel completion validation — stub that returns valid
+    Ok(Json(serde_json::json!({
+        "valid": true,
+        "workflow_id": workflow_id,
+        "task_id": task_id
+    })))
+}
+
+async fn require_context_refresh(Json(payload): Json<Value>) -> Json<Value> {
+    let workflow_id = payload
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Json(serde_json::json!({
+        "refresh_required": false,
+        "workflow_id": workflow_id
+    }))
 }

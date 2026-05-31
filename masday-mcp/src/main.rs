@@ -20,6 +20,7 @@ macro_rules! reg {
 }
 
 /// Build JSON input schema. `"name"` = required, `"name?"` = optional.
+/// Prefix `#` for number type: `"#name"` = required number, `"#name?"` = optional number.
 macro_rules! schema {
     ($($key:expr),* $(,)?) => {{
         #[allow(unused_mut)]
@@ -27,13 +28,16 @@ macro_rules! schema {
         #[allow(unused_mut)]
         let mut req: Vec<String> = Vec::new();
         $(
-            let k = $key;
-            if k.ends_with('?') {
-                props.insert(k.trim_end_matches('?').to_string(), serde_json::json!({"type":"string"}));
+            let k: &str = $key;
+            let is_opt = k.ends_with('?');
+            let trimmed = k.trim_end_matches('?');
+            let (name, type_val) = if trimmed.starts_with('#') {
+                (trimmed[1..].to_string(), serde_json::json!({"type":"number"}))
             } else {
-                props.insert(k.to_string(), serde_json::json!({"type":"string"}));
-                req.push(k.to_string());
-            }
+                (trimmed.to_string(), serde_json::json!({"type":"string"}))
+            };
+            props.insert(name.clone(), type_val);
+            if !is_opt { req.push(name); }
         )*
         serde_json::json!({"type":"object","properties":props,"required":req})
     }};
@@ -265,7 +269,7 @@ fn register_memory_tools(r: &mut ToolRegistry) {
             "summary",
             "content",
             "created_by_agent",
-            "importance_score?",
+            "#importance_score?",
             "tags?",
             "workflow_id?",
             "task_id?"
@@ -297,7 +301,7 @@ fn register_memory_tools(r: &mut ToolRegistry) {
         r,
         "memory_recall_document_by_type",
         "Recall documents by type",
-        schema!("workflow_id", "source_type", "limit?"),
+        schema!("source_type", "limit?"),
         m::memory_recall_document_by_type
     );
     reg!(

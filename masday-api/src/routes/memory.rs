@@ -13,9 +13,17 @@ use crate::middleware::error_handler::ApiError;
 use crate::AppState;
 use masday_db::repos::MemoryRepo;
 
+#[derive(Deserialize)]
+struct ListMemoriesQuery {
+    #[serde(default = "default_limit")]
+    limit: i64,
+    #[serde(default)]
+    workflow_id: Option<String>,
+}
+
 pub fn memory_routes() -> Router<AppState> {
     Router::new()
-        .route("/memories", post(store_memory))
+        .route("/memories", post(store_memory).get(list_memories))
         .route("/memories/search", post(search_memories))
         .route("/memories/recent", get(recall_recent))
         .route("/memories/by-type", get(recall_by_type))
@@ -34,6 +42,20 @@ struct RecallQuery {
 
 fn default_limit() -> i64 {
     20
+}
+
+/// GET /memories — List memories, optionally filtered by workflow_id
+async fn list_memories(
+    State(state): State<AppState>,
+    Query(params): Query<ListMemoriesQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let repo = MemoryRepo::new(state.pool.clone());
+    let memories = if let Some(wid) = &params.workflow_id {
+        repo.recall_by_workflow(wid, params.limit).await?
+    } else {
+        repo.recall_recent(params.limit).await?
+    };
+    Ok(Json(serde_json::json!(memories)))
 }
 
 async fn store_memory(
@@ -65,17 +87,31 @@ async fn store_memory(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
-        importance_score: payload.get("importance_score").and_then(|v| v.as_f64()),
+        importance_score: payload
+            .get("importance_score")
+            .and_then(|v| v.as_f64())
+            .or_else(|| {
+                payload
+                    .get("importance_score")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+            }),
         created_by_agent: payload
             .get("created_by_agent")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown")
             .to_string(),
-        tags: payload.get("tags").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        }),
+        tags: Some(
+            payload
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ),
         source: payload
             .get("source")
             .and_then(|v| v.as_str())

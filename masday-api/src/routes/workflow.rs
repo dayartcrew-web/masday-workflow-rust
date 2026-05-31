@@ -15,6 +15,15 @@ pub fn workflow_routes() -> Router<AppState> {
     Router::new()
         .route("/workflows", post(create_workflow).get(list_workflows))
         .route("/workflows/active", get(get_active_workflows))
+        .route("/workflows/resume-suggestion", post(resume_suggestion))
+        .route(
+            "/workflows/parallel-branches",
+            post(create_parallel_branches),
+        )
+        .route(
+            "/workflows/parallel-branches/complete",
+            post(complete_parallel_branch),
+        )
         .route("/workflows/{id}", get(get_workflow).delete(delete_workflow))
         .route("/workflows/{id}/execute", post(execute_workflow))
         .route("/workflows/{id}/status", get(get_workflow_status))
@@ -27,6 +36,17 @@ pub fn workflow_routes() -> Router<AppState> {
         .route("/workflows/{id}/complete-task", post(complete_current_task))
         .route("/workflows/{id}/save-progress", post(save_progress))
         .route("/workflows/{id}/context-pack", get(build_context_pack))
+        .route(
+            "/workflows/{id}/parallel-branches",
+            get(list_parallel_branches),
+        )
+        .route("/workflows/{id}/synthesis-ready", post(mark_synthesis_ready))
+        .route(
+            "/workflows/{id}/verification-ready",
+            post(mark_verification_ready),
+        )
+        .route("/workflows/{id}/execution-mode", post(set_execution_mode))
+        .route("/workflows/{id}/current-task", get(get_current_task))
 }
 
 #[derive(Deserialize)]
@@ -237,4 +257,105 @@ async fn build_context_pack(
     let pack =
         masday_service::ContextService::build_context_pack(&state.pool, &id, &id, &id).await?;
     Ok(Json(pack))
+}
+
+// ── Stub handlers for routes needed by MCP tools ──
+
+async fn resume_suggestion(Json(payload): Json<Value>) -> Json<Value> {
+    let workflow_id = payload
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Json(serde_json::json!({
+        "workflow_id": workflow_id,
+        "suggestion": "resume_from_last_completed_task",
+        "next_step": "execute"
+    }))
+}
+
+async fn create_parallel_branches(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let workflow_id = payload
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let branches = payload.get("branches").cloned().unwrap_or(serde_json::json!([]));
+    let created: Vec<serde_json::Value> = if let Some(arr) = branches.as_array() {
+        arr.iter()
+            .map(|b| {
+                serde_json::json!({
+                    "id": uuid::Uuid::new_v4().to_string(),
+                    "workflow_id": workflow_id,
+                    "branch_key": b.get("key").and_then(|v| v.as_str()).unwrap_or("branch"),
+                    "status": "PENDING"
+                })
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+    Ok(Json(serde_json::json!(created)))
+}
+
+async fn complete_parallel_branch(
+    State(_state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let branch_key = payload
+        .get("branch_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Ok(Json(serde_json::json!({
+        "branch_key": branch_key,
+        "status": "DONE"
+    })))
+}
+
+async fn list_parallel_branches(
+    State(_state): State<AppState>,
+    Path(_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(serde_json::json!([])))
+}
+
+async fn mark_synthesis_ready(Json(payload): Json<Value>) -> Json<Value> {
+    let session_key = payload
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Json(serde_json::json!({"session_key": session_key, "synthesis_ready": true}))
+}
+
+async fn mark_verification_ready(Json(payload): Json<Value>) -> Json<Value> {
+    let session_key = payload
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Json(serde_json::json!({"session_key": session_key, "verification_ready": true}))
+}
+
+async fn set_execution_mode(Json(payload): Json<Value>) -> Json<Value> {
+    let session_key = payload
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let mode = payload
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("sequential");
+    Json(serde_json::json!({"session_key": session_key, "execution_mode": mode}))
+}
+
+async fn get_current_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let tasks = masday_service::TaskService::list_tasks(&state.pool, &id).await?;
+    let current = tasks.iter().find(|t| t.status == "RUNNING");
+    match current {
+        Some(t) => Ok(Json(serde_json::json!(t))),
+        None => Ok(Json(serde_json::json!(null))),
+    }
 }

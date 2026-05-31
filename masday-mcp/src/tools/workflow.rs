@@ -1,6 +1,7 @@
 //! Workflow MCP tools - HTTP client calls to API
 
 use crate::client;
+use crate::safe_path;
 use serde_json::Value;
 
 /// Create workflow
@@ -40,7 +41,7 @@ pub async fn workflow_get(args: Value) -> Result<Value, Box<dyn std::error::Erro
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
-    client::api_get(&format!("/api/workflows/{}", workflow_id)).await
+    client::api_get(&safe_path!("/api/workflows/{}", workflow_id)).await
 }
 
 /// List workflows
@@ -69,7 +70,7 @@ pub async fn workflow_delete(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
-    client::api_delete(&format!("/api/workflows/{}", workflow_id)).await
+    client::api_delete(&safe_path!("/api/workflows/{}", workflow_id)).await
 }
 
 /// Add task to workflow
