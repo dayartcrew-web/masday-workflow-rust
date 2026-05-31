@@ -3,7 +3,7 @@
 //! Stub implementation - full functionality will be in the MCP layer.
 //! This service provides placeholders for agent and skill discovery.
 
-use masaday_core::{AppError, Result};
+use masday_core::{AppError, Result};
 use tracing::debug;
 
 /// Capability service (stub - full implementation in MCP layer)

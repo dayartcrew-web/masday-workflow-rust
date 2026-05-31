@@ -2,10 +2,10 @@
 //!
 //! Manages code review submissions and decisions with gap analysis.
 
-use masaday_db::DbPool;
-use masaday_core::{AppError, Result};
-use masaday_db::repos::ReviewRepo;
-use masaday_db::schema::{NewReviewDecision, ReviewDecision};
+use masday_db::DbPool;
+use masday_core::{AppError, Result};
+use masday_db::repos::ReviewRepo;
+use masday_db::schema::{NewReviewDecision, ReviewDecision};
 use tracing::{debug, info};
 
 /// Review service
@@ -62,11 +62,12 @@ impl ReviewService {
         let new_review = NewReviewDecision {
             workflow_id,
             task_id,
-            reviewer,
+            reviewer_agent: reviewer,
             decision: decision_upper,
             notes,
-            gap_analysis: gaps,
-            created_at: None, // Will be set by repo
+            gaps,
+            tests_verified: None,
+            test_summary: None,
         };
 
         let review = service.repo.submit(&new_review).await?;

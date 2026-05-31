@@ -1,15 +1,15 @@
 //! Plan repository
 
 use crate::schema::{Plan, NewPlan};
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 
 pub struct PlanRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl PlanRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

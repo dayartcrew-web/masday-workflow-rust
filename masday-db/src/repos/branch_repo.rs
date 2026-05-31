@@ -1,14 +1,14 @@
 //! Parallel branch repository
 
 use crate::schema::{ParallelBranch, NewParallelBranch};
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 pub struct BranchRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl BranchRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

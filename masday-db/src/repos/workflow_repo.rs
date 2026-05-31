@@ -1,16 +1,16 @@
 //! Workflow repository
 
 use crate::schema::{Workflow, NewWorkflow};
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 use tracing::debug;
 
 pub struct WorkflowRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl WorkflowRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

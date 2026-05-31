@@ -1,16 +1,16 @@
 //! Session state repository
 
 use crate::schema::SessionState;
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 use tracing::debug;
 
 pub struct SessionRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl SessionRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

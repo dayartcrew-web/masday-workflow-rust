@@ -1,15 +1,15 @@
 //! Task repository
 
 use crate::schema::{Task, NewTask, TaskProgressLog, NewTaskProgressLog};
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 
 pub struct TaskRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl TaskRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

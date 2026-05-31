@@ -4,10 +4,10 @@
 //! All state transitions are validated against the allowed transitions defined
 //! in the WorkflowState enum before being applied to the database.
 
-use masaday_db::DbPool;
-use masaday_core::{AppError, Result, WorkflowState};
-use masaday_db::repos::WorkflowRepo;
-use masaday_db::schema::{NewWorkflow, Workflow};
+use masday_db::DbPool;
+use masday_core::{AppError, Result, WorkflowState};
+use masday_db::repos::WorkflowRepo;
+use masday_db::schema::{NewWorkflow, Workflow};
 use tracing::{debug, info};
 
 /// Check if a state transition is valid
@@ -127,8 +127,7 @@ impl WorkflowService {
     pub async fn execute_workflow(pool: &DbPool, id: &str) -> Result<Workflow> {
         info!("Executing workflow: {}", id);
 
-        let service = Self::new(pool.clone());
-        service.transition_status(pool, id, WorkflowState::Execute).await
+        Self::transition_status(pool, id, WorkflowState::Execute).await
     }
 
     /// Transition workflow status with validation
@@ -148,7 +147,7 @@ impl WorkflowService {
         let service = Self::new(pool.clone());
 
         // Get current workflow
-        let workflow = service.get_workflow(pool, id).await?;
+        let workflow = Self::get_workflow(pool, id).await?;
         let current_state = status_to_state(&workflow.status)?;
 
         // Validate transition
