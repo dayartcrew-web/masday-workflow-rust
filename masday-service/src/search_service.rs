@@ -34,9 +34,9 @@ impl SearchService {
         );
 
         let query = r#"
-            SELECT id, content, summary, memory_type,
+            SELECT id, content, summary, "memoryType",
                    1 - (embedding <=> $1::vector) as similarity
-            FROM memories
+            FROM "Memory"
             WHERE embedding IS NOT NULL
             ORDER BY embedding <=> $1::vector
             LIMIT $2
@@ -61,7 +61,7 @@ impl SearchService {
                             "id": row.get::<String, _>("id"),
                             "content": row.get::<String, _>("content"),
                             "summary": row.get::<Option<String>, _>("summary"),
-                            "memory_type": row.get::<String, _>("memory_type"),
+                            "memory_type": row.get::<String, _>("memoryType"),
                             "similarity": row.get::<f64, _>("similarity")
                         })
                     })
@@ -78,9 +78,9 @@ impl SearchService {
         limit: i64,
     ) -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {
         let query = r#"
-            SELECT id, content, summary, memory_type, 0.5 as similarity
-            FROM memories
-            ORDER BY created_at DESC
+            SELECT id, content, summary, "memoryType", 0.5 as similarity
+            FROM "Memory"
+            ORDER BY "createdAt" DESC
             LIMIT $1
         "#;
 
@@ -93,7 +93,7 @@ impl SearchService {
                     "id": row.get::<String, _>("id"),
                     "content": row.get::<String, _>("content"),
                     "summary": row.get::<Option<String>, _>("summary"),
-                    "memory_type": row.get::<String, _>("memory_type"),
+                    "memory_type": row.get::<String, _>("memoryType"),
                     "similarity": row.get::<f64, _>("similarity")
                 })
             })
@@ -232,10 +232,10 @@ impl SearchService {
         // Get recent memories for this workflow
         let memories = sqlx::query(
             r#"
-            SELECT id, content, summary, memory_type, importance_score
-            FROM memories
-            WHERE workflow_id = $1 OR importance_score > 0.7
-            ORDER BY importance_score DESC, created_at DESC
+            SELECT id, content, summary, "memoryType", "importanceScore"
+            FROM "Memory"
+            WHERE "workflowId" = $1 OR "importanceScore" > 0.7
+            ORDER BY "importanceScore" DESC, "createdAt" DESC
             LIMIT 10
             "#,
         )
@@ -246,8 +246,8 @@ impl SearchService {
         // Get workflow state
         let workflow = sqlx::query(
             r#"
-            SELECT state, current_phase, description, metadata
-            FROM workflows
+            SELECT status, metadata
+            FROM "Workflow"
             WHERE id = $1
             "#,
         )
@@ -258,8 +258,8 @@ impl SearchService {
         // Get plan details
         let plan = sqlx::query(
             r#"
-            SELECT description, acceptance_criteria
-            FROM plans
+            SELECT summary, content
+            FROM "Plan"
             WHERE id = $1
             "#,
         )
@@ -270,8 +270,8 @@ impl SearchService {
         // Get task details
         let task = sqlx::query(
             r#"
-            SELECT title, description, status, dependencies
-            FROM tasks
+            SELECT title, status
+            FROM "Task"
             WHERE id = $1
             "#,
         )
@@ -280,14 +280,19 @@ impl SearchService {
         .await?;
 
         // Compute fingerprint
-        let acceptance_criteria: Vec<String> = plan
+        let plan_content = plan
             .as_ref()
-            .and_then(|p| p.try_get::<Vec<String>, _>("acceptance_criteria").ok())
+            .and_then(|p| p.try_get::<serde_json::Value, _>("content").ok());
+        let acceptance_criteria: Vec<String> = plan_content
+            .as_ref()
+            .and_then(|v| v.get("acceptance_criteria")?.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
 
         let required_context: Vec<String> = task
             .as_ref()
-            .and_then(|t| t.try_get::<Vec<String>, _>("dependencies").ok())
+            .and_then(|t| t.try_get::<String, _>("status").ok())
+            .map(|s| vec![s])
             .unwrap_or_default();
 
         let fingerprint = Self::compute_fingerprint(
@@ -304,28 +309,24 @@ impl SearchService {
             "task_id": task_id,
             "fingerprint": fingerprint,
             "workflow": workflow.map(|row| json!({
-                "state": row.get::<String, _>("state"),
-                "phase": row.get::<Option<String>, _>("current_phase"),
-                "description": row.get::<String, _>("description"),
+                "status": row.get::<String, _>("status"),
                 "metadata": row.get::<Option<Value>, _>("metadata")
             })),
             "plan": plan.map(|row| json!({
-                "description": row.get::<String, _>("description"),
-                "acceptance_criteria": row.get::<Vec<String>, _>("acceptance_criteria")
+                "summary": row.get::<String, _>("summary"),
+                "content": row.get::<Value, _>("content")
             })),
             "task": task.map(|row| json!({
                 "title": row.get::<String, _>("title"),
-                "description": row.get::<String, _>("description"),
-                "status": row.get::<String, _>("status"),
-                "dependencies": row.get::<Vec<String>, _>("dependencies")
+                "status": row.get::<String, _>("status")
             })),
             "memories": memories.iter().map(|row| {
                 json!({
                     "id": row.get::<String, _>("id"),
                     "content": row.get::<String, _>("content"),
                     "summary": row.get::<Option<String>, _>("summary"),
-                    "type": row.get::<String, _>("memory_type"),
-                    "importance": row.get::<Option<f64>, _>("importance_score").unwrap_or(0.5)
+                    "type": row.get::<String, _>("memoryType"),
+                    "importance": row.get::<Option<f64>, _>("importanceScore").unwrap_or(0.5)
                 })
             }).collect::<Vec<_>>(),
             "acceptance_criteria": acceptance_criteria,
@@ -371,9 +372,9 @@ impl SearchService {
 
         // BM25-style text search using PostgreSQL full-text search
         let text_query = r#"
-            SELECT id, content, summary, memory_type,
+            SELECT id, content, summary, "memoryType",
                    ts_rank(to_tsvector(content), query) as text_score
-            FROM memories, to_tsquery($1) query
+            FROM "Memory", to_tsquery($1) query
             WHERE to_tsvector(content) @@ query
             ORDER BY text_score DESC
             LIMIT $2
@@ -395,7 +396,7 @@ impl SearchService {
                             "id": row.get::<String, _>("id"),
                             "content": row.get::<String, _>("content"),
                             "summary": row.get::<Option<String>, _>("summary"),
-                            "memory_type": row.get::<String, _>("memory_type"),
+                            "memory_type": row.get::<String, _>("memoryType"),
                             "text_score": row.get::<f64, _>("text_score"),
                             "hybrid_score": row.get::<f64, _>("text_score") * 0.4
                         })
@@ -407,8 +408,8 @@ impl SearchService {
                 // Fallback to simple ILIKE search
                 let pattern = format!("%{}%", query);
                 let fallback_query = r#"
-                    SELECT id, content, summary, memory_type, 0.3 as text_score
-                    FROM memories
+                    SELECT id, content, summary, "memoryType", 0.3 as text_score
+                    FROM "Memory"
                     WHERE content ILIKE $1 OR summary ILIKE $1
                     LIMIT $2
                 "#;
@@ -426,7 +427,7 @@ impl SearchService {
                             "id": row.get::<String, _>("id"),
                             "content": row.get::<String, _>("content"),
                             "summary": row.get::<Option<String>, _>("summary"),
-                            "memory_type": row.get::<String, _>("memory_type"),
+                            "memory_type": row.get::<String, _>("memoryType"),
                             "text_score": 0.3,
                             "hybrid_score": 0.12
                         })

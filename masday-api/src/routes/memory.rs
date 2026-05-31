@@ -231,14 +231,14 @@ async fn update_memory(
     if let Some(content) = payload.get("content").and_then(|v| v.as_str()) {
         let client = state.pool.get().await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
         client.execute(
-            "UPDATE memories SET content = $1, updated_at = NOW() WHERE id = $2",
+            r#"UPDATE "Memory" SET content = $1, "updatedAt" = NOW() WHERE id = $2"#,
             &[&content, &id],
         ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
     }
     if let Some(importance) = payload.get("importance").and_then(|v| v.as_f64()) {
         let client = state.pool.get().await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
         client.execute(
-            "UPDATE memories SET importance_score = $1, updated_at = NOW() WHERE id = $2",
+            r#"UPDATE "Memory" SET "importanceScore" = $1, "updatedAt" = NOW() WHERE id = $2"#,
             &[&importance, &id],
         ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
     }
@@ -254,7 +254,7 @@ async fn delete_by_workflow(
     let client = state.pool.get().await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
     let result = client
         .execute(
-            "DELETE FROM memories WHERE workflow_id = $1",
+            r#"DELETE FROM "Memory" WHERE "workflowId" = $1"#,
             &[&workflow_id],
         )
         .await

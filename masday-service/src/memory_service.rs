@@ -181,18 +181,18 @@ impl MemoryService {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let timestamp = SystemTime::now()
+        let sequence_order = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64;
+            .as_secs() as i32;
 
-        let query = "
-            INSERT INTO episodic_memories (id, session_id, role, content, timestamp)
-            VALUES ($1, $2, $3, $4, to_timestamp($5))
-        ";
+        let query = r#"
+            INSERT INTO "EpisodicMemory" (id, "sessionId", role, content, "sequenceOrder", "createdAt")
+            VALUES ($1, $2, $3, $4, $5, NOW())
+        "#;
 
         client
-            .execute(query, &[&id, &session_id, &role, &content, &timestamp])
+            .execute(query, &[&id, &session_id, &role, &content, &sequence_order])
             .await
             .map_err(|e| AppError::Database(format!("Failed to store episodic memory: {}", e)))?;
 
