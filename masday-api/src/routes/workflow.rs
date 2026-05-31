@@ -254,8 +254,21 @@ async fn build_context_pack(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let pack =
-        masday_service::ContextService::build_context_pack(&state.pool, &id, &id, &id).await?;
+    // Use workflow_id for workflow and plan, find the current running task
+    let tasks = masday_service::TaskService::list_tasks(&state.pool, &id).await?;
+    let task_id = tasks
+        .iter()
+        .find(|t| t.status == "RUNNING")
+        .map(|t| t.id.clone())
+        .unwrap_or_default();
+    let pack = masday_service::ContextService::build_context_pack(
+        &state.pool,
+        &id,
+        &id,
+        &task_id,
+    )
+    .await
+    .unwrap_or_else(|_| serde_json::json!({"workflow_id": id, "tasks": tasks, "plan": null}));
     Ok(Json(pack))
 }
 

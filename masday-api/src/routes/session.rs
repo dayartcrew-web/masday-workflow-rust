@@ -27,7 +27,7 @@ async fn get_session(
         .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     let result = client
         .query_opt(
-            "SELECT state FROM session_states WHERE session_key = $1",
+            "SELECT session_key, metadata, execution_mode, workflow_id, plan_id, task_id FROM session_states WHERE session_key = $1",
             &[&id],
         )
         .await
@@ -35,10 +35,14 @@ async fn get_session(
 
     match result {
         Some(row) => {
-            let state_val: serde_json::Value = row.get("state");
-            Ok(Json(
-                serde_json::json!({"session_key": id, "state": state_val}),
-            ))
+            let meta: Option<serde_json::Value> = row.get("metadata");
+            Ok(Json(serde_json::json!({
+                "session_key": id,
+                "state": meta.unwrap_or(serde_json::json!({})),
+                "workflow_id": row.get::<_, Option<String>>("workflow_id"),
+                "plan_id": row.get::<_, Option<String>>("plan_id"),
+                "task_id": row.get::<_, Option<String>>("task_id"),
+            })))
         }
         None => Ok(Json(serde_json::json!({"session_key": id, "state": null}))),
     }
@@ -54,9 +58,16 @@ async fn update_session(
         .get()
         .await
         .map_err(|e| masday_core::AppError::database(e.to_string()))?;
+
+    // Extract patch string or use entire payload as metadata
+    let patch = payload
+        .get("patch")
+        .cloned()
+        .unwrap_or_else(|| payload.clone());
+
     client.execute(
-        "INSERT INTO session_states (session_key, state, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (session_key) DO UPDATE SET state = $2, updated_at = NOW()",
-        &[&id, &payload],
+        "INSERT INTO session_states (id, session_key, metadata, updated_at, created_at) VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT (session_key) DO UPDATE SET metadata = COALESCE(session_states.metadata, '{}'::jsonb) || $3, updated_at = NOW()",
+        &[&id, &id, &patch],
     ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
 
     Ok(Json(
@@ -74,8 +85,8 @@ async fn init_session(
         .await
         .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     client.execute(
-        "INSERT INTO session_states (session_key, state, updated_at) VALUES ($1, '{}'::jsonb, NOW()) ON CONFLICT (session_key) DO NOTHING",
-        &[&id],
+        "INSERT INTO session_states (id, session_key, metadata, updated_at, created_at) VALUES ($1, $2, '{}'::jsonb, NOW(), NOW()) ON CONFLICT (session_key) DO NOTHING",
+        &[&id, &id],
     ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
 
     Ok(Json(

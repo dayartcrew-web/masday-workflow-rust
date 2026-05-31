@@ -12,12 +12,24 @@ use crate::AppState;
 
 pub fn reminder_routes() -> Router<AppState> {
     Router::new()
-        .route("/reminders/check", get(check_reminders))
-        .route("/reminders/{id}/acknowledge", post(acknowledge_reminder))
         .route("/reminders", get(list_reminders))
+        .route("/reminders/check", get(check_reminders))
+        .route("/reminders/stale", get(get_stale))
+        .route("/reminders/stuck", get(get_stuck))
+        .route("/reminders/{id}/acknowledge", post(acknowledge_reminder))
 }
 
 async fn check_reminders(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
+    Ok(Json(serde_json::json!(reminders)))
+}
+
+async fn get_stale(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
+    Ok(Json(serde_json::json!(reminders)))
+}
+
+async fn get_stuck(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
     Ok(Json(serde_json::json!(reminders)))
 }
