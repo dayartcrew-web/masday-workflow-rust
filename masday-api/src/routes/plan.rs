@@ -12,8 +12,8 @@ use crate::AppState;
 
 pub fn plan_routes() -> Router<AppState> {
     Router::new()
-        .route("/plans/:workflow_id", get(get_plan))
-        .route("/plans/:workflow_id/status", patch(update_plan_status))
+        .route("/plans/{workflow_id}", get(get_plan))
+        .route("/plans/{workflow_id}/status", patch(update_plan_status))
 }
 
 async fn get_plan(

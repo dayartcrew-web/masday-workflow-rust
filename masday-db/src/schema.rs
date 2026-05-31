@@ -5,6 +5,7 @@
 //! (snake_case in Rust, camelCase in TypeScript).
 
 use chrono::{DateTime, Utc};
+use pgvector::Vector;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -271,7 +272,8 @@ pub struct Memory {
     pub created_by_agent: String,
     pub tags: Option<Vec<String>>,
     pub source: Option<String>,
-    pub embedding: Option<Vec<f32>>,
+    #[serde(skip)]
+    pub embedding: Option<Vector>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub accessed_at: Option<DateTime<Utc>>,
@@ -291,7 +293,8 @@ pub struct NewMemory {
     pub created_by_agent: String,
     pub tags: Option<Vec<String>>,
     pub source: Option<String>,
-    pub embedding: Option<Vec<f32>>,
+    #[serde(skip)]
+    pub embedding: Option<Vector>,
 }
 
 /// ContextDocument table model
@@ -307,7 +310,8 @@ pub struct ContextDocument {
     pub content: String,
     pub metadata: Option<serde_json::Value>,
     pub fingerprint: Option<String>,
-    pub embedding: Option<Vec<f32>>,
+    #[serde(skip)]
+    pub embedding: Option<Vector>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -322,7 +326,8 @@ pub struct NewContextDocument {
     pub content: String,
     pub metadata: Option<serde_json::Value>,
     pub fingerprint: Option<String>,
-    pub embedding: Option<Vec<f32>>,
+    #[serde(skip)]
+    pub embedding: Option<Vector>,
 }
 
 // ============================================================================

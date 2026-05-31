@@ -43,6 +43,14 @@ pub use pool::DbPool;
 /// Version of the masday-db crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Default embedding vector dimension (768 for bge-base, configurable via EMBEDDING_DIMENSIONS env)
+pub fn embedding_dimensions() -> usize {
+    std::env::var("EMBEDDING_DIMENSIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(768)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,9 +19,9 @@ pub fn memory_routes() -> Router<AppState> {
         .route("/memories/search", post(search_memories))
         .route("/memories/recent", get(recall_recent))
         .route("/memories/by-type", get(recall_by_type))
-        .route("/memories/by-task/:task_id", get(recall_by_task))
+        .route("/memories/by-task/{task_id}", get(recall_by_task))
         .route("/memories/stats", get(memory_stats))
-        .route("/memories/:id", get(get_memory).delete(delete_memory))
+        .route("/memories/{id}", get(get_memory).delete(delete_memory))
 }
 
 #[derive(Deserialize)]

@@ -14,7 +14,7 @@ use masday_db::schema::{NewGraphEdge, NewGraphNode};
 pub fn graph_routes() -> Router<AppState> {
     Router::new()
         .route("/graph/nodes", post(add_node))
-        .route("/graph/nodes/:id", get(get_node).delete(delete_node))
+        .route("/graph/nodes/{id}", get(get_node).delete(delete_node))
         .route("/graph/edges", post(add_edge))
         .route("/graph/search", post(search_nodes))
 }

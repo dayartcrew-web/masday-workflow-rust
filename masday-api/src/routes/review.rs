@@ -13,7 +13,7 @@ use crate::AppState;
 pub fn review_routes() -> Router<AppState> {
     Router::new()
         .route("/reviews", post(submit_review))
-        .route("/reviews/task/:task_id", get(get_review_by_task))
+        .route("/reviews/task/{task_id}", get(get_review_by_task))
 }
 
 async fn submit_review(
