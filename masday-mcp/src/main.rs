@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let api_url =
-        std::env::var("MASDAY_API_URL").unwrap_or_else(|_| "http://localhost:3001".to_string());
+        std::env::var("MASDAY_API_URL").unwrap_or_else(|_| "http://localhost:3010".to_string());
     let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_else(|_| "PLACEHOLDER".to_string());
 
     client::init(api_url.clone(), api_key)?;

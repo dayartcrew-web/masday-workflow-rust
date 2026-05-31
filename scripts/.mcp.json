@@ -4,7 +4,7 @@
       "type": "stdio",
       "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
       "env": {
-        "MASDAY_API_URL": "http://localhost:3001",
+        "MASDAY_API_URL": "http://localhost:3010",
         "MASDAY_API_KEY": "PLACEHOLDER"
       }
     }
