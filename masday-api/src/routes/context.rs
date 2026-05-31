@@ -107,20 +107,27 @@ async fn hybrid_search(
     State(state): State<AppState>,
     Json(input): Json<HybridSearchInput>,
 ) -> Result<Json<Value>, ApiError> {
-    let pack = masday_service::ContextService::build_context_pack(
+    // Not-found is expected for new workflows with no plan yet — return empty pack
+    // Real errors (database failures) propagate as 500
+    let pack = match masday_service::ContextService::build_context_pack(
         &state.pool,
         &input.workflow_id,
         &input.plan_id,
         &input.task_id,
     )
     .await
-    .unwrap_or_else(|_| serde_json::json!({
-        "workflow_id": input.workflow_id,
-        "plan_id": input.plan_id,
-        "task_id": input.task_id,
-        "tasks": [],
-        "plan": null
-    }));
+    {
+        Ok(p) => p,
+        Err(e) => {
+            // NotFound → empty pack (workflow exists but no plan/task yet)
+            // All other errors propagate normally
+            if matches!(e, masday_core::AppError::NotFound(_)) {
+                serde_json::json!({"tasks": [], "plan": null})
+            } else {
+                return Err(ApiError::from(e));
+            }
+        }
+    };
 
     // Compute fingerprint for change detection
     let fingerprint = masday_service::ContextService::compute_fingerprint(

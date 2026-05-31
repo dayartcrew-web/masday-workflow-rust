@@ -261,14 +261,23 @@ async fn build_context_pack(
         .find(|t| t.status == "RUNNING")
         .map(|t| t.id.clone())
         .unwrap_or_default();
-    let pack = masday_service::ContextService::build_context_pack(
+    let pack = match masday_service::ContextService::build_context_pack(
         &state.pool,
         &id,
         &id,
         &task_id,
     )
     .await
-    .unwrap_or_else(|_| serde_json::json!({"workflow_id": id, "tasks": tasks, "plan": null}));
+    {
+        Ok(p) => p,
+        Err(e) => {
+            if matches!(e, masday_core::AppError::NotFound(_)) {
+                serde_json::json!({"tasks": tasks, "plan": null})
+            } else {
+                return Err(ApiError::from(e));
+            }
+        }
+    };
     Ok(Json(pack))
 }
 
