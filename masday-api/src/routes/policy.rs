@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::middleware::error_handler::ApiError;
 use crate::AppState;
+use masday_core::AppError;
 
 pub fn policy_routes() -> Router<AppState> {
     Router::new()
@@ -18,6 +19,18 @@ pub fn policy_routes() -> Router<AppState> {
         .route("/policy/drift/{workflow_id}", post(detect_drift))
         .route("/policy/session-readiness", post(check_session_readiness))
         .route("/policy/context-refresh", post(require_context_refresh))
+}
+
+/// Helper: run a policy validation, catching only NotFound errors as valid=false.
+/// All other errors (auth, database, validation) propagate normally.
+fn policy_result_to_valid(
+    result: Result<bool, AppError>,
+) -> Result<bool, ApiError> {
+    match result {
+        Ok(valid) => Ok(valid),
+        Err(AppError::NotFound(_)) => Ok(false),
+        Err(e) => Err(ApiError::from(e)),
+    }
 }
 
 async fn validate_execution(
@@ -34,15 +47,16 @@ async fn validate_execution(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // Gracefully handle "not found" — return valid=false instead of 404
-    let valid = masday_service::PolicyService::validate_execution(
-        &state.pool,
-        session_key,
-        workflow_id,
-        task_id,
-    )
-    .await
-    .unwrap_or(false);
+    // NotFound → valid=false; all other errors propagate
+    let valid = policy_result_to_valid(
+        masday_service::PolicyService::validate_execution(
+            &state.pool,
+            session_key,
+            workflow_id,
+            task_id,
+        )
+        .await,
+    )?;
 
     Ok(Json(serde_json::json!({
         "valid": valid,
@@ -65,15 +79,48 @@ async fn validate_completion(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // Gracefully handle "not found" — return valid=false instead of 404
-    let valid = masday_service::PolicyService::validate_completion(
-        &state.pool,
-        session_key,
-        workflow_id,
-        task_id,
-    )
-    .await
-    .unwrap_or(false);
+    // NotFound → valid=false; all other errors propagate
+    let valid = policy_result_to_valid(
+        masday_service::PolicyService::validate_completion(
+            &state.pool,
+            session_key,
+            workflow_id,
+            task_id,
+        )
+        .await,
+    )?;
+
+    Ok(Json(serde_json::json!({
+        "valid": valid,
+        "workflow_id": workflow_id,
+        "task_id": task_id
+    })))
+}
+
+async fn validate_parallel(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let session_key = payload.get("session_key").and_then(|v| v.as_str());
+    let workflow_id = payload
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let task_id = payload
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // Reuse completion validation for parallel — same logic applies
+    let valid = policy_result_to_valid(
+        masday_service::PolicyService::validate_completion(
+            &state.pool,
+            session_key,
+            workflow_id,
+            task_id,
+        )
+        .await,
+    )?;
 
     Ok(Json(serde_json::json!({
         "valid": valid,
@@ -98,25 +145,6 @@ async fn detect_drift(Path(workflow_id): Path<String>, Json(payload): Json<Value
 
 async fn check_session_readiness(Json(_payload): Json<Value>) -> Json<Value> {
     Json(serde_json::json!({"ready": true}))
-}
-
-async fn validate_parallel(
-    Json(payload): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let workflow_id = payload
-        .get("workflow_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let task_id = payload
-        .get("task_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    // Parallel completion validation — stub that returns valid
-    Ok(Json(serde_json::json!({
-        "valid": true,
-        "workflow_id": workflow_id,
-        "task_id": task_id
-    })))
 }
 
 async fn require_context_refresh(Json(payload): Json<Value>) -> Json<Value> {

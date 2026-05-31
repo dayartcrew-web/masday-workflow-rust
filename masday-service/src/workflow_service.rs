@@ -123,7 +123,11 @@ impl WorkflowService {
         Ok(workflow)
     }
 
-    /// Execute a workflow (INIT → EXECUTE transition)
+    /// Execute a workflow — auto-transitions through intermediate states
+    ///
+    /// If the workflow is in INIT or ANALYZE, automatically advances through
+    /// ANALYZE → PLAN → EXECUTE so the caller doesn't need to step through
+    /// each intermediate state manually.
     ///
     /// # Arguments
     /// * `pool` - Database connection pool
@@ -134,7 +138,39 @@ impl WorkflowService {
     pub async fn execute_workflow(pool: &DbPool, id: &str) -> Result<Workflow> {
         info!("Executing workflow: {}", id);
 
-        Self::transition_status(pool, id, WorkflowState::Execute).await
+        let workflow = Self::get_workflow(pool, id).await?;
+        let current = status_to_state(&workflow.status)?;
+
+        // Already executing or beyond — just return current state
+        if matches!(
+            current,
+            WorkflowState::Execute | WorkflowState::Verify | WorkflowState::Fix | WorkflowState::Done
+        ) {
+            return Ok(workflow);
+        }
+
+        // Auto-advance through intermediate states to reach EXECUTE
+        match current {
+            WorkflowState::Init => {
+                Self::transition_status(pool, id, WorkflowState::Analyze).await?;
+                Self::transition_status(pool, id, WorkflowState::Plan).await?;
+                Self::transition_status(pool, id, WorkflowState::Execute).await
+            }
+            WorkflowState::Analyze => {
+                Self::transition_status(pool, id, WorkflowState::Plan).await?;
+                Self::transition_status(pool, id, WorkflowState::Execute).await
+            }
+            WorkflowState::Plan => {
+                Self::transition_status(pool, id, WorkflowState::Execute).await
+            }
+            WorkflowState::Paused => {
+                Self::transition_status(pool, id, WorkflowState::Execute).await
+            }
+            _ => Err(AppError::validation(format!(
+                "Cannot execute workflow in state {:?}",
+                current
+            ))),
+        }
     }
 
     /// Transition workflow status with validation
