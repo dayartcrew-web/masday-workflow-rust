@@ -23,7 +23,7 @@
     "dotenv": "^16.4.5",
     "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",
-    "fastembed": "^1.14.4",
+    "fastembed": "^2.1.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
