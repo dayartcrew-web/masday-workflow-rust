@@ -4,7 +4,7 @@
 //! All state transitions are validated against the allowed transitions defined
 //! in the WorkflowState enum before being applied to the database.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result, WorkflowState};
 use masaday_db::repos::WorkflowRepo;
 use masaday_db::schema::{NewWorkflow, Workflow};

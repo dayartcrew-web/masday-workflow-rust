@@ -3,7 +3,7 @@
 //! Provides validation functions for workflow execution and completion,
 //! plus basic scope drift detection using keyword analysis.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result};
 use masaday_db::repos::{TaskRepo, ReviewRepo};
 use tracing::{debug, info};

@@ -2,7 +2,7 @@
 //!
 //! Detects and manages workflow reminders for stale or stuck workflows.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result};
 use masaday_db::repos::{ReminderRepo, WorkflowRepo};
 use masaday_db::schema::WorkflowReminder;
