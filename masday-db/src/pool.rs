@@ -125,6 +125,7 @@ pub fn create_pool() -> Result<DbPool, String> {
         .max_size(MAX_POOL_SIZE as usize)
         .create_timeout(Some(Duration::from_secs(CONNECT_TIMEOUT_SECS)))
         .wait_timeout(Some(Duration::from_secs(WAIT_TIMEOUT_SECS)))
+        .runtime(deadpool::Runtime::Tokio1)
         .build()
         .map_err(|e| format!("Failed to build pool: {}", e))?;
 
