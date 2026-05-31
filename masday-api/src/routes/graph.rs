@@ -24,6 +24,39 @@ async fn add_node(
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let repo = masday_db::repos::GraphRepo::new(state.pool.clone());
+
+    // Support batch format: {"entities": [{name, entityType, observations}, ...]}
+    if let Some(entities) = payload.get("entities").and_then(|v| v.as_array()) {
+        let mut created = Vec::new();
+        for ent in entities {
+            let node = NewGraphNode {
+                node_type: ent
+                    .get("entityType")
+                    .or_else(|| ent.get("node_type"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("entity")
+                    .to_string(),
+                name: ent
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                properties: ent
+                    .get("observations")
+                    .map(|obs| {
+                        serde_json::json!({
+                            "observations": obs,
+                        })
+                    })
+                    .or_else(|| ent.get("properties").cloned()),
+            };
+            let node = repo.add_node(&node).await?;
+            created.push(serde_json::json!(node));
+        }
+        return Ok(Json(serde_json::json!({"created": created})));
+    }
+
+    // Single node format: {"name": "...", "node_type": "...", "properties": {...}}
     let node = NewGraphNode {
         node_type: payload
             .get("node_type")
