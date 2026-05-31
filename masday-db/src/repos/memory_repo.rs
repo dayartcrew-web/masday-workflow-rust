@@ -1,16 +1,16 @@
 //! Memory repository
 
 use crate::schema::{Memory, NewMemory};
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 use tracing::debug;
 
 pub struct MemoryRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl MemoryRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

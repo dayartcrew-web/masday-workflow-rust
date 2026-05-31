@@ -1,15 +1,15 @@
 //! Review decision repository
 
 use crate::schema::{ReviewDecision, NewReviewDecision};
-use deadpool_postgres::Pool;
+use crate::pool::DbPool;
 use masday_core::{AppError, Result};
 
 pub struct ReviewRepo {
-    pool: Pool,
+    pool: DbPool,
 }
 
 impl ReviewRepo {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
 

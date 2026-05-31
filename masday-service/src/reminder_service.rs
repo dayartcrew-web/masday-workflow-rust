@@ -2,10 +2,10 @@
 //!
 //! Detects and manages workflow reminders for stale or stuck workflows.
 
-use masaday_db::DbPool;
-use masaday_core::{AppError, Result};
-use masaday_db::repos::{ReminderRepo, WorkflowRepo};
-use masaday_db::schema::WorkflowReminder;
+use masday_db::DbPool;
+use masday_core::{AppError, Result};
+use masday_db::repos::{ReminderRepo, WorkflowRepo};
+use masday_db::schema::WorkflowReminder;
 use tracing::{debug, info};
 use chrono::Utc;
 use chrono::Duration;
@@ -50,10 +50,12 @@ impl ReminderService {
                 let reminder = WorkflowReminder {
                     id: uuid::Uuid::new_v4().to_string(),
                     workflow_id: workflow.id.clone(),
-                    reminder_type,
-                    triggered_at: now,
-                    acknowledged_at: None,
+                    task_id: None,
+                    severity: "warning".to_string(),
                     message: Self::get_reminder_message(&workflow, &reminder_type),
+                    reminder_type,
+                    acknowledged: None,
+                    created_at: now,
                 };
 
                 reminders.push(reminder);
@@ -86,7 +88,7 @@ impl ReminderService {
     }
 
     /// Check if a workflow is stale
-    fn check_workflow_staleness(workflow: &masaday_db::schema::Workflow, now: &chrono::DateTime<Utc>) -> Option<String> {
+    fn check_workflow_staleness(workflow: &masday_db::schema::Workflow, now: &chrono::DateTime<Utc>) -> Option<String> {
         let updated_age = now.signed_duration_since(workflow.updated_at);
 
         // Different thresholds based on status
@@ -128,7 +130,7 @@ impl ReminderService {
     }
 
     /// Get reminder message for a workflow
-    fn get_reminder_message(workflow: &masaday_db::schema::Workflow, reminder_type: &str) -> String {
+    fn get_reminder_message(workflow: &masday_db::schema::Workflow, reminder_type: &str) -> String {
         match reminder_type {
             "STALE_EARLY" => format!(
                 "Workflow '{}' has been idle in {} phase for over 1 hour",

@@ -27,8 +27,8 @@
 //! // Verify connectivity
 //! pool::health_check(&pool).await?;
 //!
-//! // Use repositories (dereference Arc to get Pool)
-//! let workflow_repo = repos::WorkflowRepo::new((*pool).clone());
+//! // Use repositories (DbPool = Arc<Pool> is passed directly)
+//! let workflow_repo = repos::WorkflowRepo::new(pool.clone());
 //! # Ok(())
 //! # }
 //! ```

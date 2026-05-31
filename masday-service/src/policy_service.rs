@@ -3,9 +3,9 @@
 //! Provides validation functions for workflow execution and completion,
 //! plus basic scope drift detection using keyword analysis.
 
-use masaday_db::DbPool;
-use masaday_core::{AppError, Result};
-use masaday_db::repos::{TaskRepo, ReviewRepo};
+use masday_db::DbPool;
+use masday_core::{AppError, Result};
+use masday_db::repos::{TaskRepo, ReviewRepo};
 use tracing::{debug, info};
 
 /// Policy service
@@ -107,7 +107,7 @@ impl PolicyService {
         // Check if task requires review
         if task.requires_tdd.unwrap_or(false) {
             // Check if review exists and is approved
-            let review = service.review_repo.get_latest_for_task(task_id).await?;
+            let review = service.review_repo.get_latest(task_id).await?;
 
             match review {
                 Some(review_decision) => {
@@ -193,17 +193,17 @@ mod tests {
         assert!(true);
     }
 
-    #[test]
-    fn test_detect_scope_drift() {
+    #[tokio::test]
+    async fn test_detect_scope_drift() {
         // Test drift detection
         let output_with_drift = "This implementation includes out of scope features";
-        assert!(PolicyService::detect_scope_drift("wf1", "task1", output_with_drift).is_some());
+        assert!(PolicyService::detect_scope_drift("wf1", "task1", output_with_drift).await.is_some());
 
         let output_normal = "This is a normal implementation";
-        assert!(PolicyService::detect_scope_drift("wf1", "task1", output_normal).is_none());
+        assert!(PolicyService::detect_scope_drift("wf1", "task1", output_normal).await.is_none());
 
         // Test length-based drift
         let long_output = "word ".repeat(6000);
-        assert!(PolicyService::detect_scope_drift("wf1", "task1", &long_output).is_some());
+        assert!(PolicyService::detect_scope_drift("wf1", "task1", &long_output).await.is_some());
     }
 }

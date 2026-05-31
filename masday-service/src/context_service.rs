@@ -2,9 +2,9 @@
 //!
 //! Builds context packs for tasks and computes fingerprints for context validation.
 
-use masaday_db::DbPool;
-use masaday_core::{AppError, Result};
-use masaday_db::repos::{TaskRepo, PlanRepo, MemoryRepo};
+use masday_db::DbPool;
+use masday_core::{AppError, Result};
+use masday_db::repos::{TaskRepo, PlanRepo, MemoryRepo};
 use tracing::{debug, info};
 
 /// Context service
@@ -57,7 +57,7 @@ impl ContextService {
         // Get related memories (workflow context)
         let memories = service
             .memory_repo
-            .recall_by_workflow(workflow_id, 10)
+            .recall_by_workflow(workflow_id)
             .await
             .unwrap_or_default();
 

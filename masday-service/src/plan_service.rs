@@ -2,10 +2,10 @@
 //!
 //! Manages workflow plans including creation, retrieval, and status updates.
 
-use masaday_db::DbPool;
-use masaday_core::{AppError, Result};
-use masaday_db::repos::PlanRepo;
-use masaday_db::schema::{NewPlan, Plan};
+use masday_db::DbPool;
+use masday_core::{AppError, Result};
+use masday_db::repos::PlanRepo;
+use masday_db::schema::{NewPlan, Plan};
 use tracing::{debug, info};
 
 /// Plan service
