@@ -3,9 +3,9 @@
 //! Provides validation functions for workflow execution and completion,
 //! plus basic scope drift detection using keyword analysis.
 
-use masday_db::DbPool;
 use masday_core::{AppError, Result};
-use masday_db::repos::{TaskRepo, ReviewRepo};
+use masday_db::repos::{ReviewRepo, TaskRepo};
+use masday_db::DbPool;
 use tracing::{debug, info};
 
 /// Policy service
@@ -190,20 +190,32 @@ mod tests {
 
     #[test]
     fn test_validate() {
-        assert!(true);
+        // Placeholder test
     }
 
     #[tokio::test]
     async fn test_detect_scope_drift() {
         // Test drift detection
         let output_with_drift = "This implementation includes out of scope features";
-        assert!(PolicyService::detect_scope_drift("wf1", "task1", output_with_drift).await.is_some());
+        assert!(
+            PolicyService::detect_scope_drift("wf1", "task1", output_with_drift)
+                .await
+                .is_some()
+        );
 
         let output_normal = "This is a normal implementation";
-        assert!(PolicyService::detect_scope_drift("wf1", "task1", output_normal).await.is_none());
+        assert!(
+            PolicyService::detect_scope_drift("wf1", "task1", output_normal)
+                .await
+                .is_none()
+        );
 
         // Test length-based drift
         let long_output = "word ".repeat(6000);
-        assert!(PolicyService::detect_scope_drift("wf1", "task1", &long_output).await.is_some());
+        assert!(
+            PolicyService::detect_scope_drift("wf1", "task1", &long_output)
+                .await
+                .is_some()
+        );
     }
 }

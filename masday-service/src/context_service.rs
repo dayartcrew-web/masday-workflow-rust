@@ -2,9 +2,9 @@
 //!
 //! Builds context packs for tasks and computes fingerprints for context validation.
 
-use masday_db::DbPool;
 use masday_core::{AppError, Result};
-use masday_db::repos::{TaskRepo, PlanRepo, MemoryRepo};
+use masday_db::repos::{MemoryRepo, PlanRepo, TaskRepo};
+use masday_db::DbPool;
 use tracing::{debug, info};
 
 /// Context service
@@ -51,13 +51,16 @@ impl ContextService {
         let task = service.task_repo.get_by_id(task_id).await?;
 
         // Get plan details
-        let plan = service.plan_repo.get_by_workflow(workflow_id).await?
+        let plan = service
+            .plan_repo
+            .get_by_workflow(workflow_id)
+            .await?
             .ok_or_else(|| AppError::not_found("Plan", workflow_id))?;
 
-        // Get related memories (workflow context)
+        // Get related memories (workflow context, bounded to 100)
         let memories = service
             .memory_repo
-            .recall_by_workflow(workflow_id)
+            .recall_by_workflow(workflow_id, 100)
             .await
             .unwrap_or_default();
 
@@ -111,8 +114,8 @@ impl ContextService {
         let fingerprint_data = format!("{}:{}:{}", workflow_id, plan_id, task_id);
 
         // Simple hash using std::collections::hash_map::DefaultHasher
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         fingerprint_data.hash(&mut hasher);
@@ -141,6 +144,6 @@ mod tests {
 
     #[test]
     fn test_validate() {
-        assert!(true);
+        // Placeholder test
     }
 }

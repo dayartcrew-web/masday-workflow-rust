@@ -1,99 +1,107 @@
-# masday-workflow-rebuild
+# masday-workflow-rust
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![pnpm](https://img.shields.io/badge/pnpm-9.0-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
-[![MCP](https://img.shields.io/badge/MCP-1.29-green?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMiAydjIwTTIgMTJoMjAiLz48L3N2Zz4=)](https://modelcontextprotocol.io/)
+[![Rust](https://img.shields.io/badge/Rust-1.85-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![MCP](https://img.shields.io/badge/MCP-1.29-green?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMiAydjIwTTIgMTJoMjAiLz48L3N2Zz4=)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Unified AI coding agent platform built on Model Context Protocol (MCP).
+**Unified AI coding agent platform built on Model Context Protocol (MCP) — Rust Implementation**
 
-Merges the best of two projects:
-- **msd-mcp** -- Official MCP SDK, 5 domain servers, Drizzle/PostgreSQL persistence
-- **masday-workflow-reborn** -- 4-layer memory, 3-tier workflow engine, code skills, agent dispatch
+> **Migration Status:** Complete. Backend migrated from TypeScript to Rust. Frontend remains Next.js.
 
-The result is a modular monorepo of 13 packages and a single unified MCP server exposing 89 tools over stdio to any MCP-compatible client.
+This is the Rust implementation of masday-workflow, providing a robust, type-safe backend with the MCP protocol. The project combines a multi-agent workflow system with 4-layer memory (working, episodic, long-term, graph) and exposes MCP tools for AI agents.
 
 ---
 
 ## Quick Start
 
-```bash
-# Install dependencies
-pnpm install
+### Prerequisites
 
-# Generate Drizzle client (drizzle-kit)
-pnpm db:generate
+- **Rust** 1.85+ ([install](https://rustup.rs/))
+- **PostgreSQL** 16 with pgvector
+- **pnpm** 9+ (for Next.js dashboard)
 
-# Set up pgvector columns and indexes (PostgreSQL only)
-pnpm db:pgvector
-
-# Build all packages (Turbo)
-pnpm build
-
-# Start the unified MCP server (all 87 tools)
-npx tsx apps/agent-runner/src/runtime/mcp.ts
-```
-
-### Docker (PostgreSQL + pgvector)
+### Setup
 
 ```bash
+# Clone and setup
+git clone <repo-url>
+cd masday-workflow-rust
+bash scripts/setup.sh
+
+# Start infrastructure (PostgreSQL + pgvector)
 docker-compose up -d
-```
 
-This starts a PostgreSQL 16 instance with pgvector on port 5432. See [Configuration](#configuration) for connection details.
+# Configure environment
+cp .env.example .env
+# Edit .env with your DATABASE_URL
+
+# Build Rust crates
+cargo build --workspace
+
+# Run MCP server (exposes tools via stdio)
+cargo run -p masday-mcp
+
+# Run API server (REST endpoints)
+cargo run -p masday-api
+
+# Run dashboard (Next.js frontend)
+cd apps/dashboard
+pnpm dev
+```
 
 ---
 
 ## Architecture
 
+### MVC Layer Structure
+
 ```
-  User Input
-      |
-      v
- +-------------+                +------------------+
- |   Client     | ------------> |   MCP Server      |
- | (Dashboard/  |   stdio       |  (87 tools)       |
- |  CLI/MCP)    |               +--------+----------+
- +-------------+                         |
-                                        v
-                            +-----------------------+
-                            |    WORKFLOW ENGINE     |
-                            |                       |
-                            |  Pure functions (msd) |
-                            |  + State machine (reborn) |
-                            |  + Session/Review/Parallel |
-                            +-----------+-----------+
-                                        |
-                   +--------------------+--------------------+
-                   |                    |                    |
-                   v                    v                    v
-          +--------------+     +--------------+     +--------------+
-          |   MEMORY     |     | INTELLIGENCE |     |   POLICY     |
-          |  4-layer     |     | Search/Index |     | Validators   |
-          |  (w/e/l/g)   |     | ReAct Agent  |     | Audit/Drift  |
-          +--------------+     +--------------+     +--------------+
+┌──────────────┐     ┌──────────────┐     ┌─────────────┐
+│  MCP Client  │────>│  Rust API    │────>│  PostgreSQL │
+│  (Claude/etc)│ HTTP│  (Axum)      │ sqlx│             │
+└──────────────┘     │              │     └─────────────┘
+                     │  ┌────────┐  │
+┌──────────────┐     │  │Service │  │     ┌─────────────┐
+│  Dashboard   │────>│  │ Layer  │  │────>│ Redis Cache │
+│  (Next.js)   │ HTTP│  └────────┘  │     └─────────────┘
+└──────────────┘     │  ┌────────┐  │
+                     │  │Repo    │  │     ┌─────────────┐
+                     │  │ Layer  │  │────>│  Vector DB  │
+                     │  └────────┘  │     │  (pgvector) │
+                     └──────────────┘     └─────────────┘
 ```
+
+### Rust Crates
+
+| Crate | Description |
+|-------|-------------|
+| **masday-core** | Shared types, errors, constants |
+| **masday-db** | Repository layer (sqlx, PostgreSQL, deadpool) |
+| **masday-service** | Business logic (workflow, memory, policy, capability) |
+| **masday-api** | HTTP API layer (Axum, REST endpoints) |
+| **masday-mcp** | MCP server (stdio protocol, 89 tools) |
+| **masday-cli** | Command-line interface |
 
 ### Memory Stack
 
 ```
   +----------------------------------------------------------+
   |                   WORKING MEMORY                         |
-  |              In-process RAM, per session                  |
+  |              In-process RAM, per session                 |
   +----------------------------------------------------------+
-                            |
+                           |
   +----------------------------------------------------------+
   |                  EPISODIC MEMORY                         |
-  |            Last N messages per session                    |
+  |            Last N messages per session                   |
   +----------------------------------------------------------+
-                            |
+                           |
   +----------------------------------------------------------+
   |                 LONG-TERM MEMORY                         |
   |   Scoring: similarity*0.6 + importance*0.2               |
-  |            + recency*0.1 + usage*0.1                      |
+  |            + recency*0.1 + usage*0.1                     |
   +----------------------------------------------------------+
-                            |
+                           |
   +----------------------------------------------------------+
   |                 KNOWLEDGE GRAPH                          |
   |             Nodes & edges, auto-linked                   |
@@ -115,148 +123,71 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 ---
 
-## Packages (13)
+## MCP Tools (89 tools across 16 namespaces)
 
-| Package | Scope | Description |
-|---------|-------|-------------|
-| `packages/core` | `@mcp-rebuild/core` | Shared types, logger, EventBus, tracing, metrics |
-| `packages/shared-utils` | `@mcp-rebuild/shared-utils` | Logger, IDs, hash, env utilities (from msd-mcp) |
-| `packages/db` | `@mcp-rebuild/db` | Drizzle schema (16 models + pgvector), client singleton |
-| `packages/store` | `@mcp-rebuild/store` | StorageBackend, SQLite, JSON, Drizzle adapters |
-| `packages/llm` | `@mcp-rebuild/llm` | Multi-provider LLM (Anthropic, OpenAI, Custom), circuit breaker |
-| `packages/memory` | `@mcp-rebuild/memory` | 4-layer memory (working, episodic, long-term, graph), scoring, BM25 |
-| `packages/workflow-engine` | `@mcp-rebuild/workflow-engine` | Pure functions + state machine, DAG, session, review, parallel, drift |
-| `packages/intelligence` | `@mcp-rebuild/intelligence` | SemanticSearcher, CodeIndexer, ReAct agent, Guardrails |
-| `packages/policy` | `@mcp-rebuild/policy` | PolicyValidator, WorkflowAuditor, drift detection |
-| `packages/capability` | `@mcp-rebuild/capability` | Registry, Scaffolder, SystemHealth |
-| `packages/code-skills` | `@mcp-rebuild/code-skills` | Git, tests, npm, code, docker, github, CI/CD (plain functions + Zod) |
-| `packages/project-rules` | `@mcp-rebuild/project-rules` | Refactor rules engine, 14 automated checks, checklist validator |
-| `packages/cli` | `@mcp-rebuild/cli` | CLI entry point + setup templates |
+The `masday-mcp` crate exposes 89 MCP tools via stdio. Each tool corresponds to an HTTP endpoint in `masday-api`.
 
----
+### Tool Namespaces
 
-## MCP Server
-
-| App | Tools | Description |
-|-----|-------|-------------|
-| `apps/agent-runner` | 89 | Unified MCP server, all namespaces, DualWriteStore + PostgreSQL |
-
-### Tool Namespaces (87 tools)
-
-| Namespace | Tools | Implementation |
-|-----------|-------|----------------|
-| workflow | 23 | DualWriteStore + OrchestratingEngine (PostgreSQL real-time replication) |
-| memory | 11 | Drizzle-first with JSON cache fallback (hybrid mode) |
-| semantic-search | 3 | Context pack, fingerprinting, code search |
-| policy | 6 | Real Drizzle validation (workflow status, review decisions, branch status, fingerprints) |
-| capability | 11 | Real `.claude/` directory reads with frontmatter parsing |
-| filesystem | 5 | Real fs.readFileSync / writeFileSync / readdirSync / unlinkSync / statSync |
-| review | 2 | Real Drizzle writes to ReviewDecision table |
-| session | 3 | Real Drizzle reads/writes to SessionState table |
-| local | 4 | File-based `.masday/` state dir + Drizzle sync/push |
-| git | 3 | Real `execSync` calls to git CLI |
-| npm | 2 | Real `execSync` calls to pnpm CLI |
-| docker | 3 | Real `execSync` calls to docker CLI |
-| cicd | 3 | Real `execSync` calls to `gh` CLI |
-| github | 3 | Real `execSync` calls to `gh` CLI |
-| tests | 1 | Real `execSync` calls to pnpm test runner |
-| reminder | 3 | Stale/stuck workflow detection, reminder listing, acknowledgment (Drizzle WorkflowReminder table) |
-| projectRules | 1 | Refactor rules validation (14 checks: naming, patterns, tools, docs, TypeScript, security, imports) |
-| use_masday | 1 | Universal entry point — parses any user instruction, returns routing plan (intent, skill, agent, complexity) |
-
-### MCP Pattern
-
-Uses official `McpServer` from `@modelcontextprotocol/sdk` with DualWriteStore for PostgreSQL persistence:
-
-```typescript
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { DualWriteWorkflowStore, setDualWriteDb } from "@mcp-rebuild/store";
-import { setDbClient as setTokenDb, trackTokens } from "@mcp-rebuild/core";
-import { setEpisodicDb, setGraphDb } from "@mcp-rebuild/memory";
-import { saveProgress as saveProgressDb, logRetrieval } from "@mcp-rebuild/workflow-engine";
-
-const server = new McpServer({ name: "masday", version: "0.1.0" });
-const db = drizzle(connectionString);
-// After Drizzle connects:
-setDualWriteDb(db);
-setTokenDb(db);
-setEpisodicDb(db);
-setGraphDb(db);
-```
-
-### Persistence
-
-All 16 Drizzle tables are actively populated via DualWriteStore pattern:
-
-| Table | Wired Via | Trigger |
-|-------|-----------|---------|
-| Workflow | DualWriteStore | workflow.create, execute, delete |
-| Task | DualWriteStore | addTask, startTask, completeTask |
-| Plan | DualWriteStore | createPlan |
-| Memory | persistToDb() | memory.store, store_research |
-| ReviewDecision | Drizzle direct | review.submit |
-| SessionState | Drizzle direct | session.patch_state |
-| ParallelBranch | Drizzle direct | workflow.createParallelBranches |
-| ContextDocument | Drizzle direct | memory.store_research |
-| TaskProgressLog | saveProgressDb() | workflow.saveProgress |
-| RetrievalLog | logRetrieval() | memory.search, semantic-search.code_search, search_hybrid_context_pack |
-| TokenUsage | trackTokens() | workflow.saveProgress, memory.store_research |
-| EpisodicMemory | setEpisodicDb() | EpisodicMemory.add() |
-| GraphNode | setGraphDb() | GraphStore.addNode() |
-| GraphEdge | setGraphDb() | GraphStore.addEdge() |
-| WorkflowReminder | setReminderDb() | reminder.check |
-| LlmProviderConfig | Drizzle direct | LLM provider configuration storage |
-
-Status values are ALL UPPERCASE in PostgreSQL:
-- Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
-- Task: PENDING, RUNNING, DONE, FAILED
-- Plan: ACTIVE, PENDING, READY, DONE
-- Review: APPROVED, REWORK_REQUIRED, BLOCKED
-
-### Starting the Server
-
-```bash
-# Unified MCP server (all 89 tools)
-npx tsx apps/agent-runner/src/runtime/mcp.ts
-```
-
----
-
-## Platform Support
-
-| Platform | Agents | Skills | MCP Config |
-|----------|--------|--------|------------|
-| **Claude Code** | `.claude/agents/*.md` | `.claude/skills/*/SKILL.md` | `.claude/settings.json` |
-| **Codex CLI** | `.agents/agents/*.toml` | `.agents/skills/*/SKILL.md` | `.codex/config.toml` |
-| **Gemini CLI** | `.gemini/agents/` | `.gemini/skills/` | `.gemini/settings.json` |
-| **Continue** | `.continue/agents/` | `.continue/skills/` | `.continue/config.json` |
-| **GitHub Copilot** | N/A | N/A | `.github/copilot.yml` |
-
-Run the setup script to install to all platforms:
-
-```bash
-bash scripts/setup.sh
-```
+| Namespace | Tools | Description |
+|-----------|-------|-------------|
+| **workflow** | 23 | Workflow lifecycle, tasks, plans, parallel branches |
+| **memory** | 11 | 4-layer memory (working, episodic, long-term, graph) |
+| **semantic-search** | 3 | Context packs, code search, fingerprinting |
+| **policy** | 6 | Validation, drift detection, workflow audit |
+| **capability** | 11 | Agent/skill registry, system health, scaffolding |
+| **filesystem** | 5 | File operations (read, write, list, delete) |
+| **review** | 2 | Review submission, decision tracking |
+| **session** | 3 | Session state management |
+| **local** | 4 | Local file-based state (.masday/) |
+| **git** | 3 | Git operations |
+| **npm** | 2 | Package manager operations |
+| **docker** | 3 | Docker operations |
+| **cicd** | 3 | CI/CD operations |
+| **github** | 3 | GitHub operations |
+| **tests** | 1 | Test runner |
+| **reminder** | 3 | Stale/stuck workflow detection |
 
 ---
 
 ## Commands Reference
 
-| Command | Description |
-|---------|-------------|
-| `pnpm install` | Install all dependencies |
-| `pnpm build` | Build all packages (Turbo, cached) |
-| `pnpm dev` | Start all packages in dev mode (parallel) |
-| `pnpm test` | Run tests (Vitest) |
-| `pnpm test:watch` | Run tests in watch mode |
-| `pnpm test:coverage` | Run tests with coverage report |
-| `pnpm lint` | Run type checking across all packages |
-| `pnpm typecheck` | Alias for lint |
-| `pnpm db:generate` | Generate Drizzle client from schema (drizzle-kit) |
-| `pnpm db:push` | Push schema to database (drizzle-kit push) |
-| `docker-compose up -d` | Start PostgreSQL + pgvector |
+### Rust Commands
+
+```bash
+# Build
+cargo build --workspace              # Build all crates
+cargo build --release               # Optimized release build
+cargo build -p masday-mcp           # Build specific crate
+
+# Run
+cargo run -p masday-mcp             # Start MCP server
+cargo run -p masday-api             # Start API server
+cargo run -p masday-cli             # Run CLI
+
+# Test
+cargo test --workspace              # Run all tests
+cargo test -p masday-service        # Test specific crate
+cargo test -- --nocapture          # Show test output
+
+# Lint
+cargo clippy --workspace -- -D warnings  # Lint with warnings as errors
+cargo fmt --all                     # Format code
+cargo fmt --all -- --check         # Check formatting
+
+# Clean
+cargo clean                         # Remove build artifacts
+```
+
+### Dashboard Commands
+
+```bash
+cd apps/dashboard
+pnpm dev                            # Start dev server
+pnpm build                          # Build for production
+pnpm start                          # Start production server
+pnpm lint                           # Lint code
+```
 
 ---
 
@@ -269,30 +200,72 @@ Create a `.env` file in the project root:
 ```env
 # Database
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/masday_workflow?schema=public"
-EMBEDDING_PROVIDER="fastembed"   # fastembed | ollama | openai
-EMBEDDING_MODEL="BGEBaseENV15"
-EMBEDDING_DIMENSIONS=768
+POSTGRES_HOST="localhost"
+POSTGRES_PORT="5432"
+POSTGRES_USER="postgres"
+POSTGRES_PASSWORD="postgres"
+POSTGRES_DB="masday_workflow"
 
-# LLM Providers (optional, per-provider)
-ANTHROPIC_API_KEY="sk-ant-..."
-OPENAI_API_KEY="sk-..."
+# Redis (optional, for caching)
+REDIS_URL="redis://localhost:6379"
+
+# API
+API_PORT="8080"
+API_HOST="0.0.0.0"
+
+# MCP
+RUST_LOG="info"                    # debug, info, warn, error
+RUST_BACKTRACE="1"                # Enable backtrace on panic
+
+# Embeddings (optional, for semantic search)
+EMBEDDING_PROVIDER="ollama"        # ollama | openai
+EMBEDDING_MODEL="nomic-embed-text"
 OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
-### Database
+### MCP Configuration
 
-The project uses Drizzle ORM with PostgreSQL and pgvector. The schema is at `packages/db/src/schema.ts` and includes 16 models with pgvector support for semantic search.
+The `scripts/setup.sh` script generates MCP configuration files for different platforms:
+
+- **Claude Code**: `.mcp.json`
+- **Gemini CLI**: `.gemini/settings.json`
+- **VS Code Copilot**: `.vscode/mcp.json`
+
+All configurations point to the Rust MCP binary: `target/debug/masday-mcp` (or `target/release/masday-mcp` for release builds).
+
+---
+
+## Database
+
+### PostgreSQL + pgvector
+
+The project uses PostgreSQL 16 with pgvector for semantic search.
 
 ```bash
-# Start the database
+# Start PostgreSQL with pgvector
 docker-compose up -d
 
-# Generate the Drizzle client
-pnpm db:generate
+# Run migrations (if using migrations)
+cargo run -p masday-db -- migrate
 
-# Push schema (development)
-pnpm db:push
+# Or use SQLx auto-migration (development)
+# sqlx-cli will create tables on first run
 ```
+
+### Schema
+
+The database schema is defined in `masday-db/src/schema.rs` using sqlx compile-time checked queries. Key tables:
+
+- `workflows` — Workflow instances
+- `tasks` — Task instances
+- `plans` — Workflow plans
+- `memories` — Long-term memories
+- `episodic_memories` — Episodic memories
+- `graph_nodes` / `graph_edges` — Knowledge graph
+- `review_decisions` — Review decisions
+- `session_states` — Session state
+- `workflow_reminders` — Stale/stuck reminders
+- `parallel_branches` — Parallel execution branches
 
 ---
 
@@ -300,14 +273,114 @@ pnpm db:push
 
 | Layer | Technology |
 |-------|-----------|
-| Language | TypeScript (strict mode, ESM modules) |
-| Runtime | Node.js with `tsx` for TypeScript execution |
-| Database | PostgreSQL 16 + pgvector (via Drizzle ORM) |
-| Protocol | Model Context Protocol (MCP) over stdio |
-| Validation | Zod schemas for all inputs |
-| Logging | Pino structured logging |
-| Build | Turborepo with pnpm workspaces |
-| Testing | Vitest with globals enabled |
+| **Language** | Rust (2021 edition) |
+| **Runtime** | Tokio async runtime |
+| **Database** | PostgreSQL 16 + pgvector (via sqlx) |
+| **API** | Axum (REST HTTP) |
+| **Protocol** | Model Context Protocol (MCP) over stdio |
+| **Cache** | Redis (optional) |
+| **Frontend** | Next.js 16, React 19, Zustand |
+| **Validation** | Serde + custom validators |
+| **Logging** | tracing |
+| **Testing** | built-in `cargo test` |
+
+---
+
+## Development Workflow
+
+### Adding New MCP Tools
+
+1. **Define types** in `masday-core/src/types.rs`
+2. **Add repository methods** in `masday-db/src/repos/`
+3. **Add service logic** in `masday-service/src/`
+4. **Add HTTP endpoint** in `masday-api/src/routes/`
+5. **Add MCP tool handler** in `masday-mcp/src/tools/`
+6. **Register tool** in `masday-mcp/src/main.rs`
+7. **Add tests** in each crate's `tests/` module
+
+### Running Tests
+
+```bash
+# Unit tests (all crates)
+cargo test --workspace
+
+# Integration tests
+cargo test --workspace --test '*_integration'
+
+# With output
+cargo test --workspace -- --nocapture
+
+# Specific test
+cargo test -p masday-service test_workflow_create
+```
+
+### Linting and Formatting
+
+```bash
+# Format all code
+cargo fmt --all
+
+# Check formatting (CI)
+cargo fmt --all -- --check
+
+# Lint with clippy
+cargo clippy --workspace -- -D warnings
+
+# Fix clippy warnings
+cargo clippy --workspace --fix
+```
+
+---
+
+## Platform Support
+
+| Platform | Agents | Skills | MCP Config | Location |
+|----------|--------|--------|------------|----------|
+| **Claude Code** | `.claude/agents/*.md` | `.claude/skills/*/SKILL.md` | `.mcp.json` | Project root |
+| **Gemini CLI** | `.gemini/agents/` | `.gemini/skills/` | `.gemini/settings.json` | `~/.gemini/` |
+| **VS Code Copilot** | `.github/agents/` | N/A | `.vscode/mcp.json` | Project root |
+| **OpenCode** | `.opencode/agent/` | `.opencode/skills/` | Custom | `~/.config/opencode/` |
+
+Run `bash scripts/setup.sh` to install to all platforms.
+
+---
+
+## Migration from TypeScript
+
+This project was migrated from a TypeScript monorepo to Rust. The migration is **complete**:
+
+### Removed (TypeScript)
+
+- ❌ `packages/*` (13 TypeScript packages)
+- ❌ `apps/agent-runner` (TypeScript MCP server)
+- ❌ `apps/api` (Express API)
+- ❌ `apps/desktop` (Electron desktop app)
+- ❌ `pnpm-workspace.yaml` (multi-package workspace)
+- ❌ `turbo.json` (Turborepo build)
+- ❌ `vitest.config.ts` (Vitest tests)
+
+### Replaced by Rust
+
+- ✅ `masday-core` — replaces `packages/core`, `packages/shared-utils`
+- ✅ `masday-db` — replaces `packages/db`, `packages/store`
+- ✅ `masday-service` — replaces `packages/workflow-engine`, `packages/memory`, `packages/policy`, etc.
+- ✅ `masday-api` — replaces `apps/api` (Express)
+- ✅ `masday-mcp` — replaces `apps/agent-runner` (MCP server)
+- ✅ `masday-cli` — replaces `packages/cli`
+
+### Kept (TypeScript)
+
+- 🟡 `apps/dashboard` — Next.js frontend (still actively used)
+
+### Migration Benefits
+
+| Benefit | TypeScript → Rust |
+|---------|-------------------|
+| **Type Safety** | Runtime type errors → Compile-time guarantees |
+| **Performance** | Single-threaded event loop → Multi-core Tokio |
+| **Database** | Drizzle runtime checks → sqlx compile-time checks |
+| **Memory** | JSON fallback → Proper API error handling |
+| **Connections** | Stale connections → deadpool with health checks |
 
 ---
 
@@ -315,81 +388,97 @@ pnpm db:push
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Follow project conventions:
-   - TypeScript strict mode
-   - ESM modules with `.js` import extensions
-   - Zod for all validation
-   - Functions under 50 lines, files under 400 lines
-   - No `any` types
-4. Write tests (Vitest, 80%+ coverage)
-5. Run `pnpm build && pnpm test`
-6. Submit a pull request
+3. Follow Rust conventions:
+   - `cargo fmt` must pass
+   - `cargo clippy` must pass with no warnings
+   - Write tests (`cargo test`)
+   - Keep functions under 50 lines
+   - Use `Result<T, E>` for error handling
+4. Submit a pull request
 
 ### Conventions
 
-- **Module system**: ESM (`"type": "module"`, NodeNext resolution)
-- **Imports**: All relative imports use `.js` extensions
-- **Validation**: Zod schemas for all inputs
-- **Logging**: Pino structured logging
-- **Events**: EventBus for pub/sub
-- **IDs**: UUID for workflow/task IDs
-- **Data**: Immutable patterns (spread operators, never mutate)
-- **Tools**: Handler format `async (args) => ({content: [{type: "text", text: JSON.stringify(result)}]})`
-- **Code skills**: Plain async functions (not class-based)
-- **Naming**: Tool names use camelCase dot-namespaced format: `workflow.getActive`, `memory.store`
-- **MCP SDK**: Resolves dots to underscores: `mcp__masday__workflow_getActive`
-- **Status**: ALL UPPERCASE in PostgreSQL
-- **Package scope**: All packages use `@mcp-rebuild/*`
+- **Naming**: `snake_case` for functions/modules, `PascalCase` for types
+- **Error Handling**: `thiserror` for library errors, `anyhow` for app errors
+- **Async**: Use `tokio` runtime, `#[tokio::test]` for async tests
+- **Database**: sqlx compile-time checked queries only
+- **Serialization**: `serde` derive for all types crossing boundaries
 
 ---
 
-## Credits
+## Troubleshooting
 
-This project is built on top of outstanding open source software.
+### Build Errors
 
-### Core Platform
+```bash
+# Clear build cache
+cargo clean
 
-| Project | Description | GitHub |
-|---------|-------------|--------|
-| **Model Context Protocol** | MCP specification and SDK | [modelcontextprotocol](https://github.com/modelcontextprotocol) |
-| **TypeScript** | Type-safe JavaScript | [microsoft/TypeScript](https://github.com/microsoft/TypeScript) |
-| **Node.js** | JavaScript runtime | [nodejs/node](https://github.com/nodejs/node) |
-| **pnpm** | Fast, disk-efficient package manager | [pnpm/pnpm](https://github.com/pnpm/pnpm) |
-| **Turborepo** | High-performance monorepo build system | [vercel/turborepo](https://github.com/vercel/turborepo) |
+# Update dependencies
+cargo update
 
-### Database & ORM
+# Check Rust version
+rustc --version  # Should be 1.85+
+```
 
-| Project | Description | GitHub |
-|---------|-------------|--------|
-| **Drizzle ORM** | Headless TypeScript ORM with SQL-like syntax | [drizzle-team/drizzle-orm](https://github.com/drizzle-team/drizzle-orm) |
-| **PostgreSQL** | Advanced open source database | [postgres/postgres](https://github.com/postgres/postgres) |
-| **pgvector** | Vector similarity search for PostgreSQL | [pgvector/pgvector](https://github.com/pgvector/pgvector) |
-| **better-sqlite3** | SQLite3 bindings for Node.js | [WiseLibs/better-sqlite3](https://github.com/WiseLibs/better-sqlite3) |
+### Database Connection
 
-### Validation & Logging
+```bash
+# Check PostgreSQL is running
+docker-compose ps
 
-| Project | Description | GitHub |
-|---------|-------------|--------|
-| **Zod** | TypeScript-first schema validation | [colinhacks/zod](https://github.com/colinhacks/zod) |
-| **Pino** | Low-overhead Node.js logger | [pinojs/pino](https://github.com/pinojs/pino) |
-| **EventEmitter3** | High-performance event emitter | [primus/eventemitter3](https://github.com/primus/eventemitter3) |
+# Check DATABASE_URL in .env
+echo $DATABASE_URL
 
-### Testing & Tooling
+# Test connection
+psql $DATABASE_URL
+```
 
-| Project | Description | GitHub |
-|---------|-------------|--------|
-| **Vitest** | Blazing fast Vite-native unit test framework | [vitest-dev/vitest](https://github.com/vitest-dev/vitest) |
-| **tsx** | TypeScript Execute for Node.js | [privatenumber/tsx](https://github.com/privatenumber/tsx) |
-| **fastembed** | Lightweight, fast embedding generation (npm: [fastembed](https://www.npmjs.com/package/fastembed)) | [Anush008/fastembed-js](https://github.com/Anush008/fastembed-js) |
+### MCP Server Not Starting
 
-### Utilities
+```bash
+# Check binary exists
+ls -la target/debug/masday-mcp
 
-| Project | Description | GitHub |
-|---------|-------------|--------|
-| **uuid** | RFC4122 UUID generation for JavaScript | [uuidjs/uuid](https://github.com/uuidjs/uuid) |
+# Build if missing
+cargo build -p masday-mcp
+
+# Check logs
+RUST_LOG=debug cargo run -p masday-mcp
+```
 
 ---
 
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)
+
+---
+
+## Credits
+
+Built on top of outstanding open source software:
+
+### Core
+
+- **Rust** — Systems programming language
+- **Tokio** — Async runtime
+- **Axum** — Web framework
+- **sqlx** — Database toolkit
+- **Serde** — Serialization framework
+
+### Database
+
+- **PostgreSQL** — Advanced database
+- **pgvector** — Vector similarity search
+- **deadpool** — Connection pool
+
+### Protocol
+
+- **Model Context Protocol** — Agent communication standard
+
+### Frontend
+
+- **Next.js** — React framework
+- **Zustand** — State management
+- **Tailwind CSS** — Styling

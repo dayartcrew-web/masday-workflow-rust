@@ -1,41 +1,44 @@
 //! Policy MCP tools - HTTP client calls to API
 
-use reqwest::Client;
+use crate::client;
 use serde_json::Value;
 
-/// Validate completion via HTTP
-pub async fn policy_validate_completion(workflow_id: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "dev-key".to_string());
-
-    let response = client
-        .post(&format!("{}/api/policy/validate", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&serde_json::json!({"workflow_id": workflow_id}))
-        .send()
-        .await?;
-
-    let result: Value = response.json().await?;
-    Ok(result)
+pub async fn policy_check_session_readiness(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/policy/session-readiness", args).await
 }
 
-/// Detect drift via HTTP
-pub async fn policy_detect_drift(workflow_id: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "dev-key".to_string());
+pub async fn policy_validate_completion(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/policy/validate", args).await
+}
 
-    let response = client
-        .get(&format!("{}/api/policy/drift/{}", api_url, workflow_id))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
+pub async fn policy_validate_execution(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/policy/validate-execution", args).await
+}
 
-    let result: Value = response.json().await?;
-    Ok(result)
+pub async fn policy_validate_parallel_completion(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/policy/validate-parallel", args).await
+}
+
+pub async fn policy_detect_scope_drift(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let workflow_id = args
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing workflow_id".to_string())?;
+    client::api_get(&format!("/api/policy/drift/{}", workflow_id)).await
+}
+
+pub async fn policy_require_context_refresh(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/policy/context-refresh", args).await
 }

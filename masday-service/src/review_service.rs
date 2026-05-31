@@ -2,10 +2,10 @@
 //!
 //! Manages code review submissions and decisions with gap analysis.
 
-use masday_db::DbPool;
 use masday_core::{AppError, Result};
 use masday_db::repos::ReviewRepo;
 use masday_db::schema::{NewReviewDecision, ReviewDecision};
+use masday_db::DbPool;
 use tracing::{debug, info};
 
 /// Review service
@@ -52,7 +52,10 @@ impl ReviewService {
 
         // Validate decision format
         let decision_upper = decision.to_uppercase();
-        if !matches!(decision_upper.as_str(), "APPROVED" | "REWORK_REQUIRED" | "BLOCKED") {
+        if !matches!(
+            decision_upper.as_str(),
+            "APPROVED" | "REWORK_REQUIRED" | "BLOCKED"
+        ) {
             return Err(AppError::validation(format!(
                 "Invalid review decision: {}",
                 decision
@@ -84,10 +87,7 @@ impl ReviewService {
     ///
     /// # Returns
     /// * `Result<Option<ReviewDecision>>` - The latest review if any
-    pub async fn get_latest_review(
-        pool: &DbPool,
-        task_id: &str,
-    ) -> Result<Option<ReviewDecision>> {
+    pub async fn get_latest_review(pool: &DbPool, task_id: &str) -> Result<Option<ReviewDecision>> {
         debug!("Getting latest review for task {}", task_id);
 
         let service = Self::new(pool.clone());
@@ -112,10 +112,8 @@ impl ReviewService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_validate() {
-        assert!(true);
+        // Placeholder test
     }
 }

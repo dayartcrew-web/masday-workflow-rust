@@ -1,40 +1,32 @@
-//! Context MCP tools - HTTP client calls to API
+//! Context (Semantic Search) MCP tools - HTTP client calls to API
 
-use reqwest::Client;
+use crate::client;
+use serde_json::Value;
 
-/// Build context pack via HTTP
-pub async fn context_build_pack(workflow_id: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "dev-key".to_string());
-
-    let response = client
-        .get(&format!("{}/api/context/pack/{}", api_url, workflow_id))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn semantic_search_search_hybrid_context_pack(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/context/hybrid-search", args).await
 }
 
-/// Compute fingerprint via HTTP
-pub async fn context_compute_fingerprint(content: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "dev-key".to_string());
+pub async fn semantic_search_search_context_fingerprint(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/context/fingerprint-search", args).await
+}
 
-    let response = client
-        .post(&format!("{}/api/context/fingerprint", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&serde_json::json!({"content": content}))
-        .send()
-        .await?;
+pub async fn semantic_search_code_search(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let query = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing query".to_string())?;
+    client::api_get(&format!("/api/context/search?query={}", query)).await
+}
 
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn semantic_search_make_fingerprint(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/context/fingerprint", args).await
 }

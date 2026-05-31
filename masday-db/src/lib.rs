@@ -34,8 +34,8 @@
 //! ```
 
 pub mod pool;
-pub mod schema;
 pub mod repos;
+pub mod schema;
 
 // Re-export commonly used types
 pub use pool::DbPool;

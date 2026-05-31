@@ -2,10 +2,10 @@
 //!
 //! Manages workflow plans including creation, retrieval, and status updates.
 
-use masday_db::DbPool;
 use masday_core::{AppError, Result};
 use masday_db::repos::PlanRepo;
 use masday_db::schema::{NewPlan, Plan};
+use masday_db::DbPool;
 use tracing::{debug, info};
 
 /// Plan service
@@ -93,7 +93,10 @@ impl PlanService {
         let service = Self::new(pool.clone());
 
         // Get the plan first to obtain its ID
-        let plan = service.repo.get_by_workflow(workflow_id).await?
+        let plan = service
+            .repo
+            .get_by_workflow(workflow_id)
+            .await?
             .ok_or_else(|| AppError::not_found("Plan", workflow_id))?;
 
         // Update using the plan ID
@@ -103,10 +106,8 @@ impl PlanService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_validate() {
-        assert!(true);
+        // Placeholder test
     }
 }

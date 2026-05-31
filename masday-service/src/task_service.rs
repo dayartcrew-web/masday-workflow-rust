@@ -3,10 +3,10 @@
 //! Manages task creation, execution, and completion within workflows.
 //! All task state transitions are validated before being persisted.
 
-use masday_db::DbPool;
 use masday_core::{AppError, Result};
 use masday_db::repos::TaskRepo;
-use masday_db::schema::{NewTask, Task, TaskProgressLog, NewTaskProgressLog};
+use masday_db::schema::{NewTask, NewTaskProgressLog, Task, TaskProgressLog};
+use masday_db::DbPool;
 use tracing::{debug, info};
 
 /// Task service
@@ -47,11 +47,7 @@ impl TaskService {
         let service = Self::new(pool.clone());
 
         // Create metadata with dependencies if provided
-        let required_context = if let Some(deps) = dependencies {
-            Some(serde_json::json!({ "dependencies": deps }))
-        } else {
-            None
-        };
+        let required_context = dependencies.map(|deps| serde_json::json!({ "dependencies": deps }));
 
         let new_task = NewTask {
             workflow_id,
@@ -84,11 +80,7 @@ impl TaskService {
     ///
     /// # Returns
     /// * `Result<Task>` - The updated task
-    pub async fn start_task(
-        pool: &DbPool,
-        workflow_id: &str,
-        task_id: &str,
-    ) -> Result<Task> {
+    pub async fn start_task(pool: &DbPool, workflow_id: &str, task_id: &str) -> Result<Task> {
         info!("Starting task {} in workflow {}", task_id, workflow_id);
 
         let service = Self::new(pool.clone());
@@ -111,10 +103,7 @@ impl TaskService {
         }
 
         // Update task status
-        let updated_task = service
-            .repo
-            .update_status(task_id, "RUNNING")
-            .await?;
+        let updated_task = service.repo.update_status(task_id, "RUNNING").await?;
 
         debug!("Task {} transitioned to RUNNING", task_id);
         Ok(updated_task)
@@ -173,10 +162,7 @@ impl TaskService {
     ///
     /// # Returns
     /// * `Result<Option<Task>>` - The current task if any
-    pub async fn get_current_task(
-        pool: &DbPool,
-        workflow_id: &str,
-    ) -> Result<Option<Task>> {
+    pub async fn get_current_task(pool: &DbPool, workflow_id: &str) -> Result<Option<Task>> {
         debug!("Getting current task for workflow {}", workflow_id);
 
         let service = Self::new(pool.clone());
@@ -200,10 +186,7 @@ impl TaskService {
     ///
     /// # Returns
     /// * `Result<Vec<Task>>` - List of tasks
-    pub async fn list_tasks(
-        pool: &DbPool,
-        workflow_id: &str,
-    ) -> Result<Vec<Task>> {
+    pub async fn list_tasks(pool: &DbPool, workflow_id: &str) -> Result<Vec<Task>> {
         debug!("Listing tasks for workflow {}", workflow_id);
 
         let service = Self::new(pool.clone());
@@ -261,11 +244,8 @@ impl TaskService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_validate() {
         // Placeholder test
-        assert!(true);
     }
 }

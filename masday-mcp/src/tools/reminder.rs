@@ -1,39 +1,28 @@
 //! Reminder MCP tools - HTTP client calls to API
 
-use reqwest::Client;
+use crate::client;
+use serde_json::Value;
 
-/// Check stale workflows via HTTP
-pub async fn reminder_check_stale() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "dev-key".to_string());
-
-    let response = client
-        .get(&format!("{}/api/reminders/stale", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn reminder_check(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let stale = client::api_get("/api/reminders/stale").await?;
+    let stuck = client::api_get("/api/reminders/stuck").await?;
+    Ok(serde_json::json!({ "stale": stale, "stuck": stuck }))
 }
 
-/// Check stuck tasks via HTTP
-pub async fn reminder_check_stuck() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "dev-key".to_string());
+pub async fn reminder_list(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_get("/api/reminders/list").await
+}
 
-    let response = client
-        .get(&format!("{}/api/reminders/stuck", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn reminder_acknowledge(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let reminder_id = args
+        .get("reminder_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing reminder_id".to_string())?;
+    client::api_post(&format!("/api/reminders/{}/acknowledge", reminder_id), args).await
 }

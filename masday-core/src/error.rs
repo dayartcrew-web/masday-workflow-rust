@@ -75,5 +75,3 @@ impl AppError {
 
 /// Result type alias
 pub type Result<T> = std::result::Result<T, AppError>;
-
-

@@ -4,10 +4,10 @@
 //! All state transitions are validated against the allowed transitions defined
 //! in the WorkflowState enum before being applied to the database.
 
-use masday_db::DbPool;
 use masday_core::{AppError, Result, WorkflowState};
 use masday_db::repos::WorkflowRepo;
 use masday_db::schema::{NewWorkflow, Workflow};
+use masday_db::DbPool;
 use tracing::{debug, info};
 
 /// Check if a state transition is valid
@@ -43,7 +43,10 @@ fn status_to_state(status: &str) -> Result<WorkflowState> {
         "DONE" => Ok(WorkflowState::Done),
         "FAILED" => Ok(WorkflowState::Failed),
         "PAUSED" => Ok(WorkflowState::Paused),
-        _ => Err(AppError::validation(format!("Invalid workflow state: {}", status))),
+        _ => Err(AppError::validation(format!(
+            "Invalid workflow state: {}",
+            status
+        ))),
     }
 }
 
@@ -107,7 +110,11 @@ impl WorkflowService {
             project_path,
             current_plan_id: None,
             current_task_id: None,
-            metadata: if metadata.is_null() { None } else { Some(metadata) },
+            metadata: if metadata.is_null() {
+                None
+            } else {
+                Some(metadata)
+            },
         };
 
         let workflow = repo.create(&new_workflow).await?;
@@ -195,11 +202,7 @@ impl WorkflowService {
     ///
     /// # Returns
     /// * `Result<Vec<Workflow>>` - List of workflows
-    pub async fn list_workflows(
-        pool: &DbPool,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<Workflow>> {
+    pub async fn list_workflows(pool: &DbPool, limit: i64, offset: i64) -> Result<Vec<Workflow>> {
         debug!("Listing workflows: limit={}, offset={}", limit, offset);
         let service = Self::new(pool.clone());
         service.repo.list(limit, offset).await
@@ -240,24 +243,48 @@ mod tests {
     #[test]
     fn test_can_transition_valid() {
         // Valid transitions
-        assert!(can_transition(&WorkflowState::Init, &WorkflowState::Analyze));
+        assert!(can_transition(
+            &WorkflowState::Init,
+            &WorkflowState::Analyze
+        ));
         assert!(can_transition(&WorkflowState::Init, &WorkflowState::Done));
         assert!(can_transition(&WorkflowState::Init, &WorkflowState::Failed));
 
-        assert!(can_transition(&WorkflowState::Analyze, &WorkflowState::Plan));
-        assert!(can_transition(&WorkflowState::Plan, &WorkflowState::Execute));
-        assert!(can_transition(&WorkflowState::Execute, &WorkflowState::Verify));
+        assert!(can_transition(
+            &WorkflowState::Analyze,
+            &WorkflowState::Plan
+        ));
+        assert!(can_transition(
+            &WorkflowState::Plan,
+            &WorkflowState::Execute
+        ));
+        assert!(can_transition(
+            &WorkflowState::Execute,
+            &WorkflowState::Verify
+        ));
         assert!(can_transition(&WorkflowState::Verify, &WorkflowState::Done));
         assert!(can_transition(&WorkflowState::Fix, &WorkflowState::Execute));
-        assert!(can_transition(&WorkflowState::Paused, &WorkflowState::Execute));
+        assert!(can_transition(
+            &WorkflowState::Paused,
+            &WorkflowState::Execute
+        ));
     }
 
     #[test]
     fn test_can_transition_invalid() {
         // Invalid transitions
-        assert!(!can_transition(&WorkflowState::Done, &WorkflowState::Execute));
-        assert!(!can_transition(&WorkflowState::Failed, &WorkflowState::Plan));
-        assert!(!can_transition(&WorkflowState::Verify, &WorkflowState::Analyze));
+        assert!(!can_transition(
+            &WorkflowState::Done,
+            &WorkflowState::Execute
+        ));
+        assert!(!can_transition(
+            &WorkflowState::Failed,
+            &WorkflowState::Plan
+        ));
+        assert!(!can_transition(
+            &WorkflowState::Verify,
+            &WorkflowState::Analyze
+        ));
     }
 
     #[test]
