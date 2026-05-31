@@ -1,4 +1,7 @@
 //! Parallel branch repository
+//!
+//! Table names are PascalCase (created by Drizzle/TypeScript): "ParallelBranch"
+//! Column names are camelCase: "workflowId", "taskId", "branchKey", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewParallelBranch, ParallelBranch};
@@ -24,18 +27,18 @@ impl BranchRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let mut result = Vec::new();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         for branch in branches {
             let id = uuid::Uuid::new_v4().to_string();
 
-            let query = "
-                INSERT INTO parallel_branches (
-                    id, workflow_id, task_id, branch_key, role, status, input, output, created_at, updated_at
+            let query = r#"
+                INSERT INTO "ParallelBranch" (
+                    id, "workflowId", "taskId", "branchKey", role, status, input, output, "createdAt", "updatedAt"
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *
-            ";
+            "#;
 
             let row = client
                 .query_one(
@@ -56,18 +59,7 @@ impl BranchRepo {
                 .await
                 .map_err(|e| AppError::Database(format!("Failed to create branch: {}", e)))?;
 
-            result.push(ParallelBranch {
-                id: row.get("id"),
-                workflow_id: row.get("workflow_id"),
-                task_id: row.get("task_id"),
-                branch_key: row.get("branch_key"),
-                role: row.get("role"),
-                status: row.get("status"),
-                input: row.get("input"),
-                output: row.try_get("output").unwrap_or(None),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-            });
+            result.push(ParallelBranch::from_row(&row));
         }
 
         Ok(result)
@@ -85,31 +77,20 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-        let query = "
-            UPDATE parallel_branches
-            SET status = 'DONE', output = $1, updated_at = $2
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let query = r#"
+            UPDATE "ParallelBranch"
+            SET status = 'DONE', output = $1, "updatedAt" = $2
             WHERE id = $3
             RETURNING *
-        ";
+        "#;
 
         let row = client
             .query_one(query, &[&output, &now, &id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to complete branch: {}", e)))?;
 
-        Ok(ParallelBranch {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            task_id: row.get("task_id"),
-            branch_key: row.get("branch_key"),
-            role: row.get("role"),
-            status: row.get("status"),
-            input: row.get("input"),
-            output: row.try_get("output").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(ParallelBranch::from_row(&row))
     }
 
     /// List all branches for a workflow
@@ -121,29 +102,13 @@ impl BranchRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            "SELECT * FROM parallel_branches WHERE workflow_id = $1 ORDER BY created_at ASC";
+            r#"SELECT * FROM "ParallelBranch" WHERE "workflowId" = $1 ORDER BY "createdAt" ASC"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to list branches: {}", e)))?;
 
-        let branches = rows
-            .iter()
-            .map(|row| ParallelBranch {
-                id: row.get("id"),
-                workflow_id: row.get("workflow_id"),
-                task_id: row.get("task_id"),
-                branch_key: row.get("branch_key"),
-                role: row.get("role"),
-                status: row.get("status"),
-                input: row.get("input"),
-                output: row.try_get("output").unwrap_or(None),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-            })
-            .collect();
-
-        Ok(branches)
+        Ok(rows.iter().map(|r| ParallelBranch::from_row(r)).collect())
     }
 
     /// Get a branch by ID
@@ -154,24 +119,13 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM parallel_branches WHERE id = $1";
+        let query = r#"SELECT * FROM "ParallelBranch" WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
             .map_err(|_e| AppError::not_found("ParallelBranch", id))?;
 
-        Ok(ParallelBranch {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            task_id: row.get("task_id"),
-            branch_key: row.get("branch_key"),
-            role: row.get("role"),
-            status: row.get("status"),
-            input: row.get("input"),
-            output: row.try_get("output").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(ParallelBranch::from_row(&row))
     }
 
     /// Update branch status
@@ -182,25 +136,14 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
         let query =
-            "UPDATE parallel_branches SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *";
+            r#"UPDATE "ParallelBranch" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to update branch status: {}", e)))?;
 
-        Ok(ParallelBranch {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            task_id: row.get("task_id"),
-            branch_key: row.get("branch_key"),
-            role: row.get("role"),
-            status: row.get("status"),
-            input: row.get("input"),
-            output: row.try_get("output").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(ParallelBranch::from_row(&row))
     }
 }

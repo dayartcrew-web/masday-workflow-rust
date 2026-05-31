@@ -26,17 +26,14 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
-        // Serialize properties to JSON string for jsonb column
-        let props_json: Option<String> = node
-            .properties
-            .as_ref()
-            .map(|v| v.to_string());
+        // Serialize properties to serde_json::Value for jsonb column
+        let props_value: Option<serde_json::Value> = node.properties.clone();
 
         let query = r#"
             INSERT INTO "GraphNode" (id, "nodeType", name, properties, "createdAt")
-            VALUES ($1, $2, $3, $4::jsonb, $5)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
         "#;
 
@@ -47,7 +44,7 @@ impl GraphRepo {
         let row = client
             .query_one(
                 query,
-                &[&id_ref, &nt_ref, &name_ref, &props_json, &now],
+                &[&id_ref, &nt_ref, &name_ref, &props_value, &now],
             )
             .await
             .map_err(|e| AppError::Database(format!("Failed to add node: {}", e)))?;
@@ -64,7 +61,7 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
             INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight, bidirectional, "createdAt")

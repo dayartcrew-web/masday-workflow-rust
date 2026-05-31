@@ -1,4 +1,7 @@
 //! Session state repository
+//!
+//! Table names are PascalCase (created by Drizzle/TypeScript): "SessionState"
+//! Column names are camelCase: "sessionKey", "workflowId", "contextFingerprint", etc.
 
 use crate::pool::DbPool;
 use crate::schema::SessionState;
@@ -22,7 +25,7 @@ impl SessionRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM session_states WHERE session_key = $1";
+        let query = r#"SELECT * FROM "SessionState" WHERE "sessionKey" = $1"#;
         let rows = client
             .query(query, &[&session_key])
             .await
@@ -32,28 +35,7 @@ impl SessionRepo {
             return Ok(None);
         }
 
-        let row = &rows[0];
-        Ok(Some(SessionState {
-            id: row.get("id"),
-            session_key: row.get("session_key"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            task_id: row.get("task_id"),
-            workflow_loaded: row.get("workflow_loaded"),
-            plan_loaded: row.get("plan_loaded"),
-            task_loaded: row.get("task_loaded"),
-            context_loaded: row.get("context_loaded"),
-            review_approved: row.get("review_approved"),
-            context_fingerprint: row.get("context_fingerprint"),
-            execution_mode: row.get("execution_mode"),
-            active_branch_ids: row.try_get("active_branch_ids").unwrap_or(None),
-            synthesis_ready: row.get("synthesis_ready"),
-            verification_ready: row.get("verification_ready"),
-            last_command: row.get("last_command"),
-            metadata: row.try_get("metadata").unwrap_or(None),
-            updated_at: row.get("updated_at"),
-            created_at: row.get("created_at"),
-        }))
+        Ok(Some(SessionState::from_row(&rows[0])))
     }
 
     /// Update session state with patch (upsert)
@@ -68,10 +50,10 @@ impl SessionRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         // First check if session exists
-        let existing_query = "SELECT * FROM session_states WHERE session_key = $1";
+        let existing_query = r#"SELECT * FROM "SessionState" WHERE "sessionKey" = $1"#;
         let existing_rows = client
             .query(existing_query, &[&session_key])
             .await
@@ -81,17 +63,17 @@ impl SessionRepo {
             // Create new session state
             let id = uuid::Uuid::new_v4().to_string();
 
-            let query = "
-                INSERT INTO session_states (
-                    id, session_key, workflow_id, plan_id, task_id,
-                    workflow_loaded, plan_loaded, task_loaded, context_loaded,
-                    review_approved, context_fingerprint, execution_mode,
-                    active_branch_ids, synthesis_ready, verification_ready,
-                    last_command, metadata, created_at, updated_at
+            let query = r#"
+                INSERT INTO "SessionState" (
+                    id, "sessionKey", "workflowId", "planId", "taskId",
+                    "workflowLoaded", "planLoaded", "taskLoaded", "contextLoaded",
+                    "reviewApproved", "contextFingerprint", "executionMode",
+                    "activeBranchIds", "synthesisReady", "verificationReady",
+                    "lastCommand", metadata, "createdAt", "updatedAt"
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 RETURNING *
-            ";
+            "#;
 
             let row = client
                 .query_one(
@@ -123,43 +105,47 @@ impl SessionRepo {
                     AppError::Database(format!("Failed to create session state: {}", e))
                 })?;
 
-            return Ok(SessionState {
-                id: row.get("id"),
-                session_key: row.get("session_key"),
-                workflow_id: row.get("workflow_id"),
-                plan_id: row.get("plan_id"),
-                task_id: row.get("task_id"),
-                workflow_loaded: row.get("workflow_loaded"),
-                plan_loaded: row.get("plan_loaded"),
-                task_loaded: row.get("task_loaded"),
-                context_loaded: row.get("context_loaded"),
-                review_approved: row.get("review_approved"),
-                context_fingerprint: row.get("context_fingerprint"),
-                execution_mode: row.get("execution_mode"),
-                active_branch_ids: row.try_get("active_branch_ids").unwrap_or(None),
-                synthesis_ready: row.get("synthesis_ready"),
-                verification_ready: row.get("verification_ready"),
-                last_command: row.get("last_command"),
-                metadata: row.try_get("metadata").unwrap_or(None),
-                updated_at: row.get("updated_at"),
-                created_at: row.get("created_at"),
-            });
+            return Ok(SessionState::from_row(&row));
         }
 
         // Update existing session - build dynamic UPDATE
-        let mut set_clauses = vec!["updated_at = $2".to_string()];
+        // Map JSON snake_case keys to DB camelCase column names
+        let mut set_clauses = vec![r#""updatedAt" = $2"#.to_string()];
         let mut param_count = 2;
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
             vec![Box::new(session_key.to_string()), Box::new(now)];
 
+        let column_map: std::collections::HashMap<&str, &str> = [
+            ("workflow_id", "\"workflowId\""),
+            ("plan_id", "\"planId\""),
+            ("task_id", "\"taskId\""),
+            ("workflow_loaded", "\"workflowLoaded\""),
+            ("plan_loaded", "\"planLoaded\""),
+            ("task_loaded", "\"taskLoaded\""),
+            ("context_loaded", "\"contextLoaded\""),
+            ("review_approved", "\"reviewApproved\""),
+            ("context_fingerprint", "\"contextFingerprint\""),
+            ("execution_mode", "\"executionMode\""),
+            ("active_branch_ids", "\"activeBranchIds\""),
+            ("synthesis_ready", "\"synthesisReady\""),
+            ("verification_ready", "\"verificationReady\""),
+            ("last_command", "\"lastCommand\""),
+            ("metadata", "metadata"),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
         for (key, value) in patch.as_object().unwrap_or(&serde_json::Map::new()) {
-            param_count += 1;
-            set_clauses.push(format!("{} = ${}", key, param_count));
-            params.push(Box::new(value.clone()));
+            if let Some(col_name) = column_map.get(key.as_str()) {
+                param_count += 1;
+                set_clauses.push(format!("{} = ${}", col_name, param_count));
+                params.push(Box::new(value.clone()));
+            }
         }
 
         let sql = format!(
-            "UPDATE session_states SET {} WHERE session_key = $1 RETURNING *",
+            r#"UPDATE "SessionState" SET {} WHERE "sessionKey" = $1 RETURNING *"#,
             set_clauses.join(", ")
         );
 
@@ -173,26 +159,6 @@ impl SessionRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to patch session state: {}", e)))?;
 
-        Ok(SessionState {
-            id: row.get("id"),
-            session_key: row.get("session_key"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            task_id: row.get("task_id"),
-            workflow_loaded: row.get("workflow_loaded"),
-            plan_loaded: row.get("plan_loaded"),
-            task_loaded: row.get("task_loaded"),
-            context_loaded: row.get("context_loaded"),
-            review_approved: row.get("review_approved"),
-            context_fingerprint: row.get("context_fingerprint"),
-            execution_mode: row.get("execution_mode"),
-            active_branch_ids: row.try_get("active_branch_ids").unwrap_or(None),
-            synthesis_ready: row.get("synthesis_ready"),
-            verification_ready: row.get("verification_ready"),
-            last_command: row.get("last_command"),
-            metadata: row.try_get("metadata").unwrap_or(None),
-            updated_at: row.get("updated_at"),
-            created_at: row.get("created_at"),
-        })
+        Ok(SessionState::from_row(&row))
     }
 }

@@ -1,4 +1,7 @@
 //! Task repository
+//!
+//! Table names are PascalCase (created by Drizzle/TypeScript): "Task", "TaskProgressLog"
+//! Column names are camelCase: "workflowId", "ownerAgent", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewTask, NewTaskProgressLog, Task, TaskProgressLog};
@@ -22,18 +25,18 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
-        let query = "
-            INSERT INTO tasks (
-                id, workflow_id, plan_id, title, status, priority, owner_agent,
-                acceptance_criteria, required_context, verification_steps,
-                context_fingerprint, progress_percent, requires_tdd, test_evidence,
-                created_at, updated_at
+        let query = r#"
+            INSERT INTO "Task" (
+                id, "workflowId", "planId", title, status, priority,
+                "ownerAgent", "acceptanceCriteria", "requiredContext",
+                "verificationSteps", "contextFingerprint", "progressPercent",
+                "requiresTdd", "testEvidence", "createdAt", "updatedAt"
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING *
-        ";
+        "#;
 
         let row = client
             .query_one(
@@ -60,24 +63,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to create task: {}", e)))?;
 
-        Ok(Task {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            title: row.get("title"),
-            status: row.get("status"),
-            priority: row.get("priority"),
-            owner_agent: row.get("owner_agent"),
-            acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-            required_context: row.try_get("required_context").unwrap_or(None),
-            verification_steps: row.try_get("verification_steps").unwrap_or(None),
-            context_fingerprint: row.get("context_fingerprint"),
-            progress_percent: row.get("progress_percent"),
-            requires_tdd: row.get("requires_tdd"),
-            test_evidence: row.try_get("test_evidence").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(Task::from_row(&row))
     }
 
     /// Get a task by ID
@@ -88,30 +74,13 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM tasks WHERE id = $1";
+        let query = r#"SELECT * FROM "Task" WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
             .map_err(|_e| AppError::not_found("Task", id))?;
 
-        Ok(Task {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            title: row.get("title"),
-            status: row.get("status"),
-            priority: row.get("priority"),
-            owner_agent: row.get("owner_agent"),
-            acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-            required_context: row.try_get("required_context").unwrap_or(None),
-            verification_steps: row.try_get("verification_steps").unwrap_or(None),
-            context_fingerprint: row.get("context_fingerprint"),
-            progress_percent: row.get("progress_percent"),
-            requires_tdd: row.get("requires_tdd"),
-            test_evidence: row.try_get("test_evidence").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(Task::from_row(&row))
     }
 
     /// List all tasks for a workflow
@@ -122,35 +91,13 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM tasks WHERE workflow_id = $1 ORDER BY created_at ASC";
+        let query = r#"SELECT * FROM "Task" WHERE "workflowId" = $1 ORDER BY "createdAt" ASC"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to list tasks: {}", e)))?;
 
-        let tasks = rows
-            .iter()
-            .map(|row| Task {
-                id: row.get("id"),
-                workflow_id: row.get("workflow_id"),
-                plan_id: row.get("plan_id"),
-                title: row.get("title"),
-                status: row.get("status"),
-                priority: row.get("priority"),
-                owner_agent: row.get("owner_agent"),
-                acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-                required_context: row.try_get("required_context").unwrap_or(None),
-                verification_steps: row.try_get("verification_steps").unwrap_or(None),
-                context_fingerprint: row.get("context_fingerprint"),
-                progress_percent: row.get("progress_percent"),
-                requires_tdd: row.get("requires_tdd"),
-                test_evidence: row.try_get("test_evidence").unwrap_or(None),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-            })
-            .collect();
-
-        Ok(tasks)
+        Ok(rows.iter().map(|r| Task::from_row(r)).collect())
     }
 
     /// Get the current task for a workflow (first RUNNING or first PENDING)
@@ -162,36 +109,18 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // First try to find a RUNNING task
-        let query = "SELECT * FROM tasks WHERE workflow_id = $1 AND status = 'RUNNING' ORDER BY created_at ASC LIMIT 1";
+        let query = r#"SELECT * FROM "Task" WHERE "workflowId" = $1 AND status = 'RUNNING' ORDER BY "createdAt" ASC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to get current task: {}", e)))?;
 
         if !rows.is_empty() {
-            let row = &rows[0];
-            return Ok(Some(Task {
-                id: row.get("id"),
-                workflow_id: row.get("workflow_id"),
-                plan_id: row.get("plan_id"),
-                title: row.get("title"),
-                status: row.get("status"),
-                priority: row.get("priority"),
-                owner_agent: row.get("owner_agent"),
-                acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-                required_context: row.try_get("required_context").unwrap_or(None),
-                verification_steps: row.try_get("verification_steps").unwrap_or(None),
-                context_fingerprint: row.get("context_fingerprint"),
-                progress_percent: row.get("progress_percent"),
-                requires_tdd: row.get("requires_tdd"),
-                test_evidence: row.try_get("test_evidence").unwrap_or(None),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-            }));
+            return Ok(Some(Task::from_row(&rows[0])));
         }
 
         // If no RUNNING task, get first PENDING task
-        let query = "SELECT * FROM tasks WHERE workflow_id = $1 AND status = 'PENDING' ORDER BY created_at ASC LIMIT 1";
+        let query = r#"SELECT * FROM "Task" WHERE "workflowId" = $1 AND status = 'PENDING' ORDER BY "createdAt" ASC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -201,25 +130,7 @@ impl TaskRepo {
             return Ok(None);
         }
 
-        let row = &rows[0];
-        Ok(Some(Task {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            title: row.get("title"),
-            status: row.get("status"),
-            priority: row.get("priority"),
-            owner_agent: row.get("owner_agent"),
-            acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-            required_context: row.try_get("required_context").unwrap_or(None),
-            verification_steps: row.try_get("verification_steps").unwrap_or(None),
-            context_fingerprint: row.get("context_fingerprint"),
-            progress_percent: row.get("progress_percent"),
-            requires_tdd: row.get("requires_tdd"),
-            test_evidence: row.try_get("test_evidence").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        }))
+        Ok(Some(Task::from_row(&rows[0])))
     }
 
     /// Update task status
@@ -230,31 +141,14 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-        let query = "UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *";
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let query = r#"UPDATE "Task" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to update task status: {}", e)))?;
 
-        Ok(Task {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            title: row.get("title"),
-            status: row.get("status"),
-            priority: row.get("priority"),
-            owner_agent: row.get("owner_agent"),
-            acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-            required_context: row.try_get("required_context").unwrap_or(None),
-            verification_steps: row.try_get("verification_steps").unwrap_or(None),
-            context_fingerprint: row.get("context_fingerprint"),
-            progress_percent: row.get("progress_percent"),
-            requires_tdd: row.get("requires_tdd"),
-            test_evidence: row.try_get("test_evidence").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(Task::from_row(&row))
     }
 
     /// Complete a task with result
@@ -265,36 +159,19 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-        let query = "
-            UPDATE tasks
-            SET status = 'DONE', test_evidence = $1, progress_percent = 100, updated_at = $2
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let query = r#"
+            UPDATE "Task"
+            SET status = 'DONE', "testEvidence" = $1, "progressPercent" = 100, "updatedAt" = $2
             WHERE id = $3
             RETURNING *
-        ";
+        "#;
         let row = client
             .query_one(query, &[&result, &now, &id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to complete task: {}", e)))?;
 
-        Ok(Task {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            plan_id: row.get("plan_id"),
-            title: row.get("title"),
-            status: row.get("status"),
-            priority: row.get("priority"),
-            owner_agent: row.get("owner_agent"),
-            acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
-            required_context: row.try_get("required_context").unwrap_or(None),
-            verification_steps: row.try_get("verification_steps").unwrap_or(None),
-            context_fingerprint: row.get("context_fingerprint"),
-            progress_percent: row.get("progress_percent"),
-            requires_tdd: row.get("requires_tdd"),
-            test_evidence: row.try_get("test_evidence").unwrap_or(None),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(Task::from_row(&row))
     }
 
     /// Save progress log for a task
@@ -306,16 +183,16 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
-        let query = "
-            INSERT INTO task_progress_logs (
-                id, workflow_id, task_id, agent_name, status_before,
-                status_after, progress_note, evidence, created_at
+        let query = r#"
+            INSERT INTO "TaskProgressLog" (
+                id, "workflowId", "taskId", "agentName", "statusBefore",
+                "statusAfter", "progressNote", evidence, "createdAt"
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
-        ";
+        "#;
 
         let row = client
             .query_one(
@@ -335,16 +212,6 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to save progress log: {}", e)))?;
 
-        Ok(TaskProgressLog {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            task_id: row.get("task_id"),
-            agent_name: row.get("agent_name"),
-            status_before: row.get("status_before"),
-            status_after: row.get("status_after"),
-            progress_note: row.get("progress_note"),
-            evidence: row.try_get("evidence").unwrap_or(None),
-            created_at: row.get("created_at"),
-        })
+        Ok(TaskProgressLog::from_row(&row))
     }
 }

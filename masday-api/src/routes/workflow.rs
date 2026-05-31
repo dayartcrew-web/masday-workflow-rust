@@ -25,6 +25,7 @@ pub fn workflow_routes() -> Router<AppState> {
             post(complete_parallel_branch),
         )
         .route("/workflows/{id}", get(get_workflow).delete(delete_workflow))
+        .route("/workflows/{id}/update", post(update_workflow_status))
         .route("/workflows/{id}/execute", post(execute_workflow))
         .route("/workflows/{id}/status", get(get_workflow_status))
         .route(
@@ -108,6 +109,24 @@ async fn delete_workflow(
     Ok(Json(serde_json::json!({"deleted": id})))
 }
 
+#[derive(Deserialize)]
+struct UpdateWorkflowInput {
+    status: Option<String>,
+}
+
+async fn update_workflow_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<UpdateWorkflowInput>,
+) -> Result<Json<Value>, ApiError> {
+    if let Some(status) = input.status {
+        let wf = masday_service::WorkflowService::update_status(&state.pool, &id, &status).await?;
+        Ok(Json(serde_json::json!(wf)))
+    } else {
+        Err(ApiError(masday_core::AppError::validation("status field required")))
+    }
+}
+
 async fn execute_workflow(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -186,7 +205,7 @@ async fn create_plan(
 
 async fn start_current_task(
     State(state): State<AppState>,
-    Path(_id): Path<String>,
+    Path(id): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let task_id = payload
@@ -194,18 +213,13 @@ async fn start_current_task(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let workflow_id = payload
-        .get("workflow_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let task = masday_service::TaskService::start_task(&state.pool, &workflow_id, &task_id).await?;
+    let task = masday_service::TaskService::start_task(&state.pool, &id, &task_id).await?;
     Ok(Json(serde_json::json!(task)))
 }
 
 async fn complete_current_task(
     State(state): State<AppState>,
-    Path(_id): Path<String>,
+    Path(id): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let task_id = payload
@@ -213,14 +227,9 @@ async fn complete_current_task(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let workflow_id = payload
-        .get("workflow_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
     let result = payload.get("result").cloned();
     let task =
-        masday_service::TaskService::complete_task(&state.pool, &workflow_id, &task_id, result)
+        masday_service::TaskService::complete_task(&state.pool, &id, &task_id, result)
             .await?;
     Ok(Json(serde_json::json!(task)))
 }

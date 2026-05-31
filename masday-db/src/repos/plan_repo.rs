@@ -1,4 +1,7 @@
 //! Plan repository
+//!
+//! Table names are PascalCase (created by Drizzle/TypeScript): "Plan"
+//! Column names are camelCase: "workflowId", "createdByAgent", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewPlan, Plan};
@@ -22,15 +25,15 @@ impl PlanRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
-        let query = "
-            INSERT INTO plans (
-                id, workflow_id, version, status, summary, content, created_by_agent, created_at
+        let query = r#"
+            INSERT INTO "Plan" (
+                id, "workflowId", version, status, summary, content, "createdByAgent", "createdAt"
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
-        ";
+        "#;
 
         let row = client
             .query_one(
@@ -49,16 +52,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to create plan: {}", e)))?;
 
-        Ok(Plan {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            version: row.get("version"),
-            status: row.get("status"),
-            summary: row.get("summary"),
-            content: row.get("content"),
-            created_by_agent: row.get("created_by_agent"),
-            created_at: row.get("created_at"),
-        })
+        Ok(Plan::from_row(&row))
     }
 
     /// Get plan by workflow ID
@@ -69,7 +63,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM plans WHERE workflow_id = $1 ORDER BY version DESC LIMIT 1";
+        let query = r#"SELECT * FROM "Plan" WHERE "workflowId" = $1 ORDER BY version DESC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -79,17 +73,7 @@ impl PlanRepo {
             return Ok(None);
         }
 
-        let row = &rows[0];
-        Ok(Some(Plan {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            version: row.get("version"),
-            status: row.get("status"),
-            summary: row.get("summary"),
-            content: row.get("content"),
-            created_by_agent: row.get("created_by_agent"),
-            created_at: row.get("created_at"),
-        }))
+        Ok(Some(Plan::from_row(&rows[0])))
     }
 
     /// Update plan status
@@ -100,21 +84,12 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "UPDATE plans SET status = $1 WHERE id = $2 RETURNING *";
+        let query = r#"UPDATE "Plan" SET status = $1 WHERE id = $2 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to update plan status: {}", e)))?;
 
-        Ok(Plan {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            version: row.get("version"),
-            status: row.get("status"),
-            summary: row.get("summary"),
-            content: row.get("content"),
-            created_by_agent: row.get("created_by_agent"),
-            created_at: row.get("created_at"),
-        })
+        Ok(Plan::from_row(&row))
     }
 }

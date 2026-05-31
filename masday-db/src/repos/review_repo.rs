@@ -1,4 +1,7 @@
 //! Review decision repository
+//!
+//! Table names are PascalCase (created by Drizzle/TypeScript): "ReviewDecision"
+//! Column names are camelCase: "workflowId", "reviewerAgent", "testsVerified", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewReviewDecision, ReviewDecision};
@@ -22,16 +25,16 @@ impl ReviewRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
-        let query = "
-            INSERT INTO review_decisions (
-                id, workflow_id, task_id, reviewer_agent, decision, notes,
-                gaps, tests_verified, test_summary, created_at
+        let query = r#"
+            INSERT INTO "ReviewDecision" (
+                id, "workflowId", "taskId", "reviewerAgent", decision, notes,
+                gaps, "testsVerified", "testSummary", "createdAt"
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
-        ";
+        "#;
 
         let row = client
             .query_one(
@@ -52,18 +55,7 @@ impl ReviewRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to submit review: {}", e)))?;
 
-        Ok(ReviewDecision {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            task_id: row.get("task_id"),
-            reviewer_agent: row.get("reviewer_agent"),
-            decision: row.get("decision"),
-            notes: row.get("notes"),
-            gaps: row.try_get("gaps").unwrap_or(None),
-            tests_verified: row.get("tests_verified"),
-            test_summary: row.try_get("test_summary").unwrap_or(None),
-            created_at: row.get("created_at"),
-        })
+        Ok(ReviewDecision::from_row(&row))
     }
 
     /// Get the latest review for a task
@@ -75,7 +67,7 @@ impl ReviewRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            "SELECT * FROM review_decisions WHERE task_id = $1 ORDER BY created_at DESC LIMIT 1";
+            r#"SELECT * FROM "ReviewDecision" WHERE "taskId" = $1 ORDER BY "createdAt" DESC LIMIT 1"#;
         let rows = client
             .query(query, &[&task_id])
             .await
@@ -85,19 +77,7 @@ impl ReviewRepo {
             return Ok(None);
         }
 
-        let row = &rows[0];
-        Ok(Some(ReviewDecision {
-            id: row.get("id"),
-            workflow_id: row.get("workflow_id"),
-            task_id: row.get("task_id"),
-            reviewer_agent: row.get("reviewer_agent"),
-            decision: row.get("decision"),
-            notes: row.get("notes"),
-            gaps: row.try_get("gaps").unwrap_or(None),
-            tests_verified: row.get("tests_verified"),
-            test_summary: row.try_get("test_summary").unwrap_or(None),
-            created_at: row.get("created_at"),
-        }))
+        Ok(Some(ReviewDecision::from_row(&rows[0])))
     }
 
     /// List all reviews for a task
@@ -108,28 +88,13 @@ impl ReviewRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM review_decisions WHERE task_id = $1 ORDER BY created_at ASC";
+        let query =
+            r#"SELECT * FROM "ReviewDecision" WHERE "taskId" = $1 ORDER BY "createdAt" ASC"#;
         let rows = client
             .query(query, &[&task_id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to list reviews: {}", e)))?;
 
-        let reviews = rows
-            .iter()
-            .map(|row| ReviewDecision {
-                id: row.get("id"),
-                workflow_id: row.get("workflow_id"),
-                task_id: row.get("task_id"),
-                reviewer_agent: row.get("reviewer_agent"),
-                decision: row.get("decision"),
-                notes: row.get("notes"),
-                gaps: row.try_get("gaps").unwrap_or(None),
-                tests_verified: row.get("tests_verified"),
-                test_summary: row.try_get("test_summary").unwrap_or(None),
-                created_at: row.get("created_at"),
-            })
-            .collect();
-
-        Ok(reviews)
+        Ok(rows.iter().map(|r| ReviewDecision::from_row(r)).collect())
     }
 }

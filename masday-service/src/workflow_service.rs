@@ -270,6 +270,22 @@ impl WorkflowService {
         let service = Self::new(pool.clone());
         service.repo.delete(id).await
     }
+
+    pub async fn update_status(pool: &DbPool, id: &str, status: &str) -> Result<Workflow> {
+        info!("Updating workflow {} status to {}", id, status);
+        let service = Self::new(pool.clone());
+        service.repo.update_status(id, status).await
+    }
+
+    pub async fn update_workflow(
+        pool: &DbPool,
+        id: &str,
+        updates: serde_json::Value,
+    ) -> Result<Workflow> {
+        info!("Updating workflow {} with {:?}", id, updates);
+        let service = Self::new(pool.clone());
+        service.repo.update(id, updates).await
+    }
 }
 
 #[cfg(test)]

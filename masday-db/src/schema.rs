@@ -4,7 +4,7 @@
 //! Field names match the TypeScript Drizzle schema in packages/db/src/schema.ts
 //! (snake_case in Rust, camelCase in TypeScript).
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use pgvector::Vector;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -27,6 +27,23 @@ pub struct Workflow {
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Workflow {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        Workflow {
+            id: row.get("id"),
+            name: row.get("name"),
+            status: row.get("status"),
+            project_path: row.get("projectPath"),
+            current_plan_id: row.get("currentPlanId"),
+            current_task_id: row.get("currentTaskId"),
+            metadata: row.try_get("metadata").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+        }
+    }
 }
 
 /// NewWorkflow for INSERT operations (without id, created_at, updated_at)
@@ -53,6 +70,22 @@ pub struct Plan {
     pub content: serde_json::Value,
     pub created_by_agent: String,
     pub created_at: DateTime<Utc>,
+}
+
+impl Plan {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        Plan {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            version: row.get("version"),
+            status: row.get("status"),
+            summary: row.get("summary"),
+            content: row.get("content"),
+            created_by_agent: row.get("createdByAgent"),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
 }
 
 /// NewPlan for INSERT operations (without id, created_at)
@@ -93,6 +126,30 @@ pub struct Task {
     pub updated_at: DateTime<Utc>,
 }
 
+impl Task {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        Task {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            plan_id: row.get("planId"),
+            title: row.get("title"),
+            status: row.get("status"),
+            priority: row.get("priority"),
+            owner_agent: row.get("ownerAgent"),
+            acceptance_criteria: row.try_get("acceptanceCriteria").unwrap_or(None),
+            required_context: row.try_get("requiredContext").unwrap_or(None),
+            verification_steps: row.try_get("verificationSteps").unwrap_or(None),
+            context_fingerprint: row.get("contextFingerprint"),
+            progress_percent: row.get("progressPercent"),
+            requires_tdd: row.get("requiresTdd"),
+            test_evidence: row.try_get("testEvidence").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+        }
+    }
+}
+
 /// NewTask for INSERT operations (without id, created_at, updated_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewTask {
@@ -127,6 +184,23 @@ pub struct TaskProgressLog {
     pub created_at: DateTime<Utc>,
 }
 
+impl TaskProgressLog {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        TaskProgressLog {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            task_id: row.get("taskId"),
+            agent_name: row.get("agentName"),
+            status_before: row.get("statusBefore"),
+            status_after: row.get("statusAfter"),
+            progress_note: row.get("progressNote"),
+            evidence: row.try_get("evidence").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
+}
+
 /// NewTaskProgressLog for INSERT operations (without id, created_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewTaskProgressLog {
@@ -158,6 +232,24 @@ pub struct ReviewDecision {
     pub tests_verified: Option<bool>,
     pub test_summary: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
+}
+
+impl ReviewDecision {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        ReviewDecision {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            task_id: row.get("taskId"),
+            reviewer_agent: row.get("reviewerAgent"),
+            decision: row.get("decision"),
+            notes: row.get("notes"),
+            gaps: row.try_get("gaps").unwrap_or(None),
+            tests_verified: row.get("testsVerified"),
+            test_summary: row.try_get("testSummary").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
 }
 
 /// NewReviewDecision for INSERT operations (without id, created_at)
@@ -197,6 +289,33 @@ pub struct SessionState {
     pub metadata: Option<serde_json::Value>,
     pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+}
+
+impl SessionState {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        SessionState {
+            id: row.get("id"),
+            session_key: row.get("sessionKey"),
+            workflow_id: row.get("workflowId"),
+            plan_id: row.get("planId"),
+            task_id: row.get("taskId"),
+            workflow_loaded: row.get("workflowLoaded"),
+            plan_loaded: row.get("planLoaded"),
+            task_loaded: row.get("taskLoaded"),
+            context_loaded: row.get("contextLoaded"),
+            review_approved: row.get("reviewApproved"),
+            context_fingerprint: row.get("contextFingerprint"),
+            execution_mode: row.get("executionMode"),
+            active_branch_ids: row.try_get("activeBranchIds").unwrap_or(None),
+            synthesis_ready: row.get("synthesisReady"),
+            verification_ready: row.get("verificationReady"),
+            last_command: row.get("lastCommand"),
+            metadata: row.try_get("metadata").unwrap_or(None),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
 }
 
 /// NewSessionState for INSERT operations (without id, created_at, updated_at)
@@ -241,6 +360,24 @@ pub struct ParallelBranch {
     pub updated_at: DateTime<Utc>,
 }
 
+impl ParallelBranch {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        ParallelBranch {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            task_id: row.get("taskId"),
+            branch_key: row.get("branchKey"),
+            role: row.get("role"),
+            status: row.get("status"),
+            input: row.get("input"),
+            output: row.try_get("output").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+        }
+    }
+}
+
 /// NewParallelBranch for INSERT operations (without id, created_at, updated_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewParallelBranch {
@@ -281,6 +418,30 @@ pub struct Memory {
     pub version: Option<i32>,
 }
 
+impl Memory {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        Memory {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            task_id: row.get("taskId"),
+            memory_type: row.get("memoryType"),
+            summary: row.get("summary"),
+            content: row.get("content"),
+            importance_score: row.get("importanceScore"),
+            created_by_agent: row.get("createdByAgent"),
+            tags: row.try_get("tags").unwrap_or(None),
+            source: row.try_get("source").unwrap_or(None),
+            embedding: None,
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            accessed_at: row.get::<_, Option<NaiveDateTime>>("accessedAt").map(|t| t.and_utc()),
+            access_count: row.get("accessCount"),
+            version: row.get("version"),
+        }
+    }
+}
+
 /// NewMemory for INSERT operations (without id, timestamps, access fields)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewMemory {
@@ -314,6 +475,25 @@ pub struct ContextDocument {
     pub embedding: Option<Vector>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl ContextDocument {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        ContextDocument {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            source_type: row.get("sourceType"),
+            source_ref: row.get("sourceRef"),
+            title: row.get("title"),
+            content: row.get("content"),
+            metadata: row.try_get("metadata").unwrap_or(None),
+            fingerprint: row.get("fingerprint"),
+            embedding: None,
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+        }
+    }
 }
 
 /// NewContextDocument for INSERT operations (without id, created_at, updated_at)
@@ -354,7 +534,7 @@ impl GraphNode {
             node_type: row.get("nodeType"),
             name: row.get("name"),
             properties: row.try_get("properties").unwrap_or(None),
-            created_at: row.get("createdAt"),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
         }
     }
 }
@@ -391,7 +571,7 @@ impl GraphEdge {
             relation_type: row.get("relationType"),
             weight: row.get("weight"),
             bidirectional: row.get("bidirectional"),
-            created_at: row.get("createdAt"),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
         }
     }
 }
@@ -423,6 +603,20 @@ pub struct EpisodicMemory {
     pub created_at: DateTime<Utc>,
 }
 
+impl EpisodicMemory {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        EpisodicMemory {
+            id: row.get("id"),
+            session_id: row.get("sessionId"),
+            role: row.get("role"),
+            content: row.get("content"),
+            sequence_order: row.get("sequenceOrder"),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
+}
+
 /// NewEpisodicMemory for INSERT operations (without id, created_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewEpisodicMemory {
@@ -452,6 +646,23 @@ pub struct LlmProviderConfig {
     pub updated_at: DateTime<Utc>,
 }
 
+impl LlmProviderConfig {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        LlmProviderConfig {
+            id: row.get("id"),
+            provider_name: row.get("providerName"),
+            base_url: row.get("baseUrl"),
+            api_key_env_var: row.get("apiKeyEnvVar"),
+            models: row.get("models"),
+            is_default: row.get("isDefault"),
+            priority: row.get("priority"),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+        }
+    }
+}
+
 /// NewLlmProviderConfig for INSERT operations (without id, created_at, updated_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewLlmProviderConfig {
@@ -478,6 +689,24 @@ pub struct TokenUsage {
     pub latency_ms: Option<i32>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
+}
+
+impl TokenUsage {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        TokenUsage {
+            id: row.get("id"),
+            source: row.get("source"),
+            route: row.get("route"),
+            model: row.get("model"),
+            prompt_tokens: row.get("promptTokens"),
+            completion_tokens: row.get("completionTokens"),
+            total_tokens: row.get("totalTokens"),
+            latency_ms: row.get("latencyMs"),
+            metadata: row.try_get("metadata").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
 }
 
 /// NewTokenUsage for INSERT operations (without id, created_at)
@@ -512,6 +741,22 @@ pub struct RetrievalLog {
     pub created_at: DateTime<Utc>,
 }
 
+impl RetrievalLog {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        RetrievalLog {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            task_id: row.get("taskId"),
+            agent_name: row.get("agentName"),
+            query: row.get("query"),
+            source: row.get("source"),
+            results: row.try_get("results").unwrap_or(None),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
+}
+
 /// NewRetrievalLog for INSERT operations (without id, created_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewRetrievalLog {
@@ -526,6 +771,7 @@ pub struct NewRetrievalLog {
 /// WorkflowReminder table model
 ///
 /// Stores reminders for workflows with severity levels.
+/// NOTE: The "type" column is lowercase in the actual DB (not camelCase "reminderType").
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct WorkflowReminder {
     pub id: String,
@@ -536,6 +782,23 @@ pub struct WorkflowReminder {
     pub message: String,
     pub acknowledged: Option<bool>,
     pub created_at: DateTime<Utc>,
+}
+
+impl WorkflowReminder {
+    /// Map from DB row with PascalCase table / camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        WorkflowReminder {
+            id: row.get("id"),
+            workflow_id: row.get("workflowId"),
+            task_id: row.get("taskId"),
+            // DB column is "type" (lowercase), not "reminderType"
+            reminder_type: row.get("type"),
+            severity: row.get("severity"),
+            message: row.get("message"),
+            acknowledged: row.get("acknowledged"),
+            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+        }
+    }
 }
 
 /// NewWorkflowReminder for INSERT operations (without id, created_at)

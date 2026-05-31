@@ -27,7 +27,7 @@ async fn get_session(
         .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     let result = client
         .query_opt(
-            "SELECT session_key, metadata, execution_mode, workflow_id, plan_id, task_id FROM session_states WHERE session_key = $1",
+            r#"SELECT "sessionKey", metadata, "executionMode", "workflowId", "planId", "taskId" FROM "SessionState" WHERE "sessionKey" = $1"#,
             &[&id],
         )
         .await
@@ -39,9 +39,9 @@ async fn get_session(
             Ok(Json(serde_json::json!({
                 "session_key": id,
                 "state": meta.unwrap_or(serde_json::json!({})),
-                "workflow_id": row.get::<_, Option<String>>("workflow_id"),
-                "plan_id": row.get::<_, Option<String>>("plan_id"),
-                "task_id": row.get::<_, Option<String>>("task_id"),
+                "workflow_id": row.get::<_, Option<String>>("workflowId"),
+                "plan_id": row.get::<_, Option<String>>("planId"),
+                "task_id": row.get::<_, Option<String>>("taskId"),
             })))
         }
         None => Ok(Json(serde_json::json!({"session_key": id, "state": null}))),
@@ -66,7 +66,7 @@ async fn update_session(
         .unwrap_or_else(|| payload.clone());
 
     client.execute(
-        "INSERT INTO session_states (id, session_key, metadata, updated_at, created_at) VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT (session_key) DO UPDATE SET metadata = COALESCE(session_states.metadata, '{}'::jsonb) || $3, updated_at = NOW()",
+        r#"INSERT INTO "SessionState" (id, "sessionKey", metadata, "updatedAt", "createdAt") VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT ("sessionKey") DO UPDATE SET metadata = COALESCE("SessionState".metadata, '{}'::jsonb) || $3, "updatedAt" = NOW()"#,
         &[&id, &id, &patch],
     ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
 
@@ -85,7 +85,7 @@ async fn init_session(
         .await
         .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     client.execute(
-        "INSERT INTO session_states (id, session_key, metadata, updated_at, created_at) VALUES ($1, $2, '{}'::jsonb, NOW(), NOW()) ON CONFLICT (session_key) DO NOTHING",
+        r#"INSERT INTO "SessionState" (id, "sessionKey", metadata, "updatedAt", "createdAt") VALUES ($1, $2, '{}'::jsonb, NOW(), NOW()) ON CONFLICT ("sessionKey") DO NOTHING"#,
         &[&id, &id],
     ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
 
