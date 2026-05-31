@@ -2,7 +2,7 @@
 //!
 //! Manages code review submissions and decisions with gap analysis.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result};
 use masaday_db::repos::ReviewRepo;
 use masaday_db::schema::{NewReviewDecision, ReviewDecision};

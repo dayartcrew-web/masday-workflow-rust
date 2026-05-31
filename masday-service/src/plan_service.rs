@@ -2,7 +2,7 @@
 //!
 //! Manages workflow plans including creation, retrieval, and status updates.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result};
 use masaday_db::repos::PlanRepo;
 use masaday_db::schema::{NewPlan, Plan};

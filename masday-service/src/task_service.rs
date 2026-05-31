@@ -3,7 +3,7 @@
 //! Manages task creation, execution, and completion within workflows.
 //! All task state transitions are validated before being persisted.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result};
 use masaday_db::repos::TaskRepo;
 use masaday_db::schema::{NewTask, Task, TaskProgressLog, NewTaskProgressLog};

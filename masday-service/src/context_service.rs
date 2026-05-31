@@ -2,7 +2,7 @@
 //!
 //! Builds context packs for tasks and computes fingerprints for context validation.
 
-use deadpool_postgres::Pool as DbPool;
+use masaday_db::DbPool;
 use masaday_core::{AppError, Result};
 use masaday_db::repos::{TaskRepo, PlanRepo, MemoryRepo};
 use tracing::{debug, info};
