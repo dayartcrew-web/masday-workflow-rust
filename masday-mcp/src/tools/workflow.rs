@@ -15,9 +15,10 @@ pub async fn workflow_execute(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let workflow_id = args
-        .get("workflow_id")
+        .get("id")
+        .or_else(|| args.get("workflow_id"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing workflow_id".to_string())?;
+        .ok_or_else(|| "Missing id or workflow_id".to_string())?;
     client::api_post(&format!("/api/workflows/{}/execute", workflow_id), args).await
 }
 
@@ -26,9 +27,10 @@ pub async fn workflow_get_status(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let workflow_id = args
-        .get("workflow_id")
+        .get("id")
+        .or_else(|| args.get("workflow_id"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing workflow_id".to_string())?;
+        .ok_or_else(|| "Missing id or workflow_id".to_string())?;
     client::api_get(&format!("/api/workflows/{}/status", workflow_id)).await
 }
 
