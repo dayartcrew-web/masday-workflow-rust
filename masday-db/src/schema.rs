@@ -346,6 +346,19 @@ pub struct GraphNode {
     pub created_at: DateTime<Utc>,
 }
 
+impl GraphNode {
+    /// Map from DB row with PascalCase/camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        GraphNode {
+            id: row.get("id"),
+            node_type: row.get("nodeType"),
+            name: row.get("name"),
+            properties: row.try_get("properties").unwrap_or(None),
+            created_at: row.get("createdAt"),
+        }
+    }
+}
+
 /// NewGraphNode for INSERT operations (without id, created_at)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewGraphNode {
@@ -366,6 +379,21 @@ pub struct GraphEdge {
     pub weight: Option<f64>,
     pub bidirectional: Option<bool>,
     pub created_at: DateTime<Utc>,
+}
+
+impl GraphEdge {
+    /// Map from DB row with PascalCase/camelCase column names
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        GraphEdge {
+            id: row.get("id"),
+            source_node_id: row.get("sourceNodeId"),
+            target_node_id: row.get("targetNodeId"),
+            relation_type: row.get("relationType"),
+            weight: row.get("weight"),
+            bidirectional: row.get("bidirectional"),
+            created_at: row.get("createdAt"),
+        }
+    }
 }
 
 /// NewGraphEdge for INSERT operations (without id, created_at)

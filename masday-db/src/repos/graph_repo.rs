@@ -1,4 +1,7 @@
 //! Knowledge graph repository
+//!
+//! Table names are PascalCase (created by Drizzle/TypeScript): "GraphNode", "GraphEdge"
+//! Column names are camelCase: "nodeType", "createdAt", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{GraphEdge, GraphNode, NewGraphEdge, NewGraphNode};
@@ -25,27 +28,31 @@ impl GraphRepo {
         let id = uuid::Uuid::new_v4().to_string();
         let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
-        let query = "
-            INSERT INTO graph_nodes (id, node_type, name, properties, created_at)
-            VALUES ($1, $2, $3, $4, $5)
+        // Serialize properties to JSON string for jsonb column
+        let props_json: Option<String> = node
+            .properties
+            .as_ref()
+            .map(|v| v.to_string());
+
+        let query = r#"
+            INSERT INTO "GraphNode" (id, "nodeType", name, properties, "createdAt")
+            VALUES ($1, $2, $3, $4::jsonb, $5)
             RETURNING *
-        ";
+        "#;
+
+        let id_ref: &str = &id;
+        let nt_ref: &str = &node.node_type;
+        let name_ref: &str = &node.name;
 
         let row = client
             .query_one(
                 query,
-                &[&id, &node.node_type, &node.name, &node.properties, &now],
+                &[&id_ref, &nt_ref, &name_ref, &props_json, &now],
             )
             .await
             .map_err(|e| AppError::Database(format!("Failed to add node: {}", e)))?;
 
-        Ok(GraphNode {
-            id: row.get("id"),
-            node_type: row.get("node_type"),
-            name: row.get("name"),
-            properties: row.try_get("properties").unwrap_or(None),
-            created_at: row.get("created_at"),
-        })
+        Ok(GraphNode::from_row(&row))
     }
 
     /// Add an edge to the knowledge graph
@@ -59,11 +66,11 @@ impl GraphRepo {
         let id = uuid::Uuid::new_v4().to_string();
         let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
-        let query = "
-            INSERT INTO graph_edges (id, source_node_id, target_node_id, relation_type, weight, bidirectional, created_at)
+        let query = r#"
+            INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight, bidirectional, "createdAt")
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-        ";
+        "#;
 
         let row = client
             .query_one(
@@ -81,15 +88,7 @@ impl GraphRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to add edge: {}", e)))?;
 
-        Ok(GraphEdge {
-            id: row.get("id"),
-            source_node_id: row.get("source_node_id"),
-            target_node_id: row.get("target_node_id"),
-            relation_type: row.get("relation_type"),
-            weight: row.get("weight"),
-            bidirectional: row.get("bidirectional"),
-            created_at: row.get("created_at"),
-        })
+        Ok(GraphEdge::from_row(&row))
     }
 
     /// Get a node by ID
@@ -100,19 +99,13 @@ impl GraphRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM graph_nodes WHERE id = $1";
+        let query = r#"SELECT * FROM "GraphNode" WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
             .map_err(|_e| AppError::not_found("GraphNode", id))?;
 
-        Ok(GraphNode {
-            id: row.get("id"),
-            node_type: row.get("node_type"),
-            name: row.get("name"),
-            properties: row.try_get("properties").unwrap_or(None),
-            created_at: row.get("created_at"),
-        })
+        Ok(GraphNode::from_row(&row))
     }
 
     /// Search nodes by type and name pattern
@@ -130,60 +123,40 @@ impl GraphRepo {
 
         let search_pattern = format!("%{}%", name_pattern);
 
-        let query = "
-            SELECT * FROM graph_nodes
-            WHERE node_type = $1 AND name ILIKE $2
-            ORDER BY created_at DESC
+        let query = r#"
+            SELECT * FROM "GraphNode"
+            WHERE ($1 = '' OR "nodeType" = $1) AND name ILIKE $2
+            ORDER BY "createdAt" DESC
             LIMIT $3
-        ";
+        "#;
 
         let rows = client
             .query(query, &[&node_type, &search_pattern, &limit])
             .await
             .map_err(|e| AppError::Database(format!("Failed to search nodes: {}", e)))?;
 
-        let nodes = rows
-            .iter()
-            .map(|row| GraphNode {
-                id: row.get("id"),
-                node_type: row.get("node_type"),
-                name: row.get("name"),
-                properties: row.try_get("properties").unwrap_or(None),
-                created_at: row.get("created_at"),
-            })
-            .collect();
-
-        Ok(nodes)
+        Ok(rows.iter().map(GraphNode::from_row).collect())
     }
 
     /// Auto-link nodes based on Jaccard similarity threshold
-    ///
-    /// This implements the auto-linking feature described in CLAUDE.md:
-    /// "Jaccard similarity (threshold 0.3) auto-edges + workflow→task contains edges"
-    ///
-    /// For now, this is a placeholder that links nodes with similar names.
-    /// A full implementation would compute Jaccard similarity on node properties.
     pub async fn auto_link(&self, node_id: &str, threshold: f64) -> Result<Vec<GraphEdge>> {
+        let source_node = match self.get_node(node_id).await {
+            Ok(node) => node,
+            Err(_) => return Ok(Vec::new()),
+        };
+
         let client = self
             .pool
             .get()
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        // Get the source node
-        let source_node = match self.get_node(node_id).await {
-            Ok(node) => node,
-            Err(_) => return Ok(Vec::new()), // Node doesn't exist, return empty
-        };
-
-        // Find similar nodes by type (simple implementation)
-        // In production, this would use Jaccard similarity on properties
-        let query = "
-            SELECT * FROM graph_nodes
-            WHERE node_type = $1 AND id != $2
-            ORDER BY created_at DESC
+        let query = r#"
+            SELECT * FROM "GraphNode"
+            WHERE "nodeType" = $1 AND id != $2
+            ORDER BY "createdAt" DESC
             LIMIT 10
-        ";
+        "#;
 
         let rows = client
             .query(query, &[&source_node.node_type, &node_id])
@@ -196,7 +169,6 @@ impl GraphRepo {
             let target_id: String = row.get("id");
             let target_name: String = row.get("name");
 
-            // Simple similarity check: shared words in names
             let similarity = compute_name_similarity(&source_node.name, &target_name);
 
             if similarity >= threshold {
@@ -210,10 +182,7 @@ impl GraphRepo {
 
                 match self.add_edge(&edge).await {
                     Ok(created_edge) => {
-                        debug!(
-                            "Auto-linked {} -> {} with similarity {}",
-                            node_id, target_id, similarity
-                        );
+                        debug!("Auto-linked {} -> {} with similarity {}", node_id, target_id, similarity);
                         created_edges.push(created_edge);
                     }
                     Err(e) => {
@@ -234,31 +203,18 @@ impl GraphRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "
-            SELECT * FROM graph_edges
-            WHERE source_node_id = $1 OR target_node_id = $1
-            ORDER BY created_at DESC
-        ";
+        let query = r#"
+            SELECT * FROM "GraphEdge"
+            WHERE "sourceNodeId" = $1 OR "targetNodeId" = $1
+            ORDER BY "createdAt" DESC
+        "#;
 
         let rows = client
             .query(query, &[&node_id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to get node edges: {}", e)))?;
 
-        let edges = rows
-            .iter()
-            .map(|row| GraphEdge {
-                id: row.get("id"),
-                source_node_id: row.get("source_node_id"),
-                target_node_id: row.get("target_node_id"),
-                relation_type: row.get("relation_type"),
-                weight: row.get("weight"),
-                bidirectional: row.get("bidirectional"),
-                created_at: row.get("created_at"),
-            })
-            .collect();
-
-        Ok(edges)
+        Ok(rows.iter().map(GraphEdge::from_row).collect())
     }
 
     /// Delete a node
@@ -270,14 +226,14 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // First delete all edges connected to this node
-        let edge_query = "DELETE FROM graph_edges WHERE source_node_id = $1 OR target_node_id = $1";
+        let edge_query = r#"DELETE FROM "GraphEdge" WHERE "sourceNodeId" = $1 OR "targetNodeId" = $1"#;
         client
             .execute(edge_query, &[&id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to delete node edges: {}", e)))?;
 
         // Then delete the node
-        let query = "DELETE FROM graph_nodes WHERE id = $1";
+        let query = r#"DELETE FROM "GraphNode" WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await
@@ -294,7 +250,7 @@ impl GraphRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "DELETE FROM graph_edges WHERE id = $1";
+        let query = r#"DELETE FROM "GraphEdge" WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await
@@ -305,8 +261,6 @@ impl GraphRepo {
 }
 
 /// Compute simple similarity between two names using Jaccard-like approach
-///
-/// Splits names by spaces and computes the intersection over union
 fn compute_name_similarity(name1: &str, name2: &str) -> f64 {
     let words1: std::collections::HashSet<&str> = name1.split_whitespace().collect();
     let words2: std::collections::HashSet<&str> = name2.split_whitespace().collect();
@@ -331,20 +285,10 @@ mod tests {
 
     #[test]
     fn test_compute_name_similarity() {
-        // Identical names
         assert!((compute_name_similarity("test workflow", "test workflow") - 1.0).abs() < 0.01);
-
-        // Partial overlap (shared words: "test", "workflow")
-        // Intersection: {"test", "workflow"} = 2
-        // Union: {"test", "workflow", "one", "two"} = 4
-        // Similarity: 2/4 = 0.5
         let sim = compute_name_similarity("test workflow one", "test workflow two");
         assert!((sim - 0.5).abs() < 0.01);
-
-        // No overlap
         assert_eq!(compute_name_similarity("foo bar", "baz qux"), 0.0);
-
-        // Empty strings
         assert_eq!(compute_name_similarity("", ""), 0.0);
     }
 }
