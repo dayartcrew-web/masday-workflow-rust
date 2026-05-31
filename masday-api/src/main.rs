@@ -25,7 +25,7 @@ async fn main() {
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(3001);
+        .unwrap_or(3010);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("masday-api listening on {}", addr);
