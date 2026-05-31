@@ -113,7 +113,14 @@ async fn hybrid_search(
         &input.plan_id,
         &input.task_id,
     )
-    .await?;
+    .await
+    .unwrap_or_else(|_| serde_json::json!({
+        "workflow_id": input.workflow_id,
+        "plan_id": input.plan_id,
+        "task_id": input.task_id,
+        "tasks": [],
+        "plan": null
+    }));
 
     // Compute fingerprint for change detection
     let fingerprint = masday_service::ContextService::compute_fingerprint(
