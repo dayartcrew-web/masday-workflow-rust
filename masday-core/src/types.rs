@@ -19,14 +19,33 @@ pub enum WorkflowState {
 
 impl WorkflowState {
     /// Check if state transition is valid
+    #[allow(clippy::match_like_matches_macro)]
     pub fn can_transition_to(&self, target: &WorkflowState) -> bool {
         match (self, target) {
-            (WorkflowState::Init, WorkflowState::Analyze | WorkflowState::Done | WorkflowState::Failed) => true,
-            (WorkflowState::Analyze, WorkflowState::Plan | WorkflowState::Done | WorkflowState::Failed) => true,
-            (WorkflowState::Plan, WorkflowState::Execute | WorkflowState::Paused | WorkflowState::Failed) => true,
-            (WorkflowState::Execute, WorkflowState::Verify | WorkflowState::Fix | WorkflowState::Paused | WorkflowState::Failed) => true,
+            (
+                WorkflowState::Init,
+                WorkflowState::Analyze | WorkflowState::Done | WorkflowState::Failed,
+            ) => true,
+            (
+                WorkflowState::Analyze,
+                WorkflowState::Plan | WorkflowState::Done | WorkflowState::Failed,
+            ) => true,
+            (
+                WorkflowState::Plan,
+                WorkflowState::Execute | WorkflowState::Paused | WorkflowState::Failed,
+            ) => true,
+            (
+                WorkflowState::Execute,
+                WorkflowState::Verify
+                | WorkflowState::Fix
+                | WorkflowState::Paused
+                | WorkflowState::Failed,
+            ) => true,
             (WorkflowState::Verify, WorkflowState::Done | WorkflowState::Fix) => true,
-            (WorkflowState::Fix, WorkflowState::Done | WorkflowState::Execute | WorkflowState::Failed) => true,
+            (
+                WorkflowState::Fix,
+                WorkflowState::Done | WorkflowState::Execute | WorkflowState::Failed,
+            ) => true,
             (WorkflowState::Paused, WorkflowState::Execute | WorkflowState::Failed) => true,
             _ => false,
         }

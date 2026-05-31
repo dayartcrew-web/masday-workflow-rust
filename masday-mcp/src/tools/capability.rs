@@ -1,57 +1,78 @@
 //! Capability MCP tools - HTTP client calls to API
 
-use reqwest::Client;
+use crate::client;
+use serde_json::Value;
 
-/// List agents via HTTP
-pub async fn capability_list_agents() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "PLACEHOLDER".to_string());
-
-    let response = client
-        .get(&format!("{}/api/capabilities/agents", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn capability_create_agent(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/capabilities/agent", args).await
 }
 
-/// List skills via HTTP
-pub async fn capability_list_skills() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "PLACEHOLDER".to_string());
-
-    let response = client
-        .get(&format!("{}/api/capabilities/skills", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn capability_create_skill(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/capabilities/skill", args).await
 }
 
-/// Match agent via HTTP
-pub async fn capability_match_agent(task: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let api_url = std::env::var("MASDAY_API_URL")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
-    let api_key = std::env::var("MASDAY_API_KEY")
-        .unwrap_or_else(|_| "PLACEHOLDER".to_string());
+pub async fn capability_list_agents(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_get("/api/capabilities/agents").await
+}
 
-    let response = client
-        .get(&format!("{}/api/capabilities/match?task={}", api_url, task))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await?;
+pub async fn capability_list_skills(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_get("/api/capabilities/skills").await
+}
 
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
+pub async fn capability_list_templates(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_get("/api/capabilities/templates").await
+}
+
+pub async fn capability_match_agent(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let task = args
+        .get("task")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing task".to_string())?;
+    client::api_get(&format!("/api/capabilities/match?task={}", task)).await
+}
+
+pub async fn capability_scaffold_feature(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/capabilities/scaffold", args).await
+}
+
+pub async fn capability_scaffold_mcp_server(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_post("/api/capabilities/mcp-server", args).await
+}
+
+pub async fn capability_system_readiness(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    client::api_get("/api/capabilities/readiness").await
+}
+
+pub async fn capability_workflow_audit(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let workflow_id = args
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing workflow_id".to_string())?;
+    client::api_get(&format!("/api/capabilities/audit/{}", workflow_id)).await
+}
+
+pub async fn capability_ping(
+    _args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(serde_json::json!({"status": "pong"}))
 }

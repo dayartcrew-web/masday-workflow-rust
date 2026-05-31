@@ -2,13 +2,13 @@
 //!
 //! Detects and manages workflow reminders for stale or stuck workflows.
 
-use masday_db::DbPool;
-use masday_core::{AppError, Result};
+use chrono::Duration;
+use chrono::Utc;
+use masday_core::Result;
 use masday_db::repos::{ReminderRepo, WorkflowRepo};
 use masday_db::schema::WorkflowReminder;
-use tracing::{debug, info};
-use chrono::Utc;
-use chrono::Duration;
+use masday_db::DbPool;
+use tracing::info;
 
 /// Reminder service
 pub struct ReminderService {
@@ -81,52 +81,30 @@ impl ReminderService {
         info!("Acknowledging reminder {}", id);
 
         let service = Self::new(pool.clone());
-        service
-            .reminder_repo
-            .acknowledge(id)
-            .await
+        service.reminder_repo.acknowledge(id).await
     }
 
     /// Check if a workflow is stale
-    fn check_workflow_staleness(workflow: &masday_db::schema::Workflow, now: &chrono::DateTime<Utc>) -> Option<String> {
+    fn check_workflow_staleness(
+        workflow: &masday_db::schema::Workflow,
+        now: &chrono::DateTime<Utc>,
+    ) -> Option<String> {
         let updated_age = now.signed_duration_since(workflow.updated_at);
 
         // Different thresholds based on status
         match workflow.status.as_str() {
-            "INIT" | "ANALYZE" | "PLAN" => {
-                // Early phases: stale after 1 hour
-                if updated_age > Duration::hours(1) {
-                    return Some("STALE_EARLY".to_string());
-                }
+            status
+                if matches!(status, "INIT" | "ANALYZE" | "PLAN")
+                    && updated_age > Duration::hours(1) =>
+            {
+                Some("STALE_EARLY".to_string())
             }
-            "EXECUTE" => {
-                // Execution phase: stale after 4 hours
-                if updated_age > Duration::hours(4) {
-                    return Some("STALE_EXECUTE".to_string());
-                }
-            }
-            "VERIFY" => {
-                // Verify phase: stale after 30 minutes
-                if updated_age > Duration::minutes(30) {
-                    return Some("STALE_VERIFY".to_string());
-                }
-            }
-            "FIX" => {
-                // Fix phase: stale after 2 hours
-                if updated_age > Duration::hours(2) {
-                    return Some("STALE_FIX".to_string());
-                }
-            }
-            "PAUSED" => {
-                // Paused: remind after 24 hours
-                if updated_age > Duration::hours(24) {
-                    return Some("PAUSED_LONG".to_string());
-                }
-            }
-            _ => {}
+            "EXECUTE" if updated_age > Duration::hours(4) => Some("STALE_EXECUTE".to_string()),
+            "VERIFY" if updated_age > Duration::minutes(30) => Some("STALE_VERIFY".to_string()),
+            "FIX" if updated_age > Duration::hours(2) => Some("STALE_FIX".to_string()),
+            "PAUSED" if updated_age > Duration::hours(24) => Some("PAUSED_LONG".to_string()),
+            _ => None,
         }
-
-        None
     }
 
     /// Get reminder message for a workflow
@@ -152,10 +130,7 @@ impl ReminderService {
                 "Workflow '{}' has been paused for over 24 hours",
                 workflow.name
             ),
-            "STUCK_TASK" => format!(
-                "Workflow '{}' has a stuck task",
-                workflow.name
-            ),
+            "STUCK_TASK" => format!("Workflow '{}' has a stuck task", workflow.name),
             _ => format!("Reminder for workflow '{}'", workflow.name),
         }
     }
@@ -163,10 +138,8 @@ impl ReminderService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_validate() {
-        assert!(true);
+        // Placeholder test
     }
 }

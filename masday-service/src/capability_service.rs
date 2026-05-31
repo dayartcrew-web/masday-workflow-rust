@@ -3,18 +3,19 @@
 //! Stub implementation - full functionality will be in the MCP layer.
 //! This service provides placeholders for agent and skill discovery.
 
-use masday_core::{AppError, Result};
+use masday_core::Result;
 use tracing::debug;
 
 /// Capability service (stub - full implementation in MCP layer)
 pub struct CapabilityService;
 
-impl CapabilityService {
-    /// Create a new capability service
-    pub fn new() -> Self {
+impl Default for CapabilityService {
+    fn default() -> Self {
         Self
     }
+}
 
+impl CapabilityService {
     /// List available agents (stub)
     ///
     /// # Arguments
@@ -92,7 +93,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_agents() {
-        let agents = CapabilityService::list_agents("/tmp/project").await.unwrap();
+        let agents = CapabilityService::list_agents("/tmp/project")
+            .await
+            .unwrap();
         assert!(!agents.is_empty());
         assert!(agents.len() >= 3);
     }
@@ -100,15 +103,21 @@ mod tests {
     #[tokio::test]
     async fn test_match_agent() {
         // Test workflow matching
-        let agent = CapabilityService::match_agent("Create a new workflow").await.unwrap();
+        let agent = CapabilityService::match_agent("Create a new workflow")
+            .await
+            .unwrap();
         assert_eq!(agent, "masday-orchestrator");
 
         // Test TDD matching
-        let agent = CapabilityService::match_agent("Write tests for this feature").await.unwrap();
+        let agent = CapabilityService::match_agent("Write tests for this feature")
+            .await
+            .unwrap();
         assert_eq!(agent, "masday-tdd-guide");
 
         // Test implementation matching
-        let agent = CapabilityService::match_agent("Implement the user service").await.unwrap();
+        let agent = CapabilityService::match_agent("Implement the user service")
+            .await
+            .unwrap();
         assert_eq!(agent, "masday-executor");
     }
 }

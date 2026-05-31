@@ -36,12 +36,12 @@
 //! }
 //! ```
 
-use deadpool_postgres::{Config, Pool};
 use deadpool_postgres::tokio_postgres::NoTls;
+use deadpool_postgres::{Config, Pool};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 use masday_core::constants::pool::*;
 
@@ -89,8 +89,10 @@ pub fn create_pool() -> Result<DbPool, String> {
         .map_err(|_| "DATABASE_URL environment variable not set".to_string())?;
 
     info!("Creating database pool (lazy - no connections until first query)");
-    debug!("Pool config: max_size={}, idle_timeout={}s, connect_timeout={}s, wait_timeout={}s",
-        MAX_POOL_SIZE, IDLE_TIMEOUT_SECS, CONNECT_TIMEOUT_SECS, WAIT_TIMEOUT_SECS);
+    debug!(
+        "Pool config: max_size={}, idle_timeout={}s, connect_timeout={}s, wait_timeout={}s",
+        MAX_POOL_SIZE, IDLE_TIMEOUT_SECS, CONNECT_TIMEOUT_SECS, WAIT_TIMEOUT_SECS
+    );
 
     let mut cfg = Config::new();
     cfg.url = Some(database_url);
@@ -103,7 +105,9 @@ pub fn create_pool() -> Result<DbPool, String> {
     });
 
     // Get tokio_postgres config for TCP keepalive settings
-    let pg_config = cfg.get_pg_config().map_err(|e| format!("Invalid PG config: {}", e))?;
+    let pg_config = cfg
+        .get_pg_config()
+        .map_err(|e| format!("Invalid PG config: {}", e))?;
 
     // Enable TCP keepalive at the connection level
     // This helps detect stale connections proactively
@@ -188,8 +192,14 @@ pub async fn init_pool_with_retry(max_retries: u32) -> Result<DbPool, String> {
         }
     }
 
-    error!("Failed to create pool after {} attempts: {}", max_retries, last_error);
-    Err(format!("Failed after {} attempts: {}", max_retries, last_error))
+    error!(
+        "Failed to create pool after {} attempts: {}",
+        max_retries, last_error
+    );
+    Err(format!(
+        "Failed after {} attempts: {}",
+        max_retries, last_error
+    ))
 }
 
 /// Health check function that pings the database

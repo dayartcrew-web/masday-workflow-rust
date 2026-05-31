@@ -1,7 +1,7 @@
 //! Knowledge graph repository
 
-use crate::schema::{GraphNode, GraphEdge, NewGraphNode, NewGraphEdge};
 use crate::pool::DbPool;
+use crate::schema::{GraphEdge, GraphNode, NewGraphEdge, NewGraphNode};
 use masday_core::{AppError, Result};
 use tracing::debug;
 
@@ -16,7 +16,10 @@ impl GraphRepo {
 
     /// Add a node to the knowledge graph
     pub async fn add_node(&self, node: &NewGraphNode) -> Result<GraphNode> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
@@ -28,10 +31,13 @@ impl GraphRepo {
             RETURNING *
         ";
 
-        let row = client.query_one(
-            query,
-            &[&id, &node.node_type, &node.name, &node.properties, &now],
-        ).await.map_err(|e| AppError::Database(format!("Failed to add node: {}", e)))?;
+        let row = client
+            .query_one(
+                query,
+                &[&id, &node.node_type, &node.name, &node.properties, &now],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to add node: {}", e)))?;
 
         Ok(GraphNode {
             id: row.get("id"),
@@ -44,7 +50,10 @@ impl GraphRepo {
 
     /// Add an edge to the knowledge graph
     pub async fn add_edge(&self, edge: &NewGraphEdge) -> Result<GraphEdge> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
@@ -56,13 +65,21 @@ impl GraphRepo {
             RETURNING *
         ";
 
-        let row = client.query_one(
-            query,
-            &[
-                &id, &edge.source_node_id, &edge.target_node_id, &edge.relation_type,
-                &edge.weight, &edge.bidirectional, &now,
-            ],
-        ).await.map_err(|e| AppError::Database(format!("Failed to add edge: {}", e)))?;
+        let row = client
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &edge.source_node_id,
+                    &edge.target_node_id,
+                    &edge.relation_type,
+                    &edge.weight,
+                    &edge.bidirectional,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to add edge: {}", e)))?;
 
         Ok(GraphEdge {
             id: row.get("id"),
@@ -77,11 +94,16 @@ impl GraphRepo {
 
     /// Get a node by ID
     pub async fn get_node(&self, id: &str) -> Result<GraphNode> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = "SELECT * FROM graph_nodes WHERE id = $1";
-        let row = client.query_one(query, &[&id]).await
+        let row = client
+            .query_one(query, &[&id])
+            .await
             .map_err(|_e| AppError::not_found("GraphNode", id))?;
 
         Ok(GraphNode {
@@ -94,8 +116,16 @@ impl GraphRepo {
     }
 
     /// Search nodes by type and name pattern
-    pub async fn search_nodes(&self, node_type: &str, name_pattern: &str, limit: i64) -> Result<Vec<GraphNode>> {
-        let client = self.pool.get().await
+    pub async fn search_nodes(
+        &self,
+        node_type: &str,
+        name_pattern: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphNode>> {
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let search_pattern = format!("%{}%", name_pattern);
@@ -107,16 +137,21 @@ impl GraphRepo {
             LIMIT $3
         ";
 
-        let rows = client.query(query, &[&node_type, &search_pattern, &limit]).await
+        let rows = client
+            .query(query, &[&node_type, &search_pattern, &limit])
+            .await
             .map_err(|e| AppError::Database(format!("Failed to search nodes: {}", e)))?;
 
-        let nodes = rows.iter().map(|row| GraphNode {
-            id: row.get("id"),
-            node_type: row.get("node_type"),
-            name: row.get("name"),
-            properties: row.try_get("properties").unwrap_or(None),
-            created_at: row.get("created_at"),
-        }).collect();
+        let nodes = rows
+            .iter()
+            .map(|row| GraphNode {
+                id: row.get("id"),
+                node_type: row.get("node_type"),
+                name: row.get("name"),
+                properties: row.try_get("properties").unwrap_or(None),
+                created_at: row.get("created_at"),
+            })
+            .collect();
 
         Ok(nodes)
     }
@@ -129,7 +164,10 @@ impl GraphRepo {
     /// For now, this is a placeholder that links nodes with similar names.
     /// A full implementation would compute Jaccard similarity on node properties.
     pub async fn auto_link(&self, node_id: &str, threshold: f64) -> Result<Vec<GraphEdge>> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // Get the source node
@@ -147,7 +185,9 @@ impl GraphRepo {
             LIMIT 10
         ";
 
-        let rows = client.query(query, &[&source_node.node_type, &node_id]).await
+        let rows = client
+            .query(query, &[&source_node.node_type, &node_id])
+            .await
             .map_err(|e| AppError::Database(format!("Failed to find similar nodes: {}", e)))?;
 
         let mut created_edges = Vec::new();
@@ -170,7 +210,10 @@ impl GraphRepo {
 
                 match self.add_edge(&edge).await {
                     Ok(created_edge) => {
-                        debug!("Auto-linked {} -> {} with similarity {}", node_id, target_id, similarity);
+                        debug!(
+                            "Auto-linked {} -> {} with similarity {}",
+                            node_id, target_id, similarity
+                        );
                         created_edges.push(created_edge);
                     }
                     Err(e) => {
@@ -185,7 +228,10 @@ impl GraphRepo {
 
     /// Get edges for a node (both incoming and outgoing)
     pub async fn get_node_edges(&self, node_id: &str) -> Result<Vec<GraphEdge>> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = "
@@ -194,35 +240,47 @@ impl GraphRepo {
             ORDER BY created_at DESC
         ";
 
-        let rows = client.query(query, &[&node_id]).await
+        let rows = client
+            .query(query, &[&node_id])
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get node edges: {}", e)))?;
 
-        let edges = rows.iter().map(|row| GraphEdge {
-            id: row.get("id"),
-            source_node_id: row.get("source_node_id"),
-            target_node_id: row.get("target_node_id"),
-            relation_type: row.get("relation_type"),
-            weight: row.get("weight"),
-            bidirectional: row.get("bidirectional"),
-            created_at: row.get("created_at"),
-        }).collect();
+        let edges = rows
+            .iter()
+            .map(|row| GraphEdge {
+                id: row.get("id"),
+                source_node_id: row.get("source_node_id"),
+                target_node_id: row.get("target_node_id"),
+                relation_type: row.get("relation_type"),
+                weight: row.get("weight"),
+                bidirectional: row.get("bidirectional"),
+                created_at: row.get("created_at"),
+            })
+            .collect();
 
         Ok(edges)
     }
 
     /// Delete a node
     pub async fn delete_node(&self, id: &str) -> Result<bool> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // First delete all edges connected to this node
         let edge_query = "DELETE FROM graph_edges WHERE source_node_id = $1 OR target_node_id = $1";
-        client.execute(edge_query, &[&id]).await
+        client
+            .execute(edge_query, &[&id])
+            .await
             .map_err(|e| AppError::Database(format!("Failed to delete node edges: {}", e)))?;
 
         // Then delete the node
         let query = "DELETE FROM graph_nodes WHERE id = $1";
-        let rows_affected = client.execute(query, &[&id]).await
+        let rows_affected = client
+            .execute(query, &[&id])
+            .await
             .map_err(|e| AppError::Database(format!("Failed to delete node: {}", e)))?;
 
         Ok(rows_affected > 0)
@@ -230,11 +288,16 @@ impl GraphRepo {
 
     /// Delete an edge
     pub async fn delete_edge(&self, id: &str) -> Result<bool> {
-        let client = self.pool.get().await
+        let client = self
+            .pool
+            .get()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = "DELETE FROM graph_edges WHERE id = $1";
-        let rows_affected = client.execute(query, &[&id]).await
+        let rows_affected = client
+            .execute(query, &[&id])
+            .await
             .map_err(|e| AppError::Database(format!("Failed to delete edge: {}", e)))?;
 
         Ok(rows_affected > 0)

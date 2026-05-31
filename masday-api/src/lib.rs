@@ -1,18 +1,59 @@
 //! masday-api - HTTP API server layer
 
-pub mod routes;
-pub mod middleware;
 pub mod extractors;
+pub mod middleware;
+pub mod routes;
+pub mod state;
 
-// Re-export error handler
 pub use middleware::error_handler::app_error_into_response;
+pub use state::AppState;
+
+use axum::Router;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+
+/// Build the complete API router with all routes and middleware
+pub fn build_router(state: AppState) -> Router {
+    let api_routes = Router::new()
+        .merge(routes::workflow::workflow_routes())
+        .merge(routes::task::task_routes())
+        .merge(routes::memory::memory_routes())
+        .merge(routes::review::review_routes())
+        .merge(routes::session::session_routes())
+        .merge(routes::policy::policy_routes())
+        .merge(routes::capability::capability_routes())
+        .merge(routes::context::context_routes())
+        .merge(routes::reminder::reminder_routes())
+        .merge(routes::graph::graph_routes())
+        .merge(routes::health::health_routes())
+        .merge(routes::plan::plan_routes())
+        .with_state(state);
+
+    // Permissive CORS for local development (Next.js dashboard on :3000)
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    Router::new()
+        .nest("/api", api_routes)
+        // Middleware order (outermost first):
+        // 1. CORS — handle preflight before anything else
+        // 2. Tracing — structured HTTP logging via tower-http
+        // 3. Custom logging — method/path/status/duration logging
+        // 4. Auth — API key validation (skips /api/health)
+        .layer(cors)
+        .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(
+            middleware::logging::logging_middleware,
+        ))
+        .layer(axum::middleware::from_fn(middleware::auth::auth_middleware))
+}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_placeholder() {
-        assert!(true);
+        // Placeholder test
     }
 }

@@ -1,15 +1,10 @@
 {
   "servers": {
     "masday": {
-      "command": "node",
-      "args": [
-        "--no-warnings",
-        "apps/agent-runner/dist/runtime/mcp.js"
-      ],
-      "cwd": "/c/Users/AQR STD/Documents/GitHub/vibe-masday-workflow/masday-workflow-rebuild",
+      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
       "env": {
-        "DATABASE_URL": "",
-        "NODE_ENV": "development"
+        "MASDAY_API_URL": "http://localhost:3001",
+        "MASDAY_API_KEY": "PLACEHOLDER"
       }
     }
   }
