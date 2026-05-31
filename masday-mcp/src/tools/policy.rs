@@ -12,7 +12,7 @@ pub async fn policy_check_session_readiness(
 pub async fn policy_validate_completion(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    client::api_post("/api/policy/validate", args).await
+    client::api_post("/api/policy/validate-completion", args).await
 }
 
 pub async fn policy_validate_execution(
@@ -34,7 +34,7 @@ pub async fn policy_detect_scope_drift(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
-    client::api_get(&format!("/api/policy/drift/{}", workflow_id)).await
+    client::api_post(&format!("/api/policy/drift/{}", workflow_id), args).await
 }
 
 pub async fn policy_require_context_refresh(

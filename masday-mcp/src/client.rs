@@ -4,6 +4,42 @@ use reqwest::Client;
 use std::sync::OnceLock;
 use tracing::{debug, error};
 
+/// Validate and sanitize an ID for URL path segments.
+/// Only allows alphanumeric, hyphens, and underscores.
+/// Returns None if the ID contains path traversal characters or is empty.
+pub fn sanitize_id(id: &str) -> Option<&str> {
+    if id.is_empty() {
+        return None;
+    }
+    // Block path traversal and special characters
+    if id.contains('/')
+        || id.contains('\\')
+        || id.contains('?')
+        || id.contains('#')
+        || id.contains('&')
+        || id.contains(' ')
+        || id.contains('\0')
+    {
+        return None;
+    }
+    // Only allow alphanumeric, hyphens, underscores, dots
+    if id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// Macro to safely build API paths with validated IDs
+#[macro_export]
+macro_rules! safe_path {
+    ($fmt:expr, $id:expr) => {{
+        let id = $crate::client::sanitize_id($id)
+            .ok_or_else(|| format!("Invalid ID: contains disallowed characters"))?;
+        format!($fmt, id)
+    }};
+}
+
 /// Global API URL (set once at startup)
 static API_URL: OnceLock<String> = OnceLock::new();
 

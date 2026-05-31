@@ -30,11 +30,13 @@ impl MemoryRepo {
             INSERT INTO memories (
                 id, workflow_id, task_id, memory_type, summary, content,
                 importance_score, created_by_agent, tags, source,
-                created_at, updated_at, accessed_at, access_count, version
+                embedding, created_at, updated_at, accessed_at, access_count, version
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version
         ";
+
+        let embedding_pg: Option<Vector> = memory.embedding.clone();
 
         let row = client
             .query_one(
@@ -50,11 +52,12 @@ impl MemoryRepo {
                     &memory.created_by_agent,
                     &memory.tags,
                     &memory.source,
+                    &embedding_pg,
                     &now,
                     &now,
-                    &now,
-                    &0,
-                    &1,
+                    &Option::<chrono::DateTime<chrono::Utc>>::None,
+                    &0i32,
+                    &1i32,
                 ],
             )
             .await
