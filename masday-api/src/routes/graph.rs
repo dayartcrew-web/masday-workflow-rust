@@ -9,6 +9,12 @@ use serde_json::Value;
 
 use crate::middleware::error_handler::ApiError;
 use crate::AppState;
+use masday_core::AppError;
+
+/// Helper to create validation errors as ApiError
+fn validation_err(msg: &str) -> ApiError {
+    ApiError(AppError::Validation(msg.to_string()))
+}
 use masday_db::schema::{NewGraphEdge, NewGraphNode};
 
 pub fn graph_routes() -> Router<AppState> {
@@ -27,20 +33,39 @@ async fn add_node(
 
     // Support batch format: {"entities": [{name, entityType, observations}, ...]}
     if let Some(entities) = payload.get("entities").and_then(|v| v.as_array()) {
+        // Cap batch size to prevent DoS
+        if entities.len() > 100 {
+            return Err(validation_err(
+                "entities array exceeds maximum of 100",
+            ));
+        }
         let mut created = Vec::new();
         for ent in entities {
+            let node_type = ent
+                .get("entityType")
+                .or_else(|| ent.get("node_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("entity");
+            let name = ent
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Validate fields — fail closed on missing/empty name
+            if name.is_empty() {
+                return Err(validation_err(
+                    "name is required for each entity",
+                ));
+            }
+            if node_type.len() > 100 || name.len() > 500 {
+                return Err(validation_err(
+                    "field exceeds maximum length",
+                ));
+            }
+
             let node = NewGraphNode {
-                node_type: ent
-                    .get("entityType")
-                    .or_else(|| ent.get("node_type"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("entity")
-                    .to_string(),
-                name: ent
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+                node_type: node_type.to_string(),
+                name: name.to_string(),
                 properties: ent
                     .get("observations")
                     .map(|obs| {
@@ -57,17 +82,26 @@ async fn add_node(
     }
 
     // Single node format: {"name": "...", "node_type": "...", "properties": {...}}
+    let name = payload
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if name.is_empty() {
+        return Err(validation_err("name is required"));
+    }
+    let node_type = payload
+        .get("node_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("entity");
+    if node_type.len() > 100 || name.len() > 500 {
+        return Err(validation_err(
+            "field exceeds maximum length",
+        ));
+    }
+
     let node = NewGraphNode {
-        node_type: payload
-            .get("node_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("entity")
-            .to_string(),
-        name: payload
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+        node_type: node_type.to_string(),
+        name: name.to_string(),
         properties: payload.get("properties").cloned(),
     };
     let node = repo.add_node(&node).await?;
