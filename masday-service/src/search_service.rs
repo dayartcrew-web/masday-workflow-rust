@@ -104,34 +104,23 @@ impl SearchService {
 
     /// Code search — walks project directory, searches file contents
     pub async fn code_search(
-        pool: &PgPool,
         query: &str,
+        project_path: &str,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         info!("Starting code search for query: {}", query);
 
-        // First, try to get indexed results from database
-        let indexed_results = Self::search_indexed_code(pool, query, 20).await?;
-
-        if indexed_results.as_array().is_none_or(Vec::is_empty) {
-            // Fallback to filesystem search if nothing indexed
-            let fs_results = Self::filesystem_code_search(query, ".").await?;
-            return Ok(json!({
-                "query": query,
-                "indexed": indexed_results,
-                "filesystem": fs_results,
-                "source": "filesystem"
-            }));
-        }
+        // Filesystem search — direct, no DB required
+        let fs_results = Self::filesystem_code_search(query, project_path).await?;
 
         Ok(json!({
             "query": query,
-            "indexed": indexed_results,
-            "filesystem": json!([]),
-            "source": "database"
+            "results": fs_results,
+            "source": "filesystem"
         }))
     }
 
     /// Search indexed code in database
+    #[allow(dead_code)]
     async fn search_indexed_code(
         pool: &PgPool,
         query: &str,

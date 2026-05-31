@@ -15,18 +15,18 @@ pub fn workflow_routes() -> Router<AppState> {
     Router::new()
         .route("/workflows", post(create_workflow).get(list_workflows))
         .route("/workflows/active", get(get_active_workflows))
-        .route("/workflows/:id", get(get_workflow).delete(delete_workflow))
-        .route("/workflows/:id/execute", post(execute_workflow))
-        .route("/workflows/:id/status", get(get_workflow_status))
+        .route("/workflows/{id}", get(get_workflow).delete(delete_workflow))
+        .route("/workflows/{id}/execute", post(execute_workflow))
+        .route("/workflows/{id}/status", get(get_workflow_status))
         .route(
-            "/workflows/:id/tasks",
+            "/workflows/{id}/tasks",
             post(add_task).get(list_workflow_tasks),
         )
-        .route("/workflows/:id/plan", get(get_plan).post(create_plan))
-        .route("/workflows/:id/start-task", post(start_current_task))
-        .route("/workflows/:id/complete-task", post(complete_current_task))
-        .route("/workflows/:id/save-progress", post(save_progress))
-        .route("/workflows/:id/context-pack", get(build_context_pack))
+        .route("/workflows/{id}/plan", get(get_plan).post(create_plan))
+        .route("/workflows/{id}/start-task", post(start_current_task))
+        .route("/workflows/{id}/complete-task", post(complete_current_task))
+        .route("/workflows/{id}/save-progress", post(save_progress))
+        .route("/workflows/{id}/context-pack", get(build_context_pack))
 }
 
 #[derive(Deserialize)]

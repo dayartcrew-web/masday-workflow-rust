@@ -13,7 +13,7 @@ use crate::AppState;
 pub fn reminder_routes() -> Router<AppState> {
     Router::new()
         .route("/reminders/check", get(check_reminders))
-        .route("/reminders/:id/acknowledge", post(acknowledge_reminder))
+        .route("/reminders/{id}/acknowledge", post(acknowledge_reminder))
         .route("/reminders", get(list_reminders))
 }
 

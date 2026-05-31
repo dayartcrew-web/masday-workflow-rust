@@ -14,7 +14,7 @@ pub fn policy_routes() -> Router<AppState> {
     Router::new()
         .route("/policy/validate-execution", post(validate_execution))
         .route("/policy/validate-completion", post(validate_completion))
-        .route("/policy/drift/:workflow_id", post(detect_drift))
+        .route("/policy/drift/{workflow_id}", post(detect_drift))
         .route("/policy/session-readiness", post(check_session_readiness))
 }
 

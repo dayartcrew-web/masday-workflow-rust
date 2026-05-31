@@ -12,8 +12,8 @@ use crate::AppState;
 
 pub fn session_routes() -> Router<AppState> {
     Router::new()
-        .route("/sessions/:id", get(get_session).patch(update_session))
-        .route("/sessions/:id/init", post(init_session))
+        .route("/sessions/{id}", get(get_session).patch(update_session))
+        .route("/sessions/{id}/init", post(init_session))
 }
 
 async fn get_session(

@@ -3,6 +3,7 @@
 use crate::pool::DbPool;
 use crate::schema::{Memory, NewMemory};
 use masday_core::{AppError, Result};
+use pgvector::Vector;
 use tracing::debug;
 
 pub struct MemoryRepo {
@@ -28,11 +29,11 @@ impl MemoryRepo {
         let query = "
             INSERT INTO memories (
                 id, workflow_id, task_id, memory_type, summary, content,
-                importance_score, created_by_agent, tags, source, embedding,
+                importance_score, created_by_agent, tags, source,
                 created_at, updated_at, accessed_at, access_count, version
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-            RETURNING *
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            RETURNING id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version
         ";
 
         let row = client
@@ -49,7 +50,6 @@ impl MemoryRepo {
                     &memory.created_by_agent,
                     &memory.tags,
                     &memory.source,
-                    &memory.embedding,
                     &now,
                     &now,
                     &now,
@@ -71,7 +71,7 @@ impl MemoryRepo {
             created_by_agent: row.get("created_by_agent"),
             tags: row.get("tags"),
             source: row.get("source"),
-            embedding: row.get("embedding"),
+            embedding: None,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
             accessed_at: row.get("accessed_at"),
@@ -98,7 +98,7 @@ impl MemoryRepo {
                 AppError::Database(format!("Failed to update memory access stats: {}", e))
             })?;
 
-        let query = "SELECT * FROM memories WHERE id = $1";
+        let query = "SELECT id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version FROM memories WHERE id = $1";
         let row = client
             .query_one(query, &[&id])
             .await
@@ -115,7 +115,7 @@ impl MemoryRepo {
             created_by_agent: row.get("created_by_agent"),
             tags: row.get("tags"),
             source: row.get("source"),
-            embedding: row.get("embedding"),
+            embedding: None,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
             accessed_at: row.get("accessed_at"),
@@ -132,7 +132,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM memories ORDER BY created_at DESC LIMIT $1";
+        let query = "SELECT id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version FROM memories ORDER BY created_at DESC LIMIT $1";
         let rows = client
             .query(query, &[&limit])
             .await
@@ -151,7 +151,7 @@ impl MemoryRepo {
                 created_by_agent: row.get("created_by_agent"),
                 tags: row.get("tags"),
                 source: row.get("source"),
-                embedding: row.get("embedding"),
+                embedding: None,
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
                 accessed_at: row.get("accessed_at"),
@@ -171,7 +171,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = "SELECT * FROM memories WHERE task_id = $1 ORDER BY created_at DESC";
+        let query = "SELECT id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version FROM memories WHERE task_id = $1 ORDER BY created_at DESC";
         let rows = client
             .query(query, &[&task_id])
             .await
@@ -190,7 +190,7 @@ impl MemoryRepo {
                 created_by_agent: row.get("created_by_agent"),
                 tags: row.get("tags"),
                 source: row.get("source"),
-                embedding: row.get("embedding"),
+                embedding: None,
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
                 accessed_at: row.get("accessed_at"),
@@ -212,7 +212,7 @@ impl MemoryRepo {
 
         let capped = limit.min(1000); // hard cap to prevent unbounded queries
         let query =
-            "SELECT * FROM memories WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT $2";
+            "SELECT id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version FROM memories WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT $2";
         let rows = client
             .query(query, &[&workflow_id, &capped])
             .await
@@ -233,7 +233,7 @@ impl MemoryRepo {
                 created_by_agent: row.get("created_by_agent"),
                 tags: row.get("tags"),
                 source: row.get("source"),
-                embedding: row.get("embedding"),
+                embedding: None,
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
                 accessed_at: row.get("accessed_at"),
@@ -254,7 +254,7 @@ impl MemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            "SELECT * FROM memories WHERE memory_type = $1 ORDER BY created_at DESC LIMIT $2";
+            "SELECT id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version FROM memories WHERE memory_type = $1 ORDER BY created_at DESC LIMIT $2";
         let rows = client
             .query(query, &[&memory_type, &limit])
             .await
@@ -273,7 +273,7 @@ impl MemoryRepo {
                 created_by_agent: row.get("created_by_agent"),
                 tags: row.get("tags"),
                 source: row.get("source"),
-                embedding: row.get("embedding"),
+                embedding: None,
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
                 accessed_at: row.get("accessed_at"),
@@ -296,7 +296,7 @@ impl MemoryRepo {
         let search_pattern = format!("%{}%", query);
 
         let sql = "
-            SELECT * FROM memories
+            SELECT id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version FROM memories
             WHERE summary ILIKE $1 OR content ILIKE $1
             ORDER BY importance_score DESC, created_at DESC
             LIMIT $2
@@ -320,7 +320,7 @@ impl MemoryRepo {
                 created_by_agent: row.get("created_by_agent"),
                 tags: row.get("tags"),
                 source: row.get("source"),
-                embedding: row.get("embedding"),
+                embedding: None,
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
                 accessed_at: row.get("accessed_at"),
@@ -373,7 +373,7 @@ impl MemoryRepo {
         }
 
         let sql = format!(
-            "UPDATE memories SET {} WHERE id = $1 RETURNING *",
+            "UPDATE memories SET {} WHERE id = $1 RETURNING id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version",
             set_clauses.join(", ")
         );
 
@@ -398,7 +398,7 @@ impl MemoryRepo {
             created_by_agent: row.get("created_by_agent"),
             tags: row.get("tags"),
             source: row.get("source"),
-            embedding: row.get("embedding"),
+            embedding: None,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
             accessed_at: row.get("accessed_at"),
@@ -458,6 +458,164 @@ impl MemoryRepo {
             total_count,
             by_type,
         })
+    }
+
+    /// Store a new memory with an optional embedding vector
+    pub async fn store_with_embedding(
+        &self,
+        memory: &NewMemory,
+        embedding: Option<Vec<f32>>,
+    ) -> Result<Memory> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+
+        let pgvec = embedding.map(Vector::from);
+
+        let query = "
+            INSERT INTO memories (
+                id, workflow_id, task_id, memory_type, summary, content,
+                importance_score, created_by_agent, tags, source,
+                embedding, created_at, updated_at, accessed_at, access_count, version
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            RETURNING id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, source, created_at, updated_at, accessed_at, access_count, version
+        ";
+
+        let row = client
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &memory.workflow_id,
+                    &memory.task_id,
+                    &memory.memory_type,
+                    &memory.summary,
+                    &memory.content,
+                    &memory.importance_score,
+                    &memory.created_by_agent,
+                    &memory.tags,
+                    &memory.source,
+                    &pgvec,
+                    &now,
+                    &now,
+                    &now,
+                    &0,
+                    &1,
+                ],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to store memory: {}", e)))?;
+
+        Ok(Memory {
+            id: row.get("id"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            memory_type: row.get("memory_type"),
+            summary: row.get("summary"),
+            content: row.get("content"),
+            importance_score: row.get("importance_score"),
+            created_by_agent: row.get("created_by_agent"),
+            tags: row.get("tags"),
+            source: row.get("source"),
+            embedding: pgvec,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            accessed_at: row.get("accessed_at"),
+            access_count: row.get("access_count"),
+            version: row.get("version"),
+        })
+    }
+
+    /// Vector similarity search using pgvector cosine distance
+    /// Falls back to text search if no query embedding provided
+    pub async fn vector_search(
+        &self,
+        query_embedding: &[f32],
+        limit: i64,
+    ) -> Result<Vec<(Memory, f64)>> {
+        if query_embedding.is_empty() {
+            // Fall back to text search
+            let memories = self.search("", limit).await?;
+            return Ok(memories.into_iter().map(|m| (m, 0.0)).collect());
+        }
+
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let query_vec = Vector::from(query_embedding.to_vec());
+
+        let sql = "
+            SELECT id, workflow_id, task_id, memory_type, summary, content,
+                   importance_score, created_by_agent, tags, source,
+                   created_at, updated_at, accessed_at, access_count, version,
+                   1 - (embedding <=> $1::vector) as similarity
+            FROM memories
+            WHERE embedding IS NOT NULL
+            ORDER BY embedding <=> $1::vector
+            LIMIT $2
+        ";
+
+        let rows = client
+            .query(sql, &[&query_vec, &limit])
+            .await
+            .map_err(|e| AppError::Database(format!("Vector search failed: {}", e)))?;
+
+        let results = rows
+            .iter()
+            .map(|row| {
+                let similarity: f64 = row.get::<_, Option<f64>>("similarity").unwrap_or(0.0);
+                let memory = Memory {
+                    id: row.get("id"),
+                    workflow_id: row.get("workflow_id"),
+                    task_id: row.get("task_id"),
+                    memory_type: row.get("memory_type"),
+                    summary: row.get("summary"),
+                    content: row.get("content"),
+                    importance_score: row.get("importance_score"),
+                    created_by_agent: row.get("created_by_agent"),
+                    tags: row.get("tags"),
+                    source: row.get("source"),
+                    embedding: None,
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                    accessed_at: row.get("accessed_at"),
+                    access_count: row.get("access_count"),
+                    version: row.get("version"),
+                };
+                (memory, similarity)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Update embedding for a memory
+    pub async fn update_embedding(&self, id: &str, embedding: Vec<f32>) -> Result<bool> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let pgvec = Vector::from(embedding);
+        let rows = client
+            .execute(
+                "UPDATE memories SET embedding = $1, updated_at = NOW() WHERE id = $2",
+                &[&pgvec, &id],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to update embedding: {}", e)))?;
+
+        Ok(rows > 0)
     }
 }
 

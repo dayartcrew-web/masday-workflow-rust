@@ -12,10 +12,10 @@ use crate::AppState;
 
 pub fn task_routes() -> Router<AppState> {
     Router::new()
-        .route("/tasks/:id/start", post(start_task))
-        .route("/tasks/:id/complete", post(complete_task))
-        .route("/tasks/:id/progress", post(save_progress))
-        .route("/tasks/:id", get(get_task))
+        .route("/tasks/{id}/start", post(start_task))
+        .route("/tasks/{id}/complete", post(complete_task))
+        .route("/tasks/{id}/progress", post(save_progress))
+        .route("/tasks/{id}", get(get_task))
 }
 
 async fn start_task(
