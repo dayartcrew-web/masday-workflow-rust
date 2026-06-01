@@ -97,7 +97,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to list tasks: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Task::from_row(r)).collect())
+        Ok(rows.iter().map(Task::from_row).collect())
     }
 
     /// Get the current task for a workflow (first RUNNING or first PENDING)

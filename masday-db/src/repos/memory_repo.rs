@@ -110,7 +110,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to recall recent memories: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Memory::from_row(r)).collect())
+        Ok(rows.iter().map(Memory::from_row).collect())
     }
 
     /// Recall memories by task ID
@@ -127,7 +127,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to recall task memories: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Memory::from_row(r)).collect())
+        Ok(rows.iter().map(Memory::from_row).collect())
     }
 
     /// Recall memories by workflow ID (bounded by limit)
@@ -148,7 +148,7 @@ impl MemoryRepo {
                 AppError::Database(format!("Failed to recall workflow memories: {}", e))
             })?;
 
-        Ok(rows.iter().map(|r| Memory::from_row(r)).collect())
+        Ok(rows.iter().map(Memory::from_row).collect())
     }
 
     /// Recall memories by type
@@ -166,7 +166,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to recall memories by type: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Memory::from_row(r)).collect())
+        Ok(rows.iter().map(Memory::from_row).collect())
     }
 
     /// Search memories by query (simple text search in summary and content)
@@ -191,7 +191,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to search memories: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Memory::from_row(r)).collect())
+        Ok(rows.iter().map(Memory::from_row).collect())
     }
 
     /// Update a memory

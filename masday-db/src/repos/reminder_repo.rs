@@ -35,7 +35,7 @@ impl ReminderRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to check reminders: {}", e)))?;
 
-        Ok(rows.iter().map(|r| WorkflowReminder::from_row(r)).collect())
+        Ok(rows.iter().map(WorkflowReminder::from_row).collect())
     }
 
     /// Acknowledge a reminder
@@ -70,7 +70,7 @@ impl ReminderRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to list reminders: {}", e)))?;
 
-        Ok(rows.iter().map(|r| WorkflowReminder::from_row(r)).collect())
+        Ok(rows.iter().map(WorkflowReminder::from_row).collect())
     }
 
     /// Create a new reminder
@@ -130,7 +130,7 @@ impl ReminderRepo {
             AppError::Database(format!("Failed to list reminders by severity: {}", e))
         })?;
 
-        Ok(rows.iter().map(|r| WorkflowReminder::from_row(r)).collect())
+        Ok(rows.iter().map(WorkflowReminder::from_row).collect())
     }
 
     /// Delete a reminder

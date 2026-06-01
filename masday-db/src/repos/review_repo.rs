@@ -95,6 +95,6 @@ impl ReviewRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to list reviews: {}", e)))?;
 
-        Ok(rows.iter().map(|r| ReviewDecision::from_row(r)).collect())
+        Ok(rows.iter().map(ReviewDecision::from_row).collect())
     }
 }

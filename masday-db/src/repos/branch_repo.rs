@@ -108,7 +108,7 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to list branches: {}", e)))?;
 
-        Ok(rows.iter().map(|r| ParallelBranch::from_row(r)).collect())
+        Ok(rows.iter().map(ParallelBranch::from_row).collect())
     }
 
     /// Get a branch by ID

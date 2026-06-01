@@ -52,6 +52,6 @@ pub mod workflow_defaults {
 
 /// API defaults
 pub mod api_defaults {
-    pub const DEFAULT_API_PORT: u16 = 3001;
+    pub const DEFAULT_API_PORT: u16 = 3010;
     pub const DEFAULT_API_HOST: &str = "127.0.0.1";
 }

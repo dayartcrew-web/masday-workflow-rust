@@ -89,7 +89,7 @@ impl WorkflowRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to list workflows: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Workflow::from_row(r)).collect())
+        Ok(rows.iter().map(Workflow::from_row).collect())
     }
 
     /// Get all active workflows (not DONE or FAILED)
@@ -106,7 +106,7 @@ impl WorkflowRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get active workflows: {}", e)))?;
 
-        Ok(rows.iter().map(|r| Workflow::from_row(r)).collect())
+        Ok(rows.iter().map(Workflow::from_row).collect())
     }
 
     /// Update workflow status
