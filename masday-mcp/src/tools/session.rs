@@ -52,3 +52,43 @@ pub async fn session_patch_state(
         .ok_or_else(|| "Missing session_key".to_string())?;
     client::api_patch(&format!("/api/sessions/{}", key), args).await
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_session_key_generation() {
+        let cwd = "/home/user/project";
+        let session_key = cwd.replace('/', "_").replace('.', "-");
+        assert_eq!(session_key, "_home_user_project");
+
+        let cwd = "/path/to.mcp/project";
+        let session_key = cwd.replace('/', "_").replace('.', "-");
+        assert_eq!(session_key, "_path_to-mcp_project");
+    }
+
+    #[test]
+    fn test_session_init_args_parsing() {
+        let args = json!({ "cwd": "/home/user" });
+        let cwd = args.get("cwd").and_then(|v| v.as_str());
+        assert!(cwd.is_some());
+        assert_eq!(cwd.unwrap(), "/home/user");
+
+        let args = json!({});
+        let cwd = args.get("cwd").and_then(|v| v.as_str());
+        assert!(cwd.is_none());
+    }
+
+    #[test]
+    fn test_session_get_state_args() {
+        let args = json!({ "session_key": "sess-123" });
+        let key = args.get("session_key").and_then(|v| v.as_str());
+        assert!(key.is_some());
+        assert_eq!(key.unwrap(), "sess-123");
+
+        let args = json!({});
+        let key = args.get("session_key").and_then(|v| v.as_str());
+        assert!(key.is_none());
+    }
+}

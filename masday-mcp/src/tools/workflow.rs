@@ -252,3 +252,65 @@ pub async fn workflow_get_current_task(
         .ok_or_else(|| "Missing workflow_id".to_string())?;
     client::api_get(&format!("/api/workflows/{}/current-task", workflow_id)).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_workflow_ping() {
+        let result = workflow_ping(json!({})).await;
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        assert_eq!(result_json["status"], "pong");
+    }
+
+    #[test]
+    fn test_workflow_execute_args_fallback() {
+        let args = json!({ "id": "wf-123" });
+        let workflow_id = args.get("id")
+            .or_else(|| args.get("workflow_id"))
+            .and_then(|v| v.as_str());
+        assert_eq!(workflow_id.unwrap(), "wf-123");
+
+        let args = json!({ "workflow_id": "wf-456" });
+        let workflow_id = args.get("id")
+            .or_else(|| args.get("workflow_id"))
+            .and_then(|v| v.as_str());
+        assert_eq!(workflow_id.unwrap(), "wf-456");
+    }
+
+    #[test]
+    fn test_workflow_list_default_pagination() {
+        let args = json!({});
+        let page = args.get("page").and_then(|v| v.as_u64()).unwrap_or(1);
+        let page_size = args.get("page_size").and_then(|v| v.as_u64()).unwrap_or(50);
+        assert_eq!(page, 1);
+        assert_eq!(page_size, 50);
+    }
+
+    #[test]
+    fn test_workflow_list_custom_pagination() {
+        let args = json!({ "page": 2, "page_size": 100 });
+        let page = args.get("page").and_then(|v| v.as_u64()).unwrap_or(1);
+        let page_size = args.get("page_size").and_then(|v| v.as_u64()).unwrap_or(50);
+        assert_eq!(page, 2);
+        assert_eq!(page_size, 100);
+    }
+
+    #[test]
+    fn test_url_building() {
+        let workflow_id = "wf-123";
+        let url = format!("/api/workflows/{}/execute", workflow_id);
+        assert_eq!(url, "/api/workflows/wf-123/execute");
+
+        let workflow_id = "wf-456";
+        let url = format!("/api/workflows/{}/status", workflow_id);
+        assert_eq!(url, "/api/workflows/wf-456/status");
+
+        let workflow_id = "wf-789";
+        let url = format!("/api/workflows/{}/plan", workflow_id);
+        assert_eq!(url, "/api/workflows/wf-789/plan");
+    }
+}

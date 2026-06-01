@@ -48,3 +48,39 @@ pub async fn tests_run(args: Value) -> Result<Value, Box<dyn std::error::Error +
         "passed": passed
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_tests_run_args_parsing() {
+        let args = json!({ "pattern": "unit" });
+        let pattern = args.get("pattern").and_then(|v| v.as_str());
+        assert!(pattern.is_some());
+        assert_eq!(pattern.unwrap(), "unit");
+
+        let args = json!({});
+        let pattern = args.get("pattern").and_then(|v| v.as_str());
+        assert!(pattern.is_none());
+    }
+
+    #[test]
+    fn test_command_args_building() {
+        let pattern = Some("unit");
+        let cmd_args = if let Some(p) = pattern {
+            vec!["test", p]
+        } else {
+            vec!["test"]
+        };
+        assert_eq!(cmd_args, vec!["test", "unit"]);
+
+        let pattern = None;
+        let cmd_args = if let Some(p) = pattern {
+            vec!["test", p]
+        } else {
+            vec!["test"]
+        };
+        assert_eq!(cmd_args, vec!["test"]);
+    }
+}

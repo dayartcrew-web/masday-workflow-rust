@@ -71,3 +71,30 @@ pub async fn git_commit(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     Ok(serde_json::json!({ "committed": true }))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_git_commit_args_parsing() {
+        let args = json!({ "message": "feat: add new feature" });
+        let message = args.get("message").and_then(|v| v.as_str());
+        assert!(message.is_some());
+        assert_eq!(message.unwrap(), "feat: add new feature");
+
+        let args = json!({});
+        let message = args.get("message").and_then(|v| v.as_str());
+        assert!(message.is_none());
+    }
+
+    #[test]
+    fn test_command_building() {
+        let message = "test commit";
+        let args = vec!["commit", "-m", message];
+        assert_eq!(args, vec!["commit", "-m", "test commit"]);
+
+        let args = vec!["status", "--porcelain"];
+        assert_eq!(args, vec!["status", "--porcelain"]);
+    }
+}

@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn build_registry() -> ToolRegistry {
     let mut r = ToolRegistry::new();
+    register_use_masday_tools(&mut r);
     register_workflow_tools(&mut r);
     register_memory_tools(&mut r);
     register_review_tools(&mut r);
@@ -87,6 +88,19 @@ fn build_registry() -> ToolRegistry {
     register_local_tools(&mut r);
     register_project_rules_tools(&mut r);
     r
+}
+
+// ── Universal Entry Point (1 tool) ─────────────────────────────────────────────
+
+fn register_use_masday_tools(r: &mut ToolRegistry) {
+    use masday_mcp::tools::use_masday as u;
+    reg!(
+        r,
+        "use_masday",
+        "Universal entry point - parse any instruction and return routing plan",
+        schema!("prompt"),
+        u::use_masday
+    );
 }
 
 // ── Workflow (23 tools) ──────────────────────────────────────────────────────

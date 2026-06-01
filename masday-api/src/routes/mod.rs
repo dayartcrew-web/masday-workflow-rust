@@ -2,13 +2,39 @@
 
 pub mod capability;
 pub mod context;
+pub mod context_documents;
+pub mod episodic_memory;
 pub mod graph;
 pub mod health;
+pub mod llm_provider_configs;
 pub mod memory;
 pub mod plan;
 pub mod policy;
+pub mod progress_logs;
 pub mod reminder;
+pub mod retrieval_logs;
 pub mod review;
 pub mod session;
 pub mod task;
+pub mod token_usage;
 pub mod workflow;
+
+// Re-export route functions for convenience
+pub use capability::capability_routes;
+pub use context::context_routes;
+pub use context_documents::context_document_routes;
+pub use episodic_memory::episodic_memory_routes;
+pub use graph::graph_routes;
+pub use health::health_routes;
+pub use llm_provider_configs::llm_provider_config_routes;
+pub use memory::memory_routes;
+pub use plan::plan_routes;
+pub use policy::policy_routes;
+pub use progress_logs::progress_log_routes;
+pub use reminder::reminder_routes;
+pub use retrieval_logs::retrieval_log_routes;
+pub use review::review_routes;
+pub use session::session_routes;
+pub use task::task_routes;
+pub use token_usage::token_usage_routes;
+pub use workflow::workflow_routes;

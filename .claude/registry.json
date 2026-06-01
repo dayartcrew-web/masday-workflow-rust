@@ -86,7 +86,7 @@
       { "name": "workflow-lock", "file": ".claude/hooks/workflow-lock.js", "type": "executable", "description": "Ensures workflow context is loaded before editing source files." }
     ],
     "mcpServers": [
-      { "name": "agent-runner", "path": "apps/agent-runner", "description": "Main MCP server with 89 tools across 18 namespaces, PostgreSQL-backed via DualWriteStore." }
+      { "name": "masday-mcp", "path": "target/release/masday-mcp", "description": "Rust MCP server with 90 tools across 18 namespaces, PostgreSQL-backed via Axum API." }
     ],
     "docs": [
       { "name": "project-claude-md", "file": ".claude/CLAUDE.md", "category": "project", "description": "Project-level CLAUDE.md with agent orchestration, skill priority, and masday pipeline rules." },
