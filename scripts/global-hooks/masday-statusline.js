@@ -2,15 +2,16 @@
 //
 // Masday Statusline — status + context progress bar
 //
-// Output: "⚡ Masday | DB:✓ | API:✓ | ▓▓▓░░░░░░░ 32% | rust-wf"
+// Output: "⚡ Masday | DB:✓ | API:✓ | MCP:✓ | ▓▓▓░░░░░░░ 32% | ×4 | rust-wf"
 //
-// Context estimation: parses session JSONL, counts user+assistant message
-// content bytes (JSON.stringify of message.content), adds system overhead,
-// calibrated against real Claude CLI context percentage.
+// Context estimation: parses session JSONL, finds last compact_boundary,
+// counts user+assistant content bytes after boundary, adds system overhead.
+// Calibrated against real Claude CLI context percentage.
 //
 
 const { execSync } = require("child_process");
 const net = require("net");
+const http = require("http");
 const path = require("path");
 const fs = require("fs");
 
@@ -21,7 +22,7 @@ const API_PORT = 3010;
 // Context estimation config — calibrated against real Claude CLI readings
 const CONTEXT_WINDOW_TOKENS = 200000;    // 200K tokens (Claude Opus/Sonnet)
 const BYTES_PER_TOKEN = 4;               // ~4 bytes per token for text
-const SYSTEM_OVERHEAD_TOKENS = 87000;    // System prompt + CLAUDE.md + rules + tool schemas + cached attachments
+const SYSTEM_OVERHEAD_TOKENS = 18000;    // System prompt + CLAUDE.md + rules + tool schemas (~18K, calibrated with context-warning hook's 15K ±5%)
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -39,9 +40,8 @@ function isPortOpen(port) {
  *
  * Strategy:
  *   1. Find the latest session JSONL file
- *   2. Count user+assistant message content bytes (JSON.stringify of message.content)
- *      — this includes text, tool_use, tool_result blocks (all token-consuming content)
- *   3. Skip "attachment" type lines (system-reminders, skill listings) — they're cached/repeated
+ *   2. Find the last compact_boundary — only count bytes AFTER it
+ *   3. Count user+assistant message content bytes (JSON.stringify of message.content)
  *   4. Estimate tokens = contentBytes / BYTES_PER_TOKEN + SYSTEM_OVERHEAD_TOKENS
  *
  * Calibrated: matches real Claude CLI context % within ±5% accuracy.
@@ -74,10 +74,25 @@ function estimateContext() {
     const content = fs.readFileSync(latest, "utf8");
     const lines = content.split("\n");
 
-    // Count content bytes from user + assistant messages only
-    // Use JSON.stringify(message.content) to capture all content blocks
+    // Find the last compact_boundary — only count active (post-compact) context
+    let lastBoundaryIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i]) continue;
+      try {
+        const obj = JSON.parse(lines[i]);
+        if (obj.subtype === "compact_boundary") {
+          lastBoundaryIdx = i;
+          break;
+        }
+      } catch {}
+    }
+
+    const startIdx = lastBoundaryIdx >= 0 ? lastBoundaryIdx + 1 : 0;
+
+    // Count content bytes from user + assistant messages only (after boundary)
     let contentBytes = 0;
-    for (const line of lines) {
+    for (let i = startIdx; i < lines.length; i++) {
+      const line = lines[i];
       if (!line) continue;
       try {
         const obj = JSON.parse(line);
@@ -113,21 +128,44 @@ async function main() {
   const dbUp = await isPortOpen(DB_PORT);
   parts.push(`DB:${dbUp ? "✓" : "✗"}`);
 
-  // API check (Axum on 3010)
-  const apiUp = await isPortOpen(API_PORT);
-  parts.push(`API:${apiUp ? "✓" : "✗"}`);
+  // API health check — verify /api/health responds
+  let apiHealthy = false;
+  try {
+    apiHealthy = await new Promise((resolve) => {
+      const req = http.get(`http://localhost:${API_PORT}/api/health`, { timeout: 1000 }, (res) => {
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+    });
+  } catch {}
+  if (apiHealthy) {
+    parts.push("API:✓");
+  } else {
+    const apiPort = await isPortOpen(API_PORT);
+    parts.push(apiPort ? "API:⚠" : "API:✗");
+  }
 
-  // MCP binary check
-  const mcpBin = `${PROJECT}/target/release/masday-mcp`;
-  const mcpExists = fs.existsSync(mcpBin);
-  parts.push(`MCP:${mcpExists ? "✓" : "✗"}`);
+  // MCP process check — is the binary running?
+  let mcpRunning = false;
+  try {
+    const result = execSync("pgrep -f masday-mcp 2>/dev/null || true", { encoding: "utf-8" }).trim();
+    mcpRunning = result.length > 0;
+  } catch {}
+  if (mcpRunning) {
+    parts.push("MCP:✓");
+  } else {
+    const mcpBin = `${PROJECT}/target/release/masday-mcp`;
+    const mcpExists = fs.existsSync(mcpBin);
+    parts.push(mcpExists ? "MCP:⚠" : "MCP:✗");
+  }
 
   // Context progress bar
   const ctx = estimateContext();
   if (ctx) {
-    if (ctx.pct >= 80) {
+    if (ctx.pct >= 75) {
       parts.push(`🔴 ${ctx.bar} ${ctx.pct}%`);
-    } else if (ctx.pct >= 45) {
+    } else if (ctx.pct >= 50) {
       parts.push(`🟡 ${ctx.bar} ${ctx.pct}%`);
     } else {
       parts.push(`🟢 ${ctx.bar} ${ctx.pct}%`);

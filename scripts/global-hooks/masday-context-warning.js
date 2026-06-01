@@ -13,8 +13,8 @@ const os = require("os");
 const CONTEXT_WINDOW_TOKENS = 200000;
 const BYTES_PER_TOKEN = 4;
 const SYSTEM_OVERHEAD_TOKENS = 15000;
-const WARN_THRESHOLD = 0.40;
-const CRITICAL_THRESHOLD = 0.70;
+const WARN_THRESHOLD = 0.50;
+const CRITICAL_THRESHOLD = 0.75;
 const CACHE_TTL_MS = 30000; // cache for 30 seconds
 
 const CACHE_FILE = path.join(os.tmpdir(), "masday-context-cache.json");
