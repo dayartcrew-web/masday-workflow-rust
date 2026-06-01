@@ -7,9 +7,28 @@
 
 **Unified AI coding agent platform built on Model Context Protocol (MCP) — Rust Implementation**
 
-> **Migration Status:** Complete. Backend migrated from TypeScript to Rust. Frontend remains Next.js.
+> **Migration Status:** Complete. Backend migrated from TypeScript to Rust.
 
 This is the Rust implementation of masday-workflow, providing a robust, type-safe backend with the MCP protocol. The project combines a multi-agent workflow system with 4-layer memory (working, episodic, long-term, graph) and exposes MCP tools for AI agents.
+
+---
+
+## Install
+
+**One-line install (Linux):**
+```bash
+curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/install.sh | bash
+```
+
+**Manual download:** [Linux x86_64](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-linux-x86_64) · [Windows x86_64](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-windows-x86_64.exe) · [All releases](https://github.com/dayartcrew-web/masday-workflow-rust/releases)
+
+📖 **Full install guide:** [docs/install-guide.md](docs/install-guide.md)
+
+```bash
+masday --version          # Check version
+masday install            # Install into current project (local mode)
+masday uninstall          # Remove from project
+```
 
 ---
 
