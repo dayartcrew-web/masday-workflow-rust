@@ -280,6 +280,47 @@ Two PreToolUse hooks enforce skill/agent step ordering by tracking real evidence
 - Registered in `.claude/settings.json` PreToolUse matcher for Write, Edit, Bash, Skill, and all tracked MCP tools.
 - Also registered in `.github/hooks/masday-hooks.json` for VS Code Copilot compatibility.
 
+## Hooks System
+
+Source of truth: `scripts/global-hooks/` — always edit source files first, then run `bash scripts/install-hooks.sh` to sync to `~/.claude/hooks/`.
+
+### Statusline
+
+Output: `⚡ Masday | DB:✓ | API:✓ | MCP:✓ | 🟢 ▓▓▓▓░░░░░░ 35% | ▶ 1 | masday-workflow-rust(N)`
+
+| Segment | Method | States |
+|---------|--------|--------|
+| DB | `isPortOpen(5434)` | ✓/✗ |
+| API | HTTP GET `/api/health` (1s) | ✓ healthy / ⚠ port open but failing / ✗ down |
+| MCP | `pgrep -f masday-mcp` | ✓ running / ⚠ binary only / ✗ not built |
+| Context % | Post-compact bytes / 4 + 18K overhead | 🟢 <50% / 🟡 50-75% / 🔴 ≥75% |
+| Workflow | GET `/api/workflows` filtered by project | ▶ N active / ⛔ N stuck / hidden if none |
+| Project | `path.basename()` + dirty count | `masday-workflow-rust(N)` |
+
+Context estimation: finds last `compact_boundary` in session JSONL, counts user+assistant bytes after it. `SYSTEM_OVERHEAD_TOKENS = 18000` (calibrated with context-warning hook's 15K ±5%).
+
+### Session Start (`masday-session-start.js`)
+
+Checks: PostgreSQL (5434), Redis (6379), binary builds, API `/api/health` (HTTP), MCP process (`pgrep`), git status. Initializes `~/.claude/compact-state.json` if missing.
+
+### Context Warnings (`masday-context-warning.js`)
+
+Runs on every `UserPromptSubmit`. Warns at 50%, critical at 75%. Auto-compact at 90% (`settings.json`).
+
+### Compact Hooks
+
+- **PreCompact** (`masday-pre-compact.js`): Saves context to masday memory before compaction.
+- **PostCompact** (`masday-post-compact.js`): Injects recovery instructions, increments compact count.
+
+### Memory Injection
+
+- **Global**: `agentic-mem-context.js` — injects from `~/.agentic-mem/` (skips in masday projects)
+- **Project**: `masday-mem-context.js` (via `.claude/hooks/`) — injects from `.masday/state/memories.json`
+
+### Bash Guard (`masday-pre-bash-guard.js`)
+
+Blocks destructive DB operations (DROP, TRUNCATE, DELETE on key tables). Warns on `cargo clean` and `docker compose down`.
+
 ## Testing
 
 - Vitest with globals enabled
