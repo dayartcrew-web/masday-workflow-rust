@@ -2,7 +2,7 @@
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
+      "command": "/home/vibe-dev/masday-workflow-rust/target/release/masday-mcp",
       "env": {
         "MASDAY_API_URL": "http://localhost:3010",
         "MASDAY_API_KEY": "dev-key"
