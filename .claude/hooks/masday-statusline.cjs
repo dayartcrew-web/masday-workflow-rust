@@ -2,7 +2,7 @@
 //
 // Masday Statusline — status + context progress bar
 //
-// Output: "⚡ Masday | DB:✓ | API:✓ | MCP:✓ | ▓▓▓░░░░░░░ 32% | ×4 | rust-wf"
+// Output: "⚡ Masday | DB:✓ | API:✓ | MCP:✓ | ▓▓▓░░░░░░░ 32% | ×4 | folder-project"
 //
 // Context estimation: parses session JSONL, finds last compact_boundary,
 // counts user+assistant content bytes after boundary, adds system overhead.
