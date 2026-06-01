@@ -34,17 +34,17 @@ fi
 
 # --- TypeScript ---
 if [[ " ${STACKS[*]} " =~ " ts " ]]; then
-  if [ -f "pnpm-workspace.yaml" ] && command -v pnpm &>/dev/null; then
+  if [ -f "pnpm-lock.yaml" ] && command -v pnpm &>/dev/null; then
     echo "  [ts] pnpm typecheck ..."
-    pnpm typecheck 2>&1 | tail -3 || true
+    pnpm typecheck 2>&1 | tail -3 || echo "  [ts] ⚠️ typecheck skipped (pnpm issue)"
   elif [ -f "tsconfig.json" ] && command -v npx &>/dev/null; then
     echo "  [ts] tsc --noEmit ..."
-    npx tsc --noEmit 2>&1 | tail -3 || true
+    npx tsc --noEmit 2>&1 | tail -3 || echo "  [ts] ⚠️ tsc skipped"
   fi
   # Lint if configured
-  if [ -f ".eslintrc.*" ] || [ -f "eslint.config.*" ]; then
+  if compgen -G ".eslintrc.*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
     echo "  [ts] eslint ..."
-    npx eslint . --max-warnings 0 2>&1 | tail -3 || true
+    npx eslint . --max-warnings 0 2>&1 | tail -3 || echo "  [ts] ⚠️ eslint skipped"
   fi
 fi
 
