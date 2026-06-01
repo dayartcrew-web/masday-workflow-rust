@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/hooks/masday-statusline.js"
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +12,16 @@
             "type": "command",
             "command": ".claude/hooks/run.sh masday-mem-context",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/masday-session-start.js",
+            "timeout": 10
           }
         ]
       }
@@ -67,6 +81,42 @@
             "type": "command",
             "command": ".claude/hooks/run.sh post-tool-use",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/masday-context-warning.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/masday-pre-compact.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/masday-post-compact.js",
+            "timeout": 5
           }
         ]
       }
