@@ -327,6 +327,16 @@ async fn create_parallel_branches(
         .unwrap_or(serde_json::json!([]));
 
     let branch_keys: Vec<String> = if let Some(arr) = branches_raw.as_array() {
+        // Cap branch count to prevent resource exhaustion
+        const MAX_BRANCHES: usize = 100;
+        const MAX_KEY_LEN: usize = 255;
+        if arr.len() > MAX_BRANCHES {
+            return Err(ApiError(masday_core::AppError::Validation(format!(
+                "Too many branches: {} (max {})",
+                arr.len(),
+                MAX_BRANCHES
+            ))));
+        }
         arr.iter()
             .map(|b| match b {
                 Value::String(s) => s.clone(),
@@ -336,6 +346,17 @@ async fn create_parallel_branches(
                     .unwrap_or("branch")
                     .to_string(),
                 _ => "branch".to_string(),
+            })
+            .filter(|s| {
+                if s.len() > MAX_KEY_LEN {
+                    tracing::warn!(
+                        "Skipping branch key exceeding max length: {} chars",
+                        s.len()
+                    );
+                    false
+                } else {
+                    true
+                }
             })
             .collect()
     } else {

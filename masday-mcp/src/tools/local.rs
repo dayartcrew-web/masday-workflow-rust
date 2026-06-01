@@ -40,6 +40,21 @@ pub async fn local_init(args: Value) -> Result<Value, Box<dyn std::error::Error 
     }))
 }
 
+/// Validate ID contains only safe characters (alphanumeric, hyphens, underscores).
+/// Blocks path traversal characters like `/`, `\`, `..`.
+fn sanitize_id(id: &str) -> Result<&str, String> {
+    if id.is_empty() {
+        return Err("ID cannot be empty".into());
+    }
+    if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return Err(format!(
+            "Invalid ID '{}': must contain only alphanumeric characters, hyphens, or underscores",
+            id
+        ));
+    }
+    Ok(id)
+}
+
 /// Sync local state (read from .masday directory)
 ///
 /// Ensures the .masday/state/workflows directory exists and gracefully
@@ -54,6 +69,9 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'workflow_id' argument")?;
+
+    let workflow_id = sanitize_id(workflow_id)
+        .map_err(|e| format!("Invalid workflow_id: {}", e))?;
 
     let state_dir = std::path::Path::new(cwd)
         .join(".masday")
@@ -94,6 +112,9 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'workflow_id' argument")?;
+
+    let workflow_id = sanitize_id(workflow_id)
+        .map_err(|e| format!("Invalid workflow_id: {}", e))?;
 
     // Placeholder: In Phase 3.3, this will push to PostgreSQL via masday-api
     // For now, just acknowledge the request
