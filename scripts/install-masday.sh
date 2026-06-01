@@ -101,10 +101,14 @@ verify_checksum() {
         if [ -n "$expected" ] && [ "$actual_hash" = "$expected" ]; then
             ok "Checksum verified"
         else
-            warn "Checksum mismatch or not found. Binary hash: ${actual_hash}"
+            err "Checksum verification failed. Expected: ${expected:-missing}, Got: ${actual_hash}"
+            rm -f "$binary_file"
+            exit 1
         fi
     else
-        warn "Checksum file not available — skipping verification"
+        err "Checksum file not available — cannot verify binary integrity. Aborting."
+        rm -f "$binary_file"
+        exit 1
     fi
 }
 
