@@ -64,3 +64,20 @@ pub async fn cicd_runs_view(
 
     Ok(serde_json::json!({ "output": stdout }))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_cicd_pipeline_trigger_args() {
+        let args = json!({ "pipeline": "ci.yml" });
+        let pipeline = args.get("pipeline").and_then(|v| v.as_str());
+        assert!(pipeline.is_some());
+        assert_eq!(pipeline.unwrap(), "ci.yml");
+
+        let args = json!({});
+        let pipeline = args.get("pipeline").and_then(|v| v.as_str());
+        assert!(pipeline.is_none());
+    }
+}

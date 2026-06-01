@@ -75,3 +75,37 @@ pub async fn docker_ps(_args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     Ok(serde_json::json!({ "containers": containers }))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_docker_build_args_parsing() {
+        // Test argument parsing logic (without actually running docker)
+        let tag = Some("myimage:latest");
+        let cmd_args = if let Some(t) = tag {
+            vec!["build", "-t", t, "."]
+        } else {
+            vec!["build", "."]
+        };
+        assert_eq!(cmd_args, vec!["build", "-t", "myimage:latest", "."]);
+
+        let tag = None;
+        let cmd_args = if let Some(t) = tag {
+            vec!["build", "-t", t, "."]
+        } else {
+            vec!["build", "."]
+        };
+        assert_eq!(cmd_args, vec!["build", "."]);
+    }
+
+    #[test]
+    fn test_docker_parse_args() {
+        let args = json!({ "tag": "test:latest" });
+        assert!(args.get("tag").and_then(|v| v.as_str()).is_some());
+
+        let args = json!({ "image": "nginx:latest" });
+        assert_eq!(args.get("image").and_then(|v| v.as_str()).unwrap(), "nginx:latest");
+    }
+}

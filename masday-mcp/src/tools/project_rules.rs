@@ -98,3 +98,90 @@ pub async fn projectrules_check(
         "files_checked": files_checked
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_projectrules_check_missing_rules_dir() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path().to_str().unwrap();
+
+        let args = json!({ "projectRoot": project_root });
+        let result = projectrules_check(args).await;
+
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        assert_eq!(result_json["valid"], false);
+        assert!(result_json["errors"].as_array().unwrap().len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_projectrules_check_with_rules() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rules_dir = temp_dir.path().join(".claude/rules");
+        tokio::fs::create_dir_all(&rules_dir).await.unwrap();
+
+        // Create a test rule file
+        let rule_file = rules_dir.join("test-rule.md");
+        tokio::fs::write(&rule_file, "# Test Rule\n\n## Section\n\nContent here").await.unwrap();
+
+        let project_root = temp_dir.path().to_str().unwrap();
+        let args = json!({ "projectRoot": project_root });
+        let result = projectrules_check(args).await;
+
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        assert_eq!(result_json["valid"], true);
+        assert_eq!(result_json["files_checked"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_projectrules_check_missing_project_root() {
+        let args = json!({});
+        let result = projectrules_check(args).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_projectrules_check_empty_rule_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rules_dir = temp_dir.path().join(".claude/rules");
+        tokio::fs::create_dir_all(&rules_dir).await.unwrap();
+
+        // Create an empty rule file (should generate warning)
+        let rule_file = rules_dir.join("empty.md");
+        tokio::fs::write(&rule_file, "").await.unwrap();
+
+        let project_root = temp_dir.path().to_str().unwrap();
+        let args = json!({ "projectRoot": project_root });
+        let result = projectrules_check(args).await;
+
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        // Empty file should still be valid but with warning
+        assert!(result_json["warnings"].as_array().unwrap().len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_projectrules_check_no_headers() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rules_dir = temp_dir.path().join(".claude/rules");
+        tokio::fs::create_dir_all(&rules_dir).await.unwrap();
+
+        // Create file without markdown headers
+        let rule_file = rules_dir.join("no-headers.md");
+        tokio::fs::write(&rule_file, "Just plain text without any markdown headers").await.unwrap();
+
+        let project_root = temp_dir.path().to_str().unwrap();
+        let args = json!({ "projectRoot": project_root });
+        let result = projectrules_check(args).await;
+
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        // Should generate warning about missing headers
+        assert!(result_json["warnings"].as_array().unwrap().len() > 0);
+    }
+}

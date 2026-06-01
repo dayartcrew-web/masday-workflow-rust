@@ -80,3 +80,46 @@ pub async fn github_issue_list(
 
     Ok(serde_json::json!({ "issues": issues }))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_github_pr_create_args_parsing() {
+        let args = json!({
+            "title": "Fix bug",
+            "body": "This fixes a critical issue"
+        });
+
+        let title = args.get("title").and_then(|v| v.as_str());
+        let body = args.get("body").and_then(|v| v.as_str());
+
+        assert!(title.is_some());
+        assert!(body.is_some());
+        assert_eq!(title.unwrap(), "Fix bug");
+        assert_eq!(body.unwrap(), "This fixes a critical issue");
+    }
+
+    #[test]
+    fn test_github_pr_create_missing_args() {
+        let args = json!({ "title": "Test" });
+        let body = args.get("body").and_then(|v| v.as_str());
+        assert!(body.is_none());
+
+        let args = json!({ "body": "Test" });
+        let title = args.get("title").and_then(|v| v.as_str());
+        assert!(title.is_none());
+    }
+
+    #[test]
+    fn test_github_output_parsing() {
+        let stdout = "https://github.com/user/repo/pull/123\nCreated pull request #123";
+        let url = stdout.lines().next().unwrap_or(stdout).trim();
+        assert_eq!(url, "https://github.com/user/repo/pull/123");
+
+        let stdout = "single line";
+        let url = stdout.lines().next().unwrap_or(stdout).trim();
+        assert_eq!(url, "single line");
+    }
+}

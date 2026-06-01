@@ -1,5 +1,8 @@
 //! MCP tool handlers
 
+// Universal entry point
+pub mod use_masday;
+
 // Data tools (HTTP-based)
 pub mod capability;
 pub mod context;

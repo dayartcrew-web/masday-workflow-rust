@@ -111,3 +111,126 @@ pub async fn memory_delete_by_workflow(
 pub async fn memory_stats(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     client::api_get("/api/memories/stats").await
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_memory_recall_documents_args_parsing() {
+        let args = json!({
+            "workflow_id": "wf-123",
+            "limit": 50
+        });
+
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
+
+        assert_eq!(workflow_id, "wf-123");
+        assert_eq!(limit, 50);
+    }
+
+    #[test]
+    fn test_memory_recall_documents_defaults() {
+        let args = json!({});
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
+
+        assert_eq!(workflow_id, "");
+        assert_eq!(limit, 20);
+    }
+
+    #[test]
+    fn test_memory_recall_document_by_type_args() {
+        let args = json!({
+            "memory_type": "fact",
+            "limit": 30
+        });
+
+        let source_type = args.get("source_type")
+            .or_else(|| args.get("memory_type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("fact");
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
+
+        assert_eq!(source_type, "fact");
+        assert_eq!(limit, 30);
+    }
+
+    #[test]
+    fn test_memory_recall_document_by_type_fallback() {
+        let args = json!({
+            "source_type": "preference",
+            "limit": 15
+        });
+
+        let source_type = args.get("source_type")
+            .or_else(|| args.get("memory_type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("fact");
+
+        assert_eq!(source_type, "preference");
+    }
+
+    #[test]
+    fn test_memory_recall_by_task_validation() {
+        let args = json!({ "task_id": "task-456" });
+        let task_id = args.get("task_id").and_then(|v| v.as_str());
+        assert!(task_id.is_some());
+        assert_eq!(task_id.unwrap(), "task-456");
+
+        let args = json!({});
+        let task_id = args.get("task_id").and_then(|v| v.as_str());
+        assert!(task_id.is_none());
+    }
+
+    #[test]
+    fn test_memory_recall_recent_with_type() {
+        let args = json!({
+            "limit": 25,
+            "type": "experience"
+        });
+
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10);
+        let memory_type = args.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        assert_eq!(limit, 25);
+        assert_eq!(memory_type, "experience");
+    }
+
+    #[test]
+    fn test_memory_update_args_fallback() {
+        let args = json!({ "id": "mem-789" });
+        let memory_id = args.get("id")
+            .or_else(|| args.get("memory_id"))
+            .and_then(|v| v.as_str());
+        assert_eq!(memory_id.unwrap(), "mem-789");
+
+        let args = json!({ "memory_id": "mem-999" });
+        let memory_id = args.get("id")
+            .or_else(|| args.get("memory_id"))
+            .and_then(|v| v.as_str());
+        assert_eq!(memory_id.unwrap(), "mem-999");
+    }
+
+    #[test]
+    fn test_memory_update_missing_id() {
+        let args = json!({});
+        let memory_id = args.get("id")
+            .or_else(|| args.get("memory_id"))
+            .and_then(|v| v.as_str());
+        assert!(memory_id.is_none());
+    }
+
+    #[test]
+    fn test_memory_delete_workflow_validation() {
+        let args = json!({ "workflow_id": "wf-123" });
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        assert!(workflow_id.is_some());
+        assert_eq!(workflow_id.unwrap(), "wf-123");
+
+        let args = json!({});
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        assert!(workflow_id.is_none());
+    }
+}

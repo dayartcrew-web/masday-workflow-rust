@@ -1,13 +1,10 @@
 {
-  "context": "This project uses masday-workflow-rebuild MCP server for workflow management.",
+  "context": "This project uses masday-workflow Rust MCP server for workflow management.",
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "npx",
-      "args": [
-        "tsx",
-        "apps/agent-runner/src/runtime/mcp.ts"
-      ]
+      "command": "target/release/masday-mcp",
+      "args": []
     }
   }
 }

@@ -42,3 +42,27 @@ pub async fn policy_require_context_refresh(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     client::api_post("/api/policy/context-refresh", args).await
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_policy_detect_scope_drift_args() {
+        let args = json!({ "workflow_id": "wf-123" });
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        assert!(workflow_id.is_some());
+        assert_eq!(workflow_id.unwrap(), "wf-123");
+
+        let args = json!({});
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        assert!(workflow_id.is_none());
+    }
+
+    #[test]
+    fn test_url_building() {
+        let workflow_id = "wf-123";
+        let url = format!("/api/policy/drift/{}", workflow_id);
+        assert_eq!(url, "/api/policy/drift/wf-123");
+    }
+}

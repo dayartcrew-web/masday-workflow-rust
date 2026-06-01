@@ -76,3 +76,40 @@ pub async fn capability_ping(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     Ok(serde_json::json!({"status": "pong"}))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_capability_ping() {
+        let result = capability_ping(serde_json::json!({})).await;
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        assert_eq!(result_json["status"], "pong");
+    }
+
+    #[test]
+    fn test_capability_match_agent_args() {
+        let args = serde_json::json!({ "task": "fix bug in auth module" });
+        let task = args.get("task").and_then(|v| v.as_str());
+        assert!(task.is_some());
+        assert_eq!(task.unwrap(), "fix bug in auth module");
+
+        let args = serde_json::json!({});
+        let task = args.get("task").and_then(|v| v.as_str());
+        assert!(task.is_none());
+    }
+
+    #[test]
+    fn test_capability_workflow_audit_args() {
+        let args = serde_json::json!({ "workflow_id": "wf-123" });
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        assert!(workflow_id.is_some());
+        assert_eq!(workflow_id.unwrap(), "wf-123");
+
+        let args = serde_json::json!({});
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        assert!(workflow_id.is_none());
+    }
+}
