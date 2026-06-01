@@ -2,8 +2,9 @@
 //
 // Masday UserPromptSubmit — Context Warning Hook
 //
-// Runs on every user prompt. Estimates context usage via compact_boundary
-// in session JSONL. Caches result for 30s to avoid parsing on every prompt.
+// Runs on every user prompt. Estimates context usage from session JSONL.
+// Counts message CONTENT bytes (not raw line bytes) for accuracy.
+// Caches result for 30s to avoid parsing on every prompt.
 //
 
 const fs = require("fs");
@@ -15,7 +16,7 @@ const BYTES_PER_TOKEN = 4;
 const SYSTEM_OVERHEAD_TOKENS = 15000;
 const WARN_THRESHOLD = 0.50;
 const CRITICAL_THRESHOLD = 0.75;
-const CACHE_TTL_MS = 30000; // cache for 30 seconds
+const CACHE_TTL_MS = 30000;
 
 const CACHE_FILE = path.join(os.tmpdir(), "masday-context-cache.json");
 
@@ -60,8 +61,9 @@ function estimateContextPct() {
 
     const content = fs.readFileSync(latest, "utf8");
     const lines = content.split("\n");
-    let lastBoundaryIdx = -1;
 
+    // Find last compact_boundary — only count active context after it
+    let lastBoundaryIdx = -1;
     for (let i = lines.length - 1; i >= 0; i--) {
       if (!lines[i]) continue;
       try {
@@ -74,18 +76,26 @@ function estimateContextPct() {
     }
 
     const startIdx = lastBoundaryIdx >= 0 ? lastBoundaryIdx + 1 : 0;
-    let activeBytes = 0;
+
+    // Count MESSAGE CONTENT bytes only (not raw line length)
+    // Matches statusline's approach for consistent readings
+    let contentBytes = 0;
     for (let i = startIdx; i < lines.length; i++) {
       if (!lines[i]) continue;
       try {
         const obj = JSON.parse(lines[i]);
         if (obj.type === "user" || obj.type === "assistant") {
-          activeBytes += lines[i].length;
+          if (obj.message && obj.message.content) {
+            const c = obj.message.content;
+            contentBytes += typeof c === "string" ? c.length : JSON.stringify(c).length;
+          } else if (obj.content) {
+            contentBytes += typeof obj.content === "string" ? obj.content.length : JSON.stringify(obj.content).length;
+          }
         }
       } catch {}
     }
 
-    const tokens = Math.floor(activeBytes / BYTES_PER_TOKEN) + SYSTEM_OVERHEAD_TOKENS;
+    const tokens = Math.floor(contentBytes / BYTES_PER_TOKEN) + SYSTEM_OVERHEAD_TOKENS;
     return Math.min(1.0, tokens / CONTEXT_WINDOW_TOKENS);
   } catch {
     return 0;
@@ -93,7 +103,6 @@ function estimateContextPct() {
 }
 
 async function main() {
-  // Use cached result if fresh
   let pct = getCached();
   if (pct === null) {
     pct = estimateContextPct();
