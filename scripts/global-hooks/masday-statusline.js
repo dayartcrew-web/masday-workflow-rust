@@ -172,13 +172,30 @@ async function main() {
     }
   }
 
-  // Compact count
+  // Workflow status — show active/stuck if any
   try {
-    const compactState = JSON.parse(
-      fs.readFileSync(path.join(process.env.HOME, ".claude", "compact-state.json"), "utf8")
-    );
-    if (compactState.count > 0) {
-      parts.push(`×${compactState.count}`);
+    const wfRes = await new Promise((resolve) => {
+      const http = require("http");
+      const req = http.get(`http://localhost:${API_PORT}/api/workflows`, { timeout: 1500 }, (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => {
+          try { resolve(JSON.parse(body)); } catch { resolve(null); }
+        });
+      });
+      req.on("error", () => resolve(null));
+      req.on("timeout", () => { req.destroy(); resolve(null); });
+    });
+    if (Array.isArray(wfRes)) {
+      const activeStatuses = ["EXECUTE", "ANALYZE", "PLAN", "INIT"];
+      const stuckStatuses = ["FAILED", "PAUSED", "FIX"];
+      const projectWfs = wfRes.filter(w => (w.project_path || "").includes("masday-workflow"));
+      const active = projectWfs.filter(w => activeStatuses.includes(w.status)).length;
+      const stuck = projectWfs.filter(w => stuckStatuses.includes(w.status)).length;
+      const wfParts = [];
+      if (active > 0) wfParts.push(`⚙️${active}`);
+      if (stuck > 0) wfParts.push(`🔴${stuck}`);
+      if (wfParts.length > 0) parts.push(wfParts.join("|"));
     }
   } catch {}
 
