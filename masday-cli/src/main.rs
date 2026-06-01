@@ -1,10 +1,11 @@
-//! CLI entry point
+//! CLI entry point for masday
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "masday")]
-#[command(about = "Masday workflow CLI", long_about = None)]
+#[command(about = "Masday workflow orchestration CLI", long_about = None)]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -12,12 +13,53 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Setup the project
-    Setup,
+    /// Install masday into the current project
+    Install {
+        /// Remote API server URL (skips local build, connects to remote)
+        #[arg(long)]
+        remote: Option<String>,
+
+        /// API key for remote server
+        #[arg(long)]
+        api_key: Option<String>,
+
+        /// Install only for specific platform (claude-code, gemini, vscode, opencode)
+        #[arg(long)]
+        platform: Option<String>,
+
+        /// Skip building Rust crates (use existing binaries)
+        #[arg(long)]
+        skip_build: bool,
+
+        /// Skip global directory installation
+        #[arg(long)]
+        local_only: bool,
+
+        /// Force overwrite existing configs
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Remove masday from the current project
+    Uninstall {
+        /// Remove from global directories too
+        #[arg(long)]
+        global: bool,
+
+        /// Remove only for specific platform
+        #[arg(long)]
+        platform: Option<String>,
+    },
+
+    /// Update masday (re-install with force)
+    Update,
+
     /// Run database migrations
     DbMigrate,
+
     /// Start the API server
     Serve,
+
     /// Show workflow status
     Status {
         /// Workflow ID
@@ -26,40 +68,52 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let project_dir = std::env::current_dir()?;
 
     match cli.command {
-        Commands::Setup => {
-            println!("Setting up Masday project...");
-            // Placeholder: would run setup logic
-            Ok(())
+        Commands::Install {
+            remote,
+            api_key,
+            platform,
+            skip_build,
+            local_only,
+            force,
+        } => {
+            let args = masday_cli::commands::install::InstallArgs {
+                remote,
+                api_key,
+                platform,
+                skip_build,
+                local_only,
+                force,
+            };
+            masday_cli::commands::install::run(args, &project_dir)?;
+        }
+        Commands::Uninstall { global, platform } => {
+            let args = masday_cli::commands::uninstall::UninstallArgs { global, platform };
+            masday_cli::commands::uninstall::run(args, &project_dir)?;
+        }
+        Commands::Update => {
+            masday_cli::commands::update::run(&project_dir)?;
         }
         Commands::DbMigrate => {
             println!("Running database migrations...");
-            // Placeholder: would run migrations
-            Ok(())
+            // TODO: implement via masday-db crate
         }
         Commands::Serve => {
             println!("Starting API server...");
-            // Placeholder: would start API server
-            Ok(())
+            // TODO: delegate to masday-api
         }
         Commands::Status { id } => {
             match id {
                 Some(id) => println!("Workflow status for: {}", id),
                 None => println!("Listing all workflows..."),
             }
-            // Placeholder: would fetch and display status
-            Ok(())
+            // TODO: implement via masday-api client
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_main() {
-        // Placeholder test
-    }
+    Ok(())
 }
