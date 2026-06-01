@@ -12,8 +12,8 @@ const path = require("path");
 const os = require("os");
 
 const CONTEXT_WINDOW_TOKENS = 200000;
-const BYTES_PER_TOKEN = 4;
-const SYSTEM_OVERHEAD_TOKENS = 15000;
+const BYTES_PER_TOKEN = 2;          // tool_use/tool_result JSON is token-dense (~2 bytes/token)
+const SYSTEM_OVERHEAD_TOKENS = 5000; // Base system prompt overhead
 const WARN_THRESHOLD = 0.50;
 const CRITICAL_THRESHOLD = 0.75;
 const CACHE_TTL_MS = 30000;
@@ -77,8 +77,7 @@ function estimateContextPct() {
 
     const startIdx = lastBoundaryIdx >= 0 ? lastBoundaryIdx + 1 : 0;
 
-    // Count MESSAGE CONTENT bytes only (not raw line length)
-    // Matches statusline's approach for consistent readings
+    // Count message content bytes (user + assistant only, after boundary)
     let contentBytes = 0;
     for (let i = startIdx; i < lines.length; i++) {
       if (!lines[i]) continue;

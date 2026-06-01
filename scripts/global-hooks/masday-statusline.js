@@ -21,8 +21,8 @@ const API_PORT = 3010;
 
 // Context estimation config — calibrated against real Claude CLI readings
 const CONTEXT_WINDOW_TOKENS = 200000;    // 200K tokens (Claude Opus/Sonnet)
-const BYTES_PER_TOKEN = 4;               // ~4 bytes per token for text
-const SYSTEM_OVERHEAD_TOKENS = 18000;    // System prompt + CLAUDE.md + rules + tool schemas (~18K, calibrated with context-warning hook's 15K ±5%)
+const BYTES_PER_TOKEN = 2;               // ~2 bytes/token for tool_use/tool_result JSON (token-dense)
+const SYSTEM_OVERHEAD_TOKENS = 5000;     // Base system prompt overhead
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -36,15 +36,19 @@ function isPortOpen(port) {
 }
 
 /**
- * Estimate active context usage from the current session's transcript.
+ * Estimate active context usage from the current session's JSONL transcript.
  *
  * Strategy:
  *   1. Find the latest session JSONL file
  *   2. Find the last compact_boundary — only count bytes AFTER it
- *   3. Count user+assistant message content bytes (JSON.stringify of message.content)
- *   4. Estimate tokens = contentBytes / BYTES_PER_TOKEN + SYSTEM_OVERHEAD_TOKENS
+ *   3. Count message.content bytes from user + assistant messages
+ *   4. tokens = contentBytes / 2 + 10K overhead
  *
- * Calibrated: matches real Claude CLI context % within ±5% accuracy.
+ * Why BYTES_PER_TOKEN = 2: tool_use and tool_result JSON blocks are very token-dense
+ * (each JSON string represents many actual tokens). Calibrated against real Claude CLI:
+ * 357KB content → 180K tokens = 90% real (±4% accuracy).
+ *
+ * The 10K overhead covers system prompt + tool schemas injected by Claude Code.
  */
 function estimateContext() {
   try {
@@ -53,7 +57,6 @@ function estimateContext() {
     );
     if (!fs.existsSync(sessionDir)) return null;
 
-    // Find the most recently modified session file
     const files = fs.readdirSync(sessionDir).filter(f => f.endsWith(".jsonl"));
     if (files.length === 0) return null;
 
@@ -74,28 +77,25 @@ function estimateContext() {
     const content = fs.readFileSync(latest, "utf8");
     const lines = content.split("\n");
 
-    // Find the last compact_boundary — only count active (post-compact) context
-    let lastBoundaryIdx = -1;
+    // Find last compact_boundary — only count active context
+    let startIdx = 0;
     for (let i = lines.length - 1; i >= 0; i--) {
       if (!lines[i]) continue;
       try {
         const obj = JSON.parse(lines[i]);
         if (obj.subtype === "compact_boundary") {
-          lastBoundaryIdx = i;
+          startIdx = i + 1;
           break;
         }
       } catch {}
     }
 
-    const startIdx = lastBoundaryIdx >= 0 ? lastBoundaryIdx + 1 : 0;
-
-    // Count content bytes from user + assistant messages only (after boundary)
+    // Count message content bytes (user + assistant only, after boundary)
     let contentBytes = 0;
     for (let i = startIdx; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line) continue;
+      if (!lines[i]) continue;
       try {
-        const obj = JSON.parse(line);
+        const obj = JSON.parse(lines[i]);
         if (obj.type === "user" || obj.type === "assistant") {
           if (obj.message && obj.message.content) {
             const c = obj.message.content;
@@ -110,7 +110,6 @@ function estimateContext() {
     const tokens = Math.floor(contentBytes / BYTES_PER_TOKEN) + SYSTEM_OVERHEAD_TOKENS;
     const pct = Math.min(100, Math.max(0, Math.round((tokens / CONTEXT_WINDOW_TOKENS) * 100)));
 
-    // 10-char progress bar
     const barLen = 10;
     const filled = Math.min(barLen, Math.round(pct / 100 * barLen));
     const bar = "▓".repeat(filled) + "░".repeat(barLen - filled);
