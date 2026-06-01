@@ -303,9 +303,47 @@ echo ""
 echo "=== Setup Complete ==="
 echo ""
 
-# 9. Install git hooks
-echo "[9/9] Installing git hooks..."
+# 9. Install git hooks + global Claude hooks
+echo "[9/9] Installing hooks..."
 bash "${ROOT_DIR}/scripts/install-hooks.sh"
+
+# 10. Update global Claude settings
+echo "[10/10] Updating global Claude settings..."
+HOME_CLAUDE="${HOME}/.claude"
+mkdir -p "${HOME_CLAUDE}/hooks" 2>/dev/null || true
+
+# Copy global hooks (statusline, session-start, compact, context-warning, bash-guard)
+GLOBAL_HOOKS=(
+  "masday-statusline.js"
+  "masday-session-start.js"
+  "masday-pre-compact.js"
+  "masday-post-compact.js"
+  "masday-context-warning.js"
+  "masday-pre-bash-guard.js"
+)
+copied_global=0
+for hook in "${GLOBAL_HOOKS[@]}"; do
+  if [ -f "${ROOT_DIR}/scripts/global-hooks/${hook}" ]; then
+    cp "${ROOT_DIR}/scripts/global-hooks/${hook}" "${HOME_CLAUDE}/hooks/${hook}" 2>/dev/null && copied_global=$((copied_global + 1))
+  fi
+done
+echo "  Global hooks: ${copied_global} → ${HOME_CLAUDE}/hooks/"
+
+# Update statusline config in global settings.json (only the relevant fields)
+SETTINGS_FILE="${HOME_CLAUDE}/settings.json"
+if [ -f "$SETTINGS_FILE" ]; then
+  echo "  Updating statusLine + autoCompact in global settings.json..."
+  node -e "
+    const fs = require('fs');
+    const s = JSON.parse(fs.readFileSync('${SETTINGS_FILE}', 'utf8'));
+    s.statusLine = { type: 'command', command: 'node \"${HOME_CLAUDE}/hooks/masday-statusline.js\"' };
+    s.autoCompact = true;
+    s.autoCompactThreshold = 0.9;
+    fs.writeFileSync('${SETTINGS_FILE}', JSON.stringify(s, null, 2) + '\n');
+  " 2>/dev/null || echo "  WARNING: Could not update settings.json"
+else
+  echo "  No global settings.json found — skipping settings update."
+fi
 
 echo ""
 echo "Available commands:"
