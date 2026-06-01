@@ -19,27 +19,12 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh pre-tool-use",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/run.sh pre-build-skill",
-            "timeout": 30
+            "timeout": 15
           },
           {
             "type": "command",
             "command": ".claude/hooks/run.sh workflow-lock",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/run.sh tdd-guard",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/run.sh tool-name-guard",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       },
@@ -49,7 +34,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh workflow-lock",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       },
@@ -59,7 +44,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh skill-wrap-guard",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       },
@@ -69,7 +54,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh pre-task-complete",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       }
@@ -81,7 +66,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh post-tool-use",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       }
@@ -93,7 +78,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh on-notification",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       }
@@ -105,7 +90,7 @@
           {
             "type": "command",
             "command": ".claude/hooks/run.sh on-stop",
-            "timeout": 60
+            "timeout": 30
           }
         ]
       }
