@@ -27,6 +27,14 @@ enum Commands {
         #[arg(long)]
         platform: Option<String>,
 
+        /// Standalone mode — extract templates only, no build or API server
+        #[arg(long)]
+        standalone: bool,
+
+        /// Force local mode — cargo build from source (requires Rust toolchain)
+        #[arg(long)]
+        local_mode: bool,
+
         /// Skip building Rust crates (use existing binaries)
         #[arg(long)]
         skip_build: bool,
@@ -77,6 +85,8 @@ async fn main() -> anyhow::Result<()> {
             remote,
             api_key,
             platform,
+            standalone,
+            local_mode,
             skip_build,
             local_only,
             force,
@@ -85,6 +95,8 @@ async fn main() -> anyhow::Result<()> {
                 remote,
                 api_key,
                 platform,
+                standalone,
+                local_mode,
                 skip_build,
                 local_only,
                 force,

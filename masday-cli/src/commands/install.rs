@@ -1,6 +1,6 @@
 //! Install command implementation
 //!
-//! Orchestrates the full installation workflow for Masday in local or remote mode.
+//! Orchestrates the full installation workflow for Masday in local, remote, or standalone mode.
 
 use std::path::Path;
 use anyhow::Result;
@@ -29,17 +29,23 @@ use crate::installer::{
     McpConfig,
     SettingsUpdates,
     McpServerConfig,
+    AgentSyncReport,
+    SkillSyncReport,
 };
 
 /// Arguments for the install command
 #[derive(Debug, Clone, Default)]
 pub struct InstallArgs {
-    /// Remote API URL (None = local mode)
+    /// Remote API URL (None = local or standalone mode)
     pub remote: Option<String>,
     /// API key for remote mode
     pub api_key: Option<String>,
     /// Specific platform to install (None = detect or all)
     pub platform: Option<String>,
+    /// Force standalone mode (extract templates only, no build)
+    pub standalone: bool,
+    /// Force local mode (cargo build from source)
+    pub local_mode: bool,
     /// Skip cargo build step
     pub skip_build: bool,
     /// Only install to project, skip global sync
@@ -48,18 +54,185 @@ pub struct InstallArgs {
     pub force: bool,
 }
 
+/// Install mode enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstallMode {
+    /// Build from source (requires Rust toolchain + Cargo.toml)
+    Local,
+    /// Connect to remote API server
+    Remote,
+    /// Extract embedded templates only (no build, no API server)
+    Standalone,
+}
+
+/// Detect which install mode to use based on args and project directory
+fn detect_mode(args: &InstallArgs, project_dir: &Path) -> InstallMode {
+    // Explicit flags take highest priority
+    if args.remote.is_some() {
+        return InstallMode::Remote;
+    }
+    if args.standalone {
+        return InstallMode::Standalone;
+    }
+    if args.local_mode {
+        return InstallMode::Local;
+    }
+    // Auto-detect: if Cargo.toml exists in cwd, use local; otherwise standalone
+    if project_dir.join("Cargo.toml").exists() {
+        InstallMode::Local
+    } else {
+        InstallMode::Standalone
+    }
+}
+
 /// Run the install command
 pub fn run(args: InstallArgs, project_dir: &Path) -> Result<()> {
-    let is_remote = args.remote.is_some();
-
-    if is_remote {
-        run_remote_install(args, project_dir)?;
-    } else {
-        run_local_install(args, project_dir)?;
+    // Validate mutually exclusive flags
+    if args.remote.is_some() && args.standalone {
+        anyhow::bail!("Cannot use --remote and --standalone together. Choose one install mode.");
     }
+    if args.remote.is_some() && args.local_mode {
+        anyhow::bail!("Cannot use --remote and --local together. Choose one install mode.");
+    }
+    if args.standalone && args.local_mode {
+        anyhow::bail!("Cannot use --standalone and --local together. Choose one install mode.");
+    }
+
+    let mode = detect_mode(&args, project_dir);
+    match mode {
+        InstallMode::Local => run_local_install(args, project_dir),
+        InstallMode::Remote => run_remote_install(args, project_dir),
+        InstallMode::Standalone => run_standalone_install(args, project_dir),
+    }
+}
+
+// ── Shared sync logic ────────────────────────────────────────────────────────
+
+/// Sync agents, skills, and hooks to project and optionally global dirs.
+/// Returns (agent_reports, skill_reports, global_hook_count, project_hook_count).
+fn sync_templates(
+    project_dir: &Path,
+    platforms: &[Platform],
+    force: bool,
+    local_only: bool,
+) -> Result<(Vec<AgentSyncReport>, Vec<SkillSyncReport>, usize, usize)> {
+    // Sync agents
+    let agent_reports = sync_agents_to_project(project_dir, platforms, force)?;
+    for report in &agent_reports {
+        println!(
+            "  {}: {} copied, {} skipped",
+            report.platform,
+            style(report.copied).green(),
+            style(report.skipped).dim()
+        );
+    }
+
+    if !local_only {
+        let global_agent_reports = sync_agents_to_global(platforms, force)?;
+        for report in &global_agent_reports {
+            println!(
+                "  {}: {} copied, {} skipped",
+                report.platform,
+                style(report.copied).green(),
+                style(report.skipped).dim()
+            );
+        }
+    }
+
+    // Sync skills
+    println!();
+    println!("{}", style("Syncing skills...").cyan());
+    let skill_reports = sync_skills_to_project(project_dir, platforms, force)?;
+    for report in &skill_reports {
+        println!(
+            "  {}: {} copied, {} skipped",
+            report.platform,
+            style(report.copied).green(),
+            style(report.skipped).dim()
+        );
+    }
+
+    if !local_only {
+        let global_skill_reports = sync_skills_to_global(platforms, force)?;
+        for report in &global_skill_reports {
+            println!(
+                "  {}: {} copied, {} skipped",
+                report.platform,
+                style(report.copied).green(),
+                style(report.skipped).dim()
+            );
+        }
+    }
+
+    // Install hooks
+    println!();
+    println!("{}", style("Installing hooks...").cyan());
+
+    let mut global_hook_count = 0;
+    if let Some(home) = home::home_dir() {
+        let global_hooks = install_global_hooks(&home)?;
+        global_hook_count = global_hooks.copied;
+        println!(
+            "  Global hooks: {}",
+            style(format!("{} installed", global_hook_count)).green()
+        );
+    }
+
+    let project_hooks = install_project_hooks(project_dir)?;
+    let project_hook_count = project_hooks.copied;
+    println!(
+        "  Project hooks: {}",
+        style(format!("{} installed", project_hook_count)).green()
+    );
+
+    Ok((agent_reports, skill_reports, global_hook_count, project_hook_count))
+}
+
+// ── Standalone mode ──────────────────────────────────────────────────────────
+
+/// Standalone mode installation — extract templates only, no build, no API server
+fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
+    println!();
+    println!("{}", style("Installing Masday (standalone mode)...").cyan().bold());
+    println!();
+
+    // Step 1: Resolve platforms
+    let platforms = resolve_platforms(&args.platform, project_dir)?;
+    println!(
+        "{}",
+        style(format!("Installing for platforms: {}", platform_list(&platforms))).cyan()
+    );
+
+    // Step 2: Sync agents, skills, hooks
+    println!();
+    println!("{}", style("Syncing agents...").cyan());
+    let (agent_reports, skill_reports, _gh, _ph) =
+        sync_templates(project_dir, &platforms, args.force, args.local_only)?;
+
+    // Step 3: Count totals
+    let total_agents: usize = agent_reports.iter().map(|r| r.copied).sum();
+    let total_skills: usize = skill_reports.iter().map(|r| r.copied).sum();
+
+    // Success summary
+    println!();
+    println!("{}", style("Installation complete! (standalone mode)").green().bold());
+    println!();
+    println!("Installed:");
+    println!("  {} agents", style(total_agents).green());
+    println!("  {} skills", style(total_skills).green());
+    println!();
+    println!("Next steps:");
+    println!("  Agents and skills are available in your project.");
+    println!("  For full MCP tools support, connect to an API server:");
+    println!(
+        "  {}",
+        style("masday install --remote <url> --api-key <key>").cyan()
+    );
 
     Ok(())
 }
+
+// ── Local mode ───────────────────────────────────────────────────────────────
 
 /// Local mode installation
 fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
@@ -108,75 +281,12 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
         style(format!("Installing for platforms: {}", platform_list(&platforms))).cyan()
     );
 
-    // Step 6: Sync agents
+    // Step 6: Sync agents, skills, hooks
     println!();
     println!("{}", style("Syncing agents...").cyan());
-    let agent_reports = sync_agents_to_project(project_dir, &platforms, args.force)?;
-    for report in &agent_reports {
-        println!(
-            "  {}: {} copied, {} skipped",
-            report.platform,
-            style(report.copied).green(),
-            style(report.skipped).dim()
-        );
-    }
+    sync_templates(project_dir, &platforms, args.force, args.local_only)?;
 
-    if !args.local_only {
-        let global_agent_reports = sync_agents_to_global(&platforms, args.force)?;
-        for report in &global_agent_reports {
-            println!(
-                "  {}: {} copied, {} skipped",
-                report.platform,
-                style(report.copied).green(),
-                style(report.skipped).dim()
-            );
-        }
-    }
-
-    // Step 7: Sync skills
-    println!();
-    println!("{}", style("Syncing skills...").cyan());
-    let skill_reports = sync_skills_to_project(project_dir, &platforms, args.force)?;
-    for report in &skill_reports {
-        println!(
-            "  {}: {} copied, {} skipped",
-            report.platform,
-            style(report.copied).green(),
-            style(report.skipped).dim()
-        );
-    }
-
-    if !args.local_only {
-        let global_skill_reports = sync_skills_to_global(&platforms, args.force)?;
-        for report in &global_skill_reports {
-            println!(
-                "  {}: {} copied, {} skipped",
-                report.platform,
-                style(report.copied).green(),
-                style(report.skipped).dim()
-            );
-        }
-    }
-
-    // Step 8: Install hooks
-    println!();
-    println!("{}", style("Installing hooks...").cyan());
-
-    if let Some(home) = home::home_dir() {
-        let global_hooks = install_global_hooks(&home)?;
-        println!(
-            "  Global hooks: {}",
-            style(format!("{} installed", global_hooks.copied)).green()
-        );
-    }
-
-    let project_hooks = install_project_hooks(project_dir)?;
-    println!(
-        "  Project hooks: {}",
-        style(format!("{} installed", project_hooks.copied)).green()
-    );
-
-    // Step 9: Generate MCP configs
+    // Step 7: Generate MCP configs
     println!();
     println!("{}", style("Generating MCP configs...").cyan());
 
@@ -195,7 +305,7 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
         println!("  {}", style(platform.name()).green());
     }
 
-    // Step 10: Update global settings
+    // Step 8: Update global settings
     if let Some(home) = home::home_dir() {
         let settings_path = home.join(".claude/settings.json");
         let hook_path = home.join(".claude/hooks/masday-statusline.js");
@@ -233,6 +343,8 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── Remote mode ──────────────────────────────────────────────────────────────
+
 /// Remote mode installation
 fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
@@ -259,83 +371,19 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     // Step 3: Resolve MCP binary
     let mcp_binary = resolve_mcp_binary(remote_url)?;
 
-    // Step 4-10: Same as local mode (platforms, sync, hooks, configs, settings)
-    // Resolve platforms
+    // Step 4: Resolve platforms
     let platforms = resolve_platforms(&args.platform, project_dir)?;
     println!(
         "{}",
         style(format!("Installing for platforms: {}", platform_list(&platforms))).cyan()
     );
 
-    // Sync agents
+    // Step 5: Sync agents, skills, hooks
     println!();
     println!("{}", style("Syncing agents...").cyan());
-    let agent_reports = sync_agents_to_project(project_dir, &platforms, args.force)?;
-    for report in &agent_reports {
-        println!(
-            "  {}: {} copied, {} skipped",
-            report.platform,
-            style(report.copied).green(),
-            style(report.skipped).dim()
-        );
-    }
+    sync_templates(project_dir, &platforms, args.force, args.local_only)?;
 
-    if !args.local_only {
-        let global_agent_reports = sync_agents_to_global(&platforms, args.force)?;
-        for report in &global_agent_reports {
-            println!(
-                "  {}: {} copied, {} skipped",
-                report.platform,
-                style(report.copied).green(),
-                style(report.skipped).dim()
-            );
-        }
-    }
-
-    // Sync skills
-    println!();
-    println!("{}", style("Syncing skills...").cyan());
-    let skill_reports = sync_skills_to_project(project_dir, &platforms, args.force)?;
-    for report in &skill_reports {
-        println!(
-            "  {}: {} copied, {} skipped",
-            report.platform,
-            style(report.copied).green(),
-            style(report.skipped).dim()
-        );
-    }
-
-    if !args.local_only {
-        let global_skill_reports = sync_skills_to_global(&platforms, args.force)?;
-        for report in &global_skill_reports {
-            println!(
-                "  {}: {} copied, {} skipped",
-                report.platform,
-                style(report.copied).green(),
-                style(report.skipped).dim()
-            );
-        }
-    }
-
-    // Install hooks
-    println!();
-    println!("{}", style("Installing hooks...").cyan());
-
-    if let Some(home) = home::home_dir() {
-        let global_hooks = install_global_hooks(&home)?;
-        println!(
-            "  Global hooks: {}",
-            style(format!("{} installed", global_hooks.copied)).green()
-        );
-    }
-
-    let project_hooks = install_project_hooks(project_dir)?;
-    println!(
-        "  Project hooks: {}",
-        style(format!("{} installed", project_hooks.copied)).green()
-    );
-
-    // Generate MCP configs (with remote URL)
+    // Step 6: Generate MCP configs (with remote URL)
     println!();
     println!("{}", style("Generating MCP configs...").cyan());
 
@@ -359,7 +407,7 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
         println!("  {}", style(platform.name()).green());
     }
 
-    // Update global settings
+    // Step 7: Update global settings
     if let Some(home) = home::home_dir() {
         let settings_path = home.join(".claude/settings.json");
         let hook_path = home.join(".claude/hooks/masday-statusline.js");
@@ -395,6 +443,8 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 
     Ok(())
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Resolve target platforms based on args and detection
 fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Result<Vec<Platform>> {
@@ -463,6 +513,109 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    // ── detect_mode tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_detect_mode_remote() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            remote: Some("http://example.com".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Remote);
+    }
+
+    #[test]
+    fn test_detect_mode_standalone_explicit() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            standalone: true,
+            ..Default::default()
+        };
+        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Standalone);
+    }
+
+    #[test]
+    fn test_detect_mode_local_explicit() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            local_mode: true,
+            ..Default::default()
+        };
+        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Local);
+    }
+
+    #[test]
+    fn test_detect_mode_auto_local_when_cargo_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]").unwrap();
+        let args = InstallArgs::default();
+        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Local);
+    }
+
+    #[test]
+    fn test_detect_mode_auto_standalone_when_no_cargo() {
+        let temp_dir = TempDir::new().unwrap();
+        // No Cargo.toml in temp dir
+        let args = InstallArgs::default();
+        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Standalone);
+    }
+
+    #[test]
+    fn test_detect_mode_remote_overrides_standalone() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            remote: Some("http://example.com".to_string()),
+            standalone: true,
+            ..Default::default()
+        };
+        // --remote takes highest priority
+        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Remote);
+    }
+
+    // ── Mutual exclusion tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_mutual_exclusion_remote_standalone() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            remote: Some("http://example.com".to_string()),
+            standalone: true,
+            ..Default::default()
+        };
+        let result = run(args, temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--remote and --standalone"));
+    }
+
+    #[test]
+    fn test_mutual_exclusion_remote_local() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            remote: Some("http://example.com".to_string()),
+            local_mode: true,
+            ..Default::default()
+        };
+        let result = run(args, temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--remote and --local"));
+    }
+
+    #[test]
+    fn test_mutual_exclusion_standalone_local() {
+        let temp_dir = TempDir::new().unwrap();
+        let args = InstallArgs {
+            standalone: true,
+            local_mode: true,
+            ..Default::default()
+        };
+        let result = run(args, temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--standalone and --local"));
+    }
+
+    // ── Existing tests ───────────────────────────────────────────────────────
+
     #[test]
     fn test_resolve_platforms_specific() {
         let temp_dir = TempDir::new().unwrap();
@@ -496,8 +649,82 @@ mod tests {
         let args = InstallArgs::default();
         assert!(args.remote.is_none());
         assert!(args.api_key.is_none());
+        assert!(!args.standalone);
+        assert!(!args.local_mode);
         assert!(!args.skip_build);
         assert!(!args.local_only);
         assert!(!args.force);
+    }
+
+    // ── Standalone install integration tests ─────────────────────────────────
+
+    #[test]
+    fn test_standalone_install_creates_agents() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+
+        let args = InstallArgs {
+            standalone: true,
+            force: true,
+            local_only: true, // Avoid writing to global dirs in tests
+            ..Default::default()
+        };
+
+        let result = run(args, project_dir);
+        assert!(result.is_ok(), "Standalone install should succeed");
+
+        // Check that agents were extracted
+        let agents_dir = project_dir.join(".claude/agents");
+        if agents_dir.exists() {
+            let agent_count = std::fs::read_dir(&agents_dir)
+                .unwrap()
+                .filter(|e| {
+                    e.as_ref().map(|f| f.file_name().to_string_lossy().ends_with(".md")).unwrap_or(false)
+                })
+                .count();
+            assert!(agent_count > 0, "Should have extracted at least one agent");
+        }
+    }
+
+    #[test]
+    fn test_standalone_install_no_env() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+
+        let args = InstallArgs {
+            standalone: true,
+            force: true,
+            local_only: true,
+            ..Default::default()
+        };
+
+        run(args, project_dir).unwrap();
+
+        // Standalone mode should NOT create .env
+        assert!(
+            !project_dir.join(".env").exists(),
+            "Standalone mode should not create .env file"
+        );
+    }
+
+    #[test]
+    fn test_standalone_install_no_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+
+        let args = InstallArgs {
+            standalone: true,
+            force: true,
+            local_only: true,
+            ..Default::default()
+        };
+
+        run(args, project_dir).unwrap();
+
+        // Standalone mode should NOT create MCP config
+        assert!(
+            !project_dir.join(".mcp.json").exists(),
+            "Standalone mode should not create .mcp.json"
+        );
     }
 }
