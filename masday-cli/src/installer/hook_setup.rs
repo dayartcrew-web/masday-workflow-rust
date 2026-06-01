@@ -23,7 +23,7 @@ pub fn install_global_hooks(home_dir: &Path) -> Result<SyncReport> {
     };
 
     for (name, content) in hooks.iter() {
-        let hook_path = hooks_dir.join(&name);
+        let hook_path = hooks_dir.join(name);
         fs::write(&hook_path, content)
             .with_context(|| format!("Failed to write hook {}", hook_path.display()))?;
 
@@ -57,7 +57,7 @@ pub fn install_project_hooks(project_dir: &Path) -> Result<SyncReport> {
     };
 
     for (name, content) in hooks.iter() {
-        let hook_path = hooks_dir.join(&name);
+        let hook_path = hooks_dir.join(name);
         fs::write(&hook_path, content)
             .with_context(|| format!("Failed to write hook {}", hook_path.display()))?;
 
@@ -88,7 +88,7 @@ pub fn uninstall_global_hooks(home_dir: &Path) -> Result<SyncReport> {
     };
 
     for (name, _) in hooks.iter() {
-        let hook_path = hooks_dir.join(&name);
+        let hook_path = hooks_dir.join(name);
         if hook_path.exists() {
             fs::remove_file(&hook_path)
                 .with_context(|| format!("Failed to remove hook {}", hook_path.display()))?;
@@ -112,7 +112,7 @@ pub fn uninstall_project_hooks(project_dir: &Path) -> Result<SyncReport> {
     };
 
     for (name, _) in hooks.iter() {
-        let hook_path = hooks_dir.join(&name);
+        let hook_path = hooks_dir.join(name);
         if hook_path.exists() {
             fs::remove_file(&hook_path)
                 .with_context(|| format!("Failed to remove hook {}", hook_path.display()))?;
