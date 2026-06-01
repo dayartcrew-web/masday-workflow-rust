@@ -9,24 +9,31 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 # --- Tag detection (release pipeline) ---
-# Git pre-push hook receives ref info on stdin
-TAG=""
-while IFS=' ' read -r local_ref local_sha remote_ref remote_sha 2>/dev/null || true; do
-  if [[ "$local_ref" == refs/tags/v* ]]; then
-    TAG="${local_ref#refs/tags/}"
-  fi
-done
+# Disabled by default. Set MASDAY_RELEASE=1 to enable.
+# Example: MASDAY_RELEASE=1 git push origin v0.2.0
+#
+# To enable permanently, uncomment the block below.
+#
+# TAG=""
+# while IFS=' ' read -r local_ref local_sha remote_ref remote_sha 2>/dev/null || true; do
+#   if [[ "$local_ref" == refs/tags/v* ]]; then
+#     TAG="${local_ref#refs/tags/}"
+#   fi
+# done
+#
+# if [ -n "$TAG" ] && [ "${MASDAY_RELEASE:-}" = "1" ]; then
+#   echo "[masday pre-push] 🏷️  Tag detected: $TAG — running release pipeline..."
+#   if bash "${ROOT_DIR}/scripts/release.sh" "$TAG"; then
+#     echo "[masday pre-push] ✅ Release $TAG created. Pushing tag..."
+#     exit 0
+#   else
+#     echo "[masday pre-push] ❌ Release failed. Aborting push."
+#     exit 1
+#   fi
+# fi
 
-if [ -n "$TAG" ]; then
-  echo "[masday pre-push] 🏷️  Tag detected: $TAG — running release pipeline..."
-  if bash "${ROOT_DIR}/scripts/release.sh" "$TAG"; then
-    echo "[masday pre-push] ✅ Release $TAG created. Pushing tag..."
-    exit 0
-  else
-    echo "[masday pre-push] ❌ Release failed. Aborting push."
-    exit 1
-  fi
-fi
+# Consume stdin so git doesn't hang
+cat >/dev/null 2>&1 || true
 
 # --- Normal push: detect stacks and run CI ---
 STACKS=()

@@ -1,6 +1,6 @@
 # Getting Started
 
-Masday Workflow is designed to run **locally first**. Docker is an optional profile for isolation or remote-style execution, not the default developer path.
+Masday Workflow is designed to run **locally first**. Rust workspace with 6 crates, PostgreSQL persistence, and stdio MCP transport.
 
 ## Quick Start (Rust CLI)
 
@@ -19,83 +19,63 @@ See [CLI commands reference](./reference/cli-commands.md) for full command docum
 
 ### What `masday install` distributes
 
-The `masday` binary is **self-contained** (7.6MB). It embeds all templates at compile time:
+The `masday` binary is **self-contained** (~7.6MB). It embeds all templates at compile time:
 
 | What user gets | What user does NOT get |
 |----------------|----------------------|
 | `masday` binary (with embedded templates) | Root project source code |
 | 28 agent .md files (extracted from binary) | Cargo workspace / Rust source |
-| 30+ skill directories (extracted from binary) | pnpm monorepo / TypeScript source |
-| Hooks (global + project, extracted from binary) | PostgreSQL schema (remote mode) |
-| MCP configs (generated per platform) | Dashboard frontend |
+| 30+ skill directories (extracted from binary) | PostgreSQL schema (remote mode) |
+| Hooks (global + project, extracted from binary) | Dashboard frontend |
+| MCP configs (generated per platform) | |
 | settings.json updates (statusline, autoCompact) | |
 
 **Local mode** requires Rust toolchain (builds from source).
-**Remote mode** only needs the binary — no Rust, no Node.js, no source code.
+**Remote mode** only needs the binary — no Rust, no source code.
 
 ## Default local workflow (Developer)
 
 ```bash
+source ~/.cargo/env
+
+# Build all crates
 cargo build --workspace
-cargo run -p masday-api    # Start API server (port 3010)
-cargo run -p masday-mcp    # Start MCP stdio server
+
+# Start API server (port 3010)
+DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+  cargo run -p masday-api
+
+# Start MCP stdio server
+DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+  cargo run -p masday-mcp
 ```
 
 ### Database Setup
 
-The runtime requires PostgreSQL with pgvector for persistent state. DualWriteStore replicates all workflow, task, and memory operations to PostgreSQL in real-time via Drizzle, with JSON cache fallback when the database is unavailable.
+The runtime requires PostgreSQL on port 5434 for persistent state.
 
 ```bash
-# Start PostgreSQL with pgvector
+# Start PostgreSQL + Redis
+docker compose up -d
 
-docker-compose up -d
-
-# Generate Drizzle client
-pnpm db:generate
-
-# Push schema to database
-pnpm db:push
-
-# Set up pgvector columns and indexes (PostgreSQL only)
-pnpm db:pgvector
+# Database: masday_workflow (user: trader, pass: traderpass, port: 5434)
+# Tables are created by the Rust application on first run
 ```
 
 ## What this starts
 
-- The local MCP stdio server from `apps/agent-runner`
-- **89 MCP tools** across 18 namespaces (workflow, memory, policy, semantic-search, capability, filesystem, review, session, local, git, npm, docker, cicd, github, tests, reminder, projectRules, use_masday)
-- Workflow orchestration via OrchestratingEngine with full agent dispatch
-- **PostgreSQL-backed runtime state via DualWriteStore** -- all 16 Drizzle tables actively populated (Workflow, Task, Plan, Memory, ReviewDecision, SessionState, ParallelBranch, ContextDocument, TaskProgressLog, RetrievalLog, TokenUsage, EpisodicMemory, GraphNode, GraphEdge, WorkflowReminder, LlmProviderConfig)
-- DualWrite pattern: PostgreSQL primary + JSON cache fallback for resilience
-- Project-local `.masday/` artifacts for cached research, plans, and notes
-- 4 default agent workers: backend, frontend, qa, general-purpose
+- **MCP stdio server** (`masday-mcp`) with 20 tool domains
+- **REST API server** (`masday-api`) on port 3010 with 243 routes
+- **PostgreSQL-backed state** — 16 tables for workflow, task, memory, review, session, graph, etc.
+- **Workflow state machine** — auto-transition to DONE when all tasks complete
+- **4-layer memory** — working, episodic, long-term, knowledge graph
+- **Project-local `.masday/`** artifacts for cached research, plans, and notes
 
 ## Recommended reading order
 
-1. [Architecture](./architecture.md) - actual runtime shape and feature maturity
-2. [Workflow lifecycle](./workflows/lifecycle.md) - lifecycle states and execution model
-3. [Local development](./workflows/local-development.md) - local-first commands and expectations
-4. [MCP tools reference](./reference/mcp-tools.md) - tool surface summary
-5. [CLI commands reference](./reference/cli-commands.md) - Claude/CLI command map
-6. [State model](./reference/state-model.md) - PostgreSQL vs `.masday` responsibilities
-
-## Runtime profiles
-
-- **Local** - default and primary supported path; uses PostgreSQL via DualWriteStore with JSON cache fallback
-- **Docker** - optional profile for isolation or parity testing
-- **Remote** - future/advanced profile documented as a planned direction
-
-You can select a profile explicitly:
-
-```bash
-export MASDAY_RUNTIME_PROFILE=local   # default
-export MASDAY_RUNTIME_PROFILE=docker
-export MASDAY_RUNTIME_PROFILE=remote
-```
-
-> Note: Only the **local** profile is currently implemented by the runtime in this repository. Selecting `docker` or `remote` will fail fast.
-
-See also:
-
-- [Local development](./workflows/local-development.md)
-- [Architecture](./architecture.md)
+1. [Architecture](./architecture.md) — runtime shape and crate structure
+2. [Workflow lifecycle](./workflows/lifecycle.md) — lifecycle states and execution model
+3. [Local development](./workflows/local-development.md) — local-first commands and expectations
+4. [MCP tools reference](./reference/mcp-tools.md) — tool surface summary
+5. [CLI commands reference](./reference/cli-commands.md) — Claude/CLI command map
+6. [State model](./reference/state-model.md) — PostgreSQL vs `.masday` responsibilities

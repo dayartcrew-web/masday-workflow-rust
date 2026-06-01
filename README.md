@@ -19,7 +19,7 @@ This is the Rust implementation of masday-workflow, providing a robust, type-saf
 
 - **Rust** 1.85+ ([install](https://rustup.rs/))
 - **PostgreSQL** 16 with pgvector
-- **pnpm** 9+ (for Next.js dashboard)
+- **mingw-w64** (for Windows cross-compile, optional)
 
 ### Setup
 
@@ -40,14 +40,15 @@ cp .env.example .env
 cargo build --workspace
 
 # Run MCP server (exposes tools via stdio)
-cargo run -p masday-mcp
+DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+  cargo run -p masday-mcp
 
 # Run API server (REST endpoints)
-cargo run -p masday-api
+DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+  cargo run -p masday-api
 
-# Run dashboard (Next.js frontend)
-cd apps/dashboard
-pnpm dev
+# Build release binaries
+cargo build --release --workspace
 ```
 
 ---
@@ -179,14 +180,18 @@ cargo fmt --all -- --check         # Check formatting
 cargo clean                         # Remove build artifacts
 ```
 
-### Dashboard Commands
+### Release Commands
 
 ```bash
-cd apps/dashboard
-pnpm dev                            # Start dev server
-pnpm build                          # Build for production
-pnpm start                          # Start production server
-pnpm lint                           # Lint code
+# Build release binaries
+cargo build --release --workspace
+
+# Cross-compile for Windows
+cargo build -p masday-cli --release --target x86_64-pc-windows-gnu
+
+# Create GitHub Release (local CI)
+bash scripts/release.sh v0.2.0
+bash scripts/release.sh v0.2.0 --dry-run  # test without uploading
 ```
 
 ---
@@ -199,11 +204,11 @@ Create a `.env` file in the project root:
 
 ```env
 # Database
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/masday_workflow?schema=public"
+DATABASE_URL="postgresql://trader:traderpass@localhost:5434/masday_workflow"
 POSTGRES_HOST="localhost"
-POSTGRES_PORT="5432"
-POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="postgres"
+POSTGRES_PORT="5434"
+POSTGRES_USER="trader"
+POSTGRES_PASSWORD="traderpass"
 POSTGRES_DB="masday_workflow"
 
 # Redis (optional, for caching)
@@ -275,14 +280,15 @@ The database schema is defined in `masday-db/src/schema.rs` using sqlx compile-t
 |-------|-----------|
 | **Language** | Rust (2021 edition) |
 | **Runtime** | Tokio async runtime |
-| **Database** | PostgreSQL 16 + pgvector (via sqlx) |
+| **Database** | PostgreSQL 16 + pgvector (via deadpool-postgres) |
 | **API** | Axum (REST HTTP) |
 | **Protocol** | Model Context Protocol (MCP) over stdio |
 | **Cache** | Redis (optional) |
-| **Frontend** | Next.js 16, React 19, Zustand |
-| **Validation** | Serde + custom validators |
+| **Validation** | Serde + serde_json |
 | **Logging** | tracing |
 | **Testing** | built-in `cargo test` |
+| **CLI** | clap 4.5 |
+| **Error Handling** | thiserror (lib) + anyhow (app) |
 
 ---
 
