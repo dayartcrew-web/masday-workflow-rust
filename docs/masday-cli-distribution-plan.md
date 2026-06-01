@@ -5,6 +5,54 @@
 
 ---
 
+## Implementation Status: DONE ✅
+
+Implemented in Rust via `masday-cli` crate (not Node.js as originally planned).
+
+| Milestone | Status |
+|-----------|--------|
+| CLI commands (install/uninstall/update) | ✅ Done — clap-based, 7 commands |
+| Template embedding | ✅ Done — `include_dir` crate, 7.6MB binary |
+| Multi-platform support | ✅ Done — Claude Code, Gemini CLI, VS Code, OpenCode |
+| Local mode (build + install) | ✅ Done — cargo build + template sync |
+| Remote mode (--remote URL) | ✅ Done — PATH resolution + connectivity check |
+| Security (SSRF, auth) | ✅ Done — URL validation, require --api-key |
+| npm/cargo publish | ⬜ TODO — cargo install or GitHub release |
+| curl fallback installer | ⬜ TODO — shell script for non-Rust users |
+| Binary download from GitHub releases | ⬜ TODO — remote.rs stub exists |
+
+### Distribution Model (Clarified)
+
+**User receives ONLY the `masday` binary.** Everything else is embedded:
+
+```
+masday (7.6MB binary)
+  ├── compile-time embedded:
+  │   ├── 28 agent .md files
+  │   ├── 30+ skill directories (SKILL.md + assets)
+  │   ├── 6 global hooks (.js)
+  │   └── 9 project hooks (.cjs/.js/.sh)
+  └── runtime generated:
+      ├── MCP configs per platform
+      └── settings.json updates
+```
+
+**User does NOT receive:**
+- Root project source code
+- Cargo workspace / Rust source
+- pnpm monorepo / TypeScript source
+- Dashboard frontend
+- Database migrations (remote mode connects to server)
+
+### Remaining TODO
+
+1. **Publish binary**: `cargo install masday` or GitHub Releases with CI
+2. **Binary download**: Implement remote.rs download from GitHub releases
+3. **curl installer**: Shell script for users without Rust
+4. **Version checking**: `masday update --check` against GitHub API
+
+---
+
 ## Arsitektur Saat Ini
 
 ```
