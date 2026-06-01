@@ -32,7 +32,7 @@ pub fn can_transition(current: &WorkflowState, target: &WorkflowState) -> bool {
 }
 
 /// Convert string status to WorkflowState
-fn status_to_state(status: &str) -> Result<WorkflowState> {
+pub fn status_to_state(status: &str) -> Result<WorkflowState> {
     match status.to_uppercase().as_str() {
         "INIT" => Ok(WorkflowState::Init),
         "ANALYZE" => Ok(WorkflowState::Analyze),

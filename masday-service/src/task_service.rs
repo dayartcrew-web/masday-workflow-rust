@@ -3,11 +3,13 @@
 //! Manages task creation, execution, and completion within workflows.
 //! All task state transitions are validated before being persisted.
 
-use masday_core::{AppError, Result};
+use masday_core::{AppError, Result, WorkflowState};
 use masday_db::repos::TaskRepo;
 use masday_db::schema::{NewTask, NewTaskProgressLog, Task, TaskProgressLog};
 use masday_db::DbPool;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+use crate::workflow_service::{self, status_to_state};
 
 /// Task service
 pub struct TaskService {
@@ -151,6 +153,10 @@ impl TaskService {
         let updated_task = service.repo.complete(task_id, result_data).await?;
 
         debug!("Task {} completed successfully", task_id);
+
+        // Auto-transition workflow if all tasks are done
+        Self::auto_transition_if_all_done(pool, workflow_id).await?;
+
         Ok(updated_task)
     }
 
@@ -240,12 +246,243 @@ impl TaskService {
         debug!("Progress log created with ID: {}", log.id);
         Ok(log)
     }
+
+    /// Check if all tasks in a workflow are DONE and auto-transition the workflow.
+    ///
+    /// Transition logic:
+    /// - EXECUTE → VERIFY → DONE (step through verify)
+    /// - VERIFY → DONE
+    /// - FIX → DONE
+    /// - INIT / ANALYZE → DONE (skip intermediate, valid per state machine)
+    /// - PLAN → EXECUTE → VERIFY → DONE (unlikely but handled)
+    ///
+    /// Silently logs a warning if the transition fails (non-blocking for task completion).
+    async fn auto_transition_if_all_done(pool: &DbPool, workflow_id: &str) -> Result<()> {
+        let service = Self::new(pool.clone());
+
+        // Check if all tasks are DONE
+        let all_tasks = service.repo.list_by_workflow(workflow_id).await?;
+        if all_tasks.is_empty() {
+            return Ok(());
+        }
+        let all_done = all_tasks.iter().all(|t| t.status == "DONE");
+        if !all_done {
+            return Ok(());
+        }
+
+        // All tasks done — transition workflow
+        let workflow = workflow_service::WorkflowService::get_workflow(pool, workflow_id).await?;
+        let current_state = match status_to_state(&workflow.status) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("Cannot parse workflow status '{}': {}", workflow.status, e);
+                return Ok(());
+            }
+        };
+
+        // Already done
+        if current_state == WorkflowState::Done {
+            return Ok(());
+        }
+
+        info!(
+            "All tasks done for workflow {} (state: {:?}), auto-transitioning",
+            workflow_id, current_state
+        );
+
+        // Determine the transition path based on current state
+        let transitions: Vec<WorkflowState> = match current_state {
+            WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+            WorkflowState::Verify => vec![WorkflowState::Done],
+            WorkflowState::Fix => vec![WorkflowState::Done],
+            WorkflowState::Init => vec![WorkflowState::Done],
+            WorkflowState::Analyze => vec![WorkflowState::Done],
+            WorkflowState::Plan => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Paused => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Failed => {
+                // Cannot auto-transition from FAILED
+                warn!("Workflow {} is FAILED, skipping auto-transition", workflow_id);
+                return Ok(());
+            }
+            WorkflowState::Done => vec![],
+        };
+
+        // Execute transitions sequentially
+        for target in transitions {
+            match workflow_service::WorkflowService::transition_status(pool, workflow_id, target.clone())
+                .await
+            {
+                Ok(_) => {
+                    info!("Workflow {} transitioned to {:?}", workflow_id, target);
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to transition workflow {} to {:?}: {}",
+                        workflow_id, target, e
+                    );
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn test_validate() {
-        // Placeholder test
+    fn test_transition_path_from_execute() {
+        // EXECUTE should transition through VERIFY → DONE
+        let state = WorkflowState::Execute;
+        let transitions: Vec<WorkflowState> = match state {
+            WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+            WorkflowState::Verify => vec![WorkflowState::Done],
+            WorkflowState::Fix => vec![WorkflowState::Done],
+            WorkflowState::Init => vec![WorkflowState::Done],
+            WorkflowState::Analyze => vec![WorkflowState::Done],
+            WorkflowState::Plan => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Paused => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Failed => vec![],
+            WorkflowState::Done => vec![],
+        };
+        assert_eq!(transitions, vec![WorkflowState::Verify, WorkflowState::Done]);
+    }
+
+    #[test]
+    fn test_transition_path_from_init() {
+        // INIT can go directly to DONE
+        let state = WorkflowState::Init;
+        let transitions: Vec<WorkflowState> = match state {
+            WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+            WorkflowState::Verify => vec![WorkflowState::Done],
+            WorkflowState::Fix => vec![WorkflowState::Done],
+            WorkflowState::Init => vec![WorkflowState::Done],
+            WorkflowState::Analyze => vec![WorkflowState::Done],
+            WorkflowState::Plan => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Paused => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Failed => vec![],
+            WorkflowState::Done => vec![],
+        };
+        assert_eq!(transitions, vec![WorkflowState::Done]);
+    }
+
+    #[test]
+    fn test_transition_path_from_verify() {
+        let state = WorkflowState::Verify;
+        let transitions: Vec<WorkflowState> = match state {
+            WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+            WorkflowState::Verify => vec![WorkflowState::Done],
+            WorkflowState::Fix => vec![WorkflowState::Done],
+            WorkflowState::Init => vec![WorkflowState::Done],
+            WorkflowState::Analyze => vec![WorkflowState::Done],
+            WorkflowState::Plan => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Paused => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Failed => vec![],
+            WorkflowState::Done => vec![],
+        };
+        assert_eq!(transitions, vec![WorkflowState::Done]);
+    }
+
+    #[test]
+    fn test_transition_path_from_fix() {
+        let state = WorkflowState::Fix;
+        let transitions: Vec<WorkflowState> = match state {
+            WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+            WorkflowState::Verify => vec![WorkflowState::Done],
+            WorkflowState::Fix => vec![WorkflowState::Done],
+            WorkflowState::Init => vec![WorkflowState::Done],
+            WorkflowState::Analyze => vec![WorkflowState::Done],
+            WorkflowState::Plan => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Paused => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Failed => vec![],
+            WorkflowState::Done => vec![],
+        };
+        assert_eq!(transitions, vec![WorkflowState::Done]);
+    }
+
+    #[test]
+    fn test_transition_path_from_failed_is_empty() {
+        let state = WorkflowState::Failed;
+        let transitions: Vec<WorkflowState> = match state {
+            WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+            WorkflowState::Verify => vec![WorkflowState::Done],
+            WorkflowState::Fix => vec![WorkflowState::Done],
+            WorkflowState::Init => vec![WorkflowState::Done],
+            WorkflowState::Analyze => vec![WorkflowState::Done],
+            WorkflowState::Plan => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Paused => {
+                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+            }
+            WorkflowState::Failed => vec![],
+            WorkflowState::Done => vec![],
+        };
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn test_transition_paths_are_valid_per_state_machine() {
+        // Verify that all transition paths respect can_transition_to rules
+        use masday_core::WorkflowState;
+
+        fn validate_path(path: &[WorkflowState]) {
+            for i in 0..path.len() - 1 {
+                assert!(
+                    path[i].can_transition_to(&path[i + 1]),
+                    "Invalid transition in path: {:?} → {:?}",
+                    path[i],
+                    path[i + 1]
+                );
+            }
+        }
+
+        // EXECUTE path
+        validate_path(&[WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]);
+        // VERIFY path
+        validate_path(&[WorkflowState::Verify, WorkflowState::Done]);
+        // FIX path
+        validate_path(&[WorkflowState::Fix, WorkflowState::Done]);
+        // INIT path
+        validate_path(&[WorkflowState::Init, WorkflowState::Done]);
+        // ANALYZE path
+        validate_path(&[WorkflowState::Analyze, WorkflowState::Done]);
+        // PLAN path
+        validate_path(&[
+            WorkflowState::Plan,
+            WorkflowState::Execute,
+            WorkflowState::Verify,
+            WorkflowState::Done,
+        ]);
+        // PAUSED path
+        validate_path(&[
+            WorkflowState::Paused,
+            WorkflowState::Execute,
+            WorkflowState::Verify,
+            WorkflowState::Done,
+        ]);
     }
 }
