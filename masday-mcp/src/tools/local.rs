@@ -41,6 +41,9 @@ pub async fn local_init(args: Value) -> Result<Value, Box<dyn std::error::Error 
 }
 
 /// Sync local state (read from .masday directory)
+///
+/// Ensures the .masday/state/workflows directory exists and gracefully
+/// handles missing workflow state files by returning an empty state.
 pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let cwd = args
         .get("cwd")
@@ -52,18 +55,27 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or("Missing 'workflow_id' argument")?;
 
-    let workflow_file = std::path::Path::new(cwd)
+    let state_dir = std::path::Path::new(cwd)
         .join(".masday")
         .join("state")
-        .join("workflows")
-        .join(format!("{}.json", workflow_id));
+        .join("workflows");
 
-    let content = tokio::fs::read_to_string(&workflow_file)
+    // Ensure directory exists
+    tokio::fs::create_dir_all(&state_dir)
         .await
-        .map_err(|e| format!("Failed to read workflow state: {}", e))?;
+        .map_err(|e| format!("Failed to create state directory: {}", e))?;
 
-    let state: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse workflow state JSON: {}", e))?;
+    let workflow_file = state_dir.join(format!("{}.json", workflow_id));
+
+    let state = if workflow_file.exists() {
+        let content = tokio::fs::read_to_string(&workflow_file)
+            .await
+            .map_err(|e| format!("Failed to read workflow state: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse workflow state JSON: {}", e))?
+    } else {
+        serde_json::json!(null)
+    };
 
     Ok(serde_json::json!({
         "workflow_id": workflow_id,

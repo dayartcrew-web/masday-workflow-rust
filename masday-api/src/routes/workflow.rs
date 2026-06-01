@@ -320,21 +320,50 @@ async fn create_parallel_branches(
         .unwrap_or("");
     // Validate workflow exists
     let _ = masday_service::WorkflowService::get_workflow(&state.pool, workflow_id).await?;
-    let branches = payload.get("branches").cloned().unwrap_or(serde_json::json!([]));
-    let created: Vec<serde_json::Value> = if let Some(arr) = branches.as_array() {
+
+    let branches_raw = payload
+        .get("branches")
+        .cloned()
+        .unwrap_or(serde_json::json!([]));
+
+    let branch_keys: Vec<String> = if let Some(arr) = branches_raw.as_array() {
         arr.iter()
-            .map(|b| {
-                serde_json::json!({
-                    "id": uuid::Uuid::new_v4().to_string(),
-                    "workflow_id": workflow_id,
-                    "branch_key": b.get("key").and_then(|v| v.as_str()).unwrap_or("branch"),
-                    "status": "PENDING"
-                })
+            .map(|b| match b {
+                Value::String(s) => s.clone(),
+                Value::Object(obj) => obj
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("branch")
+                    .to_string(),
+                _ => "branch".to_string(),
             })
             .collect()
     } else {
         vec![]
     };
+
+    // Persist branches to DB via BranchRepo
+    let repo = masday_db::repos::branch_repo::BranchRepo::new(state.pool.clone());
+    let new_branches: Vec<masday_db::schema::NewParallelBranch> = branch_keys
+        .iter()
+        .map(|key| masday_db::schema::NewParallelBranch {
+            workflow_id: workflow_id.to_string(),
+            task_id: String::new(),
+            branch_key: key.clone(),
+            role: "worker".to_string(),
+            status: "PENDING".to_string(),
+            input: serde_json::json!({}),
+            output: None,
+        })
+        .collect();
+
+    let created = repo.create_branches(&new_branches).await.map_err(|e| {
+        ApiError(masday_core::AppError::Internal(format!(
+            "Failed to create parallel branches: {}",
+            e
+        )))
+    })?;
+
     Ok(Json(serde_json::json!(created)))
 }
 
@@ -352,17 +381,49 @@ async fn complete_parallel_branch(
         .unwrap_or("");
     // Validate workflow exists
     let _ = masday_service::WorkflowService::get_workflow(&state.pool, workflow_id).await?;
-    Ok(Json(serde_json::json!({
-        "branch_key": branch_key,
-        "status": "DONE"
-    })))
+
+    let repo = masday_db::repos::branch_repo::BranchRepo::new(state.pool.clone());
+    let branches = repo.list_branches(workflow_id).await.map_err(|e| {
+        ApiError(masday_core::AppError::Internal(format!(
+            "Failed to list branches: {}",
+            e
+        )))
+    })?;
+    let branch = branches
+        .iter()
+        .find(|b| b.branch_key == branch_key)
+        .ok_or_else(|| {
+            ApiError(masday_core::AppError::NotFound(format!(
+                "Branch '{}' not found",
+                branch_key
+            )))
+        })?;
+    let output = payload.get("output").cloned().unwrap_or(serde_json::json!({}));
+    let completed = repo
+        .complete_branch(&branch.id, output)
+        .await
+        .map_err(|e| {
+            ApiError(masday_core::AppError::Internal(format!(
+                "Failed to complete branch: {}",
+                e
+            )))
+        })?;
+
+    Ok(Json(serde_json::json!(completed)))
 }
 
 async fn list_parallel_branches(
-    State(_state): State<AppState>,
-    Path(_id): Path<String>,
+    State(state): State<AppState>,
+    Path(workflow_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    Ok(Json(serde_json::json!([])))
+    let repo = masday_db::repos::branch_repo::BranchRepo::new(state.pool.clone());
+    let branches = repo.list_branches(&workflow_id).await.map_err(|e| {
+        ApiError(masday_core::AppError::Internal(format!(
+            "Failed to list branches: {}",
+            e
+        )))
+    })?;
+    Ok(Json(serde_json::json!(branches)))
 }
 
 async fn mark_synthesis_ready(
