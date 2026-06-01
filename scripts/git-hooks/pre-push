@@ -10,7 +10,7 @@ cd "$ROOT_DIR"
 # --- Detect stacks ---
 STACKS=()
 [ -f "Cargo.toml" ] || [ -d "crates" ] 2>/dev/null && STACKS+=("rust")
-[ -f "package.json" ] || [ -f "pnpm-workspace.yaml" ] 2>/dev/null && STACKS+=("ts")
+{ [ -f "pnpm-lock.yaml" ] || [ -f "package-lock.json" ] || [ -f "yarn.lock" ]; } && STACKS+=("ts")
 [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] 2>/dev/null && STACKS+=("python")
 [ -f "go.mod" ] 2>/dev/null && STACKS+=("go")
 [ -f "composer.json" ] 2>/dev/null && STACKS+=("php")
