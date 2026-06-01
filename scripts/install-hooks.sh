@@ -14,8 +14,11 @@ for hook in pre-commit pre-push; do
   if [ -f "${HOOKS_SRC}/${hook}" ]; then
     cp "${HOOKS_SRC}/${hook}" "${HOOKS_DST}/${hook}"
     chmod +x "${HOOKS_DST}/${hook}"
-    echo "  Installed ${hook}"
+    echo "  ✅ ${hook}"
   fi
 done
 
-echo "Git hooks installed. They run automatically on commit/push in ALL AI tools."
+echo ""
+echo "Git hooks installed. Multi-stack auto-detect on commit/push."
+echo "  pre-commit: fmt + lint (Rust, TS, Python, Go, PHP)"
+echo "  pre-push:   build + test (Rust, TS, Python, Go, PHP)"

@@ -187,10 +187,12 @@ cat > .mcp.json << MCPEOF
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "${MCP_BIN}",
+      "command": "${ROOT_DIR}/${MCP_BIN}",
       "cwd": "${ROOT_DIR}",
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
+        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_KEY": "PLACEHOLDER",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
     }
@@ -211,6 +213,8 @@ if [ ! -f ".gemini/settings.json" ]; then
       "cwd": "${ROOT_DIR}",
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
+        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_KEY": "PLACEHOLDER",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
     }
@@ -230,6 +234,8 @@ cat > .vscode/mcp.json << VSCODEEOF
       "cwd": "${ROOT_DIR}",
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
+        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_KEY": "PLACEHOLDER",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
     }
@@ -296,15 +302,22 @@ echo "  .github/hooks/masday-hooks.json"
 echo ""
 echo "=== Setup Complete ==="
 echo ""
+
+# 9. Install git hooks
+echo "[9/9] Installing git hooks..."
+bash "${ROOT_DIR}/scripts/install-hooks.sh"
+
+echo ""
 echo "Available commands:"
-echo "  cargo run -p masday-mcp     # Start MCP server"
-echo "  cargo run -p masday-api     # Start API server"
-echo "  cd apps/dashboard && pnpm dev  # Start Next.js dashboard"
+echo "  cargo run -p masday-mcp     # Start MCP server (stdio)"
+echo "  cargo run -p masday-api     # Start API server (port 3010)"
 echo "  cargo test --workspace      # Run tests"
 echo "  cargo clippy --workspace    # Lint"
+echo "  cargo fmt --all --check     # Check formatting"
 echo ""
 echo "Environment variables (.env):"
-echo "  DATABASE_URL=postgresql://user:pass@localhost:5432/masday"
+echo "  DATABASE_URL=postgresql://user:pass@localhost:5434/masday_workflow"
+echo "  MUSDAY_API_URL=http://localhost:3010"
 echo "  RUST_LOG=info               # Logging level"
 echo ""
 echo "MCP servers configured:"
@@ -312,9 +325,13 @@ echo "  Claude Code:  .mcp.json"
 echo "  Gemini CLI:   .gemini/settings.json"
 echo "  VS Code:      .vscode/mcp.json"
 echo ""
+echo "Git hooks installed:"
+echo "  pre-commit: cargo fmt + clippy"
+echo "  pre-push:   cargo build + test"
+echo ""
 echo "Next steps:"
 echo "  1. Fill in .env with your DATABASE_URL"
-echo "  2. Start PostgreSQL: docker-compose up -d"
-echo "  3. Start MCP server: cargo run -p masday-mcp"
-echo "  4. Start dashboard: cd apps/dashboard && pnpm dev"
+echo "  2. Start PostgreSQL: docker compose up -d"
+echo "  3. Start API server: cargo run --release -p masday-api"
+echo "  4. Start MCP server: cargo run --release -p masday-mcp"
 echo ""
