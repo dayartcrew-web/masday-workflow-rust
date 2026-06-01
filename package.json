@@ -20,7 +20,7 @@
     "setup": "bash scripts/setup.sh"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^25",
     "typescript": "^5"
   },
   "keywords": [
