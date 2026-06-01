@@ -193,26 +193,20 @@ async function main() {
       const active = projectWfs.filter(w => activeStatuses.includes(w.status)).length;
       const stuck = projectWfs.filter(w => stuckStatuses.includes(w.status)).length;
       const wfParts = [];
-      if (active > 0) wfParts.push(`⚙️${active}`);
-      if (stuck > 0) wfParts.push(`🔴${stuck}`);
+      if (active > 0) wfParts.push(`▶ ${active}`);
+      if (stuck > 0) wfParts.push(`⛔ ${stuck}`);
       if (wfParts.length > 0) parts.push(wfParts.join("|"));
     }
   } catch {}
 
-  // Git status
+  // Project folder name + dirty count
   try {
-    const branch = execSync(
-      `cd ${PROJECT} && git rev-parse --abbrev-ref HEAD`,
-      { encoding: "utf-8" }
-    ).trim();
+    const dirName = path.basename(PROJECT);
     const dirty = execSync(
       `cd ${PROJECT} && git status --porcelain`,
       { encoding: "utf-8" }
     ).trim();
-    const short = branch
-      .replace("rust-masday-workflow", "rust-wf")
-      .replace("masday-workflow-", "mw-");
-    parts.push(`${short}${dirty ? `(${dirty.split("\n").length})` : ""}`);
+    parts.push(`${dirName}${dirty ? `(${dirty.split("\n").length})` : ""}`);
   } catch {}
 
   console.log(`⚡ Masday | ${parts.join(" | ")}`);
