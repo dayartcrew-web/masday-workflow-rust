@@ -1,13 +1,14 @@
 # MCP Tools Reference
 
-This page is the canonical contributor-facing reference for the MCP tool surface. The server is `apps/agent-runner/src/runtime/mcp.ts` -- 89 real tools across 18 namespaces, all connected to PostgreSQL via DualWriteStore.
+This page is the canonical contributor-facing reference for the MCP tool surface. The server is `masday-mcp` (Rust, JSON-RPC 2.0 over stdio) with `masday-api` (Axum HTTP API on port 3010). All tools are connected to PostgreSQL via `tokio-postgres` with repos in `masday-db/src/repos/`.
 
 ## Persistence
 
-- **DualWriteWorkflowStore**: all workflow operations replicate to PostgreSQL in real-time via Drizzle
-- **Memory**: hybrid mode -- Drizzle first, JSON cache fallback when PostgreSQL is unavailable
-- **Review tools**: Real Drizzle writes to `ReviewDecision` table
-- **Session tools**: Real Drizzle reads/writes to `SessionState` table
+- **WorkflowRepo**: all workflow/task/plan operations via `tokio-postgres` with PascalCase tables
+- **Memory**: `MemoryRepo` with importance scoring and text search
+- **BranchRepo**: parallel branch CRUD with real DB persistence
+- **Review tools**: real PostgreSQL writes to `ReviewDecision` table
+- **Session tools**: real PostgreSQL reads/writes to `SessionState` table
 - **Policy tools**: real validation against DB (workflow status, review decisions, branch status, fingerprints)
 - **Shell tools**: real `execSync` calls (git, pnpm, docker, gh CLI, test runner)
 - **Capability tools**: real `.claude/` directory reads with frontmatter parsing
@@ -119,7 +120,7 @@ Real Drizzle reads/writes to `SessionState` table.
 File-based `.masday/` state dir + Drizzle sync/push.
 
 - `local_init` -- Init local state dir (creates `.masday/`)
-- `local_sync` -- Sync from DB (downloads PostgreSQL to JSON cache)
+- `local_sync` -- Sync from local `.masday/state/workflows/` (auto-creates dirs, returns null for missing state)
 - `local_push` -- Push to DB (uploads JSON cache to PostgreSQL)
 - `local_save_artifact` -- Save artifact file locally
 
