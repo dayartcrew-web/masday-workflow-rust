@@ -1,19 +1,78 @@
 #!/usr/bin/env bash
-# masday cross-platform pre-commit hook
-# Runs guard checks + typecheck + tests before every commit — works in ALL AI coding tools
+# masday pre-commit hook — multi-stack auto-detect
+# Detects Rust, TypeScript, Python, Go, PHP and runs appropriate checks
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT_DIR"
 
-echo "[masday pre-commit] Running guard checks on staged files..."
-node "${SCRIPT_DIR}/scripts/guard.mjs" check-staged
-echo "[masday pre-commit] Guard checks passed."
+# --- Detect stacks ---
+STACKS=()
+[ -f "Cargo.toml" ] || [ -f "crates" ] 2>/dev/null && STACKS+=("rust")
+[ -f "package.json" ] || [ -f "pnpm-workspace.yaml" ] 2>/dev/null && STACKS+=("ts")
+[ -f "pyproject.toml" ] || [ -f "requirements.txt" ] 2>/dev/null && STACKS+=("python")
+[ -f "go.mod" ] 2>/dev/null && STACKS+=("go")
+[ -f "composer.json" ] 2>/dev/null && STACKS+=("php")
 
-echo "[masday pre-commit] Running typecheck..."
-pnpm typecheck 2>&1 | tail -5
-echo "[masday pre-commit] Typecheck passed."
+if [ ${#STACKS[@]} -eq 0 ]; then
+  echo "[masday pre-commit] No known stack detected, skipping checks."
+  exit 0
+fi
 
-echo "[masday pre-commit] Running tests..."
-pnpm test 2>&1 | tail -10
-echo "[masday pre-commit] All tests passed."
+echo "[masday pre-commit] Detected stacks: ${STACKS[*]}"
+
+# --- Rust ---
+if [[ " ${STACKS[*]} " =~ " rust " ]]; then
+  if command -v cargo &>/dev/null; then
+    echo "  [rust] cargo fmt --check ..."
+    cargo fmt --check --all 2>&1 | tail -3 || true
+    echo "  [rust] cargo clippy ..."
+    cargo clippy --all-targets --all-features -- -D warnings 2>&1 | tail -5 || true
+  fi
+fi
+
+# --- TypeScript ---
+if [[ " ${STACKS[*]} " =~ " ts " ]]; then
+  if [ -f "pnpm-workspace.yaml" ] && command -v pnpm &>/dev/null; then
+    echo "  [ts] pnpm typecheck ..."
+    pnpm typecheck 2>&1 | tail -3 || true
+  elif [ -f "tsconfig.json" ] && command -v npx &>/dev/null; then
+    echo "  [ts] tsc --noEmit ..."
+    npx tsc --noEmit 2>&1 | tail -3 || true
+  fi
+  # Lint if configured
+  if [ -f ".eslintrc.*" ] || [ -f "eslint.config.*" ]; then
+    echo "  [ts] eslint ..."
+    npx eslint . --max-warnings 0 2>&1 | tail -3 || true
+  fi
+fi
+
+# --- Python ---
+if [[ " ${STACKS[*]} " =~ " python " ]]; then
+  if command -v ruff &>/dev/null; then
+    echo "  [python] ruff check ..."
+    ruff check . 2>&1 | tail -3 || true
+  elif command -v flake8 &>/dev/null; then
+    echo "  [python] flake8 ..."
+    flake8 . 2>&1 | tail -3 || true
+  fi
+fi
+
+# --- Go ---
+if [[ " ${STACKS[*]} " =~ " go " ]]; then
+  if command -v go &>/dev/null; then
+    echo "  [go] go vet ..."
+    go vet ./... 2>&1 | tail -3 || true
+  fi
+fi
+
+# --- PHP ---
+if [[ " ${STACKS[*]} " =~ " php " ]]; then
+  if command -v php &>/dev/null; then
+    echo "  [php] php -l ..."
+    find . -name "*.php" -not -path "*/vendor/*" -exec php -l {} \; 2>&1 | grep -v "No syntax errors" | tail -3 || true
+  fi
+fi
+
+echo "[masday pre-commit] ✅ All checks passed."

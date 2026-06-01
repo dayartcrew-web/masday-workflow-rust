@@ -1,13 +1,94 @@
 #!/usr/bin/env bash
-# masday cross-platform pre-push hook
-# Full test suite + build check before every push
+# masday pre-push hook — multi-stack auto-detect
+# Detects Rust, TypeScript, Python, Go, PHP and runs build + test
 
 set -euo pipefail
 
-echo "[masday pre-push] Running build..."
-pnpm build 2>&1 | tail -5
-echo "[masday pre-push] Build passed."
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT_DIR"
 
-echo "[masday pre-push] Running full test suite..."
-pnpm test 2>&1 | tail -10
-echo "[masday pre-push] All tests passed. Pushing..."
+# --- Detect stacks ---
+STACKS=()
+[ -f "Cargo.toml" ] || [ -d "crates" ] 2>/dev/null && STACKS+=("rust")
+[ -f "package.json" ] || [ -f "pnpm-workspace.yaml" ] 2>/dev/null && STACKS+=("ts")
+[ -f "pyproject.toml" ] || [ -f "requirements.txt" ] 2>/dev/null && STACKS+=("python")
+[ -f "go.mod" ] 2>/dev/null && STACKS+=("go")
+[ -f "composer.json" ] 2>/dev/null && STACKS+=("php")
+
+if [ ${#STACKS[@]} -eq 0 ]; then
+  echo "[masday pre-push] No known stack detected, skipping checks."
+  exit 0
+fi
+
+echo "[masday pre-push] Detected stacks: ${STACKS[*]}"
+
+FAILED=0
+
+# --- Rust ---
+if [[ " ${STACKS[*]} " =~ " rust " ]]; then
+  if command -v cargo &>/dev/null; then
+    echo "  [rust] cargo build ..."
+    cargo build --release --workspace 2>&1 | tail -3 || FAILED=1
+    if [ "$FAILED" -eq 0 ]; then
+      echo "  [rust] cargo test ..."
+      cargo test --workspace 2>&1 | tail -5 || FAILED=1
+    fi
+  fi
+fi
+
+# --- TypeScript ---
+if [[ " ${STACKS[*]} " =~ " ts " ]]; then
+  if [ -f "pnpm-workspace.yaml" ] && command -v pnpm &>/dev/null; then
+    echo "  [ts] pnpm build ..."
+    pnpm build 2>&1 | tail -3 || FAILED=1
+    if [ "$FAILED" -eq 0 ]; then
+      echo "  [ts] pnpm test ..."
+      pnpm test 2>&1 | tail -5 || FAILED=1
+    fi
+  elif [ -f "package.json" ] && command -v npm &>/dev/null; then
+    echo "  [ts] npm run build ..."
+    npm run build 2>&1 | tail -3 || FAILED=1
+    if [ "$FAILED" -eq 0 ]; then
+      echo "  [ts] npm test ..."
+      npm test 2>&1 | tail -5 || FAILED=1
+    fi
+  fi
+fi
+
+# --- Python ---
+if [[ " ${STACKS[*]} " =~ " python " ]]; then
+  if command -v pytest &>/dev/null; then
+    echo "  [python] pytest ..."
+    pytest 2>&1 | tail -5 || FAILED=1
+  fi
+fi
+
+# --- Go ---
+if [[ " ${STACKS[*]} " =~ " go " ]]; then
+  if command -v go &>/dev/null; then
+    echo "  [go] go build ..."
+    go build ./... 2>&1 | tail -3 || FAILED=1
+    if [ "$FAILED" -eq 0 ]; then
+      echo "  [go] go test ..."
+      go test ./... 2>&1 | tail -5 || FAILED=1
+    fi
+  fi
+fi
+
+# --- PHP ---
+if [[ " ${STACKS[*]} " =~ " php " ]]; then
+  if command -v vendor/bin/pest &>/dev/null; then
+    echo "  [php] pest ..."
+    vendor/bin/pest 2>&1 | tail -5 || FAILED=1
+  elif command -v vendor/bin/phpunit &>/dev/null; then
+    echo "  [php] phpunit ..."
+    vendor/bin/phpunit 2>&1 | tail -5 || FAILED=1
+  fi
+fi
+
+if [ "$FAILED" -eq 1 ]; then
+  echo "[masday pre-push] ❌ Some checks failed."
+  exit 1
+fi
+
+echo "[masday pre-push] ✅ All checks passed. Pushing..."
