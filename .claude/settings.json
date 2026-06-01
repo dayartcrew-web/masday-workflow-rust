@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs masday-mem-context",
+            "command": ".claude/hooks/run.sh masday-mem-context",
             "timeout": 15
           }
         ]
@@ -18,27 +18,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs pre-tool-use",
+            "command": ".claude/hooks/run.sh pre-tool-use",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs pre-build-skill",
+            "command": ".claude/hooks/run.sh pre-build-skill",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+            "command": ".claude/hooks/run.sh workflow-lock",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs tdd-guard",
+            "command": ".claude/hooks/run.sh tdd-guard",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs tool-name-guard",
+            "command": ".claude/hooks/run.sh tool-name-guard",
             "timeout": 30
           }
         ]
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+            "command": ".claude/hooks/run.sh workflow-lock",
             "timeout": 30
           }
         ]
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs skill-wrap-guard",
+            "command": ".claude/hooks/run.sh skill-wrap-guard",
             "timeout": 30
           }
         ]
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs pre-task-complete",
+            "command": ".claude/hooks/run.sh pre-task-complete",
             "timeout": 30
           }
         ]
@@ -80,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs post-tool-use",
+            "command": ".claude/hooks/run.sh post-tool-use",
             "timeout": 30
           }
         ]
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs on-notification",
+            "command": ".claude/hooks/run.sh on-notification",
             "timeout": 30
           }
         ]
@@ -104,7 +104,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs on-stop",
+            "command": ".claude/hooks/run.sh on-stop",
             "timeout": 60
           }
         ]
