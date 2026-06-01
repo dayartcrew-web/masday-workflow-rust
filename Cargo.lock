@@ -1453,6 +1453,7 @@ dependencies = [
  "chrono",
  "masday-core",
  "masday-db",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",

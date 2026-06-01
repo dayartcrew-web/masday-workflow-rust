@@ -10,6 +10,7 @@ use masday_db::{
     repos::{GraphRepo, MemoryRepo},
     DbPool,
 };
+use crate::embedding_service::{EmbeddingService, build_embedding_input};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
@@ -229,6 +230,25 @@ impl MemoryService {
         use masday_db::schema::NewMemory;
 
         let repo = MemoryRepo::new(pool.clone());
+
+        // Try to generate embedding if provider is configured
+        let embedding = match EmbeddingService::from_env() {
+            Some(service) => {
+                let input = build_embedding_input(params.summary, params.content);
+                match service.embed(&input).await {
+                    Ok(vec) => {
+                        debug!("Generated embedding: {} dimensions", vec.len());
+                        Some(vec)
+                    }
+                    Err(e) => {
+                        debug!("Embedding generation failed (storing without): {}", e);
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+
         let new_memory = NewMemory {
             workflow_id: params.workflow_id.map(|s| s.to_string()),
             task_id: params.task_id.map(|s| s.to_string()),
@@ -242,17 +262,50 @@ impl MemoryService {
             embedding: None,
         };
 
-        let memory = repo.store(&new_memory).await?;
+        let memory = if let Some(emb) = embedding {
+            repo.store_with_embedding(&new_memory, Some(emb)).await?
+        } else {
+            repo.store(&new_memory).await?
+        };
+
         Ok(json!(memory))
     }
 
-    /// Search memories (delegates to MemoryRepo)
+    /// Search memories (vector search when embeddings available, text fallback)
     pub async fn search(
         pool: &DbPool,
         query: &str,
         limit: usize,
     ) -> Result<Vec<serde_json::Value>> {
         let repo = MemoryRepo::new(pool.clone());
+
+        // Try vector search first if embedding provider is configured
+        if let Some(service) = EmbeddingService::from_env() {
+            match service.embed(query).await {
+                Ok(query_embedding) => {
+                    debug!("Vector search with {}d embedding", query_embedding.len());
+                    let results = repo.vector_search(&query_embedding, limit as i64).await?;
+                    if !results.is_empty() {
+                        return Ok(results
+                            .into_iter()
+                            .map(|(m, score)| {
+                                let mut val = serde_json::to_value(&m).unwrap_or_default();
+                                if let Some(obj) = val.as_object_mut() {
+                                    obj.insert("_similarity".to_string(), json!(score));
+                                }
+                                val
+                            })
+                            .collect());
+                    }
+                    // No vector results, fall through to text search
+                }
+                Err(e) => {
+                    debug!("Embedding failed for search query, falling back to text: {}", e);
+                }
+            }
+        }
+
+        // Text search fallback
         let memories = repo.search(query, limit as i64).await?;
         Ok(memories.into_iter().map(|m| json!(m)).collect())
     }
