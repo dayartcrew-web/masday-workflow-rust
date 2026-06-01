@@ -340,7 +340,12 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!("{}", style("Generating MCP configs...").cyan());
 
     let api_url = remote_url.to_string();
-    let api_key = args.api_key.unwrap_or_else(|| "remote-mode".to_string());
+    let api_key = args.api_key.ok_or_else(|| {
+        anyhow::anyhow!(
+            "--api-key is required for remote mode.\n\
+            Usage: masday install --remote <url> --api-key <key>"
+        )
+    })?;
 
     for platform in &platforms {
         let config = McpConfig {

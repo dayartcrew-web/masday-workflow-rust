@@ -101,10 +101,15 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-        let ty = entry.file_type()?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
+        // Skip symlinks — prevent arbitrary file read outside source tree
+        if src_path.is_symlink() {
+            continue;
+        }
+
+        let ty = entry.file_type()?;
         if ty.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {

@@ -42,9 +42,19 @@ pub fn resolve_mcp_binary(_remote_url: &str) -> Result<PathBuf> {
 
 /// Verify remote URL is accessible
 ///
-/// Performs a GET request to /api/health endpoint to check connectivity.
+/// Validates the URL scheme (http/https only) then performs a GET request
+/// to /api/health endpoint to check connectivity.
 pub fn verify_remote_url(remote_url: &str) -> Result<()> {
-    let health_url = format!("{}/api/health", remote_url.trim_end_matches('/'));
+    // Validate URL scheme — only http/https allowed
+    let trimmed = remote_url.trim_end_matches('/');
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        anyhow::bail!(
+            "Invalid remote URL: only http:// and https:// schemes are allowed. Got: {}",
+            trimmed
+        );
+    }
+
+    let health_url = format!("{}/api/health", trimmed);
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
