@@ -1,13 +1,34 @@
 #!/usr/bin/env bash
-# masday pre-push hook — multi-stack auto-detect
+# masday pre-push hook — multi-stack auto-detect + release on tag
 # Detects Rust, TypeScript, Python, Go, PHP and runs build + test
+# On v* tag push: builds release binaries and creates GitHub Release
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-# --- Detect stacks ---
+# --- Tag detection (release pipeline) ---
+# Git pre-push hook receives ref info on stdin
+TAG=""
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha 2>/dev/null || true; do
+  if [[ "$local_ref" == refs/tags/v* ]]; then
+    TAG="${local_ref#refs/tags/}"
+  fi
+done
+
+if [ -n "$TAG" ]; then
+  echo "[masday pre-push] 🏷️  Tag detected: $TAG — running release pipeline..."
+  if bash "${ROOT_DIR}/scripts/release.sh" "$TAG"; then
+    echo "[masday pre-push] ✅ Release $TAG created. Pushing tag..."
+    exit 0
+  else
+    echo "[masday pre-push] ❌ Release failed. Aborting push."
+    exit 1
+  fi
+fi
+
+# --- Normal push: detect stacks and run CI ---
 STACKS=()
 [ -f "Cargo.toml" ] || [ -d "crates" ] 2>/dev/null && STACKS+=("rust")
 { [ -f "pnpm-lock.yaml" ] || [ -f "package-lock.json" ] || [ -f "yarn.lock" ]; } && STACKS+=("ts")
