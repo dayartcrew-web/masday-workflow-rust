@@ -36,16 +36,16 @@ if [[ " ${STACKS[*]} " =~ " rust " ]]; then
   fi
 fi
 
-# --- TypeScript ---
+# --- TypeScript (only if lockfile exists, skip partial setups) ---
 if [[ " ${STACKS[*]} " =~ " ts " ]]; then
-  if [ -f "pnpm-workspace.yaml" ] && command -v pnpm &>/dev/null; then
+  if [ -f "pnpm-lock.yaml" ] && command -v pnpm &>/dev/null; then
     echo "  [ts] pnpm build ..."
     pnpm build 2>&1 | tail -3 || FAILED=1
     if [ "$FAILED" -eq 0 ]; then
       echo "  [ts] pnpm test ..."
       pnpm test 2>&1 | tail -5 || FAILED=1
     fi
-  elif [ -f "package.json" ] && command -v npm &>/dev/null; then
+  elif [ -f "package-lock.json" ] && [ -f "tsconfig.json" ] && command -v npm &>/dev/null; then
     echo "  [ts] npm run build ..."
     npm run build 2>&1 | tail -3 || FAILED=1
     if [ "$FAILED" -eq 0 ]; then

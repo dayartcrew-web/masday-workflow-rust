@@ -31,8 +31,8 @@ macro_rules! schema {
             let k: &str = $key;
             let is_opt = k.ends_with('?');
             let trimmed = k.trim_end_matches('?');
-            let (name, type_val) = if trimmed.starts_with('#') {
-                (trimmed[1..].to_string(), serde_json::json!({"type":"number"}))
+            let (name, type_val) = if let Some(stripped) = trimmed.strip_prefix('#') {
+                (stripped.to_string(), serde_json::json!({"type":"number"}))
             } else {
                 (trimmed.to_string(), serde_json::json!({"type":"string"}))
             };
