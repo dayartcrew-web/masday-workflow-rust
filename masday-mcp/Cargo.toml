@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "masday-mcp-http"
-path = "src/bin/http.rs"
+name = "masday-mcp"
+path = "src/bin/stdio.rs"
 
 [[bin]]
-name = "masday-mcp-stdio"
-path = "src/bin/stdio.rs"
+name = "masday-mcp-http"
+path = "src/bin/http.rs"
 
 [dependencies]
 masday-core = { path = "../masday-core" }
