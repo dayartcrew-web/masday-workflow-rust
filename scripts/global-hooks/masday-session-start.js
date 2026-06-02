@@ -20,6 +20,9 @@ const fs = require("fs");
 const os = require("os");
 
 const PROJECT = "/home/vibe-dev/masday-workflow-rust";
+const DB_PORT = parseInt(process.env.MASDAY_DB_PORT || "54341", 10);
+const API_PORT = parseInt(process.env.MASDAY_API_PORT || "30101", 10);
+const REDIS_PORT = parseInt(process.env.MASDAY_REDIS_PORT || "63791", 10);
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -41,12 +44,12 @@ async function main() {
   const lines = [];
 
   // Database
-  const dbUp = await isPortOpen(54341);
-  lines.push(`PostgreSQL (54341): ${dbUp ? "✅ running" : "❌ not running — docker compose up -d postgres"}`);
+  const dbUp = await isPortOpen(DB_PORT);
+  lines.push(`PostgreSQL (${DB_PORT}): ${dbUp ? "✅ running" : "❌ not running — docker compose up -d postgres"}`);
 
   // Redis
-  const redisUp = await isPortOpen(63791);
-  lines.push(`Redis (63791): ${redisUp ? "✅ running" : "⚠️ not running — docker compose up -d redis"}`);
+  const redisUp = await isPortOpen(REDIS_PORT);
+  lines.push(`Redis (${REDIS_PORT}): ${redisUp ? "✅ running" : "⚠️ not running — docker compose up -d redis"}`);
 
   // Binaries
   const bins = [
@@ -68,7 +71,7 @@ async function main() {
   let apiHealthy = false;
   try {
     apiHealthy = await new Promise((resolve) => {
-      const req = http.get("http://localhost:30101/api/health", { timeout: 2000 }, (res) => {
+      const req = http.get(`http://localhost:${API_PORT}/api/health`, { timeout: 2000 }, (res) => {
         resolve(res.statusCode === 200);
       });
       req.on("error", () => resolve(false));
@@ -76,10 +79,10 @@ async function main() {
     });
   } catch {}
   if (apiHealthy) {
-    lines.push("API (30101): ✅ healthy");
+    lines.push(`API (${API_PORT}): ✅ healthy`);
   } else {
-    const portOpen = await isPortOpen(30101);
-    lines.push(`API (30101): ${portOpen ? "⚠️ port open but /api/health failing" : "❌ not running — cargo run --release -p masday-api"}`);
+    const portOpen = await isPortOpen(API_PORT);
+    lines.push(`API (${API_PORT}): ${portOpen ? "⚠️ port open but /api/health failing" : "❌ not running — cargo run --release -p masday-api"}`);
   }
 
   // MCP process check

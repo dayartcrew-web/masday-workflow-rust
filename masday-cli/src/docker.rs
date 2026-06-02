@@ -4,15 +4,14 @@
 //! Used by `masday db start/stop/reset` and the setup wizard.
 
 use anyhow::{bail, Context, Result};
+use masday_core::constants::ports;
 use std::process::Command;
 use std::time::Duration;
 
 const POSTGRES_CONTAINER: &str = "masday-postgres";
 const POSTGRES_IMAGE: &str = "pgvector/pgvector:pg16";
-const POSTGRES_PORT: u16 = 54341;
 const REDIS_CONTAINER: &str = "masday-redis";
 const REDIS_IMAGE: &str = "redis:7-alpine";
-const REDIS_PORT: u16 = 63791;
 
 /// Check if Docker CLI is available
 pub fn is_docker_available() -> bool {
@@ -44,7 +43,7 @@ pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
     }
 
     if is_container_running(POSTGRES_CONTAINER) {
-        println!("  PostgreSQL already running on port {}", POSTGRES_PORT);
+        println!("  PostgreSQL already running on port {}", ports::postgres_port());
         return Ok(());
     }
 
@@ -63,7 +62,7 @@ pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
             "--name",
             POSTGRES_CONTAINER,
             "-p",
-            &format!("{}:5432", POSTGRES_PORT),
+            &format!("{}:5432", ports::postgres_port()),
             "-e",
             &format!("POSTGRES_USER={}", user),
             "-e",
@@ -88,7 +87,7 @@ pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
 /// Start Redis container
 pub fn start_redis() -> Result<()> {
     if is_container_running(REDIS_CONTAINER) {
-        println!("  Redis already running on port {}", REDIS_PORT);
+        println!("  Redis already running on port {}", ports::redis_port());
         return Ok(());
     }
 
@@ -100,7 +99,7 @@ pub fn start_redis() -> Result<()> {
 
     println!("  Starting Redis container...");
     let status = Command::new("docker")
-        .args(["run", "-d", "--name", REDIS_CONTAINER, "-p", &format!("{}:6379", REDIS_PORT), REDIS_IMAGE])
+        .args(["run", "-d", "--name", REDIS_CONTAINER, "-p", &format!("{}:6379", ports::redis_port()), REDIS_IMAGE])
         .status()
         .context("Failed to run docker command")?;
 
@@ -187,7 +186,10 @@ pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()>
 
 /// Get default database URL for local mode
 pub fn default_database_url() -> String {
-    "postgresql://masday:masdaypass@localhost:54341/masday_workflow".to_string()
+    format!(
+        "postgresql://masday:masdaypass@localhost:{}/masday_workflow",
+        ports::postgres_port()
+    )
 }
 
 #[cfg(test)]
@@ -208,7 +210,7 @@ mod tests {
     #[test]
     fn test_default_database_url() {
         let url = default_database_url();
-        assert!(url.contains("localhost:54341"));
+        assert!(url.contains(&format!("localhost:{}", ports::POSTGRES_PORT)));
         assert!(url.contains("masday_workflow"));
     }
 }

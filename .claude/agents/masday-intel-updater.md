@@ -68,13 +68,13 @@ reference material that enables other agents to work effectively.
    - Workspace dependencies (`"@masday-workflow-reborn/*": "workspace:*"`)
    - External dependencies with versions
    - Script definitions (build, test, lint)
-3. Trace import chains within each package:
+3. Trace use statements within each crate:
    ```
-   Grep: pattern="^import.*from", path="packages/{name}/src/"
+   Grep: pattern="^use ", path="masday-{name}/src/"
    ```
 4. Map the dependency graph:
-   - Which packages depend on `packages/core`
-   - Which packages depend on `packages/store`
+   - Which crates depend on `masday-core`
+   - Which crates depend on `masday-db`
    - Circular dependencies (flag as CRITICAL)
 5. Write to `.masday/intel/file-graph.md`:
    ```markdown
@@ -97,9 +97,9 @@ reference material that enables other agents to work effectively.
 
 ### Phase 3: API Surface Documentation
 
-1. Read `index.ts` barrel exports for each package:
+1. Read crate root exports for each crate:
    ```
-   Glob: packages/*/src/index.ts
+   Glob: masday-*/src/lib.rs
    ```
 2. For each export, catalog:
    - Name (function, class, type, interface)
@@ -135,9 +135,9 @@ reference material that enables other agents to work effectively.
    - Outdated major versions
    - Missing peer dependencies
 3. Map external dependency usage:
-   - Which packages use Zod (and which version)
-   - Which packages use Pino (and which version)
-   - Test framework versions (Vitest)
+   - Which crates use Serde (and which version)
+   - Which crates use Tokio (and which version)
+   - Test framework versions (cargo test)
 4. Write to `.masday/intel/dependencies.md`:
    ```markdown
    # Dependency Map
@@ -193,12 +193,12 @@ reference material that enables other agents to work effectively.
 
 1. Find all test files:
    ```
-   Glob: **/*.test.ts
+   Glob: **/*test.rs
    ```
 2. Map test files to source files:
    - Which source files have corresponding tests
    - Which source files have NO tests (coverage gaps)
-3. Count test files per package
+3. Count test files per crate
 4. Write to `.masday/intel/test-coverage.md`:
    ```markdown
    # Test Coverage Report
@@ -207,12 +207,12 @@ reference material that enables other agents to work effectively.
    ## Coverage by Package
    | Package | Source Files | Test Files | Ratio |
    |---------|-------------|-----------|-------|
-   | core    | 12          | 4         | 0.33  |
+   | core  | 12          | 4         | 0.33  |
    ...
 
    ## Untested Modules
-   - packages/llm/src/circuit-breaker.ts (critical: error recovery)
-   - packages/agents/src/worker.ts
+   - masday-llm/src/circuit_breaker.rs (critical: error recovery)
+   - masday-agents/src/worker.rs
    ...
    ```
 
@@ -220,7 +220,7 @@ reference material that enables other agents to work effectively.
 
 - **`.masday/intel/` does not exist**: Create it with `mkdir -p .masday/intel`. This is expected for new projects.
 - **Existing intel file is recent (within 1 hour)**: Skip unless explicitly asked to refresh. Report the existing timestamp.
-- **Package has no `index.ts`**: Check `package.json` `"main"` field for the actual entry point. Document the non-standard entry.
+- **Crate has no crate root**: Check `Cargo.toml` `"lib"` field for the actual entry point. Document the non-standard entry.
 - **`semantic-search_code_search` returns no results**: The search index may not be built. Fall back to `Grep` for text-based discovery and note in the intel file that search was limited.
 - **Circular dependency detected**: Flag as CRITICAL in the file graph. Include both package names and the specific import paths causing the cycle.
 
@@ -238,8 +238,8 @@ Every intel file must include:
 
 | File | Content |
 |------|---------|
-| `file-graph.md` | Package dependency tree and cross-package imports |
-| `api-surfaces.md` | Exported functions, types, interfaces per package |
+| `file-graph.md` | Crate dependency tree and cross-crate imports |
+| `api-surfaces.md` | Exported functions, types, interfaces per crate |
 | `dependencies.md` | Internal and external dependency versions |
 | `architecture.md` | Patterns, conventions, anti-patterns |
 | `test-coverage.md` | Test distribution and coverage gaps |
@@ -252,7 +252,7 @@ Every intel file must include:
 - NEVER write intel files over 400 lines. Split into multiple focused files.
 - NEVER skip checking for existing `.masday/intel/` files before starting analysis.
 - NEVER include full file contents in intel files. Reference file paths and summarize.
-- NEVER report dependencies without verifying them in `package.json`. Code comments about dependencies may be stale.
+- NEVER report dependencies without verifying them in `Cargo.toml`. Code comments about dependencies may be stale.
 - NEVER leave circular dependencies undocumented. They must be flagged as CRITICAL.
 - NEVER skip the test coverage analysis. Untested modules are a key risk indicator.
 - NEVER write intel files outside `.masday/intel/`. This is the canonical location for project intelligence.

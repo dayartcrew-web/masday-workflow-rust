@@ -237,7 +237,7 @@ mod tests {
 
         let config = McpConfig {
             mcp_binary_path: "/path/to/masday-mcp".into(),
-            api_url: "http://localhost:30101".to_string(),
+            api_url: masday_core::constants::ports::api_base_url(),
             api_key: "test-key".to_string(),
             database_url: Some("postgresql://localhost/db".to_string()),
         };
@@ -259,7 +259,7 @@ mod tests {
 
         let config = McpConfig {
             mcp_binary_path: "/path/to/masday-mcp".into(),
-            api_url: "http://localhost:30101".to_string(),
+            api_url: masday_core::constants::ports::api_base_url(),
             api_key: "test-key".to_string(),
             database_url: None,
         };

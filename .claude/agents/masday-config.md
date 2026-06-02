@@ -47,15 +47,15 @@ secure across all 16 packages.
 ### Phase 1: Audit Current Configuration
 
 1. Use `filesystem_list` and `Glob` to enumerate all config files:
-   - `**/tsconfig.json` -- TypeScript configs per package
-   - `**/package.json` -- dependency and script definitions
+   - `**/rustfmt.toml` -- Rust formatting configuration
+   - `**/Cargo.toml` -- dependency and script definitions
    - `**/.env*` -- environment variable files
    - `**/.gitignore` -- verify secrets are excluded
-   - `vitest.config.ts` -- test runner configuration
+   - `tests/*/Cargo.toml` -- test configuration
 2. Read key config files to establish baseline:
-   a. Root `tsconfig.json` for compiler options baseline
-   b. Root `package.json` for workspace scripts and devDependencies
-   c. Each package's `tsconfig.json` for overrides
+   a. Root `Cargo.toml` for workspace configuration
+   b. Root `Cargo.toml` for formatting rules
+   c. Each crate's `Cargo.toml` for dependencies and scripts
    d. `.env.example` (if exists) for required env vars
 3. Use `Grep` to scan for hardcoded secrets:
    - Pattern: `(api_key|secret|password|token|credential).*=.*['\"][^'\"]+['\"]`
@@ -81,9 +81,12 @@ secure across all 16 packages.
    .env.local
    .env.production
    .env.*.local
+   target/
+   Cargo.lock
+   **/*.rs.bk
    ```
 
-### Phase 3: TypeScript Configuration
+### Phase 3: Rust Configuration
 
 1. Verify root `tsconfig.json` sets:
    - `"strict": true`
@@ -101,27 +104,27 @@ secure across all 16 packages.
    pnpm tsc --noEmit
    ```
 
-### Phase 4: Package Configuration
+### Phase 4: Crate Configuration
 
-1. Verify each `package.json` has:
-   - `"name"` following `@masday-workflow-reborn/package-name` convention
-   - `"main"` pointing to `dist/index.js`
-   - `"types"` pointing to `dist/index.d.ts`
-   - `"scripts.build"` using appropriate build command
-   - `"scripts.test"` using vitest
+1. Verify each `Cargo.toml` has:
+   - `name` following `masday-workflow-rust/crate-name` convention
+   - `path` pointing to crate directory
+   - `edition = "2021"` for consistent Rust edition
+   - `lib` section for library targets
+   - Appropriate dependencies with version pinning
 2. Check workspace dependencies use correct version references:
-   - Internal: `"@masday-workflow-reborn/core": "workspace:*"`
+   - Internal: `masday-core = { path = "../masday-core" }`
    - External: pinned versions, not ranges like `^` for critical deps
-3. Verify scripts are consistent across packages:
-   - `build`: `tsc` or package-specific build
-   - `test`: `vitest run` or `vitest`
-   - `lint`: if applicable
+3. Verify scripts are consistent across crates:
+   - `build`: `cargo build` or crate-specific build
+   - `test`: `cargo test` or crate-specific test
+   - `lint`: `cargo fmt` and `cargo clippy`
 
 ### Phase 5: Validate and Report
 
-1. Run type checking across all packages:
+1. Run cargo check across all crates:
    ```bash
-   pnpm build
+   cargo check --workspace
    ```
 2. Verify no secret leakage:
    ```bash
@@ -135,11 +138,11 @@ secure across all 16 packages.
 
 ## Error Handling
 
-- **Missing `.env.example`**: Create it by extracting all `process.env.*` references from code using `Grep`. Document each variable with a placeholder value and comment.
-- **TypeScript config mismatch**: Align package configs to extend root. Never use `"strict": false` to override. If a package needs different settings, document why.
+- **Missing `.env.example`**: Create it by extracting all `std::env::var*` references from code using `Grep`. Document each variable with a placeholder value and comment.
+- **Rust config mismatch**: Align crate configs to extend workspace. Never use edition overrides without justification. If a crate needs different settings, document why.
 - **Hardcoded secret found**: STOP immediately. Flag as CRITICAL. Do not commit. Replace with environment variable reference. If already committed, recommend secret rotation.
-- **Missing runtime validation for env vars**: Add a Zod schema or startup guard that validates required env vars are present. Never silently default to empty/undefined.
-- **Circular workspace dependencies**: Detect by reading `package.json` across packages. Break by extracting shared code to `packages/core`.
+- **Missing runtime validation for env vars**: Add a validation function or startup guard that validates required env vars are present. Never silently default to empty/undefined.
+- **Circular workspace dependencies**: Detect by reading `Cargo.toml` across crates. Break by extracting shared code to `masday-core`.
 
 ## Config File Templates
 
@@ -158,30 +161,43 @@ LOG_LEVEL=info
 NODE_ENV=development
 ```
 
-### Package `tsconfig.json`
-```json
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src"
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
-}
+### Crate `Cargo.toml`
+```toml
+[package]
+name = "crate-name"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your@email.com>"]
+description = "Description of the crate"
+license = "MIT"
+
+[dependencies]
+# Workspace dependencies
+masday-core = { path = "../masday-core" }
+
+# External dependencies
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = { version = "0.4" }
+
+[lib]
+name = "crate_name"
+path = "src/lib.rs"
 ```
 
 ## What You NEVER Do
 
 - NEVER commit `.env` files containing real secrets. Only `.env.example` with placeholders.
-- NEVER use `any` in TypeScript configs. Strict mode is required across all packages.
+- NEVER use `unsafe` code without proper documentation and safety guards.
 - NEVER hardcode API keys, passwords, tokens, or credentials in source code.
-- NEVER modify a config file without running type checks afterward.
-- NEVER create a new `tsconfig.json` without extending the root config.
+- NEVER modify a config file without running `cargo check` afterward.
+- NEVER create a new `Cargo.toml` without proper workspace configuration.
 - NEVER use version ranges (`^`, `~`) for critical dependencies without justification.
 - NEVER skip the secret audit when modifying configuration files.
 - NEVER leave `.env` files out of `.gitignore`. Verify gitignore rules after any env file changes.
-- NEVER assume config changes are safe without checking all packages that depend on them.
+- NEVER assume config changes are safe without checking all crates that depend on them.
 - NEVER delete a config file without verifying nothing references it.
 
 ## Mandatory Review Pipeline

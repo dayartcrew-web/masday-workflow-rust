@@ -34,21 +34,21 @@ optimized for the expected data volume.
 ## Project Context
 
 This project uses:
-- **Drizzle ORM** with schema at `packages/db/src/schema.ts` (16+ tables using `pgTable()`)
+- **SQLx** with schema at `masday-db/src/schema.rs` (16+ tables using `query!`)
 - **PostgreSQL with pgvector** for vector similarity search
-- **SQLite** as local/fallback backend via `packages/store`
-- **Multiple storage backends**: SQLite, JSON, Drizzle adapters in `packages/store`
+- **deadpool-postgres** connection pool for database management
+- **Multiple storage backends**: PostgreSQL (primary), local file storage
 
 ## Step-by-Step Workflow
 
 ### Phase 1: Analyze Current State
 
-1. Read the current Drizzle schema:
+1. Read the current SQLx schema:
    - Run `filesystem_read` on
-     `packages/db/src/schema.ts`.
+     `masday-db/src/schema.rs`.
    - Document current tables, relations, indexes, and enums.
 2. Read the migration history:
-   - Use `Glob` on `packages/db/drizzle/**/*.sql` to list
+   - Use `Glob` on `migrations/**/*.sql` to list
      all migrations.
    - Read the most recent 3 migrations with `Read` to understand the
      evolution pattern.
@@ -92,25 +92,25 @@ This project uses:
 
 ### Phase 3: Write Migration
 
-8. Write the Drizzle schema changes using `Edit`:
-   - Add new tables using `pgTable()` at the end of the schema file
+8. Write the SQLx schema changes using `Edit`:
+   - Add new tables using `sqlx::query!` at the end of the schema file
    - Add new columns to existing tables in logical order
-   - Add indexes using `index()` after the table definition
+   - Add indexes using SQL CREATE INDEX statements
 9. Generate the migration:
-   - Run `npx drizzle-kit generate` to produce the migration SQL
+   - Run `sqlx migrate add` to produce the migration SQL
    - Include both the forward migration and rollback SQL
-10. If the change affects the store adapters:
-    - Read `packages/store/src/sqlite-backend.ts` and `json-backend.ts`
-    - Ensure the adapters support the new schema or document the gap
-    - Update adapter code with `Edit` if needed
+10. If the change affects the service layer:
+    - Read `masday-service/src/` for service implementations
+    - Ensure the services support the new schema or document the gap
+    - Update service code with `Edit` if needed
 
 ### Phase 4: Verify
 
 11. Check that the schema file parses correctly:
-    - Run `npx drizzle-kit validate` via Bash
-12. Verify the generated types match expectations:
-    - Run `npx drizzle-kit generate` via Bash
-    - Read the generated type file to confirm field names and types
+    - Run `cargo check` via Bash to verify SQLx queries compile
+12. Verify the query types match expectations:
+    - Run `sqlx migrate check` via Bash
+    - Test queries in the service layer to confirm field names and types
 13. If query optimization was the goal:
     - Write EXPLAIN ANALYZE queries for the affected paths
     - Compare before/after query plans
@@ -118,14 +118,14 @@ This project uses:
 
 ## Error Handling
 
-- **Drizzle validate fails**: Read the error output. Common issues: circular
+- **SQLx compile fails**: Read the error output. Common issues: circular
   relations, missing relation fields, invalid field types. Fix the schema, retry.
 - **Migration conflicts**: The migration number may conflict with an existing
   one. Use a unique timestamp-based name.
 - **pgvector index creation fails**: Large datasets may timeout during index
   creation. Recommend creating the index with `CONCURRENTLY` or during
   maintenance windows.
-- **Store adapter mismatch**: The SQLite/JSON adapters may not support the new
+- **Service layer mismatch**: The service implementations may not support the new
   feature (e.g., pgvector). Document the limitation and ensure graceful
   fallback.
 

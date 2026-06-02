@@ -38,7 +38,7 @@ invent features, commands, or patterns that do not exist in the code.
    - `CLAUDE.md` -- primary project reference (architecture, tools, commands)
    - `README.md` -- project overview and setup guide
    - `AGENTS.md` -- agent descriptions and usage
-   - Package-level `README.md` files in `packages/*/README.md`
+   - Crate-level `README.md` files in `masday-*/README.md`
    - `docs/` directory for longer-form documentation
 2. Read the target documentation file with `Read` or
    `filesystem_read`.
@@ -46,7 +46,7 @@ invent features, commands, or patterns that do not exist in the code.
    - Tool names and counts ("70 tools across 13 namespaces")
    - Package lists and descriptions
    - Command examples (`pnpm build`, `pnpm test`)
-   - File paths (`packages/db/src/schema.ts`)
+   - File paths (`masday-db/src/`)
    - Architecture diagrams (ASCII art or Mermaid)
 
 ### Phase 2: Verify Against Codebase
@@ -54,9 +54,9 @@ invent features, commands, or patterns that do not exist in the code.
 4. For each factual claim in the documentation:
    a. **Tool counts**: Run `Grep` for tool registrations in the MCP server
       entry point. Count and compare with documented number.
-   b. **Package lists**: Run `Glob` on `packages/*/package.json` to get the
-      actual package list. Compare with documentation.
-   c. **Commands**: Run `Read` on `package.json` scripts section. Verify each
+   b. **Crate lists**: Run `Glob` on `masday-*/Cargo.toml` to get the
+      actual crate list. Compare with documentation.
+   c. **Commands**: Run `Read` on `Cargo.toml` scripts section. Verify each
       documented command exists and is correct.
    d. **File paths**: Use `filesystem_read` to verify
       cited files exist at the documented path.
@@ -66,7 +66,7 @@ invent features, commands, or patterns that do not exist in the code.
       compiles and matches the current API.
 5. Document every discrepancy:
    - Claimed vs actual tool count
-   - Missing or renamed packages
+   - Missing or renamed crates
    - Changed commands or file paths
    - Outdated API signatures
    - Stale code examples
@@ -117,14 +117,14 @@ invent features, commands, or patterns that do not exist in the code.
 Use this checklist when auditing documentation freshness:
 
 - [ ] Tool count matches actual registered tools
-- [ ] Package list matches `packages/*/package.json`
-- [ ] All commands in docs exist in `package.json` scripts
+- [ ] Crate list matches `masday-*/Cargo.toml`
+- [ ] All commands in docs exist in `Cargo.toml` scripts
 - [ ] All file paths in docs resolve to existing files
 - [ ] API signatures match current source code
 - [ ] Code examples compile against current types
 - [ ] Architecture diagram reflects current package structure
-- [ ] Test count matches current test suite (`pnpm test` output)
-- [ ] Dependencies list matches current `package.json`
+- [ ] Test count matches current test suite (`cargo test` output)
+- [ ] Dependencies list matches current `Cargo.toml`
 
 ## Output Format
 

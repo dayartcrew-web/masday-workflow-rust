@@ -162,36 +162,41 @@ Phase 6: DONE
    })
    ```
 
-## Agent Delegation — Dynamic Discovery
+## Agent Delegation — Stack-Aware Discovery
 
 All 27 agents are registered in `.claude/registry.json`. Instead of hardcoding the full list,
-discover agents dynamically at runtime:
+discover agents dynamically at runtime with stack awareness:
 
 ### Primary Discovery (always use first)
 ```
+# Detect current stack first
+capability_stack_detect({ projectRoot: "<project-path>" })
+
 # List all available agents from registry
 capability_list_agents({ projectRoot: "<project-path>" })
 
-# Auto-match agent to task description
+# Auto-match agent to task description (stack-aware)
 capability_match_agent({
   projectRoot: "<project-path>",
-  taskDescription: "Investigate failing SQLite migration"
+  taskDescription: "Investigate failing SQLite migration",
+  stackType: "rust" # Auto-detected from capability_stack_detect
 })
 ```
 
 ### Core Workflow Agents (9)
 
-| Category | Agent | When to Delegate |
-|----------|-------|------------------|
-| Planning | `masday-planner` | Task decomposition, dependency analysis |
-| Execution | `masday-executor` | Code implementation, file changes |
-| TDD | `masday-tdd-guide` | RED-GREEN-REFACTOR cycle, coverage enforcement, write tests BEFORE implementation |
-| QA | `masday-qa` | Test writing, coverage, CI integration |
-| Review | `masday-reviewer` | After any code change — quality gate |
-| Verification | `masday-verifier` | Before task completion — final check |
-| Synthesis | `masday-synthesizer` | Merge parallel branch outputs |
-| Debugging | `masday-debugger` | Test failures, runtime errors, root cause |
-| Research | `masday-researcher` | External docs, best practices, library APIs |
+| Category | Agent | When to Delegate | Stack Adaptation |
+|----------|-------|------------------|------------------|
+| Planning | `masday-planner` | Task decomposition, dependency analysis | Stack-aware task creation |
+| Execution | `masday-executor` | Code implementation, file changes | Language-appropriate code standards |
+| TDD | `masday-tdd-guide` | RED-GREEN-REFACTOR cycle | Framework-specific testing patterns |
+| QA | `masday-qa` | Test writing, coverage, CI integration | Stack-appropriate test runner |
+| Review | `masday-reviewer` | After any code change — quality gate | Language-specific quality rules |
+| Verification | `masday-verifier` | Before task completion — final check | Stack-specific validation |
+| Synthesis | `masday-synthesizer` | Merge parallel branch outputs | Cross-stack integration |
+| Debugging | `masday-debugger` | Test failures, runtime errors, root cause | Language-aware debugging |
+| Research | `masday-researcher` | External docs, best practices, library APIs | Technology-agnostic research |
+| Stack Detection | `masday-stack-detector` | Initial setup, stack migration | Multi-stack expertise |
 
 ### Specialist Agents (18)
 
@@ -217,13 +222,16 @@ capability_match_agent({
 
 ### Delegation Rules
 
-1. **Always use `capability_match_agent`** when unsure which agent fits
-2. **Core agents** handle 90% of workflow tasks
-3. **Specialist agents** activate for domain-specific work
-4. **Multiple agents** can be dispatched in parallel for independent subtasks
-5. **Every code change** must go through `masday-reviewer` before completion
-6. **TDD-first**: For new features/bug fixes, delegate to `masday-tdd-guide` BEFORE `masday-executor`
-7. **Never skip TDD**: Use `masday-tdd-guide` skill `/masday-tdd` for any testable code change
+1. **Always use `capability_stack_detect` first** to understand the current technology stack
+2. **Then use `capability_match_agent`** with stack-aware task descriptions
+3. **Core agents** handle 90% of workflow tasks, now with stack adaptation
+4. **Specialist agents** activate for domain-specific work, stack-aware
+5. **Multiple agents** can be dispatched in parallel for independent subtasks
+6. **Stack detection** happens at workflow initialization and whenever stack might have changed
+7. **Every code change** must go through `masday-reviewer` before completion
+8. **TDD-first**: For new features/bug fixes, delegate to `masday-tdd-guide` BEFORE `masday-executor`
+9. **Never skip TDD**: Use `masday-tdd-guide` skill `/masday-tdd` for any testable code change
+10. **Stack adaptation**: Agents automatically adapt to detected stack using `masday-stack-detector`
 ```
 
 ## TDD-Aware Execution Flow
@@ -353,7 +361,7 @@ memory_stats({})
 
 ## Step Checkpoint Protocol
 
-The orchestrator enforces the workflow lifecycle via `skill-step-guard.js`:
+The orchestrator enforces the workflow lifecycle via `skill-step-guard.cjs`:
 
 ```
 READINESS → CONTEXT → CREATE → CONTEXT_PACK → AGENT_MATCH → SKILL_VERIFY → EXECUTE (GATE) → STORE

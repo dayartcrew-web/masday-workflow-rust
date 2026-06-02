@@ -53,8 +53,8 @@ semantic-search_code_search({ query: "unit test example describe it expect", lan
 
 Read the existing test config and patterns:
 ```
-Read({ file_path: "C:\\path\\to\\project\\vitest.config.ts" })
-Glob({ pattern: "packages/*/src/**/*.test.ts" })
+Read({ file_path: "C:\\path\\to\\project\\tests" })
+Glob({ pattern: "masday-*/tests/**/*.rs" })
 ```
 
 Write tests covering:
@@ -63,19 +63,19 @@ Write tests covering:
 - **Error cases**: Invalid inputs, missing dependencies, permission failures
 - **Integration points**: Module interactions, database, external APIs
 
-Test file naming: `<module>.test.ts` (unit) or `<module>.integration.test.ts` (integration).
+Test file naming: `<module>_test.rs` (unit) or `<module>_integration.rs` (integration).
 
 Write tests with the Write tool:
 ```
 Write({
-  file_path: "C:\\path\\to\\project\\packages\\auth\\src\\auth.test.ts",
-  content: "import { describe, it, expect } from 'vitest';\n..."
+  file_path: "C:\\path\\to\\project\\masday-auth\\tests\\auth.rs",
+  content: "#[cfg(test)]\nmod tests {\n    #[test]\n    fn test_auth() {\n        // test code here\n    }\n}"
 })
 ```
 
 Verify tests FAIL (RED phase):
 ```
-tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/auth/src/auth.test.ts" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "masday-auth/tests/auth.rs" })
 ```
 
 All new tests must fail. If any pass, the test is not properly isolated or is testing existing functionality.
@@ -84,7 +84,7 @@ All new tests must fail. If any pass, the test is not properly isolated or is te
 
 After implementation (by masday-executor), run the tests:
 ```
-tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "packages/auth/src/auth.test.ts" })
+tests_run({ repoPath: "C:\\path\\to\\project", testPattern: "masday-auth/tests/auth.rs" })
 ```
 
 If tests fail after implementation, report the specific failures. Do not modify tests to make them pass (unless the test has a bug).
@@ -101,7 +101,7 @@ After tests pass, review test quality:
 
 Run tests with coverage:
 ```
-tests_run({ repoPath: "C:\\path\\to\\project", coverage: true, testPattern: "packages/auth" })
+tests_run({ repoPath: "C:\\path\\to\\project", coverage: true, testPattern: "masday-auth" })
 ```
 
 Enforce 80% minimum. If coverage is below threshold, identify uncovered lines:
@@ -186,11 +186,11 @@ memory_store({
 |----------|------|
 | Isolation | Each test runs independently, no shared mutable state |
 | Determinism | Same test always produces same result, no flaky tests |
-| Naming | Test descriptions read as: "it should [expected behavior] when [condition]" |
+| Naming | Test functions should describe behavior clearly |
 | Coverage | Minimum 80% line coverage per module |
 | Mocking | Mock external deps only, never mock the unit under test |
 | Assertions | Each test has at least one explicit assertion |
-| Setup | Use `beforeEach` for shared setup, not `beforeAll` with mutable state |
+| Setup | Use setup/teardown functions for shared state |
 
 ## Error Handling
 
@@ -201,7 +201,7 @@ memory_store({
 | `coverage below 80%` | Not enough test cases | Identify uncovered lines, write additional tests |
 | `CI pipeline fails` | Build or test failure in CI | Inspect with `cicd_runs_view`, reproduce locally |
 | `flaky test detected` | Test depends on timing or external state | Isolate the test, remove timing dependencies |
-| `test config not found` | No vitest config in package | Use root `vitest.config.ts`, check package.json |
+| `test config not found` | No test config in crate | Use root workspace config, check Cargo.toml |
 
 ## What You NEVER Do
 
@@ -226,7 +226,7 @@ filesystem_write({
 
 ## Step Checkpoint Protocol
 
-QA work follows a validated sequence via `skill-step-guard.js`:
+QA work follows a validated sequence via `skill-step-guard.cjs`:
 
 ```
 TEST_WRITE → TEST_RUN → COVERAGE_CHECK → REGRESSION_CHECK

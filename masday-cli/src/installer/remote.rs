@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn test_resolve_mcp_binary_not_found() {
-        let result = resolve_mcp_binary("http://localhost:30101");
+        let result = resolve_mcp_binary(&masday_core::constants::ports::api_base_url());
         // Should fail since masday-mcp is not in PATH
         assert!(result.is_err());
     }
