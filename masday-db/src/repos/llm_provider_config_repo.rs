@@ -4,7 +4,7 @@
 //! Column names are camelCase: "providerName", "baseUrl", "apiKeyEnvVar", etc.
 
 use crate::pool::DbPool;
-use crate::schema::{NewLlmProviderConfig, LlmProviderConfig};
+use crate::schema::{LlmProviderConfig, NewLlmProviderConfig};
 use masday_core::{AppError, Result};
 
 pub struct LlmProviderConfigRepo {
@@ -52,7 +52,9 @@ impl LlmProviderConfigRepo {
                 ],
             )
             .await
-            .map_err(|e| AppError::Database(format!("Failed to create LLM provider config: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to create LLM provider config: {}", e))
+            })?;
 
         Ok(LlmProviderConfig::from_row(&row))
     }
@@ -88,10 +90,9 @@ impl LlmProviderConfigRepo {
             ORDER BY priority DESC
             LIMIT 1
         "#;
-        let rows = client
-            .query(query, &[])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get default LLM provider config: {}", e)))?;
+        let rows = client.query(query, &[]).await.map_err(|e| {
+            AppError::Database(format!("Failed to get default LLM provider config: {}", e))
+        })?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -109,10 +110,9 @@ impl LlmProviderConfigRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"SELECT * FROM "LlmProviderConfig" ORDER BY priority DESC, "createdAt" ASC"#;
-        let rows = client
-            .query(query, &[])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to list LLM provider configs: {}", e)))?;
+        let rows = client.query(query, &[]).await.map_err(|e| {
+            AppError::Database(format!("Failed to list LLM provider configs: {}", e))
+        })?;
 
         Ok(rows.iter().map(LlmProviderConfig::from_row).collect())
     }
@@ -175,7 +175,9 @@ impl LlmProviderConfigRepo {
         let row = client
             .query_one(&sql, params_refs.as_slice())
             .await
-            .map_err(|e| AppError::Database(format!("Failed to update LLM provider config: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to update LLM provider config: {}", e))
+            })?;
 
         Ok(LlmProviderConfig::from_row(&row))
     }
@@ -191,7 +193,9 @@ impl LlmProviderConfigRepo {
         let result = client
             .execute(r#"DELETE FROM "LlmProviderConfig" WHERE id = $1"#, &[&id])
             .await
-            .map_err(|e| AppError::Database(format!("Failed to delete LLM provider config: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to delete LLM provider config: {}", e))
+            })?;
 
         Ok(result > 0)
     }

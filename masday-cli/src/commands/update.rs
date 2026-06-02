@@ -2,9 +2,9 @@
 //!
 //! Updates Masday installation by re-running install with preserved .env.
 
-use std::path::Path;
 use anyhow::Result;
 use console::style;
+use std::path::Path;
 
 use super::install::{run as install_run, InstallArgs};
 use crate::installer::load_env;
@@ -23,7 +23,11 @@ pub fn run(project_dir: &Path) -> Result<()> {
     if !env_backup.is_empty() {
         println!(
             "{}",
-            style(format!("Preserved {} environment variables from .env", env_backup.len())).cyan()
+            style(format!(
+                "Preserved {} environment variables from .env",
+                env_backup.len()
+            ))
+            .cyan()
         );
     }
 
@@ -53,8 +57,8 @@ pub fn run(project_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_load_env_backup() {

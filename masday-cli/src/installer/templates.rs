@@ -119,7 +119,8 @@ fn extract_files_recursive(dir: &Dir, base_path: &Path, output: &mut Vec<(String
                 let relative = match entry_path.strip_prefix(base_path) {
                     Ok(p) => p.to_str().unwrap_or(""),
                     Err(_) => "",
-                }.to_string();
+                }
+                .to_string();
 
                 // Convert to forward slashes for consistency
                 let normalized = relative.replace('\\', "/");
@@ -151,11 +152,7 @@ mod tests {
         for (name, content) in &agents {
             assert!(!name.is_empty(), "Agent name should not be empty");
             assert!(!content.is_empty(), "Agent content should not be empty");
-            assert!(
-                name.ends_with(".md"),
-                "Agent file should be .md: {}",
-                name
-            );
+            assert!(name.ends_with(".md"), "Agent file should be .md: {}", name);
         }
     }
 
@@ -183,12 +180,19 @@ mod tests {
             let files = extract_skill_files(first_skill);
 
             // Should have at least SKILL.md or similar
-            assert!(!files.is_empty(), "Skill '{}' should have files", first_skill);
+            assert!(
+                !files.is_empty(),
+                "Skill '{}' should have files",
+                first_skill
+            );
 
             // Check format
             for (path, content) in &files {
                 assert!(!path.is_empty(), "Skill file path should not be empty");
-                assert!(!content.is_empty(), "Skill file content should not be empty");
+                assert!(
+                    !content.is_empty(),
+                    "Skill file content should not be empty"
+                );
             }
         }
     }
@@ -203,7 +207,9 @@ mod tests {
         // Check that we have expected hooks
         let hook_names: Vec<&str> = hooks.iter().map(|(name, _)| name.as_str()).collect();
         assert!(
-            hook_names.iter().any(|n| n.contains("statusline") || n.contains("session")),
+            hook_names
+                .iter()
+                .any(|n| n.contains("statusline") || n.contains("session")),
             "Should have statusline or session hook"
         );
     }
@@ -243,6 +249,9 @@ mod tests {
         let skills = extract_skill_names();
         let mut sorted = skills.clone();
         sorted.sort();
-        assert_eq!(skills, sorted, "Skill names should be sorted alphabetically");
+        assert_eq!(
+            skills, sorted,
+            "Skill names should be sorted alphabetically"
+        );
     }
 }

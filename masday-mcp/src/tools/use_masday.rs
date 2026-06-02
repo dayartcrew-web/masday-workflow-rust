@@ -9,9 +9,7 @@ use serde_json::Value;
 /// - Suggested skill (e.g., masday-workflow-new, masday-tdd)
 /// - Suggested agent (e.g., masday-orchestrator, masday-backend, masday-frontend)
 /// - Complexity (low, medium, high)
-pub async fn use_masday(
-    args: Value,
-) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn use_masday(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let prompt = args
         .get("prompt")
         .and_then(|v| v.as_str())
@@ -21,36 +19,98 @@ pub async fn use_masday(
 
     // Define keyword patterns for each intent
     let workflow_keywords = [
-        "workflow", "task", "plan", "execute", "orchestrat", "coord", "parallel",
-        "agent", "skill", "step", "phase", "gate", "pipeline"
+        "workflow",
+        "task",
+        "plan",
+        "execute",
+        "orchestrat",
+        "coord",
+        "parallel",
+        "agent",
+        "skill",
+        "step",
+        "phase",
+        "gate",
+        "pipeline",
     ];
     let memory_keywords = [
-        "remember", "recall", "search memory", "store", "forget", "episodic",
-        "context", "knowledge", "graph", "persist"
+        "remember",
+        "recall",
+        "search memory",
+        "store",
+        "forget",
+        "episodic",
+        "context",
+        "knowledge",
+        "graph",
+        "persist",
     ];
     let search_keywords = [
-        "search", "find", "lookup", "codebase", "semantic", "context pack",
-        "fingerprint", "retrieve", "query"
+        "search",
+        "find",
+        "lookup",
+        "codebase",
+        "semantic",
+        "context pack",
+        "fingerprint",
+        "retrieve",
+        "query",
     ];
     let code_keywords = [
-        "implement", "write code", "refactor", "function", "api", "endpoint",
-        "database", "migration", "add feature", "fix bug", "backend", "frontend"
+        "implement",
+        "write code",
+        "refactor",
+        "function",
+        "api",
+        "endpoint",
+        "database",
+        "migration",
+        "add feature",
+        "fix bug",
+        "backend",
+        "frontend",
     ];
     let deploy_keywords = [
-        "deploy", "docker", "kubernetes", "ci/cd", "pipeline", "release",
-        "production", "build", "container"
+        "deploy",
+        "docker",
+        "kubernetes",
+        "ci/cd",
+        "pipeline",
+        "release",
+        "production",
+        "build",
+        "container",
     ];
     let test_keywords = [
-        "test", "spec", "coverage", "tdd", "verify", "assert", "unit test",
-        "integration test", "e2e"
+        "test",
+        "spec",
+        "coverage",
+        "tdd",
+        "verify",
+        "assert",
+        "unit test",
+        "integration test",
+        "e2e",
     ];
     let review_keywords = [
-        "review", "audit", "check", "validate", "policy", "quality",
-        "compliance", "inspect"
+        "review",
+        "audit",
+        "check",
+        "validate",
+        "policy",
+        "quality",
+        "compliance",
+        "inspect",
     ];
     let research_keywords = [
-        "research", "investigate", "explore", "analyze", "study", "document",
-        "learn", "understand"
+        "research",
+        "investigate",
+        "explore",
+        "analyze",
+        "study",
+        "document",
+        "learn",
+        "understand",
     ];
 
     // Match intent based on keyword density
@@ -75,7 +135,10 @@ pub async fn use_masday(
         (&test_keywords[..], 5),
         (&review_keywords[..], 6),
         (&research_keywords[..], 7),
-    ].iter().enumerate() {
+    ]
+    .iter()
+    .enumerate()
+    {
         for keyword in keywords.0.iter() {
             if prompt_lower.contains(*keyword) {
                 scores[idx].1 += 1;
@@ -100,10 +163,13 @@ pub async fn use_masday(
     };
 
     // Check for multi-task indicators
-    let has_multiple = prompt_lower.contains("and") || prompt_lower.contains("then") ||
-        prompt_lower.contains("also") || prompt_lower.contains("plus");
-    let has_sequence = prompt_lower.contains("then") || prompt_lower.contains("after") ||
-        prompt_lower.contains("next");
+    let has_multiple = prompt_lower.contains("and")
+        || prompt_lower.contains("then")
+        || prompt_lower.contains("also")
+        || prompt_lower.contains("plus");
+    let has_sequence = prompt_lower.contains("then")
+        || prompt_lower.contains("after")
+        || prompt_lower.contains("next");
 
     // Map intent to suggested skill and agent
     let (suggested_skill, suggested_agent) = match intent {
@@ -192,7 +258,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(result["intent"], "workflow");
-        assert!(result["suggestedSkill"].as_str().unwrap().contains("workflow"));
+        assert!(result["suggestedSkill"]
+            .as_str()
+            .unwrap()
+            .contains("workflow"));
     }
 
     #[tokio::test]
@@ -204,8 +273,16 @@ mod tests {
         .unwrap();
 
         assert_eq!(result["intent"], "code");
-        assert!(result["suggestedAgent"].as_str().unwrap().contains("backend") ||
-                result["suggestedAgent"].as_str().unwrap().contains("orchestrator"));
+        assert!(
+            result["suggestedAgent"]
+                .as_str()
+                .unwrap()
+                .contains("backend")
+                || result["suggestedAgent"]
+                    .as_str()
+                    .unwrap()
+                    .contains("orchestrator")
+        );
     }
 
     #[tokio::test]

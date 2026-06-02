@@ -269,13 +269,15 @@ mod tests {
     #[test]
     fn test_workflow_execute_args_fallback() {
         let args = json!({ "id": "wf-123" });
-        let workflow_id = args.get("id")
+        let workflow_id = args
+            .get("id")
             .or_else(|| args.get("workflow_id"))
             .and_then(|v| v.as_str());
         assert_eq!(workflow_id.unwrap(), "wf-123");
 
         let args = json!({ "workflow_id": "wf-456" });
-        let workflow_id = args.get("id")
+        let workflow_id = args
+            .get("id")
             .or_else(|| args.get("workflow_id"))
             .and_then(|v| v.as_str());
         assert_eq!(workflow_id.unwrap(), "wf-456");

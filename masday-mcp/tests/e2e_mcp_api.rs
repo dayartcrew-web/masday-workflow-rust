@@ -157,8 +157,7 @@ fn test_tool_names_follow_convention() {
     for &tool in EXPECTED_MCP_TOOLS {
         // All tool names must be alphanumeric with underscores or hyphens
         assert!(
-            tool
-                .chars()
+            tool.chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
             "Tool '{}' contains invalid characters (must be alphanumeric + underscore/hyphen)",
             tool
@@ -310,7 +309,12 @@ fn test_api_routes_no_duplicates() {
 fn test_api_routes_follow_convention() {
     for &route in EXPECTED_API_ROUTES {
         let parts: Vec<&str> = route.splitn(2, ' ').collect();
-        assert_eq!(parts.len(), 2, "Route '{}' should have METHOD and PATH", route);
+        assert_eq!(
+            parts.len(),
+            2,
+            "Route '{}' should have METHOD and PATH",
+            route
+        );
 
         let method = parts[0];
         let path = parts[1];
@@ -344,8 +348,14 @@ const MCP_TO_API_MAP: &[(&str, &str)] = &[
     ("workflow_list", "GET /api/workflows"),
     ("workflow_delete", "DELETE /api/workflows/{id}"),
     ("workflow_addTask", "POST /api/workflows/{id}/tasks"),
-    ("workflow_startTask", "POST /api/workflows/{id}/tasks/{tid}/start"),
-    ("workflow_completeTask", "POST /api/workflows/{id}/tasks/{tid}/complete"),
+    (
+        "workflow_startTask",
+        "POST /api/workflows/{id}/tasks/{tid}/start",
+    ),
+    (
+        "workflow_completeTask",
+        "POST /api/workflows/{id}/tasks/{tid}/complete",
+    ),
     ("workflow_saveProgress", "POST /api/tasks/{id}/progress"),
     ("workflow_createPlan", "POST /api/plans"),
     ("workflow_getPlan", "GET /api/plans/{id}"),
@@ -369,17 +379,41 @@ const MCP_TO_API_MAP: &[(&str, &str)] = &[
     // Reminder tools → API endpoints
     ("reminder_check", "GET /api/reminders/check"),
     ("reminder_list", "GET /api/reminders"),
-    ("reminder_acknowledge", "POST /api/reminders/{id}/acknowledge"),
+    (
+        "reminder_acknowledge",
+        "POST /api/reminders/{id}/acknowledge",
+    ),
     // Context tools → API endpoints
     ("semantic-search_code_search", "GET /api/context/search"),
-    ("semantic-search_search_hybrid_context_pack", "POST /api/context/hybrid-search"),
-    ("semantic-search_search_context_fingerprint", "POST /api/context/fingerprint-search"),
-    ("semantic-search_make_fingerprint", "POST /api/context/fingerprint"),
+    (
+        "semantic-search_search_hybrid_context_pack",
+        "POST /api/context/hybrid-search",
+    ),
+    (
+        "semantic-search_search_context_fingerprint",
+        "POST /api/context/fingerprint-search",
+    ),
+    (
+        "semantic-search_make_fingerprint",
+        "POST /api/context/fingerprint",
+    ),
     // Policy tools → API endpoints
-    ("policy_validate_execution", "POST /api/policy/validate-execution"),
-    ("policy_validate_completion", "POST /api/policy/validate-completion"),
-    ("policy_validate_parallel_completion", "POST /api/policy/validate-parallel"),
-    ("policy_check_session_readiness", "POST /api/policy/check-readiness"),
+    (
+        "policy_validate_execution",
+        "POST /api/policy/validate-execution",
+    ),
+    (
+        "policy_validate_completion",
+        "POST /api/policy/validate-completion",
+    ),
+    (
+        "policy_validate_parallel_completion",
+        "POST /api/policy/validate-parallel",
+    ),
+    (
+        "policy_check_session_readiness",
+        "POST /api/policy/check-readiness",
+    ),
     // Local tools — no API call (filesystem-based)
     ("local_init", "LOCAL .masday/"),
     ("local_sync", "LOCAL .masday/"),
@@ -471,9 +505,21 @@ fn test_mcp_tool_input_schemas_valid_json() {
         ("workflow_create", &["name"]),
         ("workflow_execute", &["id"]),
         ("workflow_get", &["id"]),
-        ("memory_store", &["memory_type", "summary", "content", "created_by_agent"]),
+        (
+            "memory_store",
+            &["memory_type", "summary", "content", "created_by_agent"],
+        ),
         ("memory_search", &["query"]),
-        ("review_submit", &["workflow_id", "task_id", "reviewer_agent", "decision", "notes"]),
+        (
+            "review_submit",
+            &[
+                "workflow_id",
+                "task_id",
+                "reviewer_agent",
+                "decision",
+                "notes",
+            ],
+        ),
         ("session_init_context", &["cwd"]),
         ("session_get_state", &["session_key"]),
         ("semantic-search_code_search", &["query"]),
@@ -496,7 +542,11 @@ fn test_mcp_tool_input_schemas_valid_json() {
 #[test]
 fn test_review_decision_values() {
     let valid_decisions = ["APPROVED", "REWORK_REQUIRED", "BLOCKED"];
-    assert_eq!(valid_decisions.len(), 3, "Must have exactly 3 review decisions");
+    assert_eq!(
+        valid_decisions.len(),
+        3,
+        "Must have exactly 3 review decisions"
+    );
 
     // Verify these match the enum in masday-core
     for decision in &valid_decisions {

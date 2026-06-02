@@ -23,9 +23,7 @@ pub fn policy_routes() -> Router<AppState> {
 
 /// Helper: run a policy validation, catching only NotFound errors as valid=false.
 /// All other errors (auth, database, validation) propagate normally.
-fn policy_result_to_valid(
-    result: Result<bool, AppError>,
-) -> Result<bool, ApiError> {
+fn policy_result_to_valid(result: Result<bool, AppError>) -> Result<bool, ApiError> {
     match result {
         Ok(valid) => Ok(valid),
         Err(AppError::NotFound(_)) => Ok(false),

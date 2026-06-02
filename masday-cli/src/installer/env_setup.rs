@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use anyhow::{Result, Context};
 
 pub struct Prerequisites {
     pub cargo_available: bool,
@@ -87,7 +87,8 @@ mod tests {
         let prereqs = check_prerequisites(false).unwrap();
 
         // cargo should be available in test environment
-        assert!(prereqs.cargo_available || true); // Allow both true/false based on environment
+        // cargo may or may not be available in test environment — just verify no panic
+        let _ = prereqs.cargo_available;
     }
 
     #[test]
@@ -137,7 +138,11 @@ mod tests {
         let project_dir = temp_dir.path();
         let env_path = project_dir.join(".env");
 
-        fs::write(&env_path, "KEY1=value1\nKEY2=value2\n# comment\n\nKEY3=value3").unwrap();
+        fs::write(
+            &env_path,
+            "KEY1=value1\nKEY2=value2\n# comment\n\nKEY3=value3",
+        )
+        .unwrap();
 
         let env_map = load_env(project_dir).unwrap();
         assert_eq!(env_map.get("KEY1"), Some(&"value1".to_string()));

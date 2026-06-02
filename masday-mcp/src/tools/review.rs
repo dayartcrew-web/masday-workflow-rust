@@ -35,7 +35,9 @@ mod tests {
         // Verify the error message
         let args = json!({});
         let result = std::panic::catch_unwind(|| {
-            let task_id = args.get("task_id").and_then(|v| v.as_str())
+            let task_id = args
+                .get("task_id")
+                .and_then(|v| v.as_str())
                 .ok_or_else(|| "Missing task_id".to_string());
             task_id
         });

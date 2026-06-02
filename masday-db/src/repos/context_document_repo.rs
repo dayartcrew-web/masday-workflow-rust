@@ -4,7 +4,7 @@
 //! Column names are camelCase: "workflowId", "sourceType", "sourceRef", etc.
 
 use crate::pool::DbPool;
-use crate::schema::{NewContextDocument, ContextDocument};
+use crate::schema::{ContextDocument, NewContextDocument};
 use masday_core::{AppError, Result};
 use pgvector::Vector;
 
@@ -101,7 +101,11 @@ impl ContextDocumentRepo {
     }
 
     /// List all context documents by source type
-    pub async fn list_by_source_type(&self, source_type: &str, limit: Option<i64>) -> Result<Vec<ContextDocument>> {
+    pub async fn list_by_source_type(
+        &self,
+        source_type: &str,
+        limit: Option<i64>,
+    ) -> Result<Vec<ContextDocument>> {
         let client = self
             .pool
             .get()
@@ -118,7 +122,12 @@ impl ContextDocumentRepo {
         let rows = client
             .query(query, &[&source_type, &capped])
             .await
-            .map_err(|e| AppError::Database(format!("Failed to list context documents by source type: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!(
+                    "Failed to list context documents by source type: {}",
+                    e
+                ))
+            })?;
 
         Ok(rows.iter().map(ContextDocument::from_row).collect())
     }
@@ -133,10 +142,9 @@ impl ContextDocumentRepo {
 
         let capped = limit.unwrap_or(100).min(1000);
         let query = r#"SELECT * FROM "ContextDocument" ORDER BY "createdAt" DESC LIMIT $1"#;
-        let rows = client
-            .query(query, &[&capped])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to list all context documents: {}", e)))?;
+        let rows = client.query(query, &[&capped]).await.map_err(|e| {
+            AppError::Database(format!("Failed to list all context documents: {}", e))
+        })?;
 
         Ok(rows.iter().map(ContextDocument::from_row).collect())
     }
@@ -166,9 +174,17 @@ impl ContextDocumentRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "ContextDocument" WHERE "workflowId" = $1"#, &[&workflow_id])
+            .execute(
+                r#"DELETE FROM "ContextDocument" WHERE "workflowId" = $1"#,
+                &[&workflow_id],
+            )
             .await
-            .map_err(|e| AppError::Database(format!("Failed to delete workflow context documents: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!(
+                    "Failed to delete workflow context documents: {}",
+                    e
+                ))
+            })?;
 
         Ok(result)
     }
@@ -182,10 +198,12 @@ impl ContextDocumentRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"SELECT * FROM "ContextDocument" WHERE fingerprint = $1 LIMIT 1"#;
-        let rows = client
-            .query(query, &[&fingerprint])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get context document by fingerprint: {}", e)))?;
+        let rows = client.query(query, &[&fingerprint]).await.map_err(|e| {
+            AppError::Database(format!(
+                "Failed to get context document by fingerprint: {}",
+                e
+            ))
+        })?;
 
         if rows.is_empty() {
             return Ok(None);

@@ -106,10 +106,9 @@ impl RetrievalLogRepo {
             WHERE "taskId" = $1
             ORDER BY "createdAt" DESC
         "#;
-        let rows = client
-            .query(query, &[&task_id])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to list task retrieval logs: {}", e)))?;
+        let rows = client.query(query, &[&task_id]).await.map_err(|e| {
+            AppError::Database(format!("Failed to list task retrieval logs: {}", e))
+        })?;
 
         Ok(rows.iter().map(RetrievalLog::from_row).collect())
     }

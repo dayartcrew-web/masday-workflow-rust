@@ -23,9 +23,18 @@ struct ListProgressLogsQuery {
 
 pub fn progress_log_routes() -> Router<AppState> {
     Router::new()
-        .route("/progress-logs", post(create_progress_log).get(list_progress_logs))
-        .route("/progress-logs/{id}", get(get_progress_log).delete(delete_progress_log))
-        .route("/progress-logs/workflow/{workflow_id}", get(list_by_workflow))
+        .route(
+            "/progress-logs",
+            post(create_progress_log).get(list_progress_logs),
+        )
+        .route(
+            "/progress-logs/{id}",
+            get(get_progress_log).delete(delete_progress_log),
+        )
+        .route(
+            "/progress-logs/workflow/{workflow_id}",
+            get(list_by_workflow),
+        )
         .route("/progress-logs/task/{task_id}", get(list_by_task))
 }
 

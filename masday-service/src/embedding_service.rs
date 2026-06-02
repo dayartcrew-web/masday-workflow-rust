@@ -585,14 +585,14 @@ mod tests {
         let text = "a".repeat(10000);
         let truncated = truncate_for_embedding(&text, 100);
         assert!(truncated.len() <= 400);
-        assert!(truncated.len() > 0);
+        assert!(!truncated.is_empty());
     }
 
     #[test]
     fn test_truncate_unicode_safe() {
         let text = "hello 🌍 world 🚀 test";
         let truncated = truncate_for_embedding(text, 3);
-        assert!(truncated.len() > 0);
+        assert!(!truncated.is_empty());
     }
 
     #[test]

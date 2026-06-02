@@ -286,7 +286,11 @@ impl SearchService {
         let acceptance_criteria: Vec<String> = plan_content
             .as_ref()
             .and_then(|v| v.get("acceptance_criteria")?.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let required_context: Vec<String> = task

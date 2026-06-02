@@ -21,8 +21,14 @@ struct ListTokenUsageQuery {
 
 pub fn token_usage_routes() -> Router<AppState> {
     Router::new()
-        .route("/token-usage", post(create_token_usage).get(list_token_usage))
-        .route("/token-usage/{id}", get(get_token_usage).delete(delete_token_usage))
+        .route(
+            "/token-usage",
+            post(create_token_usage).get(list_token_usage),
+        )
+        .route(
+            "/token-usage/{id}",
+            get(get_token_usage).delete(delete_token_usage),
+        )
         .route("/token-usage/source/{source}", get(list_by_source))
         .route("/token-usage/stats/{source}", get(get_stats))
 }
@@ -44,14 +50,26 @@ async fn create_token_usage(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
-        model: payload.get("model").and_then(|v| v.as_str()).map(String::from),
-        prompt_tokens: payload.get("prompt_tokens").and_then(|v| v.as_i64()).map(|v| v as i32),
+        model: payload
+            .get("model")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        prompt_tokens: payload
+            .get("prompt_tokens")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32),
         completion_tokens: payload
             .get("completion_tokens")
             .and_then(|v| v.as_i64())
             .map(|v| v as i32),
-        total_tokens: payload.get("total_tokens").and_then(|v| v.as_i64()).map(|v| v as i32),
-        latency_ms: payload.get("latency_ms").and_then(|v| v.as_i64()).map(|v| v as i32),
+        total_tokens: payload
+            .get("total_tokens")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32),
+        latency_ms: payload
+            .get("latency_ms")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32),
         metadata: payload.get("metadata").cloned(),
     };
     let usage = repo.create(&new_usage).await?;
@@ -66,7 +84,8 @@ async fn list_token_usage(
 ) -> Result<Json<Value>, ApiError> {
     let repo = TokenUsageRepo::new(state.pool.clone());
     let usage = if let Some(source) = &params.source {
-        repo.list_by_source(source, Some(pagination.limit() as i64)).await?
+        repo.list_by_source(source, Some(pagination.limit() as i64))
+            .await?
     } else {
         repo.list_all(Some(pagination.limit() as i64)).await?
     };

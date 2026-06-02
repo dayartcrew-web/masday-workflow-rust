@@ -115,7 +115,7 @@ mod tests {
         assert!(result.is_ok());
         let result_json = result.unwrap();
         assert_eq!(result_json["valid"], false);
-        assert!(result_json["errors"].as_array().unwrap().len() > 0);
+        assert!(!result_json["errors"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -126,7 +126,9 @@ mod tests {
 
         // Create a test rule file
         let rule_file = rules_dir.join("test-rule.md");
-        tokio::fs::write(&rule_file, "# Test Rule\n\n## Section\n\nContent here").await.unwrap();
+        tokio::fs::write(&rule_file, "# Test Rule\n\n## Section\n\nContent here")
+            .await
+            .unwrap();
 
         let project_root = temp_dir.path().to_str().unwrap();
         let args = json!({ "projectRoot": project_root });
@@ -162,7 +164,7 @@ mod tests {
         assert!(result.is_ok());
         let result_json = result.unwrap();
         // Empty file should still be valid but with warning
-        assert!(result_json["warnings"].as_array().unwrap().len() > 0);
+        assert!(!result_json["warnings"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -173,7 +175,9 @@ mod tests {
 
         // Create file without markdown headers
         let rule_file = rules_dir.join("no-headers.md");
-        tokio::fs::write(&rule_file, "Just plain text without any markdown headers").await.unwrap();
+        tokio::fs::write(&rule_file, "Just plain text without any markdown headers")
+            .await
+            .unwrap();
 
         let project_root = temp_dir.path().to_str().unwrap();
         let args = json!({ "projectRoot": project_root });
@@ -182,6 +186,6 @@ mod tests {
         assert!(result.is_ok());
         let result_json = result.unwrap();
         // Should generate warning about missing headers
-        assert!(result_json["warnings"].as_array().unwrap().len() > 0);
+        assert!(!result_json["warnings"].as_array().unwrap().is_empty());
     }
 }

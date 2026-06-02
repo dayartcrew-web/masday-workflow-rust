@@ -46,7 +46,10 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
     if id.is_empty() {
         return Err("ID cannot be empty".into());
     }
-    if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(format!(
             "Invalid ID '{}': must contain only alphanumeric characters, hyphens, or underscores",
             id
@@ -70,8 +73,8 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or("Missing 'workflow_id' argument")?;
 
-    let workflow_id = sanitize_id(workflow_id)
-        .map_err(|e| format!("Invalid workflow_id: {}", e))?;
+    let workflow_id =
+        sanitize_id(workflow_id).map_err(|e| format!("Invalid workflow_id: {}", e))?;
 
     let state_dir = std::path::Path::new(cwd)
         .join(".masday")
@@ -114,9 +117,7 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or("Missing 'cwd' argument")?;
 
-    let workflow_id_opt = args
-        .get("workflow_id")
-        .and_then(|v| v.as_str());
+    let workflow_id_opt = args.get("workflow_id").and_then(|v| v.as_str());
 
     let state_dir = std::path::Path::new(cwd)
         .join(".masday")
@@ -138,8 +139,8 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
     // Collect workflow files to push
     let workflow_files: Vec<std::path::PathBuf> = if let Some(workflow_id) = workflow_id_opt {
         // Push specific workflow
-        let workflow_id = sanitize_id(workflow_id)
-            .map_err(|e| format!("Invalid workflow_id: {}", e))?;
+        let workflow_id =
+            sanitize_id(workflow_id).map_err(|e| format!("Invalid workflow_id: {}", e))?;
         let workflow_file = state_dir.join(format!("{}.json", workflow_id));
         if workflow_file.exists() {
             vec![workflow_file]
@@ -158,7 +159,9 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
             .map_err(|e| format!("Failed to read state directory: {}", e))?;
 
         let mut files = Vec::new();
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| format!("Failed to read directory entry: {}", e))?
         {
             let path = entry.path();
@@ -218,8 +221,10 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         // Push workflow state via API (update endpoint)
         match client::api_post(
             &format!("/api/workflows/{}/update", workflow_id),
-            workflow_data.clone()
-        ).await {
+            workflow_data.clone(),
+        )
+        .await
+        {
             Ok(_) => {
                 pushed_workflows.push(workflow_id.to_string());
 
@@ -236,8 +241,10 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                                 });
                                 if let Err(e) = client::api_post(
                                     &format!("/api/workflows/{}/complete-task", workflow_id),
-                                    task_update
-                                ).await {
+                                    task_update,
+                                )
+                                .await
+                                {
                                     errors.push(serde_json::json!({
                                         "workflow_id": workflow_id,
                                         "task_id": task_id,
@@ -410,7 +417,10 @@ mod tests {
         assert!(result.is_ok());
         let result_json = result.unwrap();
         assert_eq!(result_json["pushed"], false);
-        assert!(result_json["error"].as_str().unwrap().contains("does not exist"));
+        assert!(result_json["error"]
+            .as_str()
+            .unwrap()
+            .contains("does not exist"));
     }
 
     #[tokio::test]
@@ -431,7 +441,9 @@ mod tests {
                 "status": "EXECUTE"
             }
         });
-        tokio::fs::write(&workflow_file, workflow_data.to_string()).await.unwrap();
+        tokio::fs::write(&workflow_file, workflow_data.to_string())
+            .await
+            .unwrap();
 
         // Test file reading logic without API calls - check that file can be read and parsed
         let content = tokio::fs::read_to_string(&workflow_file).await.unwrap();

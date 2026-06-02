@@ -35,9 +35,7 @@ async fn add_node(
     if let Some(entities) = payload.get("entities").and_then(|v| v.as_array()) {
         // Cap batch size to prevent DoS
         if entities.len() > 100 {
-            return Err(validation_err(
-                "entities array exceeds maximum of 100",
-            ));
+            return Err(validation_err("entities array exceeds maximum of 100"));
         }
         let mut created = Vec::new();
         for ent in entities {
@@ -46,21 +44,14 @@ async fn add_node(
                 .or_else(|| ent.get("node_type"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("entity");
-            let name = ent
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let name = ent.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
             // Validate fields — fail closed on missing/empty name
             if name.is_empty() {
-                return Err(validation_err(
-                    "name is required for each entity",
-                ));
+                return Err(validation_err("name is required for each entity"));
             }
             if node_type.len() > 100 || name.len() > 500 {
-                return Err(validation_err(
-                    "field exceeds maximum length",
-                ));
+                return Err(validation_err("field exceeds maximum length"));
             }
 
             let node = NewGraphNode {
@@ -82,10 +73,7 @@ async fn add_node(
     }
 
     // Single node format: {"name": "...", "node_type": "...", "properties": {...}}
-    let name = payload
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("");
     if name.is_empty() {
         return Err(validation_err("name is required"));
     }
@@ -94,9 +82,7 @@ async fn add_node(
         .and_then(|v| v.as_str())
         .unwrap_or("entity");
     if node_type.len() > 100 || name.len() > 500 {
-        return Err(validation_err(
-            "field exceeds maximum length",
-        ));
+        return Err(validation_err("field exceeds maximum length"));
     }
 
     let node = NewGraphNode {

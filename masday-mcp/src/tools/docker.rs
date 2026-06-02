@@ -106,6 +106,9 @@ mod tests {
         assert!(args.get("tag").and_then(|v| v.as_str()).is_some());
 
         let args = json!({ "image": "nginx:latest" });
-        assert_eq!(args.get("image").and_then(|v| v.as_str()).unwrap(), "nginx:latest");
+        assert_eq!(
+            args.get("image").and_then(|v| v.as_str()).unwrap(),
+            "nginx:latest"
+        );
     }
 }

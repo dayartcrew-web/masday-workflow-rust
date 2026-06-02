@@ -284,7 +284,8 @@ impl MemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get memory count: {}", e)))?;
         let total_count: i64 = total_row.get("count");
 
-        let type_query = r#"SELECT "memoryType", COUNT(*) as count FROM "Memory" GROUP BY "memoryType""#;
+        let type_query =
+            r#"SELECT "memoryType", COUNT(*) as count FROM "Memory" GROUP BY "memoryType""#;
         let type_rows = client
             .query(type_query, &[])
             .await

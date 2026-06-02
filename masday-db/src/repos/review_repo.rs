@@ -66,8 +66,7 @@ impl ReviewRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query =
-            r#"SELECT * FROM "ReviewDecision" WHERE "taskId" = $1 ORDER BY "createdAt" DESC LIMIT 1"#;
+        let query = r#"SELECT * FROM "ReviewDecision" WHERE "taskId" = $1 ORDER BY "createdAt" DESC LIMIT 1"#;
         let rows = client
             .query(query, &[&task_id])
             .await

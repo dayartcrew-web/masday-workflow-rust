@@ -65,10 +65,7 @@ pub async fn memory_recall_recent(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10);
-    let memory_type = args
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let memory_type = args.get("type").and_then(|v| v.as_str()).unwrap_or("");
     if memory_type.is_empty() {
         client::api_get(&format!("/api/memories/recent?limit={}", limit)).await
     } else {
@@ -123,7 +120,10 @@ mod tests {
             "limit": 50
         });
 
-        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("");
+        let workflow_id = args
+            .get("workflow_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
 
         assert_eq!(workflow_id, "wf-123");
@@ -133,7 +133,10 @@ mod tests {
     #[test]
     fn test_memory_recall_documents_defaults() {
         let args = json!({});
-        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str()).unwrap_or("");
+        let workflow_id = args
+            .get("workflow_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
 
         assert_eq!(workflow_id, "");
@@ -147,7 +150,8 @@ mod tests {
             "limit": 30
         });
 
-        let source_type = args.get("source_type")
+        let source_type = args
+            .get("source_type")
             .or_else(|| args.get("memory_type"))
             .and_then(|v| v.as_str())
             .unwrap_or("fact");
@@ -164,7 +168,8 @@ mod tests {
             "limit": 15
         });
 
-        let source_type = args.get("source_type")
+        let source_type = args
+            .get("source_type")
             .or_else(|| args.get("memory_type"))
             .and_then(|v| v.as_str())
             .unwrap_or("fact");
@@ -201,13 +206,15 @@ mod tests {
     #[test]
     fn test_memory_update_args_fallback() {
         let args = json!({ "id": "mem-789" });
-        let memory_id = args.get("id")
+        let memory_id = args
+            .get("id")
             .or_else(|| args.get("memory_id"))
             .and_then(|v| v.as_str());
         assert_eq!(memory_id.unwrap(), "mem-789");
 
         let args = json!({ "memory_id": "mem-999" });
-        let memory_id = args.get("id")
+        let memory_id = args
+            .get("id")
             .or_else(|| args.get("memory_id"))
             .and_then(|v| v.as_str());
         assert_eq!(memory_id.unwrap(), "mem-999");
@@ -216,7 +223,8 @@ mod tests {
     #[test]
     fn test_memory_update_missing_id() {
         let args = json!({});
-        let memory_id = args.get("id")
+        let memory_id = args
+            .get("id")
             .or_else(|| args.get("memory_id"))
             .and_then(|v| v.as_str());
         assert!(memory_id.is_none());

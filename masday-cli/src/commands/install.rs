@@ -2,35 +2,18 @@
 //!
 //! Orchestrates the full installation workflow for Masday in local, remote, or standalone mode.
 
-use std::path::Path;
 use anyhow::Result;
 use console::style;
 use home;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::path::Path;
 
 use crate::installer::{
-    self,
-    Platform,
-    Prerequisites,
-    check_prerequisites,
-    ensure_env_file,
-    detect_active_platforms,
-    all_platforms,
-    sync_agents_to_project,
-    sync_agents_to_global,
-    sync_skills_to_project,
-    sync_skills_to_global,
-    install_global_hooks,
-    install_project_hooks,
-    generate_mcp_config,
-    update_global_settings,
-    verify_remote_url,
-    resolve_mcp_binary,
-    McpConfig,
-    SettingsUpdates,
-    McpServerConfig,
-    AgentSyncReport,
-    SkillSyncReport,
+    self, all_platforms, check_prerequisites, detect_active_platforms, ensure_env_file,
+    generate_mcp_config, install_global_hooks, install_project_hooks, resolve_mcp_binary,
+    sync_agents_to_global, sync_agents_to_project, sync_skills_to_global, sync_skills_to_project,
+    update_global_settings, verify_remote_url, AgentSyncReport, McpConfig, McpServerConfig,
+    Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
 };
 
 /// Arguments for the install command
@@ -185,7 +168,12 @@ fn sync_templates(
         style(format!("{} installed", project_hook_count)).green()
     );
 
-    Ok((agent_reports, skill_reports, global_hook_count, project_hook_count))
+    Ok((
+        agent_reports,
+        skill_reports,
+        global_hook_count,
+        project_hook_count,
+    ))
 }
 
 // ── Standalone mode ──────────────────────────────────────────────────────────
@@ -193,14 +181,23 @@ fn sync_templates(
 /// Standalone mode installation — extract templates only, no build, no API server
 fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
-    println!("{}", style("Installing Masday (standalone mode)...").cyan().bold());
+    println!(
+        "{}",
+        style("Installing Masday (standalone mode)...")
+            .cyan()
+            .bold()
+    );
     println!();
 
     // Step 1: Resolve platforms
     let platforms = resolve_platforms(&args.platform, project_dir)?;
     println!(
         "{}",
-        style(format!("Installing for platforms: {}", platform_list(&platforms))).cyan()
+        style(format!(
+            "Installing for platforms: {}",
+            platform_list(&platforms)
+        ))
+        .cyan()
     );
 
     // Step 2: Sync agents, skills, hooks
@@ -215,7 +212,12 @@ fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 
     // Success summary
     println!();
-    println!("{}", style("Installation complete! (standalone mode)").green().bold());
+    println!(
+        "{}",
+        style("Installation complete! (standalone mode)")
+            .green()
+            .bold()
+    );
     println!();
     println!("Installed:");
     println!("  {} agents", style(total_agents).green());
@@ -237,7 +239,10 @@ fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 /// Local mode installation
 fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
-    println!("{}", style("Installing Masday (local mode)...").cyan().bold());
+    println!(
+        "{}",
+        style("Installing Masday (local mode)...").cyan().bold()
+    );
     println!();
 
     // Step 1: Check prerequisites
@@ -249,9 +254,11 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     }
 
     let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::default_spinner()
-        .template("{spinner} {msg}")
-        .unwrap());
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner} {msg}")
+            .unwrap(),
+    );
 
     // Step 2: Build crates (unless --skip-build)
     if !args.skip_build {
@@ -278,7 +285,11 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     let platforms = resolve_platforms(&args.platform, project_dir)?;
     println!(
         "{}",
-        style(format!("Installing for platforms: {}", platform_list(&platforms))).cyan()
+        style(format!(
+            "Installing for platforms: {}",
+            platform_list(&platforms)
+        ))
+        .cyan()
     );
 
     // Step 6: Sync agents, skills, hooks
@@ -348,10 +359,16 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 /// Remote mode installation
 fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
-    println!("{}", style("Installing Masday (remote mode)...").cyan().bold());
+    println!(
+        "{}",
+        style("Installing Masday (remote mode)...").cyan().bold()
+    );
     println!();
 
-    let remote_url = args.remote.as_ref().expect("remote URL required in remote mode");
+    let remote_url = args
+        .remote
+        .as_ref()
+        .expect("remote URL required in remote mode");
 
     // Step 1: Check prerequisites (node only for remote mode)
     let prereq = check_prerequisites(true)?;
@@ -362,10 +379,7 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     }
 
     // Step 2: Verify remote URL connectivity
-    println!(
-        "{}",
-        style("Checking remote API connectivity...").cyan()
-    );
+    println!("{}", style("Checking remote API connectivity...").cyan());
     verify_remote_url(remote_url)?;
 
     // Step 3: Resolve MCP binary
@@ -375,7 +389,11 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     let platforms = resolve_platforms(&args.platform, project_dir)?;
     println!(
         "{}",
-        style(format!("Installing for platforms: {}", platform_list(&platforms))).cyan()
+        style(format!(
+            "Installing for platforms: {}",
+            platform_list(&platforms)
+        ))
+        .cyan()
     );
 
     // Step 5: Sync agents, skills, hooks
@@ -457,7 +475,10 @@ fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Resul
             "copilot" => Ok(vec![Platform::VsCodeCopilot]),
             "opencode" => Ok(vec![Platform::OpenCode]),
             _ => {
-                eprintln!("{}", style("Unknown platform, using all platforms").yellow());
+                eprintln!(
+                    "{}",
+                    style("Unknown platform, using all platforms").yellow()
+                );
                 Ok(all_platforms())
             }
         }
@@ -585,7 +606,10 @@ mod tests {
         };
         let result = run(args, temp_dir.path());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("--remote and --standalone"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--remote and --standalone"));
     }
 
     #[test]
@@ -598,7 +622,10 @@ mod tests {
         };
         let result = run(args, temp_dir.path());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("--remote and --local"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--remote and --local"));
     }
 
     #[test]
@@ -611,7 +638,10 @@ mod tests {
         };
         let result = run(args, temp_dir.path());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("--standalone and --local"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--standalone and --local"));
     }
 
     // ── Existing tests ───────────────────────────────────────────────────────
@@ -679,7 +709,9 @@ mod tests {
             let agent_count = std::fs::read_dir(&agents_dir)
                 .unwrap()
                 .filter(|e| {
-                    e.as_ref().map(|f| f.file_name().to_string_lossy().ends_with(".md")).unwrap_or(false)
+                    e.as_ref()
+                        .map(|f| f.file_name().to_string_lossy().ends_with(".md"))
+                        .unwrap_or(false)
                 })
                 .count();
             assert!(agent_count > 0, "Should have extracted at least one agent");

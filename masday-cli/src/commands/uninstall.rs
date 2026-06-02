@@ -2,20 +2,15 @@
 //!
 //! Removes Masday agents, skills, hooks, and MCP configurations.
 
-use std::path::Path;
-use std::fs;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use console::style;
 use home;
+use std::fs;
+use std::path::Path;
 
 use crate::installer::{
-    Platform,
-    all_platforms,
-    detect_active_platforms,
-    uninstall_global_hooks,
-    uninstall_project_hooks,
-    remove_mcp_config,
-    remove_masday_entries,
+    all_platforms, detect_active_platforms, remove_masday_entries, remove_mcp_config,
+    uninstall_global_hooks, uninstall_project_hooks, Platform,
 };
 
 /// Arguments for the uninstall command
@@ -37,32 +32,53 @@ pub fn run(args: UninstallArgs, project_dir: &Path) -> Result<()> {
     let platforms = resolve_platforms(&args.platform, project_dir)?;
     println!(
         "{}",
-        style(format!("Uninstalling from platforms: {}", platform_list(&platforms))).cyan()
+        style(format!(
+            "Uninstalling from platforms: {}",
+            platform_list(&platforms)
+        ))
+        .cyan()
     );
 
     // Remove agents from project dirs
     println!();
-    println!("{}", style("Removing agents from project directories...").cyan());
+    println!(
+        "{}",
+        style("Removing agents from project directories...").cyan()
+    );
     for platform in &platforms {
         let agents_dir = platform.project_agents_dir(project_dir);
         let removed = remove_masday_files(&agents_dir)?;
-        println!("  {}: {} removed", style(platform.name()).green(), style(removed).dim());
+        println!(
+            "  {}: {} removed",
+            style(platform.name()).green(),
+            style(removed).dim()
+        );
     }
 
     // Remove skills from project dirs
     println!();
-    println!("{}", style("Removing skills from project directories...").cyan());
+    println!(
+        "{}",
+        style("Removing skills from project directories...").cyan()
+    );
     for platform in &platforms {
         let skills_dir = platform.project_skills_dir(project_dir);
         let removed = remove_masday_dirs(&skills_dir)?;
-        println!("  {}: {} removed", style(platform.name()).green(), style(removed).dim());
+        println!(
+            "  {}: {} removed",
+            style(platform.name()).green(),
+            style(removed).dim()
+        );
     }
 
     // Remove project hooks
     println!();
     println!("{}", style("Removing project hooks...").cyan());
     let hooks_report = uninstall_project_hooks(project_dir)?;
-    println!("  {}", style(format!("{} hooks removed", hooks_report.copied)).green());
+    println!(
+        "  {}",
+        style(format!("{} hooks removed", hooks_report.copied)).green()
+    );
 
     // Remove MCP configs
     println!();
@@ -176,8 +192,8 @@ fn remove_masday_files(dir: &Path) -> Result<usize> {
 
     let mut removed = 0;
 
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("Failed to read directory {}", dir.display()))?
+    for entry in
+        fs::read_dir(dir).with_context(|| format!("Failed to read directory {}", dir.display()))?
     {
         let entry = entry?;
         let file_name = entry.file_name();
@@ -200,8 +216,8 @@ fn remove_masday_dirs(dir: &Path) -> Result<usize> {
 
     let mut removed = 0;
 
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("Failed to read directory {}", dir.display()))?
+    for entry in
+        fs::read_dir(dir).with_context(|| format!("Failed to read directory {}", dir.display()))?
     {
         let entry = entry?;
         let file_name = entry.file_name();

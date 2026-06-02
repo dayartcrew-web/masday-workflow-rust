@@ -41,7 +41,10 @@ pub fn workflow_routes() -> Router<AppState> {
             "/workflows/{id}/parallel-branches",
             get(list_parallel_branches),
         )
-        .route("/workflows/{id}/synthesis-ready", post(mark_synthesis_ready))
+        .route(
+            "/workflows/{id}/synthesis-ready",
+            post(mark_synthesis_ready),
+        )
         .route(
             "/workflows/{id}/verification-ready",
             post(mark_verification_ready),
@@ -123,7 +126,9 @@ async fn update_workflow_status(
         let wf = masday_service::WorkflowService::update_status(&state.pool, &id, &status).await?;
         Ok(Json(serde_json::json!(wf)))
     } else {
-        Err(ApiError(masday_core::AppError::validation("status field required")))
+        Err(ApiError(masday_core::AppError::validation(
+            "status field required",
+        )))
     }
 }
 
@@ -229,8 +234,7 @@ async fn complete_current_task(
         .to_string();
     let result = payload.get("result").cloned();
     let task =
-        masday_service::TaskService::complete_task(&state.pool, &id, &task_id, result)
-            .await?;
+        masday_service::TaskService::complete_task(&state.pool, &id, &task_id, result).await?;
     Ok(Json(serde_json::json!(task)))
 }
 
@@ -270,23 +274,19 @@ async fn build_context_pack(
         .find(|t| t.status == "RUNNING")
         .map(|t| t.id.clone())
         .unwrap_or_default();
-    let pack = match masday_service::ContextService::build_context_pack(
-        &state.pool,
-        &id,
-        &id,
-        &task_id,
-    )
-    .await
-    {
-        Ok(p) => p,
-        Err(e) => {
-            if matches!(e, masday_core::AppError::NotFound(_)) {
-                serde_json::json!({"tasks": tasks, "plan": null})
-            } else {
-                return Err(ApiError::from(e));
+    let pack =
+        match masday_service::ContextService::build_context_pack(&state.pool, &id, &id, &task_id)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                if matches!(e, masday_core::AppError::NotFound(_)) {
+                    serde_json::json!({"tasks": tasks, "plan": null})
+                } else {
+                    return Err(ApiError::from(e));
+                }
             }
-        }
-    };
+        };
     Ok(Json(pack))
 }
 
@@ -419,7 +419,10 @@ async fn complete_parallel_branch(
                 branch_key
             )))
         })?;
-    let output = payload.get("output").cloned().unwrap_or(serde_json::json!({}));
+    let output = payload
+        .get("output")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
     let completed = repo
         .complete_branch(&branch.id, output)
         .await
@@ -458,7 +461,9 @@ async fn mark_synthesis_ready(
         .get("session_key")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    Ok(Json(serde_json::json!({"session_key": session_key, "synthesis_ready": true})))
+    Ok(Json(
+        serde_json::json!({"session_key": session_key, "synthesis_ready": true}),
+    ))
 }
 
 async fn mark_verification_ready(
@@ -472,7 +477,9 @@ async fn mark_verification_ready(
         .get("session_key")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    Ok(Json(serde_json::json!({"session_key": session_key, "verification_ready": true})))
+    Ok(Json(
+        serde_json::json!({"session_key": session_key, "verification_ready": true}),
+    ))
 }
 
 async fn set_execution_mode(
@@ -490,7 +497,9 @@ async fn set_execution_mode(
         .get("mode")
         .and_then(|v| v.as_str())
         .unwrap_or("sequential");
-    Ok(Json(serde_json::json!({"session_key": session_key, "execution_mode": mode})))
+    Ok(Json(
+        serde_json::json!({"session_key": session_key, "execution_mode": mode}),
+    ))
 }
 
 async fn get_current_task(

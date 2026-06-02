@@ -1,8 +1,8 @@
-use std::fs;
-use std::path::Path;
-use anyhow::{Result, Context};
 use super::platform::Platform;
 use super::templates;
+use anyhow::{Context, Result};
+use std::fs;
+use std::path::Path;
 
 pub struct SyncReport {
     pub platform: String,
@@ -10,7 +10,11 @@ pub struct SyncReport {
     pub skipped: usize,
 }
 
-pub fn sync_skills_to_project(project_dir: &Path, platforms: &[Platform], force: bool) -> Result<Vec<SyncReport>> {
+pub fn sync_skills_to_project(
+    project_dir: &Path,
+    platforms: &[Platform],
+    force: bool,
+) -> Result<Vec<SyncReport>> {
     let skill_names = templates::extract_skill_names();
     let mut reports = Vec::new();
 
@@ -40,18 +44,24 @@ pub fn sync_skills_to_project(project_dir: &Path, platforms: &[Platform], force:
                 continue;
             }
 
-            fs::create_dir_all(&skill_target_dir)
-                .with_context(|| format!("Failed to create skill directory {}", skill_target_dir.display()))?;
+            fs::create_dir_all(&skill_target_dir).with_context(|| {
+                format!(
+                    "Failed to create skill directory {}",
+                    skill_target_dir.display()
+                )
+            })?;
 
             let mut copied_skill = false;
             for (file_name, content) in skill_files.iter() {
                 let file_path = skill_target_dir.join(file_name);
                 if let Some(parent) = file_path.parent() {
-                    fs::create_dir_all(parent)
-                        .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create directory {}", parent.display())
+                    })?;
                 }
-                fs::write(&file_path, content)
-                    .with_context(|| format!("Failed to write skill file {}", file_path.display()))?;
+                fs::write(&file_path, content).with_context(|| {
+                    format!("Failed to write skill file {}", file_path.display())
+                })?;
                 copied_skill = true;
             }
 
@@ -105,18 +115,24 @@ pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
                 continue;
             }
 
-            fs::create_dir_all(&skill_target_dir)
-                .with_context(|| format!("Failed to create skill directory {}", skill_target_dir.display()))?;
+            fs::create_dir_all(&skill_target_dir).with_context(|| {
+                format!(
+                    "Failed to create skill directory {}",
+                    skill_target_dir.display()
+                )
+            })?;
 
             let mut copied_skill = false;
             for (file_name, content) in skill_files.iter() {
                 let file_path = skill_target_dir.join(file_name);
                 if let Some(parent) = file_path.parent() {
-                    fs::create_dir_all(parent)
-                        .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create directory {}", parent.display())
+                    })?;
                 }
-                fs::write(&file_path, content)
-                    .with_context(|| format!("Failed to write skill file {}", file_path.display()))?;
+                fs::write(&file_path, content).with_context(|| {
+                    format!("Failed to write skill file {}", file_path.display())
+                })?;
                 copied_skill = true;
             }
 
@@ -139,7 +155,10 @@ fn is_dir_writable(dir: &Path) -> bool {
         return false;
     }
 
-    !dir.metadata().ok().map(|m| m.permissions().readonly()).unwrap_or(true)
+    !dir.metadata()
+        .ok()
+        .map(|m| m.permissions().readonly())
+        .unwrap_or(true)
 }
 
 #[cfg(test)]

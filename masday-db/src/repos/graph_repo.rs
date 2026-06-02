@@ -42,10 +42,7 @@ impl GraphRepo {
         let name_ref: &str = &node.name;
 
         let row = client
-            .query_one(
-                query,
-                &[&id_ref, &nt_ref, &name_ref, &props_value, &now],
-            )
+            .query_one(query, &[&id_ref, &nt_ref, &name_ref, &props_value, &now])
             .await
             .map_err(|e| AppError::Database(format!("Failed to add node: {}", e)))?;
 
@@ -179,7 +176,10 @@ impl GraphRepo {
 
                 match self.add_edge(&edge).await {
                     Ok(created_edge) => {
-                        debug!("Auto-linked {} -> {} with similarity {}", node_id, target_id, similarity);
+                        debug!(
+                            "Auto-linked {} -> {} with similarity {}",
+                            node_id, target_id, similarity
+                        );
                         created_edges.push(created_edge);
                     }
                     Err(e) => {
@@ -223,7 +223,8 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // First delete all edges connected to this node
-        let edge_query = r#"DELETE FROM "GraphEdge" WHERE "sourceNodeId" = $1 OR "targetNodeId" = $1"#;
+        let edge_query =
+            r#"DELETE FROM "GraphEdge" WHERE "sourceNodeId" = $1 OR "targetNodeId" = $1"#;
         client
             .execute(edge_query, &[&id])
             .await

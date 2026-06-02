@@ -2,13 +2,16 @@
 //!
 //! Provides cargo build commands and binary resolution for local mode.
 
+use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use anyhow::{Result, Context};
 
 /// Build MCP and API crates in release mode
 pub fn build_crates(project_dir: &Path) -> Result<()> {
-    println!("{}", console::style("Building masday-mcp and masday-api crates...").cyan());
+    println!(
+        "{}",
+        console::style("Building masday-mcp and masday-api crates...").cyan()
+    );
 
     let status = Command::new("cargo")
         .arg("build")
