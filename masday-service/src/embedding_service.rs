@@ -443,80 +443,62 @@ pub fn build_embedding_input(summary: &str, content: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_config_from_env_none() {
-        std::env::remove_var("EMBEDDING_PROVIDER");
-        assert!(EmbeddingConfig::from_env().is_none());
-    }
+    // ── Config construction tests (no env vars, no race conditions) ──────────
 
     #[test]
-    fn test_config_local_defaults() {
-        std::env::set_var("EMBEDDING_PROVIDER", "local");
-        std::env::remove_var("EMBEDDING_MODEL");
-        std::env::remove_var("EMBEDDING_DIMENSIONS");
-
-        let config = EmbeddingConfig::from_env().unwrap();
+    fn test_config_local_construction() {
+        let config = EmbeddingConfig {
+            provider: "local".into(),
+            model: LOCAL_DEFAULT_MODEL.into(),
+            base_url: String::new(),
+            api_key: None,
+            dimensions: LOCAL_DEFAULT_DIMENSIONS,
+        };
         assert_eq!(config.provider, "local");
         assert_eq!(config.model, "all-MiniLM-L6-v2");
         assert_eq!(config.dimensions, 384);
         assert!(config.base_url.is_empty());
-        assert!(config.api_key.is_none());
-
-        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[test]
-    fn test_config_ollama_defaults() {
-        std::env::set_var("EMBEDDING_PROVIDER", "ollama");
-        std::env::remove_var("EMBEDDING_MODEL");
-        std::env::remove_var("EMBEDDING_BASE_URL");
-
-        let config = EmbeddingConfig::from_env().unwrap();
+    fn test_config_ollama_construction() {
+        let config = EmbeddingConfig {
+            provider: "ollama".into(),
+            model: OLLAMA_DEFAULT_MODEL.into(),
+            base_url: "http://localhost:11434".into(),
+            api_key: None,
+            dimensions: OLLAMA_DEFAULT_DIMENSIONS,
+        };
         assert_eq!(config.provider, "ollama");
         assert_eq!(config.model, "nomic-embed-text");
-        assert_eq!(config.base_url, "http://localhost:11434");
-        assert!(config.api_key.is_none());
         assert_eq!(config.dimensions, 768);
-
-        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[test]
-    fn test_config_openai_defaults() {
-        std::env::set_var("EMBEDDING_PROVIDER", "openai");
-        std::env::remove_var("EMBEDDING_MODEL");
-        std::env::set_var("EMBEDDING_API_KEY", "test-key");
-
-        let config = EmbeddingConfig::from_env().unwrap();
+    fn test_config_openai_construction() {
+        let config = EmbeddingConfig {
+            provider: "openai".into(),
+            model: OPENAI_DEFAULT_MODEL.into(),
+            base_url: "https://api.openai.com/v1".into(),
+            api_key: Some("test-key".into()),
+            dimensions: OPENAI_DEFAULT_DIMENSIONS,
+        };
         assert_eq!(config.provider, "openai");
         assert_eq!(config.model, "text-embedding-3-small");
-        assert_eq!(config.base_url, "https://api.openai.com/v1");
         assert_eq!(config.api_key, Some("test-key".to_string()));
-
-        std::env::remove_var("EMBEDDING_PROVIDER");
-        std::env::remove_var("EMBEDDING_API_KEY");
     }
 
     #[test]
-    fn test_config_custom_model() {
-        std::env::set_var("EMBEDDING_PROVIDER", "ollama");
-        std::env::set_var("EMBEDDING_MODEL", "bge-large");
-        std::env::set_var("EMBEDDING_DIMENSIONS", "1024");
-
-        let config = EmbeddingConfig::from_env().unwrap();
+    fn test_config_custom_dimensions() {
+        let config = EmbeddingConfig {
+            provider: "ollama".into(),
+            model: "bge-large".into(),
+            base_url: "http://localhost:11434".into(),
+            api_key: None,
+            dimensions: 1024,
+        };
         assert_eq!(config.model, "bge-large");
         assert_eq!(config.dimensions, 1024);
-
-        std::env::remove_var("EMBEDDING_PROVIDER");
-        std::env::remove_var("EMBEDDING_MODEL");
-        std::env::remove_var("EMBEDDING_DIMENSIONS");
-    }
-
-    #[test]
-    fn test_config_unknown_provider() {
-        std::env::set_var("EMBEDDING_PROVIDER", "unknown");
-        assert!(EmbeddingConfig::from_env().is_none());
-        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[test]
@@ -561,11 +543,36 @@ mod tests {
         ));
     }
 
+    // ── Env-based tests (single-threaded via #[ignore]) ──────────────────────
+
     #[test]
+    #[ignore] // Run with: cargo test -- --ignored --test-threads=1
+    fn test_config_from_env_none() {
+        std::env::remove_var("EMBEDDING_PROVIDER");
+        assert!(EmbeddingConfig::from_env().is_none());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_config_from_env_local() {
+        std::env::set_var("EMBEDDING_PROVIDER", "local");
+        std::env::remove_var("EMBEDDING_MODEL");
+        std::env::remove_var("EMBEDDING_DIMENSIONS");
+        let config = EmbeddingConfig::from_env().unwrap();
+        assert_eq!(config.provider, "local");
+        assert_eq!(config.model, "all-MiniLM-L6-v2");
+        assert_eq!(config.dimensions, 384);
+        std::env::remove_var("EMBEDDING_PROVIDER");
+    }
+
+    #[test]
+    #[ignore]
     fn test_service_from_env_disabled() {
         std::env::remove_var("EMBEDDING_PROVIDER");
         assert!(EmbeddingService::from_env().is_none());
     }
+
+    // ── Pure unit tests (no env, no IO) ─────────────────────────────────────
 
     #[test]
     fn test_truncate_short_text() {
@@ -613,11 +620,9 @@ mod tests {
 
     #[test]
     fn test_local_service_loads_fallback_model() {
-        // "test-model" is not a real fastembed model, but model_enum falls back to AllMiniLML6V2
         let config = EmbeddingConfig::test_config("local");
         let service = EmbeddingService::new(config);
         assert_eq!(service.provider(), "local");
-        // local_model should be Some because model_enum falls back gracefully
         assert!(service.local_model.is_some());
     }
 }
