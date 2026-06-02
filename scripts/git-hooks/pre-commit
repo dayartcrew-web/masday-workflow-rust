@@ -74,4 +74,10 @@ if [[ " ${STACKS[*]} " =~ " php " ]]; then
   fi
 fi
 
+# --- Docs ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "${SCRIPT_DIR}/pre-commit-docs" ]; then
+  bash "${SCRIPT_DIR}/pre-commit-docs"
+fi
+
 echo "[masday pre-commit] ✅ All checks passed."
