@@ -35,7 +35,7 @@ Or download directly: [masday-windows-x86_64.exe](https://github.com/dayartcrew-
 Replace `latest` with the version tag:
 
 ```bash
-curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/v0.1.0/masday-linux-x86_64
+curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/v0.3.0/masday-linux-x86_64
 ```
 
 ---
@@ -182,3 +182,43 @@ Check `.mcp.json` in your project root — it should point to the masday binary:
 - **Claude Code**, **Gemini CLI**, **VS Code Copilot**, or **OpenCode** — any MCP-compatible AI client
 - **PostgreSQL 16** with pgvector (for local mode or self-hosted remote)
 - **Redis 7** (optional, for caching)
+
+## Embedding Setup
+
+Masday supports semantic search via vector embeddings. Three providers available:
+
+### Local (Recommended — no external service)
+
+```bash
+export EMBEDDING_PROVIDER=local
+export EMBEDDING_MODEL=all-MiniLM-L6-v2     # 384 dims, fast, ~90MB download
+export EMBEDDING_DIMENSIONS=384
+```
+
+Model auto-downloads from HuggingFace on first embed. No Ollama or API key needed.
+
+Supported models:
+
+| Model | Dimensions | Size | Best for |
+|-------|-----------|------|----------|
+| `all-MiniLM-L6-v2` | 384 | ~90MB | Fast, general purpose |
+| `bge-small-en-v1.5` | 384 | ~130MB | English text |
+| `bge-base-en-v1.5` | 768 | ~430MB | Higher quality |
+| `nomic-embed-text-v1.5` | 768 | ~270MB | Code + text |
+
+### Ollama (requires running Ollama)
+
+```bash
+export EMBEDDING_PROVIDER=ollama
+export EMBEDDING_MODEL=nomic-embed-text
+```
+
+### OpenAI (requires API key)
+
+```bash
+export EMBEDDING_PROVIDER=openai
+export EMBEDDING_API_KEY=sk-...
+export EMBEDDING_MODEL=text-embedding-3-small
+```
+
+> **Note:** `EMBEDDING_DIMENSIONS` must match both the model output and your pgvector column size.
