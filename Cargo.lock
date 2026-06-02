@@ -2215,6 +2215,8 @@ name = "masday-mcp"
 version = "0.1.0"
 dependencies = [
  "masday-core",
+ "masday-db",
+ "masday-service",
  "reqwest",
  "serde",
  "serde_json",
