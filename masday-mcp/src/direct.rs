@@ -3,6 +3,7 @@
 //! Each function calls masday-service methods directly instead of via HTTP.
 //! Takes `serde_json::Value` args, returns `Result<Value, Box<dyn Error + Send + Sync>>`.
 
+use masday_service::memory_service::StoreMemoryParams;
 use serde_json::{json, Value};
 
 // Error helper — converts any error to the boxed type the registry expects
@@ -249,8 +250,11 @@ pub async fn workflow_set_execution_mode(args: Value) -> Result<Value, Box<dyn s
         .and_then(|v| v.as_str()).ok_or_else(|| err("missing workflow_id"))?;
     let mode = args["mode"].as_str().ok_or_else(|| err("missing mode"))?;
 
-    masday_service::WorkflowService::update_workflow(
-        &pool, wf_id, json!({"execution_mode": mode})
+    // Direct SQL to avoid Box<dyn ToSql> Send issue in repo layer
+    let client = pool.get().await.map_err(|e| err(e))?;
+    client.execute(
+        r#"UPDATE "Workflow" SET "executionMode" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+        &[&mode, &wf_id],
     ).await.map_err(|e| err(e))?;
 
     Ok(json!({"updated": true, "mode": mode}))
@@ -302,7 +306,7 @@ pub async fn memory_store(args: Value) -> Result<Value, Box<dyn std::error::Erro
     let task_id = args.get("task_id").and_then(|v| v.as_str());
 
     let result = masday_service::MemoryService::store(&pool,
-        masday_service::StoreMemoryParams {
+        StoreMemoryParams {
             memory_type, summary, content, created_by, importance, tags, workflow_id, task_id,
         }
     ).await.map_err(|e| err(e))?;
@@ -318,7 +322,7 @@ pub async fn memory_store_research(args: Value) -> Result<Value, Box<dyn std::er
     let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
 
     let result = masday_service::MemoryService::store(&pool,
-        masday_service::StoreMemoryParams {
+        StoreMemoryParams {
             memory_type: "research", summary, content, created_by,
             importance: 0.7, tags: vec![], workflow_id, task_id: None,
         }
@@ -388,10 +392,36 @@ pub async fn memory_update(args: Value) -> Result<Value, Box<dyn std::error::Err
     let content = args.get("content").and_then(|v| v.as_str());
     let importance = args["importance"].as_f64();
 
-    let result = masday_service::MemoryService::update(&pool, id, content, importance)
-        .await.map_err(|e| err(e))?;
+    // Direct SQL to avoid Box<dyn ToSql> Send issue in repo layer
+    let client = pool.get().await.map_err(|e| err(e))?;
+    match (content, importance) {
+        (Some(c), Some(imp)) => {
+            client.execute(
+                r#"UPDATE "Memory" SET content = $1, "importanceScore" = $2, "updatedAt" = NOW(), version = COALESCE(version, 0) + 1 WHERE id = $3"#,
+                &[&c, &imp, &id],
+            ).await.map_err(|e| err(e))?;
+        }
+        (Some(c), None) => {
+            client.execute(
+                r#"UPDATE "Memory" SET content = $1, "updatedAt" = NOW(), version = COALESCE(version, 0) + 1 WHERE id = $2"#,
+                &[&c, &id],
+            ).await.map_err(|e| err(e))?;
+        }
+        (None, Some(imp)) => {
+            client.execute(
+                r#"UPDATE "Memory" SET "importanceScore" = $1, "updatedAt" = NOW(), version = COALESCE(version, 0) + 1 WHERE id = $2"#,
+                &[&imp, &id],
+            ).await.map_err(|e| err(e))?;
+        }
+        (None, None) => {
+            client.execute(
+                r#"UPDATE "Memory" SET "updatedAt" = NOW(), version = COALESCE(version, 0) + 1 WHERE id = $1"#,
+                &[&id],
+            ).await.map_err(|e| err(e))?;
+        }
+    }
 
-    Ok(result)
+    Ok(json!({"updated": id}))
 }
 
 pub async fn memory_delete(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -483,10 +513,21 @@ pub async fn session_init_context(args: Value) -> Result<Value, Box<dyn std::err
     let cwd = args["cwd"].as_str().ok_or_else(|| err("missing cwd"))?;
     let session_key = format!("session:{}", cwd.replace('/', ":"));
 
-    masday_db::repos::SessionRepo::new(pool).patch_state(&session_key, json!({"cwd": cwd}))
-        .await.map_err(|e| err(e))?;
+    // Direct SQL to avoid Box<dyn ToSql> Send issue in repo layer.
+    // On init, always upsert: create if not exists, otherwise touch updatedAt.
+    let client = pool.get().await.map_err(|e| err(e))?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().naive_utc();
 
-    Ok(json!({"session_key": session_key, "initialized": true}))
+    // Try INSERT first, ignore conflict (session already exists)
+    let result = client.execute(
+        r#"INSERT INTO "SessionState" (id, "sessionKey", metadata, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT ("sessionKey") DO UPDATE SET "updatedAt" = $5"#,
+        &[&id, &session_key, &serde_json::json!({"cwd": cwd}), &now, &now],
+    ).await.map_err(|e| err(e))?;
+
+    Ok(json!({"session_key": session_key, "initialized": true, "rows_affected": result}))
 }
 
 pub async fn session_get_state(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -504,10 +545,21 @@ pub async fn session_patch_state(args: Value) -> Result<Value, Box<dyn std::erro
     let session_key = args["session_key"].as_str().ok_or_else(|| err("missing session_key"))?;
     let patch = args.get("patch").cloned().ok_or_else(|| err("missing patch"))?;
 
-    let updated = masday_db::repos::SessionRepo::new(pool).patch_state(session_key, patch)
-        .await.map_err(|e| err(e))?;
+    // Direct SQL to avoid Box<dyn ToSql> Send issue in repo layer.
+    // Use the same UPSERT pattern as session_init_context.
+    let client = pool.get().await.map_err(|e| err(e))?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().naive_utc();
 
-    Ok(json!({"state": updated}))
+    // UPSERT: insert if not exists, update metadata if exists
+    client.execute(
+        r#"INSERT INTO "SessionState" (id, "sessionKey", metadata, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT ("sessionKey") DO UPDATE SET metadata = COALESCE("SessionState".metadata, '{}'::jsonb) || $3, "updatedAt" = $5"#,
+        &[&id, &session_key, &patch, &now, &now],
+    ).await.map_err(|e| err(e))?;
+
+    Ok(json!({"session_key": session_key, "patched": true}))
 }
 
 // ============================================================================
@@ -597,7 +649,7 @@ pub async fn policy_detect_scope_drift(args: Value) -> Result<Value, Box<dyn std
     let task_id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
     let output_text = args.get("output_text").and_then(|v| v.as_str()).unwrap_or("");
 
-    let drift = masday_service::PolicyService::detect_scope_drift(workflow_id, task_id, output_text);
+    let drift = masday_service::PolicyService::detect_scope_drift(workflow_id, task_id, output_text).await;
 
     Ok(json!({"drift_detected": drift.is_some(), "drift_detail": drift}))
 }
@@ -795,10 +847,63 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
     let workflow_id = args["workflow_id"].as_str().ok_or_else(|| err("missing workflow_id"))?;
     let updates = args.get("updates").cloned().unwrap_or(json!({}));
 
-    let wf = masday_service::WorkflowService::update_workflow(&pool, workflow_id, updates)
-        .await.map_err(|e| err(e))?;
+    // Direct SQL to avoid Box<dyn ToSql> Send issue in repo layer.
+    // Extract known fields and update individually.
+    let client = pool.get().await.map_err(|e| err(e))?;
 
-    Ok(json!({"id": wf.id, "updated": true}))
+    // Always touch updatedAt
+    if let Some(name) = updates.get("name").and_then(|v| v.as_str()) {
+        client.execute(
+            r#"UPDATE "Workflow" SET name = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&name, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    if let Some(status) = updates.get("status").and_then(|v| v.as_str()) {
+        client.execute(
+            r#"UPDATE "Workflow" SET status = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&status, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    if let Some(project_path) = updates.get("project_path").and_then(|v| v.as_str()) {
+        client.execute(
+            r#"UPDATE "Workflow" SET "projectPath" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&project_path, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    if let Some(execution_mode) = updates.get("execution_mode").and_then(|v| v.as_str()) {
+        client.execute(
+            r#"UPDATE "Workflow" SET "executionMode" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&execution_mode, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    if let Some(current_plan_id) = updates.get("current_plan_id").and_then(|v| v.as_str()) {
+        client.execute(
+            r#"UPDATE "Workflow" SET "currentPlanId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&current_plan_id, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    if let Some(current_task_id) = updates.get("current_task_id").and_then(|v| v.as_str()) {
+        client.execute(
+            r#"UPDATE "Workflow" SET "currentTaskId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&current_task_id, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    // metadata — uses serde_json::Value which IS Send, so direct SQL works
+    if let Some(metadata) = updates.get("metadata").cloned() {
+        client.execute(
+            r#"UPDATE "Workflow" SET metadata = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            &[&metadata, &workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+    // If no specific fields, just touch updatedAt
+    if updates.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+        client.execute(
+            r#"UPDATE "Workflow" SET "updatedAt" = NOW() WHERE id = $1"#,
+            &[&workflow_id],
+        ).await.map_err(|e| err(e))?;
+    }
+
+    Ok(json!({"id": workflow_id, "updated": true}))
 }
 
 // ============================================================================
