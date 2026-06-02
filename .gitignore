@@ -28,3 +28,6 @@ target/
 *.pdb
 .sqlx/
 .mcp.json
+
+# Local embedding model cache
+.fastembed_cache/

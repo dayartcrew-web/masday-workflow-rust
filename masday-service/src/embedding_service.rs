@@ -1,24 +1,33 @@
-//! Embedding service — generates vector embeddings via remote APIs
+//! Embedding service — generates vector embeddings
 //!
 //! Supports:
+//! - **local** (fastembed ONNX Runtime, no external service needed)
 //! - Ollama (local, default at localhost:11434)
 //! - OpenAI (remote API)
 //!
 //! Configuration via environment variables:
-//! - EMBEDDING_PROVIDER: "ollama" or "openai" (unset = disabled)
+//! - EMBEDDING_PROVIDER: "local" | "ollama" | "openai" (unset = disabled)
 //! - EMBEDDING_MODEL: model name (default per provider)
-//! - EMBEDDING_BASE_URL: override base URL
+//! - EMBEDDING_BASE_URL: override base URL (ollama/openai only)
 //! - EMBEDDING_API_KEY: API key (required for OpenAI)
-//! - EMBEDDING_DIMENSIONS: vector dimensions (default 768)
+//! - EMBEDDING_DIMENSIONS: vector dimensions (default per provider)
+//! - FASTEMBED_CACHE_DIR: override model cache directory (local only)
 
 use masday_core::{AppError, Result};
 use serde::Deserialize;
+use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{debug, info, warn};
 
-/// Default models per provider
+// ── Provider defaults ────────────────────────────────────────────────────────
+
+const LOCAL_DEFAULT_MODEL: &str = "all-MiniLM-L6-v2";
+const LOCAL_DEFAULT_DIMENSIONS: usize = 384;
 const OLLAMA_DEFAULT_MODEL: &str = "nomic-embed-text";
+const OLLAMA_DEFAULT_DIMENSIONS: usize = 768;
 const OPENAI_DEFAULT_MODEL: &str = "text-embedding-3-small";
-const DEFAULT_DIMENSIONS: usize = 768;
+const OPENAI_DEFAULT_DIMENSIONS: usize = 768;
+
+// ── EmbeddingConfig ──────────────────────────────────────────────────────────
 
 /// Embedding provider configuration
 #[derive(Debug, Clone)]
@@ -36,14 +45,21 @@ impl EmbeddingConfig {
     pub fn from_env() -> Option<Self> {
         let provider = std::env::var("EMBEDDING_PROVIDER").ok()?;
 
-        let (default_model, default_url) = match provider.as_str() {
+        let (default_model, default_url, default_dims) = match provider.as_str() {
+            "local" => (
+                LOCAL_DEFAULT_MODEL.to_string(),
+                String::new(),
+                LOCAL_DEFAULT_DIMENSIONS,
+            ),
             "ollama" => (
                 OLLAMA_DEFAULT_MODEL.to_string(),
                 "http://localhost:11434".to_string(),
+                OLLAMA_DEFAULT_DIMENSIONS,
             ),
             "openai" => (
                 OPENAI_DEFAULT_MODEL.to_string(),
                 "https://api.openai.com/v1".to_string(),
+                OPENAI_DEFAULT_DIMENSIONS,
             ),
             _ => {
                 warn!("Unknown embedding provider: {}", provider);
@@ -57,7 +73,7 @@ impl EmbeddingConfig {
         let dimensions = std::env::var("EMBEDDING_DIMENSIONS")
             .ok()
             .and_then(|d| d.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_DIMENSIONS);
+            .unwrap_or(default_dims);
 
         info!(
             "Embedding config: provider={}, model={}, dimensions={}",
@@ -73,6 +89,24 @@ impl EmbeddingConfig {
         })
     }
 
+    /// Map model name string to fastembed EmbeddingModel enum.
+    /// Falls back to AllMiniLML6V2 for unknown names.
+    pub fn model_enum(&self) -> fastembed::EmbeddingModel {
+        match self.model.as_str() {
+            "all-MiniLM-L6-v2" => fastembed::EmbeddingModel::AllMiniLML6V2,
+            "bge-small-en-v1.5" => fastembed::EmbeddingModel::BGESmallENV15,
+            "bge-base-en-v1.5" => fastembed::EmbeddingModel::BGEBaseENV15,
+            "nomic-embed-text-v1.5" => fastembed::EmbeddingModel::NomicEmbedTextV15,
+            other => {
+                warn!(
+                    "Unknown fastembed model '{}', falling back to all-MiniLM-L6-v2",
+                    other
+                );
+                fastembed::EmbeddingModel::AllMiniLML6V2
+            }
+        }
+    }
+
     /// Create config for testing
     #[cfg(test)]
     pub fn test_config(provider: &str) -> Self {
@@ -86,22 +120,62 @@ impl EmbeddingConfig {
     }
 }
 
-/// Embedding service for generating vector embeddings
+// ── EmbeddingService ─────────────────────────────────────────────────────────
+
+/// Embedding service for generating vector embeddings.
+///
+/// For the "local" provider, holds a loaded ONNX model in memory.
+/// Use `cached()` to get a process-wide singleton that avoids re-loading the model.
 pub struct EmbeddingService {
     config: EmbeddingConfig,
     client: reqwest::Client,
+    local_model: Option<Arc<Mutex<fastembed::TextEmbedding>>>,
 }
 
 impl EmbeddingService {
-    /// Create a new embedding service.
-    /// Call `from_env()` to auto-create from environment variables.
+    /// Create a new embedding service from config.
+    /// For "local" provider, loads the ONNX model (may download on first use).
     pub fn new(config: EmbeddingConfig) -> Self {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
 
-        Self { config, client }
+        let local_model = if config.provider == "local" {
+            Self::load_local_model(&config)
+        } else {
+            None
+        };
+
+        Self {
+            config,
+            client,
+            local_model,
+        }
+    }
+
+    /// Load the local fastembed model. Returns None on failure.
+    fn load_local_model(config: &EmbeddingConfig) -> Option<Arc<Mutex<fastembed::TextEmbedding>>> {
+        let model_enum = config.model_enum();
+        info!("Loading local embedding model: {:?}", model_enum);
+
+        // Configure cache directory
+        let mut opts = fastembed::InitOptions::new(model_enum).with_show_download_progress(true);
+
+        if let Ok(cache_dir) = std::env::var("FASTEMBED_CACHE_DIR") {
+            opts = opts.with_cache_dir(std::path::PathBuf::from(cache_dir));
+        }
+
+        match fastembed::TextEmbedding::try_new(opts) {
+            Ok(model) => {
+                info!("Local embedding model loaded successfully");
+                Some(Arc::new(Mutex::new(model)))
+            }
+            Err(e) => {
+                warn!("Failed to load local embedding model: {}", e);
+                None
+            }
+        }
     }
 
     /// Try to create from environment variables.
@@ -110,9 +184,18 @@ impl EmbeddingService {
         EmbeddingConfig::from_env().map(Self::new)
     }
 
+    /// Get a cached singleton EmbeddingService.
+    /// Creates once from env vars; subsequent calls return the same instance.
+    /// Returns None if embedding is not configured.
+    pub fn cached() -> Option<&'static EmbeddingService> {
+        static INSTANCE: OnceLock<Option<EmbeddingService>> = OnceLock::new();
+        INSTANCE.get_or_init(Self::from_env).as_ref()
+    }
+
     /// Generate embedding for a single text input
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         match self.config.provider.as_str() {
+            "local" => self.embed_local(text).await,
             "ollama" => self.embed_ollama(text).await,
             "openai" => self.embed_openai(text).await,
             _ => Err(AppError::Internal(format!(
@@ -124,18 +207,24 @@ impl EmbeddingService {
 
     /// Generate embeddings for multiple texts
     pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        // For now, process one by one. Could batch later.
-        let mut results = Vec::with_capacity(texts.len());
-        for text in texts {
-            let embedding = self.embed(text).await?;
-            results.push(embedding);
+        match self.config.provider.as_str() {
+            "local" => self.embed_batch_local(texts).await,
+            _ => {
+                // Sequential for HTTP providers
+                let mut results = Vec::with_capacity(texts.len());
+                for text in texts {
+                    let embedding = self.embed(text).await?;
+                    results.push(embedding);
+                }
+                Ok(results)
+            }
         }
-        Ok(results)
     }
 
     /// Check if the embedding service is healthy
     pub async fn health_check(&self) -> bool {
         match self.config.provider.as_str() {
+            "local" => self.local_model.is_some(),
             "ollama" => {
                 let url = format!("{}/api/tags", self.config.base_url);
                 self.client.get(&url).send().await.is_ok()
@@ -165,6 +254,52 @@ impl EmbeddingService {
     /// Get the model name
     pub fn model(&self) -> &str {
         &self.config.model
+    }
+
+    // ── Local (fastembed ONNX) embedding ─────────────────────────────────────
+
+    async fn embed_local(&self, text: &str) -> Result<Vec<f32>> {
+        let model = self
+            .local_model
+            .as_ref()
+            .ok_or_else(|| AppError::Internal("Local embedding model not loaded".to_string()))?;
+
+        let text_owned = text.to_string();
+        let model_arc = Arc::clone(model);
+
+        tokio::task::spawn_blocking(move || {
+            let mut model = model_arc.lock().unwrap();
+            let documents = vec![text_owned.as_str()];
+            let embeddings = model
+                .embed(documents, None)
+                .map_err(|e| AppError::Internal(format!("Local embedding failed: {}", e)))?;
+            embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| AppError::Internal("Local model returned no embedding".to_string()))
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Blocking task failed: {}", e)))?
+    }
+
+    async fn embed_batch_local(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        let model = self
+            .local_model
+            .as_ref()
+            .ok_or_else(|| AppError::Internal("Local embedding model not loaded".to_string()))?;
+
+        let texts_owned: Vec<String> = texts.iter().map(|s| s.to_string()).collect();
+        let model_arc = Arc::clone(model);
+
+        tokio::task::spawn_blocking(move || {
+            let mut model = model_arc.lock().unwrap();
+            let docs: Vec<&str> = texts_owned.iter().map(|s| s.as_str()).collect();
+            model
+                .embed(docs, None)
+                .map_err(|e| AppError::Internal(format!("Local batch embedding failed: {}", e)))
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Blocking task failed: {}", e)))?
     }
 
     // ── Ollama embedding ─────────────────────────────────────────────────────
@@ -213,11 +348,9 @@ impl EmbeddingService {
     async fn embed_openai(&self, text: &str) -> Result<Vec<f32>> {
         let url = format!("{}/embeddings", self.config.base_url);
 
-        let api_key = self
-            .config
-            .api_key
-            .as_ref()
-            .ok_or_else(|| AppError::Internal("EMBEDDING_API_KEY required for OpenAI".to_string()))?;
+        let api_key = self.config.api_key.as_ref().ok_or_else(|| {
+            AppError::Internal("EMBEDDING_API_KEY required for OpenAI".to_string())
+        })?;
 
         let body = serde_json::json!({
             "model": self.config.model,
@@ -304,15 +437,32 @@ pub fn build_embedding_input(summary: &str, content: &str) -> String {
     format!("{}\n\n{}", summary, truncated_content)
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_config_from_env_none() {
-        // No EMBEDDING_PROVIDER set → None
         std::env::remove_var("EMBEDDING_PROVIDER");
         assert!(EmbeddingConfig::from_env().is_none());
+    }
+
+    #[test]
+    fn test_config_local_defaults() {
+        std::env::set_var("EMBEDDING_PROVIDER", "local");
+        std::env::remove_var("EMBEDDING_MODEL");
+        std::env::remove_var("EMBEDDING_DIMENSIONS");
+
+        let config = EmbeddingConfig::from_env().unwrap();
+        assert_eq!(config.provider, "local");
+        assert_eq!(config.model, "all-MiniLM-L6-v2");
+        assert_eq!(config.dimensions, 384);
+        assert!(config.base_url.is_empty());
+        assert!(config.api_key.is_none());
+
+        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[test]
@@ -370,6 +520,48 @@ mod tests {
     }
 
     #[test]
+    fn test_model_enum_known() {
+        let config = EmbeddingConfig {
+            provider: "local".into(),
+            model: "all-MiniLM-L6-v2".into(),
+            base_url: String::new(),
+            api_key: None,
+            dimensions: 384,
+        };
+        assert!(matches!(
+            config.model_enum(),
+            fastembed::EmbeddingModel::AllMiniLML6V2
+        ));
+
+        let config_bge = EmbeddingConfig {
+            provider: "local".into(),
+            model: "bge-base-en-v1.5".into(),
+            base_url: String::new(),
+            api_key: None,
+            dimensions: 768,
+        };
+        assert!(matches!(
+            config_bge.model_enum(),
+            fastembed::EmbeddingModel::BGEBaseENV15
+        ));
+    }
+
+    #[test]
+    fn test_model_enum_unknown_fallback() {
+        let config = EmbeddingConfig {
+            provider: "local".into(),
+            model: "unknown-model".into(),
+            base_url: String::new(),
+            api_key: None,
+            dimensions: 384,
+        };
+        assert!(matches!(
+            config.model_enum(),
+            fastembed::EmbeddingModel::AllMiniLML6V2
+        ));
+    }
+
+    #[test]
     fn test_service_from_env_disabled() {
         std::env::remove_var("EMBEDDING_PROVIDER");
         assert!(EmbeddingService::from_env().is_none());
@@ -393,7 +585,6 @@ mod tests {
     fn test_truncate_unicode_safe() {
         let text = "hello 🌍 world 🚀 test";
         let truncated = truncate_for_embedding(text, 3);
-        // Should not panic on UTF-8 boundary
         assert!(truncated.len() > 0);
     }
 
@@ -408,7 +599,6 @@ mod tests {
     fn test_build_embedding_input_truncates_content() {
         let long_content = "x".repeat(5000);
         let input = build_embedding_input("short summary", &long_content);
-        // Should be truncated
         assert!(input.len() < long_content.len() + 100);
     }
 
@@ -419,5 +609,15 @@ mod tests {
         assert_eq!(service.dimensions(), 768);
         assert_eq!(service.provider(), "ollama");
         assert_eq!(service.model(), "test-model");
+    }
+
+    #[test]
+    fn test_local_service_loads_fallback_model() {
+        // "test-model" is not a real fastembed model, but model_enum falls back to AllMiniLML6V2
+        let config = EmbeddingConfig::test_config("local");
+        let service = EmbeddingService::new(config);
+        assert_eq!(service.provider(), "local");
+        // local_model should be Some because model_enum falls back gracefully
+        assert!(service.local_model.is_some());
     }
 }

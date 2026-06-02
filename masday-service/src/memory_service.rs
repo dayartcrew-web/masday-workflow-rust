@@ -5,12 +5,12 @@
 //! Layer 3: Long-Term Memory - PostgreSQL via MemoryRepo
 //! Layer 4: Knowledge Graph - PostgreSQL via GraphRepo
 
+use crate::embedding_service::{build_embedding_input, EmbeddingService};
 use masday_core::{AppError, Result};
 use masday_db::{
     repos::{GraphRepo, MemoryRepo},
     DbPool,
 };
-use crate::embedding_service::{EmbeddingService, build_embedding_input};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
@@ -232,7 +232,7 @@ impl MemoryService {
         let repo = MemoryRepo::new(pool.clone());
 
         // Try to generate embedding if provider is configured
-        let embedding = match EmbeddingService::from_env() {
+        let embedding = match EmbeddingService::cached() {
             Some(service) => {
                 let input = build_embedding_input(params.summary, params.content);
                 match service.embed(&input).await {
@@ -280,7 +280,7 @@ impl MemoryService {
         let repo = MemoryRepo::new(pool.clone());
 
         // Try vector search first if embedding provider is configured
-        if let Some(service) = EmbeddingService::from_env() {
+        if let Some(service) = EmbeddingService::cached() {
             match service.embed(query).await {
                 Ok(query_embedding) => {
                     debug!("Vector search with {}d embedding", query_embedding.len());
@@ -300,7 +300,10 @@ impl MemoryService {
                     // No vector results, fall through to text search
                 }
                 Err(e) => {
-                    debug!("Embedding failed for search query, falling back to text: {}", e);
+                    debug!(
+                        "Embedding failed for search query, falling back to text: {}",
+                        e
+                    );
                 }
             }
         }
