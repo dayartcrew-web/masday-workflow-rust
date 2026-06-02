@@ -79,18 +79,24 @@ cargo build --release --workspace
                      └──────────────────────────────────┘
 ```
 
-### Architecture — Remote Mode (HTTP, PostgreSQL)
+### Architecture — Remote Mode (HTTP/SSE → API → PostgreSQL)
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌─────────────┐
-│  MCP Client  │────>│  Rust API    │────>│  PostgreSQL │
-│  (Claude/etc)│ HTTP│  (Axum)      │ sqlx│             │
-└──────────────┘     │              │     └─────────────┘
-                     │  ┌────────┐  │
-┌──────────────┐     │  │Service │  │     ┌─────────────┐
-│  Dashboard   │────>│  │ Layer  │  │────>│ Redis Cache │
-│  (Next.js)   │ HTTP│  └────────┘  │     └─────────────┘
-└──────────────┘     └──────────────┘
+┌──────────────┐     ┌──────────────────────────────┐     ┌─────────────┐
+│  MCP Client  │────>│  API Server (masday-api)     │────>│  PostgreSQL │
+│  (Claude/etc)│HTTP │  (Axum)                      │      │             │
+└──────────────┘     │                              │     └─────────────┘
+                     │  ┌────────┐  ┌───────────┐  │
+┌──────────────┐     │  │Service │  │ 20 Tool   │  │     ┌─────────────┐
+│  Dashboard   │────>│  │ Layer  │  │ Domains   │  │────>│ Redis Cache │
+│  (Next.js)   │HTTP │  └────────┘  └───────────┘  │     └─────────────┘
+└──────────────┘     └──────────────────────────────┘
+```
+
+**Remote mode env vars (API server only):**
+```env
+DATABASE_URL="postgresql://USER:PASS@localhost:54341/masday_workflow"
+MASDAY_API_KEY="your-api-key"
 ```
 
 ### Rust Crates
@@ -226,20 +232,23 @@ bash scripts/release.sh v0.3.0 --dry-run  # test without uploading
 
 ## Configuration
 
-### Environment Variables (API Server Only)
+### Environment Variables
 
-The MCP stdio server requires **no configuration** — it uses SQLite at `~/.masday/data.db`.
+**Local mode (default)** — the MCP stdio server requires **no configuration**. It uses SQLite at `~/.masday/data.db` automatically.
 
-These variables are only needed for the API server (`masday-api`):
+**Remote mode** — only the API server needs env vars. MCP clients connect directly via HTTP/SSE:
 
 ```env
-# Database (API server only)
+# ── API Server (masday-api) ──────────────────────────────
 DATABASE_URL="postgresql://USER:PASS@localhost:54341/masday_workflow"
+MASDAY_API_KEY="your-api-key"           # Auth key for MCP clients
 
-# MCP (optional logging)
-RUST_LOG="info"                    # debug, info, warn, error
-RUST_BACKTRACE="1"                # Enable backtrace on panic
+# ── Optional (both modes) ────────────────────────────────
+RUST_LOG="info"                         # debug, info, warn, error
+RUST_BACKTRACE="1"                      # Enable backtrace on panic
 ```
+
+> **Note:** The MCP binary in local mode needs zero env vars. For remote deployments, skip the binary entirely and point MCP clients directly at the API server via HTTP/SSE.
 
 ### MCP Stdio Binary (Zero Config)
 
@@ -287,7 +296,7 @@ For **stdio mode** (recommended — SQLite, no external services needed):
 
 No environment variables needed — the binary creates `~/.masday/data.db` on first run.
 
-For **HTTP/SSE mode** (no binary needed on client), point directly to the API server:
+For **remote deployments** (no MCP binary needed — point directly to API server):
 
 ```json
 {

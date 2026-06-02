@@ -53,9 +53,9 @@ DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
 
 ### Database Setup
 
-**MCP stdio server:** Uses SQLite at `~/.masday/data.db` — auto-created, zero config.
+**MCP stdio server (local mode):** Uses SQLite at `~/.masday/data.db` — auto-created, zero config. No environment variables needed.
 
-**API server:** Requires PostgreSQL on port 54341.
+**API server / remote mode:** Requires PostgreSQL on port 54341 and environment variables.
 
 ```bash
 # Start PostgreSQL + Redis (API server only)
@@ -64,6 +64,16 @@ docker compose up -d
 # Database: masday_workflow (see .env for credentials, port: 54341)
 # Tables are created by the Rust application on first run
 ```
+
+**Environment variables for remote mode (API server only):**
+
+```env
+# ── API Server ──
+DATABASE_URL="postgresql://USER:PASS@localhost:54341/masday_workflow"
+MASDAY_API_KEY="your-api-key"
+```
+
+Set these on the server running `masday-api`. MCP clients connect directly via HTTP/SSE — no env vars needed on the client side.
 
 ## What this starts
 

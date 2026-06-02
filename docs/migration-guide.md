@@ -77,17 +77,23 @@ cargo run -p masday-api
 ./target/release/masday-api
 ```
 
-### Start MCP Server
+### Start MCP Server (Local Mode)
 ```bash
-# Set environment variables
-export MASDAY_API_URL="http://localhost:30101"
-export MASDAY_API_KEY="your-api-key"
-
-# Run MCP server (stdio)
+# No env vars needed — SQLite auto-created at ~/.masday/data.db
 cargo run -p masday-mcp
 
 # Or use release binary
 ./target/release/masday-mcp
+```
+
+### Start API Server (for Remote Mode)
+```bash
+# Set environment variables
+export DATABASE_URL="postgresql://user:pass@localhost:54331/masday"
+export MASDAY_API_KEY="your-api-key"
+
+# Run API server (port 30101)
+cargo run -p masday-api
 ```
 
 ## Config Migration Steps
@@ -125,28 +131,25 @@ cargo run -p masday-mcp
 }
 ```
 
-**After (Rust, remote mode):**
+**After (Rust, remote mode — HTTP/SSE, no binary needed):**
 ```json
 {
   "mcpServers": {
     "masday": {
-      "type": "stdio",
-      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
-      "env": {
-        "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "PLACEHOLDER"
-      }
+      "url": "http://localhost:30101/mcp"
     }
   }
 }
 ```
 
+> **Note:** For remote mode, connect directly to the API server via HTTP/SSE. No MCP binary needed on the client.
+
 **Changes:**
-- `command`: Changed from `node` + `args` to direct binary path
+- `command`: Changed from `node` + `args` to direct binary path (local) or `url` for HTTP/SSE (remote)
 - Removed `cwd`: Binary doesn't need working directory
-- Removed `DATABASE_URL`: Local mode uses SQLite (auto-created); remote mode uses API server
+- Removed `DATABASE_URL`: Local mode uses SQLite (auto-created); remote mode connects to API server directly
 - Removed `EMBEDDING_*`: Not needed at MCP layer
-- `env` section optional: Only needed for remote mode (`MASDAY_API_URL`, `MASDAY_API_KEY`)
+- `env` section optional: Local mode needs no env vars; remote mode uses HTTP/SSE directly (no binary)
 
 ### Step 1b: Update `.mcp.json` (standalone config)
 
@@ -220,7 +223,7 @@ From Claude Code or your MCP client:
 
 **Migration:**
 - All DB access now goes through the API server (`masday-api`)
-- API server must be running on `http://localhost:30101` (or configured `MASDAY_API_URL`)
+- API server must be running on `http://localhost:30101` for remote mode
 
 ### 2. Environment Variables Changed
 **Old (TypeScript):**
@@ -229,20 +232,19 @@ From Claude Code or your MCP client:
 - `EMBEDDING_MODEL` → Embedding model name
 - `EMBEDDING_DIMENSIONS` → Vector dimensions
 
-**New (Rust MCP):**
-- `MASDAY_API_URL` → API server URL
-- `MASDAY_API_KEY` → API authentication key
+**New (Rust — local mode):**
+- None — SQLite auto-created at `~/.masday/data.db`
 
-**New (Rust API):**
+**New (Rust — remote mode, API server only):**
 - `DATABASE_URL` → PostgreSQL connection (API server only)
-- `MASDAY_API_KEY` → Expected API key for validation
+- `MASDAY_API_KEY` → Auth key for MCP clients connecting via HTTP/SSE
 
 ### 3. Startup Order Required (Remote Mode Only)
 **Before:** TypeScript MCP server managed DB connection internally.
 
 **After (local mode):** No startup order — just run `masday-mcp`. SQLite auto-created.
 
-**After (remote mode):** API server must start before MCP server.
+**After (remote mode):** Only the API server needs to run. MCP clients connect directly via HTTP/SSE.
 
 **Startup sequence (remote mode):**
 ```bash
@@ -252,8 +254,8 @@ docker compose up -d postgres
 # 2. Start API server
 cargo run -p masday-api
 
-# 3. Start MCP server (via Claude Code or manually)
-cargo run -p masday-mcp
+# 3. Connect MCP clients via HTTP/SSE (no binary needed)
+#    Config: { "url": "http://localhost:30101/mcp" }
 ```
 
 ### 4. No More `cwd` in Config
@@ -314,8 +316,8 @@ node apps/agent-runner/dist/runtime/mcp.js
 
 ## Troubleshooting
 
-### Issue: "Connection refused" when starting MCP server
-**Cause:** API server not running or wrong `MASDAY_API_URL`.
+### Issue: "Connection refused" in remote mode
+**Cause:** API server not running.
 
 **Fix:**
 ```bash
@@ -324,19 +326,15 @@ curl http://localhost:30101/health
 
 # Start API server if needed
 cargo run -p masday-api
-
-# Verify MASDAY_API_URL in MCP config
-echo $MASDAY_API_URL
 ```
 
-### Issue: "Unauthorized" from MCP server
+### Issue: "Unauthorized" in remote mode
 **Cause:** API key mismatch.
 
 **Fix:**
 ```bash
-# Set matching API keys
+# Ensure MASDAY_API_KEY matches between API server and MCP client config
 export MASDAY_API_KEY="PLACEHOLDER"
-# (same key in both API server and MCP client config)
 ```
 
 ### Issue: "Database connection failed" in API server logs

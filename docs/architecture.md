@@ -27,30 +27,53 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 │  └──────────────┘  └──────────────┘  └──────────────┘       │
 │                                                              │
 │  Local mode: direct.rs (SQLite via rusqlite)                 │
-│  Remote mode: client.rs (HTTP to masday-api)                │
+│  Remote mode: HTTP/SSE directly to API server (no binary)    │
 └────────────────────────────┬────────────────────────────────┘
-                             │
-                    ┌────────┴────────┐
-                    ▼ (local)         ▼ (remote)
-┌──────────────────────────┐  ┌──────────────────────────────┐
-│   SQLite (local mode)    │  │   API Server (masday-api)    │
-│  ┌────────────────────┐  │  │  ┌────────────────────────┐  │
-│  │ ~/.masday/data.db  │  │  │  │ Service Layer           │  │
-│  │ rusqlite           │  │  │  │ 10 services             │  │
-│  │ 16 tables          │  │  │  │ State machine + memory  │  │
-│  └────────────────────┘  │  │  └────────────────────────┘  │
-└──────────────────────────┘  │  ┌────────────────────────┐  │
-                              │  │ PostgreSQL (port 54341)  │  │
-┌──────────────────────────┐  │  │ deadpool-postgres pool  │  │
-│   Skill Layer (shared)   │  │  │ 15 repo modules         │  │
-│  ┌────────────────────┐  │  │  │ 16 tables               │  │
-│  │ filesystem.*       │  │  │  └────────────────────────┘  │
-│  │ git.*              │  │  └──────────────────────────────┘
+                             │ (local only)
+                             ▼
+┌──────────────────────────┐
+│   SQLite (local mode)    │
+│  ┌────────────────────┐  │
+│  │ ~/.masday/data.db  │  │
+│  │ rusqlite           │  │
+│  │ 16 tables          │  │
+│  └────────────────────┘  │
+└──────────────────────────┘
+
+Remote mode (HTTP/SSE — no MCP binary needed):
+
+┌──────────────────────────────────────────────────────────┐
+│   MCP Client (Claude Code / Dashboard)                   │
+│   HTTP/SSE → http://localhost:30101/mcp                  │
+└────────────────────────────┬─────────────────────────────┘
+                             ▼
+┌──────────────────────────────────────────────────────────┐
+│   API Server (masday-api)                                │
+│  ┌────────────────────────┐  ┌────────────────────────┐  │
+│  │ Service Layer           │  │ PostgreSQL (port 54341)  │  │
+│  │ 10 services             │  │ deadpool-postgres pool  │  │
+│  │ State machine + memory  │  │ 15 repo modules         │  │
+│  └────────────────────────┘  │ 16 tables               │  │
+│                               └────────────────────────┘  │
+│  ┌────────────────────────┐                                │
+│  │ 20 MCP Tool Domains    │                                │
+│  │ (same as local mode)   │                                │
+│  └────────────────────────┘                                │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Shared skill layer** (used by both modes):
+```
+┌──────────────────────────┐
+│   Skill Layer (shared)   │
+│  ┌────────────────────┐  │
+│  │ filesystem.*       │  │
+│  │ git.*              │  │
 │  │ tests.*            │  │
-│  │ npm.*              │  │  ┌──────────────────────────────┐
-│  │ docker.*           │  │  │ .masday/ (per-project)       │
-│  │ github.*           │  │  │ research/ context/ plans/    │
-│  │ cicd.*             │  │  └──────────────────────────────┘
+│  │ npm.*              │  │
+│  │ docker.*           │  │
+│  │ github.*           │  │
+│  │ cicd.*             │  │
 │  └────────────────────┘  │
 └──────────────────────────┘
 ```
