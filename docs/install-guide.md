@@ -63,6 +63,95 @@ cd /path/to/your/project
 masday install
 ```
 
+---
+
+## MCP Server Binary
+
+The `masday-mcp` binary provides the MCP server (20 tool domains, 96+ tools). It's distributed separately from the CLI.
+
+### Download MCP Server
+
+#### Linux x86_64
+
+```bash
+mkdir -p ~/.masday/bin
+curl -fsSL -o ~/.masday/bin/masday-mcp \
+  https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-linux-x86_64
+chmod +x ~/.masday/bin/masday-mcp
+```
+
+#### Windows x86_64
+
+```powershell
+mkdir "$env:USERPROFILE\.masday\bin" -Force
+Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-windows-x86_64.exe" -OutFile "$env:USERPROFILE\.masday\bin\masday-mcp.exe"
+```
+
+#### Specific Version
+
+```bash
+# Replace 'latest' with the version tag
+curl -fsSL -o masday-mcp https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/v0.3.0/masday-mcp-linux-x86_64
+```
+
+### Configure MCP (stdio mode)
+
+Point your MCP client to the `masday-mcp` binary:
+
+**Claude Code** (`.mcp.json` in project root):
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "type": "stdio",
+      "command": "/home/user/.masday/bin/masday-mcp",
+      "env": {
+        "MASDAY_API_URL": "http://localhost:30101",
+        "MASDAY_API_KEY": "local-mode",
+        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow"
+      }
+    }
+  }
+}
+```
+
+**Windows** (`.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "type": "stdio",
+      "command": "C:\\Users\\YourUser\\.masday\\bin\\masday-mcp.exe",
+      "env": {
+        "MASDAY_API_URL": "http://YOUR_SERVER_IP:30101",
+        "MASDAY_API_KEY": "local-mode",
+        "DATABASE_URL": "postgresql://USER:PASS@YOUR_SERVER_IP:54341/masday_workflow"
+      }
+    }
+  }
+}
+```
+
+### Configure MCP (HTTP/SSE mode — no binary needed)
+
+If `masday-api` is running, you can connect directly without the MCP binary:
+
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "url": "http://localhost:30101/mcp"
+    }
+  }
+}
+```
+
+### Prerequisites for MCP Server
+
+- **PostgreSQL 16** on port 54341 (for persistence)
+- **masday-api** running (for full tool access)
+- Network connectivity between MCP client and PostgreSQL/API
+
 ## What `masday install` Does
 
 The `masday` binary is self-contained (~7.6MB). All templates are embedded at compile time — no source code, Node.js, or Rust toolchain needed (remote mode).
@@ -149,18 +238,50 @@ ls -la ~/.claude/
 
 ### MCP server not connecting
 
-Check `.mcp.json` in your project root — it should point to the masday binary:
+**Check if binary exists:**
+
+```bash
+# Linux
+ls -la ~/.masday/bin/masday-mcp
+
+# Windows
+dir "%USERPROFILE%\.masday\bin\masday-mcp.exe"
+```
+
+**If missing, download from releases:**
+
+```bash
+# Linux
+curl -fsSL -o ~/.masday/bin/masday-mcp \
+  https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-linux-x86_64
+chmod +x ~/.masday/bin/masday-mcp
+```
+
+**Check `.mcp.json`** in your project root — it should point to the correct binary path:
 
 ```json
 {
   "mcpServers": {
     "masday": {
-      "command": "masday-mcp",
-      "args": [],
-      "cwd": "/path/to/project",
+      "type": "stdio",
+      "command": "/home/user/.masday/bin/masday-mcp",
       "env": {
-        "DATABASE_URL": "postgresql://..."
+        "MASDAY_API_URL": "http://localhost:30101",
+        "MASDAY_API_KEY": "local-mode",
+        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow"
       }
+    }
+  }
+}
+```
+
+**Alternatively, use HTTP mode** (no binary needed):
+
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "url": "http://localhost:30101/mcp"
     }
   }
 }
@@ -170,12 +291,12 @@ Check `.mcp.json` in your project root — it should point to the masday binary:
 
 ## Supported Platforms
 
-| Platform | Architecture | Binary | Status |
-|----------|-------------|--------|--------|
-| Linux | x86_64 | `masday-linux-x86_64` | ✅ Supported |
-| Windows | x86_64 | `masday-windows-x86_64.exe` | ✅ Supported |
-| macOS | x86_64 | — | 🔜 Planned |
-| macOS | Apple Silicon | — | 🔜 Planned |
+| Platform | Architecture | CLI Binary | MCP Binary | Status |
+|----------|-------------|------------|------------|--------|
+| Linux | x86_64 | `masday-linux-x86_64` | `masday-mcp-linux-x86_64` | ✅ Supported |
+| Windows | x86_64 | `masday-windows-x86_64.exe` | `masday-mcp-windows-x86_64.exe` | ✅ Supported |
+| macOS | x86_64 | — | — | 🔜 Planned |
+| macOS | Apple Silicon | — | — | 🔜 Planned |
 
 ## Requirements
 

@@ -154,11 +154,11 @@ cargo test
 cargo test -p masday-service
 
 # Run API server
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
 # Run MCP server (stdio)
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-mcp
 
 # Build for release (cross-compile)
@@ -168,7 +168,7 @@ cargo build -p masday-cli --release --target x86_64-pc-windows-gnu
 
 ### Infrastructure
 
-- **PostgreSQL 16** on port 54341 (user: trader, pass: traderpass, db: masday_workflow)
+- **PostgreSQL 16** on port 54341 (see `.env` for credentials, db: masday_workflow)
 - **Redis 7** on port 63791
 - Start: `docker compose up -d`
 
@@ -188,7 +188,12 @@ bash scripts/release.sh v0.2.0
 bash scripts/release.sh v0.2.0 --dry-run
 ```
 
-Builds Linux x86_64 + Windows x86_64 (cross-compile via mingw-w64).
+Builds 4 binaries: `masday` (CLI) + `masday-mcp` (MCP server) for Linux x86_64 + Windows x86_64 (cross-compile via mingw-w64).
+
+| Binary | Linux | Windows | Size |
+|--------|-------|---------|------|
+| masday (CLI) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~7.6MB |
+| masday-mcp (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.4MB |
 
 ## Conventions
 

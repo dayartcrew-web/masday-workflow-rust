@@ -23,15 +23,17 @@ The `masday` binary is **self-contained** (~7.6MB). It embeds all templates at c
 
 | What user gets | What user does NOT get |
 |----------------|----------------------|
-| `masday` binary (with embedded templates) | Root project source code |
-| 28 agent .md files (extracted from binary) | Cargo workspace / Rust source |
-| 30+ skill directories (extracted from binary) | PostgreSQL schema (remote mode) |
-| Hooks (global + project, extracted from binary) | Dashboard frontend |
+| `masday` CLI binary (with embedded templates) | Root project source code |
+| `masday-mcp` MCP server binary (~2.4MB) | Cargo workspace / Rust source |
+| 28 agent .md files (extracted from binary) | PostgreSQL schema (remote mode) |
+| 30+ skill directories (extracted from binary) | Dashboard frontend |
+| Hooks (global + project, extracted from binary) | |
 | MCP configs (generated per platform) | |
 | settings.json updates (statusline, autoCompact) | |
 
 **Local mode** requires Rust toolchain (builds from source).
 **Remote mode** only needs the binary — no Rust, no source code.
+**Standalone mode** extracts templates only (no build, no API server).
 
 ## Default local workflow (Developer)
 
@@ -42,11 +44,11 @@ source ~/.cargo/env
 cargo build --workspace
 
 # Start API server (port 30101)
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
 # Start MCP stdio server
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-mcp
 ```
 
@@ -58,7 +60,7 @@ The runtime requires PostgreSQL on port 54341 for persistent state.
 # Start PostgreSQL + Redis
 docker compose up -d
 
-# Database: masday_workflow (user: trader, pass: traderpass, port: 54341)
+# Database: masday_workflow (see .env for credentials, port: 54341)
 # Tables are created by the Rust application on first run
 ```
 
