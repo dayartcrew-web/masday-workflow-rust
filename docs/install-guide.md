@@ -94,7 +94,7 @@ Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/r
 curl -fsSL -o masday-mcp https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/v0.3.0/masday-mcp-linux-x86_64
 ```
 
-### Configure MCP (stdio mode)
+### Configure MCP (stdio mode — local)
 
 Point your MCP client to the `masday-mcp` binary. **No environment variables needed** — the binary uses SQLite at `~/.masday/data.db` automatically.
 
@@ -124,7 +124,7 @@ Point your MCP client to the `masday-mcp` binary. **No environment variables nee
 
 ### Configure MCP (HTTP/SSE mode — no binary needed)
 
-If `masday-api` is running, you can connect directly without the MCP binary:
+If `masday-api` is running, you can connect directly without the MCP binary. Requires the API server to be running with `DATABASE_URL` and `MASDAY_API_KEY` set.
 
 ```json
 {
@@ -138,9 +138,13 @@ If `masday-api` is running, you can connect directly without the MCP binary:
 
 ### Prerequisites for MCP Server
 
+**Local mode (default):**
 - **None** — the MCP binary is self-contained and uses SQLite for persistence
 - SQLite database is auto-created at `~/.masday/data.db` on first run
-- PostgreSQL is only required for the API server (`masday-api`) in remote deployments
+
+**Remote mode:**
+- API server (`masday-api`) must be running with PostgreSQL and `MASDAY_API_KEY` set
+- MCP clients connect directly via HTTP/SSE — no MCP binary needed on client machines
 
 ## What `masday install` Does
 
@@ -176,7 +180,16 @@ Requires Rust toolchain on the machine. Builds from source, then installs templa
 masday install --remote https://your-server.com:30101 --api-key your-api-key
 ```
 
-No Rust needed. Downloads MCP server binary and connects to a remote API server for persistence.
+No Rust needed. Connects directly to a remote API server — no MCP binary required on client.
+
+**API server env vars:**
+
+```env
+DATABASE_URL="postgresql://USER:PASS@localhost:54341/masday_workflow"
+MASDAY_API_KEY="your-api-key"
+```
+
+MCP clients connect via HTTP/SSE directly to the API server (see "Configure MCP (HTTP/SSE mode)" above).
 
 ## Uninstall
 
@@ -293,8 +306,9 @@ ls -la ~/.masday/data.db
 ## Requirements
 
 - **Claude Code**, **Gemini CLI**, **VS Code Copilot**, or **OpenCode** — any MCP-compatible AI client
-- **PostgreSQL 16** with pgvector (only for API server / remote mode)
-- **Redis 7** (optional, for API server caching)
+- **Local mode:** No additional requirements — SQLite is embedded
+- **Remote mode:** PostgreSQL 16 with pgvector + running `masday-api` server + `DATABASE_URL`/`MASDAY_API_KEY` env vars on the server
+- **Redis 7** (optional, for API server caching in remote mode)
 
 ## Embedding Setup
 

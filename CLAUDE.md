@@ -8,9 +8,11 @@ Rust workspace with 6 crates: core types, PostgreSQL database layer, business se
 ## Architecture
 
 ```
-User -> MCP Protocol (stdio) -> MCP Server -> Service Layer -> PostgreSQL
-                                        \
-User -> HTTP API (Axum) -----> API Server -> Service Layer -> PostgreSQL
+Local:  User -> MCP Protocol (stdio) -> MCP Server -> SQLite (~/.masday/data.db)
+
+Remote: User -> HTTP/SSE -> API Server -> Service Layer -> PostgreSQL
+                              \
+        Dashboard -> HTTP API -> API Server -> Service Layer -> PostgreSQL
 ```
 
 ### Workspace Crates (6)
@@ -21,7 +23,7 @@ User -> HTTP API (Axum) -----> API Server -> Service Layer -> PostgreSQL
 | `masday-db` | lib | PostgreSQL via deadpool-postgres + tokio-postgres, 15 repo modules |
 | `masday-service` | lib | Business logic layer (10 services), state machine, auto-transition |
 | `masday-api` | `masday-api` | Axum HTTP server, REST API (243 routes), WebSocket streaming |
-| `masday-mcp` | `masday-mcp` | MCP server (20 tool domains), stdio transport, PostgreSQL persistence |
+| `masday-mcp` | `masday-mcp` | MCP server (20 tool domains), stdio transport, SQLite-backed (local mode only) |
 | `masday-cli` | `masday` | CLI installer — local mode (build+install) + remote mode (download MCP) |
 
 ### Request Lifecycle
