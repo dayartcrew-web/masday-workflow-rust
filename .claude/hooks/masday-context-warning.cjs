@@ -3,8 +3,13 @@
 // Masday UserPromptSubmit — Context Warning Hook
 //
 // Runs on every user prompt. Estimates context usage from session JSONL.
-// Counts message CONTENT bytes (not raw line bytes) for accuracy.
 // Caches result for 30s to avoid parsing on every prompt.
+//
+// Behavior:
+//   < 50%  → silent (continue)
+//   50-74% → systemMessage advisory (continue, visible to Claude)
+//   75-89% → systemMessage strong warning (continue)
+//   >= 90% → BLOCK prompt with reason shown to user — must /compact first
 //
 
 const fs = require("fs");
@@ -12,10 +17,11 @@ const path = require("path");
 const os = require("os");
 
 const CONTEXT_WINDOW_TOKENS = 200000;
-const BYTES_PER_TOKEN = 2;          // tool_use/tool_result JSON is token-dense (~2 bytes/token)
-const SYSTEM_OVERHEAD_TOKENS = 5000; // Base system prompt overhead
+const BYTES_PER_TOKEN = 2;
+const SYSTEM_OVERHEAD_TOKENS = 5000;
 const WARN_THRESHOLD = 0.50;
 const CRITICAL_THRESHOLD = 0.75;
+const BLOCK_THRESHOLD = 0.90;
 const CACHE_TTL_MS = 30000;
 
 const CACHE_FILE = path.join(os.tmpdir(), "masday-context-cache.json");
@@ -109,22 +115,37 @@ async function main() {
   }
   const pctDisplay = Math.round(pct * 100);
 
-  if (pct >= CRITICAL_THRESHOLD) {
+  // BLOCK at 90%+ — user MUST compact or clear before continuing
+  if (pct >= BLOCK_THRESHOLD) {
     process.stdout.write(JSON.stringify({
-      continue: true,
-      systemMessage:
-        `🔴 Context at ~${pctDisplay}%. Auto-compact will trigger soon.\n` +
-        `Consider running /compact now to preserve important context.`,
+      continue: false,
+      reason:
+        `🔴 Context at ~${pctDisplay}% — too full to continue reliably.\n` +
+        `Options:\n` +
+        `  /compact  — summarize & free space (keeps session)\n` +
+        `  /clear    — fresh start, saves ~100K context tokens`,
     }));
     return;
   }
 
+  // CRITICAL at 75-89% — strong systemMessage warning
+  if (pct >= CRITICAL_THRESHOLD) {
+    process.stdout.write(JSON.stringify({
+      continue: true,
+      systemMessage:
+        `🔴 CONTEXT CRITICAL: ~${pctDisplay}% used. Auto-compact imminent.\n` +
+        `Run /compact NOW to preserve context, or /clear for a fresh start (~100K tokens saved).`,
+    }));
+    return;
+  }
+
+  // WARN at 50-74% — advisory systemMessage
   if (pct >= WARN_THRESHOLD) {
     process.stdout.write(JSON.stringify({
       continue: true,
       systemMessage:
-        `🟡 Context at ~${pctDisplay}%. Approaching auto-compact threshold.\n` +
-        `If working on complex multi-step tasks, consider /compact soon.`,
+        `🟡 Context at ~${pctDisplay}%. Approaching limit.\n` +
+        `Consider /compact to free space, or /clear for a fresh start (~100K tokens saved).`,
     }));
     return;
   }

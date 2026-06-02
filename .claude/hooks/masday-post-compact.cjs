@@ -8,9 +8,11 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const LOG_FILE = path.join(process.env.HOME, ".claude", "compact-log.jsonl");
 const STATE_FILE = path.join(process.env.HOME, ".claude", "compact-state.json");
+const CONTEXT_CACHE_FILE = path.join(os.tmpdir(), "masday-context-cache.json");
 
 function log(entry) {
   try {
@@ -39,6 +41,11 @@ async function main() {
   state.lastCompact = now;
   state.lastCwd = process.cwd();
   saveState(state);
+
+  // Reset context cache to 0 — context was just compacted
+  try {
+    fs.writeFileSync(CONTEXT_CACHE_FILE, JSON.stringify({ pct: 0, ts: Date.now() }));
+  } catch {}
 
   log({
     event: "PostCompact",
