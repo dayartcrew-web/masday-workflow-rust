@@ -8,6 +8,8 @@ pub mod client;
 pub mod direct;
 pub mod mode;
 pub mod registry;
+pub mod sqlite;
+pub mod sqlite_schema;
 pub mod tools;
 pub mod transport;
 
@@ -872,8 +874,8 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    mode::init_db_pool().await?;
-    tracing::info!("MCP server (standalone) connected to PostgreSQL");
+    sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
+    tracing::info!("MCP server (standalone) using SQLite");
 
     let registry = build_stdio_registry();
     tracing::info!("Registered {} tools (standalone)", registry.count());
