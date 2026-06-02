@@ -5,6 +5,7 @@
 
 use rusqlite::params;
 use serde_json::{json, Value};
+use tracing::warn;
 
 /// Timestamp helper — returns current UTC time as RFC 3339 string.
 fn now() -> String {
@@ -21,20 +22,38 @@ fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> 
     format!("{}", msg).into()
 }
 
-/// Parse a JSON text column, return default on failure.
+/// Parse a JSON text column, return default on failure (with logging).
 fn json_col(row: &rusqlite::Row, idx: usize) -> Value {
-    row.get::<_, String>(idx)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(json!({}))
+    match row.get::<_, String>(idx) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
+            warn!("json_col: JSON parse failed at column {idx}: {e}");
+            json!({})
+        }),
+        Err(e) => {
+            warn!("json_col: DB read failed at column {idx}: {e}");
+            json!({})
+        }
+    }
 }
 
-/// Parse an optional JSON text column.
+/// Parse an optional JSON text column (with logging).
 fn opt_json(row: &rusqlite::Row, idx: usize) -> Option<Value> {
-    row.get::<_, Option<String>>(idx)
-        .ok()
-        .flatten()
-        .and_then(|s| serde_json::from_str(&s).ok())
+    match row.get::<_, Option<String>>(idx) {
+        Ok(Some(s)) => Some(serde_json::from_str(&s).unwrap_or_else(|e| {
+            warn!("opt_json: JSON parse failed at column {idx}: {e}");
+            json!({})
+        })),
+        Ok(None) => None,
+        Err(e) => {
+            warn!("opt_json: DB read failed at column {idx}: {e}");
+            None
+        }
+    }
+}
+
+/// Collect query_map rows, logging any individual row failures.
+fn collect_rows(rows: impl Iterator<Item = Result<Value, rusqlite::Error>>) -> Vec<Value> {
+    rows.filter_map(|r| r.map_err(|e| { warn!("collect_rows: row mapping failed: {e}"); e }).ok()).collect()
 }
 
 // ============================================================================
@@ -126,7 +145,7 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
         }))
     }).map_err(|e| err(e))?;
 
-    let workflows: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let workflows: Vec<Value> = collect_rows(rows);
     Ok(json!({"workflows": workflows, "page": page, "page_size": page_size}))
 }
 
@@ -141,7 +160,7 @@ pub async fn workflow_get_active(_args: Value) -> Result<Value, Box<dyn std::err
         Ok(json!({"id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
     }).map_err(|e| err(e))?;
 
-    let workflows: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let workflows: Vec<Value> = collect_rows(rows);
     Ok(json!({"workflows": workflows}))
 }
 
@@ -166,7 +185,7 @@ pub async fn workflow_add_task(args: Value) -> Result<Value, Box<dyn std::error:
     // Get or create default plan
     let plan_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM plans WHERE id=?1", params![plan_id], |r| r.get(0)
-    ).unwrap_or(0);
+    ).map_err(|e| err(e))?;
     if plan_count == 0 {
         conn.execute(
             "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1,?2,1,'ACTIVE','Auto-created plan','{}','system',?3)",
@@ -208,11 +227,11 @@ pub async fn workflow_complete_task(args: Value) -> Result<Value, Box<dyn std::e
     let pending: i64 = conn.query_row(
         "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status NOT IN ('DONE','FAILED')",
         params![wf_id], |r| r.get(0)
-    ).unwrap_or(-1);
+    ).map_err(|e| err(e))?;
 
     if pending == 0 {
         conn.execute("UPDATE workflows SET status='DONE', updated_at=?1 WHERE id=?2 AND status NOT IN ('DONE','FAILED')",
-            params![&t, wf_id]).ok();
+            params![&t, wf_id]).map_err(|e| err(e))?;
     }
 
     Ok(json!({"status": "DONE", "task_id": task_id}))
@@ -303,7 +322,7 @@ pub async fn workflow_list_tasks(args: Value) -> Result<Value, Box<dyn std::erro
         }))
     }).map_err(|e| err(e))?;
 
-    let tasks: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let tasks: Vec<Value> = collect_rows(rows);
     Ok(json!({"tasks": tasks}))
 }
 
@@ -316,7 +335,13 @@ pub async fn workflow_create_parallel_branches(args: Value) -> Result<Value, Box
 
     for b in branches_arr {
         let id = new_id();
-        let task_id = b["task_id"].as_str().unwrap_or("");
+        let task_id = match b["task_id"].as_str() {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                warn!("workflow_create_parallel_branches: branch missing task_id, skipping");
+                continue;
+            }
+        };
         let branch_key = b["branch_key"].as_str().unwrap_or("default");
         let role = b["role"].as_str().unwrap_or("executor");
         let input = b.get("input").cloned().unwrap_or(json!({})).to_string();
@@ -363,7 +388,7 @@ pub async fn workflow_list_parallel_branches(args: Value) -> Result<Value, Box<d
         }))
     }).map_err(|e| err(e))?;
 
-    let branches: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let branches: Vec<Value> = collect_rows(rows);
     Ok(json!({"branches": branches}))
 }
 
@@ -400,8 +425,11 @@ pub async fn workflow_set_execution_mode(args: Value) -> Result<Value, Box<dyn s
 
     // Store execution_mode in metadata JSON
     let meta: String = conn.query_row("SELECT metadata FROM workflows WHERE id=?1", params![wf_id], |r| r.get(0))
-        .unwrap_or_else(|_| "{}".to_string());
-    let mut meta: Value = serde_json::from_str(&meta).unwrap_or(json!({}));
+        .map_err(|e| err(e))?;
+    let mut meta: Value = serde_json::from_str(&meta).unwrap_or_else(|e| {
+        warn!("workflow_set_execution_mode: corrupt metadata for {}: {e}", wf_id);
+        json!({})
+    });
     meta["execution_mode"] = json!(mode);
     conn.execute("UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3",
         params![meta.to_string(), &t, wf_id]).map_err(|e| err(e))?;
@@ -426,11 +454,15 @@ pub async fn workflow_get_current_task(args: Value) -> Result<Value, Box<dyn std
     let conn = crate::sqlite::conn();
     let wf_id = args["workflow_id"].as_str().ok_or_else(|| err("missing workflow_id"))?;
 
-    let task = conn.query_row(
+    let task = match conn.query_row(
         "SELECT id, title, status FROM tasks WHERE workflow_id=?1 AND status='RUNNING' LIMIT 1",
         params![wf_id],
         |row| Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?})),
-    ).ok();
+    ) {
+        Ok(t) => Some(t),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(err(e)),
+    };
 
     match task {
         Some(t) => Ok(json!({"task": t})),
@@ -506,7 +538,7 @@ pub async fn memory_search(args: Value) -> Result<Value, Box<dyn std::error::Err
         }))
     }).map_err(|e| err(e))?;
 
-    let results: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"results": results}))
 }
 
@@ -533,7 +565,7 @@ pub async fn memory_recall_document_by_type(args: Value) -> Result<Value, Box<dy
         }))
     }).map_err(|e| err(e))?;
 
-    let results: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"results": results}))
 }
 
@@ -557,7 +589,7 @@ pub async fn memory_recall_by_task(args: Value) -> Result<Value, Box<dyn std::er
         }))
     }).map_err(|e| err(e))?;
 
-    let results: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"memories": results}))
 }
 
@@ -579,7 +611,7 @@ pub async fn memory_recall_recent(args: Value) -> Result<Value, Box<dyn std::err
         }))
     }).map_err(|e| err(e))?;
 
-    let results: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"memories": results}))
 }
 
@@ -630,11 +662,11 @@ pub async fn memory_delete_by_workflow(args: Value) -> Result<Value, Box<dyn std
 pub async fn memory_stats(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
 
-    let total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0)).unwrap_or(0);
+    let total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0)).map_err(|e| err(e))?;
     let by_type: String = conn.query_row(
         "SELECT json_group_object(memory_type, cnt) FROM (SELECT memory_type, COUNT(*) as cnt FROM memories GROUP BY memory_type)",
         [], |r| r.get(0)
-    ).unwrap_or_else(|_| "{}".to_string());
+    ).map_err(|e| err(e))?;
 
     Ok(json!({"total": total, "by_type": serde_json::from_str::<Value>(&by_type).unwrap_or(json!({}))}))
 }
@@ -651,7 +683,7 @@ pub async fn episodic_store(args: Value) -> Result<Value, Box<dyn std::error::Er
     let seq: i64 = conn.query_row(
         "SELECT COALESCE(MAX(sequence_order),0)+1 FROM episodic_memories WHERE session_id=?1",
         params![session_id], |r| r.get(0)
-    ).unwrap_or(1);
+    ).map_err(|e| err(e))?;
 
     conn.execute(
         "INSERT INTO episodic_memories (id, session_id, role, content, sequence_order, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -680,7 +712,7 @@ pub async fn episodic_recall(args: Value) -> Result<Value, Box<dyn std::error::E
         }))
     }).map_err(|e| err(e))?;
 
-    let results: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"memories": results}))
 }
 
@@ -712,7 +744,7 @@ pub async fn review_get_latest(args: Value) -> Result<Value, Box<dyn std::error:
     let conn = crate::sqlite::conn();
     let task_id = args["task_id"].as_str().ok_or_else(|| err("missing task_id"))?;
 
-    let review = conn.query_row(
+    let review = match conn.query_row(
         "SELECT id, reviewer_agent, decision, notes, gaps, created_at FROM review_decisions WHERE task_id=?1 ORDER BY created_at DESC LIMIT 1",
         params![task_id],
         |row| Ok(json!({
@@ -723,7 +755,11 @@ pub async fn review_get_latest(args: Value) -> Result<Value, Box<dyn std::error:
             "gaps": opt_json(row, 4),
             "createdAt": row.get::<_, String>(5)?,
         })),
-    ).ok();
+    ) {
+        Ok(r) => Some(r),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(err(e)),
+    };
 
     match review {
         Some(r) => Ok(json!({"review": r})),
@@ -781,7 +817,10 @@ pub async fn session_patch_state(args: Value) -> Result<Value, Box<dyn std::erro
     // Upsert: merge metadata if exists
     let existing_meta: String = conn.query_row(
         "SELECT metadata FROM session_states WHERE session_key=?1", params![session_key], |r| r.get(0)
-    ).unwrap_or_else(|_| "{}".to_string());
+    ).unwrap_or_else(|e| {
+        warn!("session_patch_state: no existing metadata for {}: {e}", session_key);
+        "{}".to_string()
+    });
 
     let mut meta: Value = serde_json::from_str(&existing_meta).unwrap_or(json!({}));
     if let Some(obj) = patch.as_object() {
@@ -820,7 +859,7 @@ pub async fn search_hybrid_context_pack(args: Value) -> Result<Value, Box<dyn st
         Ok(json!({"id": row.get::<_, String>(0)?, "type": row.get::<_, String>(1)?, "summary": row.get::<_, String>(2)?}))
     }).map_err(|e| err(e))?;
 
-    let memories: Vec<Value> = mem_rows.filter_map(|r| r.ok()).collect();
+    let memories: Vec<Value> = collect_rows(mem_rows);
 
     let mut stmt2 = conn.prepare(
         "SELECT id, title, status FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
@@ -830,7 +869,7 @@ pub async fn search_hybrid_context_pack(args: Value) -> Result<Value, Box<dyn st
         Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
     }).map_err(|e| err(e))?;
 
-    let tasks: Vec<Value> = task_rows.filter_map(|r| r.ok()).collect();
+    let tasks: Vec<Value> = collect_rows(task_rows);
 
     Ok(json!({"context_pack": {"memories": memories, "tasks": tasks}}))
 }
@@ -889,28 +928,28 @@ pub async fn policy_validate_execution(args: Value) -> Result<Value, Box<dyn std
     // Check workflow exists and is in EXECUTE state
     let wf_status: String = conn.query_row(
         "SELECT status FROM workflows WHERE id=?1", params![workflow_id], |r| r.get(0)
-    ).unwrap_or_default();
+    ).map_err(|e| err(e))?;
 
     let valid = wf_status == "EXECUTE" || wf_status == "PLAN";
 
     // Check task exists and is PENDING or RUNNING
     let task_status: String = conn.query_row(
         "SELECT status FROM tasks WHERE id=?1", params![task_id], |r| r.get(0)
-    ).unwrap_or_default();
+    ).map_err(|e| err(e))?;
 
-    let valid = valid && (task_status == "PENDING" || task_status == "RUNNING" || task_status.is_empty());
+    let valid = valid && (task_status == "PENDING" || task_status == "RUNNING");
 
     Ok(json!({"valid": valid}))
 }
 
 pub async fn policy_validate_completion(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
-    let workflow_id = args["workflow_id"].as_str().ok_or_else(|| err("missing workflow_id"))?;
+    let _workflow_id = args["workflow_id"].as_str().ok_or_else(|| err("missing workflow_id"))?;
     let task_id = args["task_id"].as_str().ok_or_else(|| err("missing task_id"))?;
 
     let task_status: String = conn.query_row(
         "SELECT status FROM tasks WHERE id=?1", params![task_id], |r| r.get(0)
-    ).unwrap_or_default();
+    ).map_err(|e| err(e))?;
 
     let valid = task_status == "DONE";
 
@@ -954,7 +993,7 @@ pub async fn reminder_check(_args: Value) -> Result<Value, Box<dyn std::error::E
         Ok(json!({"id": row.get::<_, String>(0)?, "workflow_id": row.get::<_, String>(1)?, "title": row.get::<_, String>(2)?, "type": "stale"}))
     }).map_err(|e| err(e))?;
 
-    let reminders: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let reminders: Vec<Value> = collect_rows(rows);
     Ok(json!({"reminders": reminders}))
 }
 
@@ -977,7 +1016,7 @@ pub async fn reminder_list(args: Value) -> Result<Value, Box<dyn std::error::Err
         }))
     }).map_err(|e| err(e))?;
 
-    let reminders: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let reminders: Vec<Value> = collect_rows(rows);
     Ok(json!({"reminders": reminders}))
 }
 
@@ -1040,7 +1079,7 @@ pub async fn memory_search_nodes(args: Value) -> Result<Value, Box<dyn std::erro
         }))
     }).map_err(|e| err(e))?;
 
-    let nodes: Vec<Value> = rows.filter_map(|r| r.ok()).collect();
+    let nodes: Vec<Value> = collect_rows(rows);
     Ok(json!({"nodes": nodes}))
 }
 
@@ -1132,7 +1171,7 @@ pub async fn capability_workflow_audit(args: Value) -> Result<Value, Box<dyn std
 
     let task_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1", params![workflow_id], |r| r.get(0)
-    ).unwrap_or(0);
+    ).map_err(|e| err(e))?;
 
     Ok(json!({"workflow": wf["id"], "status": wf["status"], "tasks_count": task_count}))
 }
@@ -1186,16 +1225,16 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
     // Update individual fields from updates JSON
     if let Some(obj) = updates.as_object() {
         if let Some(name) = obj.get("name").and_then(|v| v.as_str()) {
-            conn.execute("UPDATE workflows SET name=?1, updated_at=?2 WHERE id=?3", params![name, &t, workflow_id]).ok();
+            conn.execute("UPDATE workflows SET name=?1, updated_at=?2 WHERE id=?3", params![name, &t, workflow_id]).map_err(|e| err(e))?;
         }
         if let Some(status) = obj.get("status").and_then(|v| v.as_str()) {
-            conn.execute("UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3", params![status, &t, workflow_id]).ok();
+            conn.execute("UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3", params![status, &t, workflow_id]).map_err(|e| err(e))?;
         }
         if let Some(path) = obj.get("project_path").and_then(|v| v.as_str()) {
-            conn.execute("UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3", params![path, &t, workflow_id]).ok();
+            conn.execute("UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3", params![path, &t, workflow_id]).map_err(|e| err(e))?;
         }
         if let Some(meta) = obj.get("metadata").cloned() {
-            conn.execute("UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3", params![meta.to_string(), &t, workflow_id]).ok();
+            conn.execute("UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3", params![meta.to_string(), &t, workflow_id]).map_err(|e| err(e))?;
         }
     }
 
