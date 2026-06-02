@@ -1,6 +1,12 @@
-//! masday-mcp - MCP stdio server (thin HTTP client)
+//! masday-mcp - MCP stdio server
+//!
+//! Two binaries:
+//! - `masday-mcp-http` — thin HTTP proxy to masday-api
+//! - `masday-mcp-stdio` — standalone, direct PostgreSQL access
 
 pub mod client;
+pub mod direct;
+pub mod mode;
 pub mod registry;
 pub mod tools;
 pub mod transport;
@@ -842,20 +848,247 @@ fn register_project_rules_tools(r: &mut ToolRegistry) {
     );
 }
 
-/// Run the MCP stdio server.
-pub async fn run(api_url: String, api_key: String) -> Result<(), Box<dyn std::error::Error>> {
+/// Run the MCP stdio server in HTTP proxy mode.
+/// Requires masday-api running on the given URL.
+pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
 
     client::init(api_url.clone(), api_key)?;
-    tracing::info!("MCP server connected to {}", api_url);
+    tracing::info!("MCP server (HTTP proxy) connected to {}", api_url);
 
     let registry = build_registry();
     tracing::info!("Registered {} tools", registry.count());
 
     let mut server = JsonRpcServer::new(registry);
     server.run().await
+}
+
+/// Run the MCP stdio server in standalone mode.
+/// Connects directly to PostgreSQL via DATABASE_URL. No masday-api needed.
+pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    mode::init_db_pool().await?;
+    tracing::info!("MCP server (standalone) connected to PostgreSQL");
+
+    let registry = build_stdio_registry();
+    tracing::info!("Registered {} tools (standalone)", registry.count());
+
+    let mut server = JsonRpcServer::new(registry);
+    server.run().await
+}
+
+// ── Standalone Registry (direct DB calls) ──────────────────────────────────
+
+/// Build the stdio registry: DB-dependent tools use `direct::*`, local tools unchanged.
+fn build_stdio_registry() -> ToolRegistry {
+    let mut r = ToolRegistry::new();
+    register_use_masday_tools(&mut r);
+    register_workflow_tools_stdio(&mut r);
+    register_memory_tools_stdio(&mut r);
+    register_review_tools_stdio(&mut r);
+    register_session_tools_stdio(&mut r);
+    register_context_tools_stdio(&mut r);
+    register_policy_tools_stdio(&mut r);
+    register_reminder_tools_stdio(&mut r);
+    register_graph_tools_stdio(&mut r);
+    register_capability_tools_stdio(&mut r);
+    // Local-only tools (unchanged — no DB needed)
+    register_filesystem_tools(&mut r);
+    register_git_tools(&mut r);
+    register_npm_tools(&mut r);
+    register_docker_tools(&mut r);
+    register_cicd_tools(&mut r);
+    register_github_tools(&mut r);
+    register_tests_tools(&mut r);
+    register_local_tools_stdio(&mut r);
+    register_project_rules_tools(&mut r);
+    r
+}
+
+// ── Stdio register functions (use direct::* instead of tools::*) ────────────
+
+fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "workflow_create", "Create a new workflow",
+        schema!("name", "description?", "project_path?"), d::workflow_create);
+    reg!(r, "workflow_execute", "Execute a workflow",
+        schema!("workflow_id"), d::workflow_execute);
+    reg!(r, "workflow_getStatus", "Get workflow status",
+        schema!("workflow_id"), d::workflow_get_status);
+    reg!(r, "workflow_get", "Get workflow by ID",
+        schema!("workflow_id"), d::workflow_get);
+    reg!(r, "workflow_list", "List all workflows",
+        schema!("page?", "page_size?"), d::workflow_list);
+    reg!(r, "workflow_getActive", "Get active workflows",
+        schema!(), d::workflow_get_active);
+    reg!(r, "workflow_delete", "Delete a workflow",
+        schema!("workflow_id"), d::workflow_delete);
+    reg!(r, "workflow_addTask", "Add task to workflow",
+        schema!("workflow_id", "name", "agent", "skill", "dependencies?"), d::workflow_add_task);
+    reg!(r, "workflow_startTask", "Start a task",
+        schema!("workflow_id", "task_id"), d::workflow_start_task);
+    reg!(r, "workflow_completeTask", "Complete a task",
+        schema!("workflow_id", "task_id", "result?"), d::workflow_complete_task);
+    reg!(r, "workflow_saveProgress", "Save task progress",
+        schema!("workflow_id", "task_id", "agent_name", "progress_note"), d::workflow_save_progress);
+    reg!(r, "workflow_createPlan", "Create a plan",
+        schema!("workflow_id", "plan"), d::workflow_create_plan);
+    reg!(r, "workflow_getPlan", "Get plan for workflow",
+        schema!("workflow_id"), d::workflow_get_plan);
+    reg!(r, "workflow_listTasks", "List workflow tasks",
+        schema!("workflow_id"), d::workflow_list_tasks);
+    reg!(r, "workflow_createParallelBranches", "Create parallel branches",
+        schema!("workflow_id", "branches"), d::workflow_create_parallel_branches);
+    reg!(r, "workflow_completeParallelBranch", "Complete a parallel branch",
+        schema!("workflow_id", "branch_key"), d::workflow_complete_parallel_branch);
+    reg!(r, "workflow_listParallelBranches", "List parallel branches",
+        schema!("workflow_id"), d::workflow_list_parallel_branches);
+    reg!(r, "workflow_mark_synthesis_ready", "Mark synthesis ready",
+        schema!("session_key", "ready"), d::workflow_mark_synthesis_ready);
+    reg!(r, "workflow_mark_verification_ready", "Mark verification ready",
+        schema!("session_key", "ready"), d::workflow_mark_verification_ready);
+    reg!(r, "workflow_set_execution_mode", "Set execution mode",
+        schema!("session_key", "mode"), d::workflow_set_execution_mode);
+    reg!(r, "workflow_resume_suggestion", "Get resume suggestion",
+        schema!("workflow_id"), d::workflow_resume_suggestion);
+    reg!(r, "workflow_ping", "Ping workflow server",
+        schema!(), d::workflow_ping);
+    reg!(r, "workflow_getCurrentTask", "Get current task for workflow",
+        schema!("workflow_id"), d::workflow_get_current_task);
+}
+
+fn register_memory_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "memory_store", "Store a memory",
+        schema!("memory_type", "summary", "content", "created_by_agent", "#importance_score?", "tags?", "workflow_id?", "task_id?"), d::memory_store);
+    reg!(r, "memory_store_research", "Store research findings",
+        schema!("summary", "content", "created_by_agent", "workflow_id?"), d::memory_store_research);
+    reg!(r, "memory_search", "Search memories",
+        schema!("query", "limit?"), d::memory_search);
+    reg!(r, "memory_recall_documents", "Recall documents for workflow",
+        schema!("workflow_id", "limit?"), d::memory_recall_documents);
+    reg!(r, "memory_recall_document_by_type", "Recall documents by type",
+        schema!("source_type", "limit?"), d::memory_recall_document_by_type);
+    reg!(r, "memory_recall_by_task", "Recall memories by task",
+        schema!("task_id", "limit?"), d::memory_recall_by_task);
+    reg!(r, "memory_recall_recent", "Recall recent memories",
+        schema!("limit?", "type?"), d::memory_recall_recent);
+    reg!(r, "memory_update", "Update a memory",
+        schema!("id", "content?", "importance?"), d::memory_update);
+    reg!(r, "memory_delete", "Delete a memory",
+        schema!("id"), d::memory_delete);
+    reg!(r, "memory_delete_by_workflow", "Delete memories by workflow",
+        schema!("workflow_id"), d::memory_delete_by_workflow);
+    reg!(r, "memory_stats", "Get memory statistics",
+        schema!(), d::memory_stats);
+}
+
+fn register_review_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "review_submit", "Submit a review",
+        schema!("workflow_id", "task_id", "reviewer_agent", "decision", "notes", "gaps?"), d::review_submit);
+    reg!(r, "review_get_latest", "Get latest review",
+        schema!("workflow_id", "task_id"), d::review_get_latest);
+}
+
+fn register_session_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "session_init_context", "Initialize session context",
+        schema!("cwd"), d::session_init_context);
+    reg!(r, "session_get_state", "Get session state",
+        schema!("session_key"), d::session_get_state);
+    reg!(r, "session_patch_state", "Patch session state",
+        schema!("session_key", "patch"), d::session_patch_state);
+}
+
+fn register_context_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "semantic-search_search_hybrid_context_pack", "Build hybrid context pack",
+        schema!("workflow_id", "plan_id", "task_id"), d::search_hybrid_context_pack);
+    reg!(r, "semantic-search_search_context_fingerprint", "Compute context fingerprint",
+        schema!("workflow_id", "plan_id", "task_id"), d::search_context_fingerprint);
+    reg!(r, "semantic-search_code_search", "Search codebase",
+        schema!("query"), d::semantic_search_code_search);
+    reg!(r, "semantic-search_make_fingerprint", "Generate deterministic fingerprint",
+        schema!("workflow_id", "plan_id", "task_id", "acceptance_criteria?", "required_context?", "document_ids?", "memory_ids?"), d::semantic_search_make_fingerprint);
+}
+
+fn register_policy_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "policy_check_session_readiness", "Check session readiness",
+        schema!("session_key"), d::policy_check_session_readiness);
+    reg!(r, "policy_validate_completion", "Validate task completion",
+        schema!("session_key", "workflow_id", "task_id"), d::policy_validate_completion);
+    reg!(r, "policy_validate_execution", "Validate execution",
+        schema!("session_key", "workflow_id", "task_id"), d::policy_validate_execution);
+    reg!(r, "policy_validate_parallel_completion", "Validate parallel completion",
+        schema!("session_key", "workflow_id", "task_id"), d::policy_validate_parallel_completion);
+    reg!(r, "policy_detect_scope_drift", "Detect scope drift",
+        schema!("workflow_id", "task_id?", "output_text?"), d::policy_detect_scope_drift);
+    reg!(r, "policy_require_context_refresh", "Require context refresh",
+        schema!("workflow_id", "plan_id?", "task_id?", "last_fingerprint?"), d::policy_require_context_refresh);
+}
+
+fn register_reminder_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "reminder_check", "Check for stale/stuck/failed workflows and tasks",
+        schema!("staleExecutionMinutes?", "stuckTaskMinutes?", "includeFailed?"), d::reminder_check);
+    reg!(r, "reminder_list", "List stored reminders",
+        schema!("workflow_id?", "acknowledged?", "limit?"), d::reminder_list);
+    reg!(r, "reminder_acknowledge", "Acknowledge a reminder",
+        schema!("id?", "workflowId?"), d::reminder_acknowledge);
+}
+
+fn register_graph_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "memory_create_entities", "Create graph entities",
+        schema!("entities"), d::memory_create_entities);
+    reg!(r, "memory_search_nodes", "Search graph nodes",
+        schema!("query"), d::memory_search_nodes);
+}
+
+fn register_capability_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    reg!(r, "capability_create_agent", "Create an agent",
+        schema!("projectRoot", "name", "role", "description", "instructions"), d::capability_create_agent);
+    reg!(r, "capability_create_skill", "Create a skill",
+        schema!("projectRoot", "name", "description", "trigger", "steps"), d::capability_create_skill);
+    reg!(r, "capability_list_agents", "List registered agents",
+        schema!("projectRoot"), d::capability_list_agents);
+    reg!(r, "capability_list_skills", "List registered skills",
+        schema!("projectRoot"), d::capability_list_skills);
+    reg!(r, "capability_list_templates", "List available templates",
+        schema!(), d::capability_list_templates);
+    reg!(r, "capability_match_agent", "Match agent for a task",
+        schema!("projectRoot", "taskDescription"), d::capability_match_agent);
+    reg!(r, "capability_scaffold_feature", "Scaffold a new feature",
+        schema!("projectRoot", "name", "description"), d::capability_scaffold_feature);
+    reg!(r, "capability_scaffold_mcp_server", "Scaffold an MCP server",
+        schema!("projectRoot", "name", "description"), d::capability_scaffold_mcp_server);
+    reg!(r, "capability_system_readiness", "Check system readiness",
+        schema!("projectRoot"), d::capability_system_readiness);
+    reg!(r, "capability_workflow_audit", "Audit a workflow",
+        schema!("workflowId"), d::capability_workflow_audit);
+    reg!(r, "capability_ping", "Ping capability service",
+        schema!(), d::capability_ping);
+}
+
+fn register_local_tools_stdio(r: &mut ToolRegistry) {
+    use crate::direct as d;
+    use crate::tools::local as l;
+    reg!(r, "local_init", "Initialize local state directory",
+        schema!("cwd"), l::local_init);
+    reg!(r, "local_sync", "Sync local state from DB",
+        schema!("cwd", "workflow_id?"), d::local_sync);
+    reg!(r, "local_push", "Push local state to DB",
+        schema!("cwd", "workflow_id?"), d::local_push);
+    reg!(r, "local_save_artifact", "Save artifact file locally",
+        schema!("cwd", "category", "filename", "content"), l::local_save_artifact);
 }
 
 #[cfg(test)]
