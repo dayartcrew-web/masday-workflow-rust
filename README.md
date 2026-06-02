@@ -209,8 +209,8 @@ cargo build --release --workspace
 cargo build -p masday-cli --release --target x86_64-pc-windows-gnu
 
 # Create GitHub Release (local CI)
-bash scripts/release.sh v0.2.0
-bash scripts/release.sh v0.2.0 --dry-run  # test without uploading
+bash scripts/release.sh v0.3.0
+bash scripts/release.sh v0.3.0 --dry-run  # test without uploading
 ```
 
 ---
@@ -241,10 +241,11 @@ API_HOST="0.0.0.0"
 RUST_LOG="info"                    # debug, info, warn, error
 RUST_BACKTRACE="1"                # Enable backtrace on panic
 
-# Embeddings (optional, for semantic search)
-EMBEDDING_PROVIDER="ollama"        # ollama | openai
-EMBEDDING_MODEL="nomic-embed-text"
-OLLAMA_BASE_URL="http://localhost:11434"
+# Embeddings (semantic search)
+EMBEDDING_PROVIDER="local"          # local (fastembed) | ollama | openai
+EMBEDDING_MODEL="all-MiniLM-L6-v2"  # all-MiniLM-L6-v2 (384d) | bge-base-en-v1.5 (768d)
+EMBEDDING_DIMENSIONS="384"           # must match model output
+FASTEMBED_CACHE_DIR=".cache/fastembed"  # optional: model cache directory
 ```
 
 ### MCP Configuration
