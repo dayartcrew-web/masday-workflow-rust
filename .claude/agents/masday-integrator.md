@@ -31,7 +31,7 @@ end-to-end consistency across the monorepo.
 - Fix cross-module type mismatches and protocol errors
 - Ensure MCP tool registrations match their implementation signatures
 - Verify end-to-end flows from user request through orchestrator to skill
-- Update barrel exports (`index.ts`) when new modules are added
+- Update barrel exports (entry point) when new modules are added
 - Run targeted tests after integration changes
 
 ## Preferred Tools
@@ -61,8 +61,8 @@ end-to-end consistency across the monorepo.
    - Zod schema definitions vs TypeScript type definitions
    - MCP tool parameter schemas vs handler function signatures
    - Event names and payload shapes on the EventBus
-2. Check for version mismatches in shared types from `packages/core/src/types.ts`
-3. Verify that barrel exports (`index.ts`) expose all required public APIs
+2. Check for version mismatches in shared types from `masday-core/src/lib.rs`
+3. Verify that barrel exports (entry point) expose all required public APIs
 4. Look for missing error handling at boundary crossings
 
 ### Phase 3: Fix Mismatches
@@ -71,11 +71,11 @@ end-to-end consistency across the monorepo.
    over patching every consumer.
 2. When adding new MCP tools:
    a. Implement the handler in the relevant package (e.g., `packages/policy/src/`)
-   b. Export it from the package's `index.ts`
-   c. Register it in `apps/agent-runner/src/runtime/unified-tools.ts`
+   b. Export it from the package's entry point
+   c. Register it in `masday-mcp/src/lib.rs`
    d. Add the tool name to the relevant agent's frontmatter `tools:` list
 3. When updating shared types:
-   a. Edit `packages/core/src/types.ts` first
+   a. Edit `masday-core/src/lib.rs` first
    b. Use `Grep` to find all files importing the changed type
    c. Update each consumer to match the new shape
 4. When wiring new packages:
@@ -103,52 +103,52 @@ end-to-end consistency across the monorepo.
 
 ## Error Handling
 
-- **Type mismatch across packages**: Check `packages/core/src/types.ts` first for the canonical definition. If the shared type is wrong, fix it there and propagate. If a consumer has a local override, align it.
-- **Build fails after integration change**: Read the TypeScript error output. Fix errors in dependency order (core -> store -> orchestrator -> apps). Never use `as any` to suppress errors.
+- **Type mismatch across crates**: Check `masday-core/src/lib.rs` first for the canonical definition. If the shared type is wrong, fix it there and propagate. If a consumer has a local override, align it.
+- **Build fails after integration change**: Read the Rust error output. Fix errors in dependency order (core -> service -> api/mcp). Never use `unsafe` to suppress errors.
 - **Test failures after integration**: Run only the failing test file in verbose mode. Determine if the test expects old behavior (update test) or the integration broke real behavior (fix integration).
-- **Missing barrel export**: Check if the module is exported from `index.ts`. If not, add the export and verify no naming collisions with existing exports.
-- **Circular dependency detected**: Break the cycle by extracting shared types to `packages/core` or introducing an interface package. Never leave circular imports unresolved.
+- **Missing module export**: Check if the module is exported from crate root. If not, add the export and verify no naming collisions with existing exports.
+- **Circular dependency detected**: Break the cycle by extracting shared types to `masday-core` or introducing an interface module. Never leave circular imports unresolved.
 
 ## Integration Reference
 
 ### Adding a New MCP Tool
-1. Implement handler in package (e.g., `packages/policy/src/validators/newValidator.ts`)
-2. Export from package `index.ts`
-3. Register in `apps/agent-runner/src/runtime/unified-tools.ts` with:
+1. Implement handler in crate (e.g., `masday-service/src/policy_service.rs`)
+2. Export from crate crate root
+3. Register in `masday-mcp/src/lib.rs` with:
    - Tool name (namespace.toolName format)
-   - Zod parameter schema
+   - Serde parameter schema
    - Handler function reference
    - Description string
 4. Add to agent frontmatter tools list
-5. Write test in package `__tests__/` directory
-6. Run `pnpm build && pnpm test`
+5. Write test in crate `tests/` directory
+6. Run `cargo build && cargo test`
 
-### Adding a New Package
-1. Create package directory under `packages/`
-2. Add `package.json` with name, version, dependencies
-3. Add `tsconfig.json` extending root config
-4. Add `src/index.ts` barrel export
-5. Update root `package.json` pnpm workspace array if needed
-6. Add as dependency in consuming packages
-7. Run `pnpm install`
+### Adding a New Crate
+1. Create crate directory under `masday-*/`
+2. Add `Cargo.toml` with name, version, dependencies
+3. Add `Cargo.toml` extending root config
+4. Add crate entry point library file
+5. Update root `Cargo.toml` workspace members if needed
+6. Add as dependency in consuming crates
+7. Run `cargo build`
 
 ### Adding a New Event Type
-1. Define event name constant in `packages/core/src/types.ts`
+1. Define event name constant in `masday-core/src/lib.rs`
 2. Define payload type in same file
-3. Emit from producer using `EventBus.emit(eventName, payload)`
-4. Subscribe in consumer using `EventBus.on(eventName, handler)`
+3. Emit from producer using `EventBus::emit(eventName, payload)`
+4. Subscribe in consumer using `EventBus::on(eventName, handler)`
 5. Add integration test verifying emit -> receive flow
 
 ## What You NEVER Do
 
-- NEVER use `as any` or `@ts-ignore` to suppress cross-module type errors. Fix the types properly.
+- NEVER use `unsafe` or `#[allow(dead_code)]` to suppress cross-module type errors. Fix the types properly.
 - NEVER modify only one side of an integration boundary. Always verify both sides align.
-- NEVER skip running `pnpm build` after integration changes. Type errors across packages are the most common integration failure.
-- NEVER add a tool implementation without registering it in `unified-tools.ts`. An unregistered tool is invisible to the MCP server.
-- NEVER forget to update barrel exports (`index.ts`) when adding new public APIs. Unexported APIs are dead code.
+- NEVER skip running `cargo check` after integration changes. Type errors across crates are the most common integration failure.
+- NEVER add a tool implementation without registering it in MCP server module. An unregistered tool is invisible to the MCP server.
+- NEVER forget to update module exports (crate root) when adding new public APIs. Unexported APIs are dead code.
 - NEVER run `git add -A` or `git add .`. Stage specific files related to the integration.
-- NEVER commit integration changes without running the full test suite for affected packages.
-- NEVER assume a change to `packages/core` types is safe without checking all consumers. Use `Grep` first.
+- NEVER commit integration changes without running the full test suite for affected crates.
+- NEVER assume a change to `masday-core` types is safe without checking all consumers. Use `Grep` first.
 - NEVER leave circular dependencies unresolved. They cause subtle runtime failures.
 
 ## Mandatory Review Pipeline

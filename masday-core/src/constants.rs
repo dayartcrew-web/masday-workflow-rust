@@ -50,8 +50,45 @@ pub mod workflow_defaults {
     pub const REMINDER_CHECK_INTERVAL_SECS: u64 = 900;
 }
 
-/// API defaults
+/// Port defaults (centralized — read from env with these as fallbacks)
+pub mod ports {
+    pub const API_PORT: u16 = 30101;
+    pub const POSTGRES_PORT: u16 = 54341;
+    pub const REDIS_PORT: u16 = 63791;
+    pub const API_HOST: &str = "127.0.0.1";
+
+    /// Read API port from MASDAY_API_PORT env, falling back to default.
+    pub fn api_port() -> u16 {
+        std::env::var("MASDAY_API_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(API_PORT)
+    }
+
+    /// Read PostgreSQL port from MASDAY_DB_PORT env, falling back to default.
+    pub fn postgres_port() -> u16 {
+        std::env::var("MASDAY_DB_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(POSTGRES_PORT)
+    }
+
+    /// Read Redis port from MASDAY_REDIS_PORT env, falling back to default.
+    pub fn redis_port() -> u16 {
+        std::env::var("MASDAY_REDIS_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(REDIS_PORT)
+    }
+
+    /// Default API base URL (e.g. "http://localhost:30101")
+    pub fn api_base_url() -> String {
+        format!("http://localhost:{}", api_port())
+    }
+}
+
+/// API defaults (re-exports from ports for backward compat)
 pub mod api_defaults {
-    pub const DEFAULT_API_PORT: u16 = 30101;
-    pub const DEFAULT_API_HOST: &str = "127.0.0.1";
+    pub use super::ports::API_PORT as DEFAULT_API_PORT;
+    pub use super::ports::API_HOST as DEFAULT_API_HOST;
 }

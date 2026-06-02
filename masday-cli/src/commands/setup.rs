@@ -10,6 +10,7 @@
 use anyhow::{bail, Result};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
+use masday_core::constants::ports;
 use std::path::Path;
 
 use crate::config::MasdayConfig;
@@ -89,13 +90,13 @@ fn run_local_setup(project_dir: &Path) -> Result<()> {
 
         // Wait for ready
         let pb = spinner("Waiting for PostgreSQL to be ready...");
-        docker::wait_for_postgres("localhost", 54341, 30)?;
-        pb.finish_with_message(format!("{} PostgreSQL ready on port 54341", style("✓").green()));
+        docker::wait_for_postgres("localhost", ports::postgres_port(), 30)?;
+        pb.finish_with_message(format!("{} PostgreSQL ready on port {}", style("✓").green(), ports::postgres_port()));
 
         // Start Redis too
         let pb = spinner("Starting Redis container...");
         docker::start_redis()?;
-        pb.finish_with_message(format!("{} Redis ready on port 63791", style("✓").green()));
+        pb.finish_with_message(format!("{} Redis ready on port {}", style("✓").green(), ports::redis_port()));
 
         // Run migrations
         let pb = spinner("Running database migrations...");
@@ -180,9 +181,9 @@ fn run_local_setup(project_dir: &Path) -> Result<()> {
 
     // Step 4: Port
     let port_str = inquire::Text::new("API port:")
-        .with_default("30101")
+        .with_default(&ports::API_PORT.to_string())
         .prompt()?;
-    let port: u16 = port_str.parse().unwrap_or(30101);
+    let port: u16 = port_str.parse().unwrap_or(ports::API_PORT);
 
     // Step 5: Save config
     let config = MasdayConfig {
@@ -310,7 +311,7 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
         embedding_provider: None,
         embedding_model: None,
         embedding_dimensions: None,
-        port: 30101,
+        port: ports::API_PORT,
         platforms: platform_names.clone(),
     };
     config.save()?;

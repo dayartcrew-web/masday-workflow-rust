@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use console::style;
+use masday_core::constants::ports;
 
 use crate::docker;
 
@@ -9,12 +10,12 @@ use crate::docker;
 pub fn start() -> Result<()> {
     println!("{}", style("Starting database containers...").cyan());
     docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
-    docker::wait_for_postgres("localhost", 54341, 30)?;
+    docker::wait_for_postgres("localhost", ports::postgres_port(), 30)?;
     docker::start_redis()?;
     println!();
     println!("{}", style("✓ Database containers ready").green());
-    println!("  PostgreSQL: localhost:54341");
-    println!("  Redis:      localhost:63791");
+    println!("  PostgreSQL: localhost:{}", ports::postgres_port());
+    println!("  Redis:      localhost:{}", ports::redis_port());
     Ok(())
 }
 
@@ -42,7 +43,7 @@ pub fn reset() -> Result<()> {
     }
 
     docker::reset_postgres("masday", "masdaypass", "masday_workflow")?;
-    docker::wait_for_postgres("localhost", 54341, 30)?;
+    docker::wait_for_postgres("localhost", ports::postgres_port(), 30)?;
 
     // Run migrations on fresh database
     std::env::set_var("DATABASE_URL", docker::default_database_url());

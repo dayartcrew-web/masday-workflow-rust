@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use console::style;
+use masday_core::constants::ports;
 
 use crate::config::MasdayConfig;
 
@@ -37,7 +38,7 @@ pub async fn run() -> Result<()> {
     if config.mode == "local" {
         if crate::docker::is_docker_available() {
             if crate::docker::is_container_running("masday-postgres") {
-                println!("  PostgreSQL: {} (Docker, port 54341)", style("✓ running").green());
+                println!("  PostgreSQL: {} (Docker, port {})", style("✓ running").green(), ports::postgres_port());
             } else {
                 println!("  PostgreSQL: {}", style("✗ not running").red());
                 println!(
@@ -47,7 +48,7 @@ pub async fn run() -> Result<()> {
             }
 
             if crate::docker::is_container_running("masday-redis") {
-                println!("  Redis:      {} (Docker, port 63791)", style("✓ running").green());
+                println!("  Redis:      {} (Docker, port {})", style("✓ running").green(), ports::redis_port());
             } else {
                 println!("  Redis:      {}", style("✗ not running").yellow());
             }

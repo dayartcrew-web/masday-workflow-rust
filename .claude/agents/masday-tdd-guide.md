@@ -47,14 +47,14 @@ Read the task's acceptance criteria. Identify what needs tests.
 
 ```
 mcp__masday__semantic-search_code_search({ query: "unit test example describe it expect" })
-Glob({ pattern: "**/*.test.ts" })
-Read({ file_path: "vitest.config.ts" })
+Glob({ pattern: "**/*test.rs" })
+Read({ file_path: "tests" })
 ```
 
 Follow existing test conventions. If no conventions exist, establish them:
-- File naming: `<module>.test.ts` (unit), `<module>.integration.test.ts` (integration)
-- Test structure: `describe > describe > it`
-- Assertion style: `expect().toEqual()`, `expect().toThrow()`
+- File naming: `<module>_test.rs` (unit), `<module>_integration.rs` (integration)
+- Test structure: `#[cfg(test)] mod tests { ... }`
+- Assertion style: `assert_eq!`, `assert!`, `assert_ne!`
 
 ### 3. RED Phase — Write Failing Tests
 
@@ -67,30 +67,31 @@ For each function/method to test, write tests covering:
 
 Test naming convention: `it('should <expected behavior> when <condition>')`
 
-```typescript
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+```rust
+#[cfg(test)]
+mod tests {
+  use super::*;
+  
+  #[test]
+  fn should_return_expected_value_when_given_valid_input() {
+    let result = function_name(FunctionInput { key: "value" });
+    assert_eq!(result, ExpectedOutput { expected: "output" });
+  }
 
-describe('ModuleName', () => {
-  beforeEach(() => {
-    // Reset state — no shared mutable state between tests
-  });
-
-  describe('functionName', () => {
-    it('should return expected value when given valid input', () => {
-      const result = functionName({ key: 'value' });
-      expect(result).toEqual({ expected: 'output' });
+  #[test]
+  fn should_return_validation_error_when_input_is_null() {
+    let result = std::panic::catch_unwind(|| {
+      function_name(None);
     });
+    assert!(result.is_err());
+  }
 
-    it('should throw ValidationError when input is null', () => {
-      expect(() => functionName(null as any)).toThrow(/invalid/i);
-    });
-
-    it('should return empty array when no items found', () => {
-      const result = functionName({ filter: 'nonexistent' });
-      expect(result).toEqual([]);
-    });
-  });
-});
+  #[test]
+  fn should_return_empty_array_when_no_items_found() {
+    let result = function_name(FilterInput { filter: "nonexistent" });
+    assert_eq!(result, Vec::<String>::new());
+  }
+}
 ```
 
 **Verify RED:**
@@ -154,7 +155,7 @@ mcp__masday__tests_run({ pattern: "<test-file>" })
 ### 6. Coverage Check
 
 ```
-Bash: npx vitest run --coverage packages/<module>
+Bash: cargo test --package <module> --lib
 ```
 
 Enforce 80%+ on all metrics: statements, branches, functions, lines.
@@ -176,7 +177,7 @@ mcp__masday__tests_run({})
 Or:
 
 ```bash
-pnpm test
+cargo test
 ```
 
 All tests must pass. No regressions allowed.
@@ -215,11 +216,11 @@ When refactoring:
 |----------|------|
 | Isolation | Each test runs independently, no shared mutable state |
 | Determinism | Same test always produces same result |
-| Naming | `it should <behavior> when <condition>` |
+| Naming | Test functions should describe behavior clearly |
 | Coverage | Minimum 80% per module |
 | Mocking | Mock external deps only, never unit under test |
 | Assertions | At least one explicit assertion per test |
-| Setup | `beforeEach` for shared setup |
+| Setup | Use setup/teardown functions for shared setup |
 | No flakiness | No timing dependencies, no random values |
 
 ## Progress Tracking
@@ -262,7 +263,7 @@ mcp__masday__memory_store({
 | Coverage below 80% | Write more tests for uncovered paths |
 | Flaky test | Isolate, remove timing deps, mock external state |
 | Full suite regression | Identify broken test, fix implementation |
-| Import error | Use `.js` extensions for ESM imports |
+| Import error | Check use statements and module paths |
 
 ## What You NEVER Do
 
@@ -277,7 +278,7 @@ mcp__masday__memory_store({
 
 ## Step Checkpoint Protocol
 
-This agent enforces step-level validation via `skill-step-guard.js` hook.
+This agent enforces step-level validation via `skill-step-guard.cjs` hook.
 
 ```
 RED (write tests) → RED_VERIFY (tests fail) → GREEN (implement) → GREEN_VERIFY (tests pass) → REFACTOR (cleanup) → COVERAGE (80%+)

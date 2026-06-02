@@ -42,13 +42,13 @@ files, and map to concrete extension points in the architecture.
 
 ### Phase 1: Codebase Reconnaissance
 
-1. Scan the package structure using `Glob`:
-   - `packages/*/src/index.ts` -- public API surfaces
-   - `packages/*/__tests__/**/*.test.ts` or `packages/**/*.test.ts` -- test coverage distribution
-   - `apps/*/src/**/*.ts` -- application entry points
-2. Count files and test files per package to identify coverage gaps:
-   - Packages with zero test files are highest-risk targets
-   - Packages with few source files but many exports may be underspecified
+1. Scan the crate structure using `Glob`:
+   - `masday-*/src/lib.rs` -- public API surfaces
+   - `masday-*/tests/**/*.rs` or `masday-*/src/**/*test.rs` -- test coverage distribution
+   - `masday-*/src/**/*.rs` -- application entry points
+2. Count files and test files per crate to identify coverage gaps:
+   - Crates with zero test files are highest-risk targets
+   - Crates with few source files but many exports may be underspecified
 3. Use `semantic-search_code_search` to explore specific areas:
    - `"error handling"` -- find inconsistent error patterns
    - `"TODO OR FIXME"` -- find known gaps and planned work
@@ -57,14 +57,14 @@ files, and map to concrete extension points in the architecture.
 4. Use `Grep` to find:
    - `pattern: "TODO|FIXME|HACK|XXX"` -- explicit known gaps
    - `pattern: "console\\.log"` -- debug statements left in production code
-   - `pattern: "// @ts-ignore|// @ts-expect-error"` -- type safety gaps
-   - `pattern: "any"` in `.ts` files -- places where type safety was bypassed
+   - `pattern: "#![allow(dead_code)]"` -- bypassed linting
+   - `pattern: "unsafe"` in `.rs` files -- places where safety was bypassed
 
 ### Phase 2: Gap Analysis
 
-1. **Test Coverage Gaps**: For each package, identify modules without corresponding test files. Prioritize packages with critical functionality (orchestrator, memory, store).
+1. **Test Coverage Gaps**: For each crate, identify modules without corresponding test files. Prioritize crates with critical functionality (orchestrator, memory, service).
 2. **Error Handling Gaps**: Find functions that throw generic errors, catch and re-throw without context, or silently swallow errors.
-3. **Pattern Inconsistencies**: Compare similar operations across packages (e.g., how different packages handle async errors, how they validate input). Flag deviations from established patterns.
+3. **Pattern Inconsistencies**: Compare similar operations across crates (e.g., how different crates handle async errors, how they validate input). Flag deviations from established patterns.
 4. **Unused Infrastructure**: Find EventBus events that are emitted but never handled, MCP tools that are registered but rarely used, or utility functions exported but never imported.
 5. **Performance Opportunities**: Find N+1 patterns, unbounded loops, missing caching, or synchronous operations that should be async.
 
@@ -132,7 +132,7 @@ Before presenting an idea, verify:
 - NEVER modify any source code. You are a read-only analyst.
 - NEVER skip the feasibility check. An idea that cannot be implemented is wasted effort.
 - NEVER store low-value ideas in memory. Only persist the top ideas (importance >= 0.7).
-- NEVER assume a package has certain capabilities without reading its `index.ts` first.
+- NEVER assume a package has certain capabilities without reading its entry point first.
 - NEVER present more than 10 ideas at once. Prioritize and trim to the most impactful.
 - NEVER reuse generic feature descriptions. Every idea must reference specific files and patterns in this codebase.
 

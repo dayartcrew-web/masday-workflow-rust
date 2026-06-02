@@ -82,7 +82,7 @@ Never assume architecture. Use Read, Grep, and Glob to verify:
 
 3. Identify affected packages:
    ```
-   Glob({ pattern: "packages/*/src/index.ts" })
+   Glob({ pattern: "masday-*/src/lib.rs" })
    ```
 
 ### Step 3: Decompose into Tasks
@@ -110,13 +110,13 @@ workflow_createPlan({
         priority: "high",
         ownerAgent: "masday-executor",
         acceptanceCriteria: [
-          "AuthConfig interface exported from packages/core/src/types.ts",
+          "AuthConfig struct exported from masday-core/src/lib.rs",
           "JWT payload type defined with userId, role, exp fields",
           "Zod schema for login request validation exists"
         ],
         requiredContext: [
-          "packages/core/src/types.ts",
-          "packages/core/src/index.ts"
+          "masday-core/src/lib.rs",
+          "masday-core/src/lib.rs"
         ],
         verificationSteps: [
           "pnpm tsc --noEmit passes",
@@ -128,16 +128,16 @@ workflow_createPlan({
         priority: "high",
         ownerAgent: "masday-qa",
         acceptanceCriteria: [
-          "Test file at packages/auth/src/auth.test.ts",
+          "Test file at masday-auth/tests/auth.rs",
           "Tests cover login, logout, refresh, token expiry",
           "All tests fail (RED phase of TDD)"
         ],
         requiredContext: [
-          "packages/core/src/types.ts",
+          "masday-core/src/lib.rs",
           "vitest.config.ts"
         ],
         verificationSteps: [
-          "pnpm test -- packages/auth fails as expected (RED)"
+          "cargo test -- masday-auth fails as expected (RED)"
         ]
       }
     ]
@@ -239,7 +239,7 @@ Maximum 12 tasks per plan. If more are needed, split into phases and create sepa
 
 ## Step Checkpoint Protocol
 
-Planning follows enforced steps via `skill-step-guard.js`:
+Planning follows enforced steps via `skill-step-guard.cjs`:
 
 ```
 ANALYZE → MEMORY → PLAN → TASKS

@@ -13,7 +13,7 @@ echo ""
 # --- Git hooks ---
 if [ -d "${HOOKS_DST}" ]; then
   echo "[git hooks]"
-  for hook in pre-commit pre-push; do
+  for hook in pre-commit pre-commit-docs pre-push; do
     if [ -f "${HOOKS_SRC}/${hook}" ]; then
       cp "${HOOKS_SRC}/${hook}" "${HOOKS_DST}/${hook}"
       chmod +x "${HOOKS_DST}/${hook}"
@@ -65,6 +65,6 @@ fi
 
 echo ""
 echo "Hooks installed."
-echo "  git:        pre-commit (fmt+lint), pre-push (build+test)"
+echo "  git:        pre-commit (fmt+lint+docs), pre-commit-docs, pre-push (build+test)"
 echo "  global:     statusline, session-start, compact, context-warning, bash-guard"
 echo "  autoCompact: threshold 0.9 (compact at 90% context)"

@@ -11,6 +11,7 @@ const path = require("path");
 const http = require("http");
 
 const LOG_FILE = path.join(process.env.HOME, ".claude", "compact-log.jsonl");
+const API_PORT = parseInt(process.env.MASDAY_API_PORT || "30101", 10);
 
 function log(entry) {
   try {
@@ -32,7 +33,7 @@ function saveToMasday(summary, content) {
     const req = http.request(
       {
         hostname: "localhost",
-        port: 30101,
+        port: API_PORT,
         path: "/api/memories",
         method: "POST",
         headers: { "Content-Type": "application/json" },

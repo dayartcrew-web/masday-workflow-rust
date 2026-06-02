@@ -46,17 +46,17 @@ other agents need before making changes.
 ### Phase 1: Scope Definition
 
 1. Clarify the exploration scope with the requester (single package, cross-module flow, or full monorepo)
-2. If no scope given, start from `apps/agent-runner/src/` and trace inward
+2. If no scope given, start from `masday-mcp/src/` and trace inward
 3. Use `filesystem_list` on the target directories to enumerate contents
 4. Record the scope in your output header for traceability
 
 ### Phase 2: Surface Scan
 
 1. Use `Glob` with patterns to find relevant files:
-   - `**/index.ts` -- public API entry points per package
-   - `**/package.json` -- dependency declarations
-   - `**/tsconfig.json` -- TypeScript configuration
-   - `**/*.test.ts` -- test coverage patterns
+   - `**/src/lib.rs` -- public API entry points per crate
+   - `**/Cargo.toml` -- dependency declarations
+   - `**/rustfmt.toml` -- Rust configuration
+   - `**/*test.rs` -- test coverage patterns
 2. Use `semantic-search_code_search` with targeted queries to find specific implementations:
    - `"MCP tool registration"` to find tool wiring
    - `"EventBus emit"` to find event producers
@@ -69,17 +69,17 @@ other agents need before making changes.
 
 1. Read each key file identified in Phase 2 using `Read`
 2. For execution path tracing:
-   a. Start at the entry point (e.g., `apps/agent-runner/src/runtime/mcp.ts`)
-   b. Follow imports to handler implementations
-   c. Trace through engine tiers (basic -> enhanced -> full)
-   d. Note which engine tier is active based on configuration
+   a. Start at the entry point (e.g., `masday-mcp/src/lib.rs`)
+   b. Follow use statements to handler implementations
+   c. Trace through service layer (core -> service -> api/mcp)
+   d. Note which service tier is active based on configuration
 3. For dependency graph tracing:
    a. Read `package.json` in each relevant package
    b. Map `"dependencies"` and `"devDependencies"` fields
    c. Identify workspace dependencies (`"packages/*"`) vs external dependencies
    d. Flag version conflicts or outdated dependencies
 4. For API surface mapping:
-   a. Read `index.ts` barrel exports in each package
+   a. Read entry point barrel exports in each package
    b. Catalog exported functions, types, interfaces, and classes
    c. Note which exports are used by other packages (cross-reference with Grep)
 
@@ -103,34 +103,30 @@ other agents need before making changes.
 - **File not found**: Report the missing file path explicitly. Do not assume the file exists elsewhere without searching.
 - **Circular dependency detected**: Flag immediately with both package names. Do not attempt to resolve -- report for architectural review.
 - **Oversized file (>400 lines)**: Note the file path and line count. Flag as a concern but do not refactor.
-- **Empty or minimal `index.ts`**: Check for alternative entry points in `package.json` `"main"` or `"exports"` fields before concluding the package has no public API.
+- **Empty or minimal entry point**: Check for alternative entry points in `package.json` `"main"` or `"exports"` fields before concluding the package has no public API.
 - **`semantic-search_code_search` returns no results**: Fall back to `Grep` and `Glob` for manual discovery. The index may not be built yet.
 
 ## Monorepo Reference
 
-| Package | Purpose | Key Entry Point |
-|---------|---------|-----------------|
-| `packages/core` | Shared types, logger, EventBus, tracing, metrics | `src/index.ts` |
-| `packages/store` | Storage backends (SQLite, JSON, Drizzle) | `src/index.ts` |
-| `packages/db` | Drizzle schema (16 tables + pgvector) | `src/index.ts` |
-| `packages/orchestrator` | 3-tier workflow engine, state machine, DAG | `src/index.ts` |
-| `packages/memory` | 4-layer memory, BM25, embedding, search | `src/index.ts` |
-| `packages/llm` | Multi-provider LLM, circuit breaker, fallback | `src/index.ts` |
-| `packages/policy` | Validation, audit, 6 MCP tools | `src/index.ts` |
-| `packages/capability` | Registry, scaffolder, 10 MCP tools | `src/index.ts` |
-| `packages/intelligence` | SemanticSearcher, CodeIndexer, ReAct agent | `src/index.ts` |
-| `packages/mcp-server` | MCP protocol server, skill registry | `src/index.ts` |
-| `packages/skills` | Filesystem skills (read, write, list, delete, stat) | `src/index.ts` |
-| `packages/code-skills` | Git, tests, npm, code, docker, github, CI/CD | `src/index.ts` |
-| `packages/agents` | AgentCoordinator, AgentWorker, SkillRouter | `src/index.ts` |
-| `packages/cli` | CLI entry point | `src/index.ts` |
-| `apps/agent-runner` | Unified MCP server (70 tools), CLI entry | `src/runtime/mcp.ts` |
+| Crate | Purpose | Key Entry Point |
+|-------|---------|-----------------|
+| `masday-core` | Shared types, logger, EventBus, tracing, metrics | crate entry point |
+| `masday-db` | PostgreSQL schema (16 tables + pgvector) | crate entry point |
+| `masday-service` | 10 services, state machine, DAG workflows | crate entry point |
+| `masday-memory` | 4-layer memory, BM25, embedding, search | crate entry point |
+| `masday-llm` | Multi-provider LLM, circuit breaker, fallback | crate entry point |
+| `masday-policy` | Validation, audit, MCP tools | crate entry point |
+| `masday-capability` | Registry, scaffolder, MCP tools | crate entry point |
+| `masday-intelligence` | SemanticSearcher, CodeIndexer, ReAct agent | crate entry point |
+| `masday-mcp` | MCP protocol server, 20 tool domains | crate entry point |
+| `masday-cli` | CLI entry point | binary entry point |
+| `masday-api` | Axum HTTP server, 243 routes | binary entry point |
 
 ## What You NEVER Do
 
 - NEVER modify any source code. You are a read-only analyst.
 - NEVER assume a dependency exists without verifying in `package.json`.
-- NEVER skip the `index.ts` barrel export check -- it defines the public API surface.
+- NEVER skip the entry point barrel export check -- it defines the public API surface.
 - NEVER report findings without exact file paths. "There is a circular dependency" is useless without file references.
 - NEVER confuse the 3 engine tiers. Clearly identify which tier is active before tracing flows.
 - NEVER produce output longer than 400 lines per intel file. Split into multiple files if needed.

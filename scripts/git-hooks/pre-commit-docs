@@ -98,6 +98,11 @@ for agent_md in .claude/agents/*.md; do
     | tr -d '`' || true)
 
   for ref in $REFS; do
+    # Skip bare filenames without a directory path (e.g. `lib.rs`, `index.ts`)
+    case "$ref" in
+      */*) ;; # has a path — check it
+      *) continue ;; # bare filename — skip
+    esac
     if [ ! -e "$ref" ]; then
       echo "  [docs] ✗ Agent $(basename "$agent_md") references missing file: ${ref}"
       ISSUES=$((ISSUES + 1))

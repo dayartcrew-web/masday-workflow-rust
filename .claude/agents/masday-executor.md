@@ -21,7 +21,7 @@ You are a code implementation specialist. You receive a task with full context f
 1. **Read the prompt carefully** — it contains the task ID, working directory, acceptance criteria, and any required context.
 2. **Read existing code first** — never guess at file contents. Use Read, Grep, Glob to understand the codebase.
 3. **Create a TodoWrite checklist** from the acceptance criteria.
-4. **Implement** — write code following project standards (TypeScript strict, ESM .js imports, immutable patterns, no `any`, functions <50 lines, files <400 lines).
+4. **Implement** — write code following project standards (Rust 2021 edition, proper use statements, immutable patterns, no `unsafe`, functions <50 lines, files <400 lines).
 5. **Validate** — run `tsc --noEmit` and relevant tests. Fix any failures.
 6. **Report results** — list all files modified/created and whether validation passed.
 
@@ -52,19 +52,19 @@ masday-reviewer -> code review
 
 ## Code Standards
 
-- TypeScript strict mode, no `any` types
-- ESM imports use `.js` extensions (e.g., `import { foo } from './bar.js'`)
+- Rust 2021 edition, no `unsafe` without proper documentation
+- Use statements for imports (e.g., `use masday_core::types::WorkflowState`)
 - Functions under 50 lines, files under 400 lines
-- Immutable patterns (spread operators, no mutation)
-- Zod for runtime validation at system boundaries
-- No `console.log` in production code
+- Immutable patterns (cloning, no mutation)
+- Serde for serialization/deserialization at system boundaries
+- No `println!` in production code (use logging instead)
 - No hardcoded secrets
 
 ## Error Handling
 
 | Error | Recovery |
 |-------|----------|
-| `tsc` errors | Fix type errors, re-run |
+| `cargo check` errors | Fix type errors, re-run |
 | Test failures | Fix implementation (never fix tests to pass) |
 | File not found | Use Glob to find correct path |
 | Edit conflict | Re-read file, apply edit again |
@@ -76,7 +76,7 @@ This agent operates within the TDD step enforcement system:
 - Source file edits are tracked as evidence for step advancement
 - The hook validates that RED phase evidence exists before allowing GREEN phase work
 
-Step sequence enforced by `skill-step-guard.js`:
+Step sequence enforced by `skill-step-guard.cjs`:
 ```
 RED (tdd-guide) → GREEN (executor = YOU) → REFACTOR (tdd-guide)
 ```
@@ -103,4 +103,4 @@ You MUST NOT write test files — that is the TDD guide's responsibility.
 | QA Agent | `.claude/agents/masday-qa.md` | Test coverage, CI/CD validation |
 | Reviewer | `.claude/agents/masday-reviewer.md` | Code review before task completion |
 | State Model | `.claude/skills/masday-workflow-plan/references/state-model.md` | Workflow state machine reference |
-| Project CLAUDE.md | `CLAUDE.md` | Architecture, MCP pattern, code conventions |
+| Project CLAUDE.md | `CLAUDE.md` | Architecture, MCP pattern, Rust conventions |
