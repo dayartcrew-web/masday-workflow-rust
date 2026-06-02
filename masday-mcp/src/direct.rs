@@ -134,7 +134,7 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
 
     let mut stmt = conn.prepare(
         "SELECT id, name, status, created_at FROM workflows ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![limit, offset], |row| {
         Ok(json!({
@@ -154,7 +154,7 @@ pub async fn workflow_get_active(_args: Value) -> Result<Value, Box<dyn std::err
 
     let mut stmt = conn.prepare(
         "SELECT id, name, status FROM workflows WHERE status NOT IN ('DONE','FAILED') ORDER BY created_at DESC"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map([], |row| {
         Ok(json!({"id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
@@ -307,7 +307,7 @@ pub async fn workflow_list_tasks(args: Value) -> Result<Value, Box<dyn std::erro
 
     let mut stmt = conn.prepare(
         "SELECT id, title, status, owner_agent, priority, progress_percent, created_at, updated_at FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![workflow_id], |row| {
         Ok(json!({
@@ -375,7 +375,7 @@ pub async fn workflow_list_parallel_branches(args: Value) -> Result<Value, Box<d
 
     let mut stmt = conn.prepare(
         "SELECT id, branch_key, role, status, input, output FROM parallel_branches WHERE workflow_id=?1"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![workflow_id], |row| {
         Ok(json!({
@@ -526,7 +526,7 @@ pub async fn memory_search(args: Value) -> Result<Value, Box<dyn std::error::Err
 
     let mut stmt = conn.prepare(
         "SELECT id, memory_type, summary, importance_score, created_at FROM memories WHERE summary LIKE ?1 OR content LIKE ?1 ORDER BY importance_score DESC, created_at DESC LIMIT ?2"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![&pattern, limit], |row| {
         Ok(json!({
@@ -553,7 +553,7 @@ pub async fn memory_recall_document_by_type(args: Value) -> Result<Value, Box<dy
 
     let mut stmt = conn.prepare(
         "SELECT id, memory_type, summary, content, created_at FROM memories WHERE memory_type=?1 ORDER BY created_at DESC LIMIT ?2"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![source_type, limit], |row| {
         Ok(json!({
@@ -576,7 +576,7 @@ pub async fn memory_recall_by_task(args: Value) -> Result<Value, Box<dyn std::er
 
     let mut stmt = conn.prepare(
         "SELECT id, memory_type, summary, content, importance_score, created_at FROM memories WHERE task_id=?1 ORDER BY created_at DESC LIMIT ?2"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![task_id, limit], |row| {
         Ok(json!({
@@ -599,7 +599,7 @@ pub async fn memory_recall_recent(args: Value) -> Result<Value, Box<dyn std::err
 
     let mut stmt = conn.prepare(
         "SELECT id, memory_type, summary, importance_score, created_at FROM memories ORDER BY created_at DESC LIMIT ?1"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![limit], |row| {
         Ok(json!({
@@ -700,7 +700,7 @@ pub async fn episodic_recall(args: Value) -> Result<Value, Box<dyn std::error::E
 
     let mut stmt = conn.prepare(
         "SELECT id, role, content, sequence_order, created_at FROM episodic_memories WHERE session_id=?1 ORDER BY sequence_order LIMIT ?2"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![session_id, limit], |row| {
         Ok(json!({
@@ -853,7 +853,7 @@ pub async fn search_hybrid_context_pack(args: Value) -> Result<Value, Box<dyn st
     // Gather context from memories and tasks
     let mut stmt = conn.prepare(
         "SELECT id, memory_type, summary, content FROM memories WHERE workflow_id=?1 ORDER BY importance_score DESC LIMIT 10"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let mem_rows = stmt.query_map(params![workflow_id], |row| {
         Ok(json!({"id": row.get::<_, String>(0)?, "type": row.get::<_, String>(1)?, "summary": row.get::<_, String>(2)?}))
@@ -863,7 +863,7 @@ pub async fn search_hybrid_context_pack(args: Value) -> Result<Value, Box<dyn st
 
     let mut stmt2 = conn.prepare(
         "SELECT id, title, status FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let task_rows = stmt2.query_map(params![workflow_id], |row| {
         Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
@@ -987,7 +987,7 @@ pub async fn reminder_check(_args: Value) -> Result<Value, Box<dyn std::error::E
     // Find stale tasks (RUNNING for >1 hour — simplified check)
     let mut stmt = conn.prepare(
         "SELECT id, workflow_id, title FROM tasks WHERE status='RUNNING' AND updated_at < datetime('now', '-1 hour')"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map([], |row| {
         Ok(json!({"id": row.get::<_, String>(0)?, "workflow_id": row.get::<_, String>(1)?, "title": row.get::<_, String>(2)?, "type": "stale"}))
@@ -1003,7 +1003,7 @@ pub async fn reminder_list(args: Value) -> Result<Value, Box<dyn std::error::Err
 
     let mut stmt = conn.prepare(
         "SELECT id, workflow_id, reminder_type, severity, message, acknowledged FROM workflow_reminders WHERE workflow_id=?1"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![workflow_id], |row| {
         Ok(json!({
@@ -1068,7 +1068,7 @@ pub async fn memory_search_nodes(args: Value) -> Result<Value, Box<dyn std::erro
 
     let mut stmt = conn.prepare(
         "SELECT id, node_type, name, properties FROM graph_nodes WHERE name LIKE ?1 OR properties LIKE ?1"
-    ).map_err(|e| err(e))?;
+    ).map_err(err)?;
 
     let rows = stmt.query_map(params![&pattern], |row| {
         Ok(json!({
@@ -1094,12 +1094,10 @@ pub async fn capability_list_agents(args: Value) -> Result<Value, Box<dyn std::e
     let agents_dir = std::path::Path::new(project_root).join(".claude/agents");
     let mut agents = Vec::new();
     if agents_dir.exists() {
-        for entry in std::fs::read_dir(&agents_dir).map_err(|e| err(e))? {
-            if let Ok(entry) = entry {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.ends_with(".md") {
-                    agents.push(json!({"name": name.trim_end_matches(".md")}));
-                }
+        for entry in std::fs::read_dir(&agents_dir).map_err(err)?.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".md") {
+                agents.push(json!({"name": name.trim_end_matches(".md")}));
             }
         }
     }
@@ -1114,11 +1112,9 @@ pub async fn capability_list_skills(args: Value) -> Result<Value, Box<dyn std::e
     let skills_dir = std::path::Path::new(project_root).join(".claude/skills");
     let mut skills = Vec::new();
     if skills_dir.exists() {
-        for entry in std::fs::read_dir(&skills_dir).map_err(|e| err(e))? {
-            if let Ok(entry) = entry {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    skills.push(json!({"name": entry.file_name().to_string_lossy()}));
-                }
+        for entry in std::fs::read_dir(&skills_dir).map_err(err)?.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                skills.push(json!({"name": entry.file_name().to_string_lossy()}));
             }
         }
     }
@@ -1184,9 +1180,9 @@ pub async fn capability_create_agent(args: Value) -> Result<Value, Box<dyn std::
     let instructions = args["instructions"].as_str().unwrap_or("");
 
     let dir = std::path::Path::new(project_root).join(".claude/agents");
-    std::fs::create_dir_all(&dir).map_err(|e| err(e))?;
+    std::fs::create_dir_all(&dir).map_err(err)?;
     let content = format!("---\nname: {}\nrole: {}\n---\n\n# {}\n\n{}", name, role, description, instructions);
-    std::fs::write(dir.join(format!("{}.md", name)), content).map_err(|e| err(e))?;
+    std::fs::write(dir.join(format!("{}.md", name)), content).map_err(err)?;
 
     Ok(json!({"created": name}))
 }
@@ -1197,9 +1193,9 @@ pub async fn capability_create_skill(args: Value) -> Result<Value, Box<dyn std::
     let description = args["description"].as_str().unwrap_or("");
 
     let dir = std::path::Path::new(project_root).join(format!(".claude/skills/{}", name));
-    std::fs::create_dir_all(&dir).map_err(|e| err(e))?;
+    std::fs::create_dir_all(&dir).map_err(err)?;
     let content = format!("---\nname: {}\ndescription: {}\n---\n\n# {}", name, description, name);
-    std::fs::write(dir.join("SKILL.md"), content).map_err(|e| err(e))?;
+    std::fs::write(dir.join("SKILL.md"), content).map_err(err)?;
 
     Ok(json!({"created": name}))
 }

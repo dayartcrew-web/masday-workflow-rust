@@ -15,7 +15,9 @@
 
 use masday_core::{AppError, Result};
 use serde::Deserialize;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::OnceLock;
+#[cfg(feature = "local-embeddings")]
+use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 // ── Provider defaults ────────────────────────────────────────────────────────
