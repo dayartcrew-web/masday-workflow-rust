@@ -3,7 +3,7 @@
 //! Reads `DATABASE_URL` from environment, creates a connection pool with retry,
 //! and stores it in a global `OnceLock` for access from direct-call handlers.
 
-use masday_db::pool::{create_pool, health_check, DbPool};
+use masday_db::pool::{health_check, DbPool};
 use std::sync::OnceLock;
 use tracing::info;
 

@@ -2214,6 +2214,7 @@ dependencies = [
 name = "masday-mcp"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "masday-core",
  "masday-db",
  "masday-service",
@@ -2224,6 +2225,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
