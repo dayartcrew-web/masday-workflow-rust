@@ -1,5 +1,7 @@
 packages:
   - "apps/dashboard"
+overrides:
+  "postcss": "8.5.15"
 allowBuilds:
   esbuild: true
   sharp: true
