@@ -114,6 +114,12 @@ async function main() {
       fs.writeFileSync(compactStatePath, JSON.stringify({ count: 0, lastCompact: null }, null, 2));
     } catch {}
   }
+
+  // Reset context cache to 0 — fresh session
+  const contextCachePath = path.join(os.tmpdir(), "masday-context-cache.json");
+  try {
+    fs.writeFileSync(contextCachePath, JSON.stringify({ pct: 0, ts: Date.now() }));
+  } catch {}
 }
 
 main().catch(() => {});
