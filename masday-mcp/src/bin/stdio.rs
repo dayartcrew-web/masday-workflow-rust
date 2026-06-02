@@ -1,7 +1,7 @@
-//! masday-mcp-stdio — Standalone MCP server with direct PostgreSQL access
+//! masday-mcp-stdio — Standalone MCP server with SQLite
 //!
-//! No masday-api needed. Connects directly to PostgreSQL via DATABASE_URL.
-//! Uses masday-service + masday-db for all DB operations.
+//! No external services needed. Uses local SQLite at ~/.masday/data.db.
+//! Binary can be placed directly in PATH.
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
