@@ -56,6 +56,25 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn(middleware::auth::auth_middleware))
 }
 
+/// Run the API server with the given pool and port.
+/// Blocks until Ctrl+C shutdown signal received.
+pub async fn run(
+    pool: masday_db::pool::DbPool,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let state = AppState::new(pool);
+    let app = build_router(state);
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+    tracing::info!("masday-api listening on {}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c().await.ok();
+        })
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

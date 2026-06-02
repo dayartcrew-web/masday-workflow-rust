@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "masday")]
-#[command(about = "Masday workflow orchestration CLI", long_about = None)]
+#[command(about = "Masday workflow orchestration — all-in-one binary", long_about = None)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -13,6 +13,28 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Interactive setup wizard (first-time configuration)
+    Setup,
+
+    /// Start API server + dashboard
+    Serve {
+        /// Port to listen on (overrides config)
+        #[arg(long)]
+        port: Option<u16>,
+    },
+
+    /// Start MCP server (stdio — used by AI platforms)
+    Mcp,
+
+    /// Check health of all services
+    Status,
+
+    /// Manage PostgreSQL via Docker
+    Db {
+        #[command(subcommand)]
+        action: DbAction,
+    },
+
     /// Install masday into the current project
     Install {
         /// Remote API server URL (skips local build, connects to remote)
@@ -61,18 +83,18 @@ enum Commands {
 
     /// Update masday (re-install with force)
     Update,
+}
 
-    /// Run database migrations
-    DbMigrate,
+#[derive(Subcommand)]
+enum DbAction {
+    /// Start PostgreSQL and Redis containers
+    Start,
 
-    /// Start the API server
-    Serve,
+    /// Stop all containers
+    Stop,
 
-    /// Show workflow status
-    Status {
-        /// Workflow ID
-        id: Option<String>,
-    },
+    /// Delete data and recreate containers
+    Reset,
 }
 
 #[tokio::main]
@@ -81,6 +103,23 @@ async fn main() -> anyhow::Result<()> {
     let project_dir = std::env::current_dir()?;
 
     match cli.command {
+        Commands::Setup => {
+            masday_cli::commands::setup::run(&project_dir)?;
+        }
+        Commands::Serve { port } => {
+            masday_cli::commands::serve::run(port).await?;
+        }
+        Commands::Mcp => {
+            masday_cli::commands::mcp_cmd::run().await?;
+        }
+        Commands::Status => {
+            masday_cli::commands::status::run().await?;
+        }
+        Commands::Db { action } => match action {
+            DbAction::Start => masday_cli::commands::db::start()?,
+            DbAction::Stop => masday_cli::commands::db::stop()?,
+            DbAction::Reset => masday_cli::commands::db::reset()?,
+        },
         Commands::Install {
             remote,
             api_key,
@@ -109,21 +148,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Update => {
             masday_cli::commands::update::run(&project_dir)?;
-        }
-        Commands::DbMigrate => {
-            println!("Running database migrations...");
-            // TODO: implement via masday-db crate
-        }
-        Commands::Serve => {
-            println!("Starting API server...");
-            // TODO: delegate to masday-api
-        }
-        Commands::Status { id } => {
-            match id {
-                Some(id) => println!("Workflow status for: {}", id),
-                None => println!("Listing all workflows..."),
-            }
-            // TODO: implement via masday-api client
         }
     }
 
