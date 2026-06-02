@@ -1,8 +1,8 @@
-use std::fs;
-use std::path::Path;
-use anyhow::{Result, Context};
 use super::platform::Platform;
 use super::templates;
+use anyhow::{Context, Result};
+use std::fs;
+use std::path::Path;
 
 pub struct SyncReport {
     pub platform: String,
@@ -10,7 +10,11 @@ pub struct SyncReport {
     pub skipped: usize,
 }
 
-pub fn sync_agents_to_project(project_dir: &Path, platforms: &[Platform], force: bool) -> Result<Vec<SyncReport>> {
+pub fn sync_agents_to_project(
+    project_dir: &Path,
+    platforms: &[Platform],
+    force: bool,
+) -> Result<Vec<SyncReport>> {
     let agents = templates::extract_agents();
     let mut reports = Vec::new();
 

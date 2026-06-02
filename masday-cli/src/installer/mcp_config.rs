@@ -1,7 +1,7 @@
-use std::path::Path;
-use anyhow::{Result, Context};
-use serde_json::Value as JsonValue;
 use super::platform::Platform;
+use anyhow::{Context, Result};
+use serde_json::Value as JsonValue;
+use std::path::Path;
 
 pub struct McpConfig {
     pub mcp_binary_path: std::path::PathBuf,
@@ -10,7 +10,11 @@ pub struct McpConfig {
     pub database_url: Option<String>,
 }
 
-pub fn generate_mcp_config(platform: &Platform, project_dir: &Path, config: &McpConfig) -> Result<()> {
+pub fn generate_mcp_config(
+    platform: &Platform,
+    project_dir: &Path,
+    config: &McpConfig,
+) -> Result<()> {
     let config_path = platform.mcp_config_path(project_dir);
 
     match platform {
@@ -55,16 +59,28 @@ pub fn remove_mcp_config(platform: &Platform, project_dir: &Path) -> Result<()> 
 
 fn write_claude_code_config(path: &Path, config: &McpConfig) -> Result<()> {
     let mut env_map = serde_json::Map::new();
-    env_map.insert("MASDAY_API_URL".to_string(), JsonValue::String(config.api_url.clone()));
-    env_map.insert("MASDAY_API_KEY".to_string(), JsonValue::String(config.api_key.clone()));
+    env_map.insert(
+        "MASDAY_API_URL".to_string(),
+        JsonValue::String(config.api_url.clone()),
+    );
+    env_map.insert(
+        "MASDAY_API_KEY".to_string(),
+        JsonValue::String(config.api_key.clone()),
+    );
 
     if let Some(ref db_url) = config.database_url {
-        env_map.insert("DATABASE_URL".to_string(), JsonValue::String(db_url.clone()));
+        env_map.insert(
+            "DATABASE_URL".to_string(),
+            JsonValue::String(db_url.clone()),
+        );
     }
 
     let mut server = serde_json::Map::new();
     server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
-    server.insert("command".to_string(), JsonValue::String(config.mcp_binary_path.display().to_string()));
+    server.insert(
+        "command".to_string(),
+        JsonValue::String(config.mcp_binary_path.display().to_string()),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     let mut mcp_servers = serde_json::Map::new();
@@ -81,15 +97,20 @@ fn update_gemini_config(path: &Path, config: &McpConfig) -> Result<()> {
     let existing_json = if path.exists() {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
-        Some(serde_json::from_str::<JsonValue>(&content)
-            .unwrap_or_else(|_| JsonValue::Object(serde_json::Map::new())))
+        Some(
+            serde_json::from_str::<JsonValue>(&content)
+                .unwrap_or_else(|_| JsonValue::Object(serde_json::Map::new())),
+        )
     } else {
         None
     };
 
-    let mut root = existing_json.clone().unwrap_or_else(|| JsonValue::Object(serde_json::Map::new()));
+    let mut root = existing_json
+        .clone()
+        .unwrap_or_else(|| JsonValue::Object(serde_json::Map::new()));
 
-    let mcp_servers = root.as_object_mut()
+    let mcp_servers = root
+        .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("Root should be an object"))?
         .entry("mcpServers".to_string())
         .or_insert_with(|| JsonValue::Object(serde_json::Map::new()))
@@ -98,16 +119,28 @@ fn update_gemini_config(path: &Path, config: &McpConfig) -> Result<()> {
         .clone();
 
     let mut env_map = serde_json::Map::new();
-    env_map.insert("MASDAY_API_URL".to_string(), JsonValue::String(config.api_url.clone()));
-    env_map.insert("MASDAY_API_KEY".to_string(), JsonValue::String(config.api_key.clone()));
+    env_map.insert(
+        "MASDAY_API_URL".to_string(),
+        JsonValue::String(config.api_url.clone()),
+    );
+    env_map.insert(
+        "MASDAY_API_KEY".to_string(),
+        JsonValue::String(config.api_key.clone()),
+    );
 
     if let Some(ref db_url) = config.database_url {
-        env_map.insert("DATABASE_URL".to_string(), JsonValue::String(db_url.clone()));
+        env_map.insert(
+            "DATABASE_URL".to_string(),
+            JsonValue::String(db_url.clone()),
+        );
     }
 
     let mut server = serde_json::Map::new();
     server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
-    server.insert("command".to_string(), JsonValue::String(config.mcp_binary_path.display().to_string()));
+    server.insert(
+        "command".to_string(),
+        JsonValue::String(config.mcp_binary_path.display().to_string()),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     let mcp_servers_obj = mcp_servers;
@@ -142,15 +175,27 @@ fn remove_from_gemini_config(path: &Path) -> Result<()> {
 
 fn write_vscode_config(path: &Path, config: &McpConfig) -> Result<()> {
     let mut env_map = serde_json::Map::new();
-    env_map.insert("MASDAY_API_URL".to_string(), JsonValue::String(config.api_url.clone()));
-    env_map.insert("MASDAY_API_KEY".to_string(), JsonValue::String(config.api_key.clone()));
+    env_map.insert(
+        "MASDAY_API_URL".to_string(),
+        JsonValue::String(config.api_url.clone()),
+    );
+    env_map.insert(
+        "MASDAY_API_KEY".to_string(),
+        JsonValue::String(config.api_key.clone()),
+    );
 
     if let Some(ref db_url) = config.database_url {
-        env_map.insert("DATABASE_URL".to_string(), JsonValue::String(db_url.clone()));
+        env_map.insert(
+            "DATABASE_URL".to_string(),
+            JsonValue::String(db_url.clone()),
+        );
     }
 
     let mut server = serde_json::Map::new();
-    server.insert("command".to_string(), JsonValue::String(config.mcp_binary_path.display().to_string()));
+    server.insert(
+        "command".to_string(),
+        JsonValue::String(config.mcp_binary_path.display().to_string()),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     let mut servers = serde_json::Map::new();
@@ -173,10 +218,8 @@ fn write_json_file(path: &Path, json: JsonValue) -> Result<()> {
             .with_context(|| format!("Failed to create directory {}", parent.display()))?;
     }
 
-    let content = serde_json::to_string_pretty(&json)
-        .context("Failed to serialize JSON")?;
-    std::fs::write(path, content)
-        .with_context(|| format!("Failed to write {}", path.display()))?;
+    let content = serde_json::to_string_pretty(&json).context("Failed to serialize JSON")?;
+    std::fs::write(path, content).with_context(|| format!("Failed to write {}", path.display()))?;
 
     Ok(())
 }

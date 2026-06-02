@@ -19,9 +19,18 @@ pub fn llm_provider_config_routes() -> Router<AppState> {
         )
         .route("/llm-provider-configs/default", get(get_default_config))
         .route("/llm-provider-configs/{id}", get(get_llm_provider_config))
-        .route("/llm-provider-configs/{id}/update", post(update_llm_provider_config))
-        .route("/llm-provider-configs/{id}", delete(delete_llm_provider_config))
-        .route("/llm-provider-configs/{id}/set-default", put(set_default_config))
+        .route(
+            "/llm-provider-configs/{id}/update",
+            post(update_llm_provider_config),
+        )
+        .route(
+            "/llm-provider-configs/{id}",
+            delete(delete_llm_provider_config),
+        )
+        .route(
+            "/llm-provider-configs/{id}/set-default",
+            put(set_default_config),
+        )
 }
 
 /// POST /llm-provider-configs — Create a new LLM provider configuration
@@ -46,9 +55,15 @@ pub async fn create_llm_provider_config(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
-        models: payload.get("models").cloned().unwrap_or(serde_json::json!([])),
+        models: payload
+            .get("models")
+            .cloned()
+            .unwrap_or(serde_json::json!([])),
         is_default: payload.get("is_default").and_then(|v| v.as_bool()),
-        priority: payload.get("priority").and_then(|v| v.as_i64()).map(|v| v as i32),
+        priority: payload
+            .get("priority")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32),
     };
     let config = repo.create(&new_config).await?;
     Ok(Json(serde_json::json!(config)))
@@ -74,9 +89,7 @@ pub async fn get_llm_provider_config(
 }
 
 /// GET /llm-provider-configs/default — Get the default LLM provider configuration
-pub async fn get_default_config(
-    State(state): State<AppState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_default_config(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let repo = LlmProviderConfigRepo::new(state.pool.clone());
     if let Some(config) = repo.get_default().await? {
         Ok(Json(serde_json::json!(config)))

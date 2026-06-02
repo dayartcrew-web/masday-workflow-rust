@@ -29,9 +29,15 @@ pub fn memory_routes() -> Router<AppState> {
         .route("/memories/recent", get(recall_recent))
         .route("/memories/by-type", get(recall_by_type))
         .route("/memories/by-task/{task_id}", get(recall_by_task))
-        .route("/memories/workflow/{workflow_id}", delete(delete_by_workflow))
+        .route(
+            "/memories/workflow/{workflow_id}",
+            delete(delete_by_workflow),
+        )
         .route("/memories/stats", get(memory_stats))
-        .route("/memories/{id}", get(get_memory).patch(update_memory).delete(delete_memory))
+        .route(
+            "/memories/{id}",
+            get(get_memory).patch(update_memory).delete(delete_memory),
+        )
 }
 
 #[derive(Deserialize)]
@@ -229,18 +235,32 @@ async fn update_memory(
     let _mem = repo.get_by_id(&id).await?;
     // Update fields — content and importance
     if let Some(content) = payload.get("content").and_then(|v| v.as_str()) {
-        let client = state.pool.get().await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
-        client.execute(
-            r#"UPDATE "Memory" SET content = $1, "updatedAt" = NOW() WHERE id = $2"#,
-            &[&content, &id],
-        ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
+        let client = state
+            .pool
+            .get()
+            .await
+            .map_err(|e| masday_core::AppError::database(e.to_string()))?;
+        client
+            .execute(
+                r#"UPDATE "Memory" SET content = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                &[&content, &id],
+            )
+            .await
+            .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     }
     if let Some(importance) = payload.get("importance").and_then(|v| v.as_f64()) {
-        let client = state.pool.get().await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
-        client.execute(
-            r#"UPDATE "Memory" SET "importanceScore" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-            &[&importance, &id],
-        ).await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
+        let client = state
+            .pool
+            .get()
+            .await
+            .map_err(|e| masday_core::AppError::database(e.to_string()))?;
+        client
+            .execute(
+                r#"UPDATE "Memory" SET "importanceScore" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                &[&importance, &id],
+            )
+            .await
+            .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     }
     let updated = repo.get_by_id(&id).await?;
     Ok(Json(serde_json::json!(updated)))
@@ -251,7 +271,11 @@ async fn delete_by_workflow(
     State(state): State<AppState>,
     Path(workflow_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let client = state.pool.get().await.map_err(|e| masday_core::AppError::database(e.to_string()))?;
+    let client = state
+        .pool
+        .get()
+        .await
+        .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     let result = client
         .execute(
             r#"DELETE FROM "Memory" WHERE "workflowId" = $1"#,

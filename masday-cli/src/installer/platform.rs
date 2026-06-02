@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use home::home_dir;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {

@@ -435,7 +435,9 @@ impl Memory {
             embedding: None,
             created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
             updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
-            accessed_at: row.get::<_, Option<NaiveDateTime>>("accessedAt").map(|t| t.and_utc()),
+            accessed_at: row
+                .get::<_, Option<NaiveDateTime>>("accessedAt")
+                .map(|t| t.and_utc()),
             access_count: row.get("accessCount"),
             version: row.get("version"),
         }

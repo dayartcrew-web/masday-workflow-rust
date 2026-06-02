@@ -113,10 +113,7 @@ async fn system_readiness(State(state): State<AppState>) -> Json<Value> {
     }))
 }
 
-async fn workflow_audit(
-    State(_state): State<AppState>,
-    Path(id): Path<String>,
-) -> Json<Value> {
+async fn workflow_audit(State(_state): State<AppState>, Path(id): Path<String>) -> Json<Value> {
     Json(serde_json::json!({
         "workflow_id": id,
         "audited": false,

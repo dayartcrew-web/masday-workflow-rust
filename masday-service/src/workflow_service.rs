@@ -144,7 +144,10 @@ impl WorkflowService {
         // Already executing or beyond — just return current state
         if matches!(
             current,
-            WorkflowState::Execute | WorkflowState::Verify | WorkflowState::Fix | WorkflowState::Done
+            WorkflowState::Execute
+                | WorkflowState::Verify
+                | WorkflowState::Fix
+                | WorkflowState::Done
         ) {
             return Ok(workflow);
         }
@@ -160,9 +163,7 @@ impl WorkflowService {
                 Self::transition_status(pool, id, WorkflowState::Plan).await?;
                 Self::transition_status(pool, id, WorkflowState::Execute).await
             }
-            WorkflowState::Plan => {
-                Self::transition_status(pool, id, WorkflowState::Execute).await
-            }
+            WorkflowState::Plan => Self::transition_status(pool, id, WorkflowState::Execute).await,
             WorkflowState::Paused => {
                 Self::transition_status(pool, id, WorkflowState::Execute).await
             }

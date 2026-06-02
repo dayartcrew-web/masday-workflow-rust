@@ -13,10 +13,22 @@ use masday_db::repos::EpisodicMemoryRepo;
 
 pub fn episodic_memory_routes() -> Router<AppState> {
     Router::new()
-        .route("/episodic-memory", post(create_episodic_memory).get(list_episodic_memory))
-        .route("/episodic-memory/{id}", get(get_episodic_memory).delete(delete_episodic_memory))
-        .route("/episodic-memory/session/{session_id}", get(list_by_session))
-        .route("/episodic-memory/session/{session_id}/clear", delete(delete_by_session))
+        .route(
+            "/episodic-memory",
+            post(create_episodic_memory).get(list_episodic_memory),
+        )
+        .route(
+            "/episodic-memory/{id}",
+            get(get_episodic_memory).delete(delete_episodic_memory),
+        )
+        .route(
+            "/episodic-memory/session/{session_id}",
+            get(list_by_session),
+        )
+        .route(
+            "/episodic-memory/session/{session_id}/clear",
+            delete(delete_by_session),
+        )
 }
 
 /// POST /episodic-memory — Create a new episodic memory entry
@@ -51,9 +63,7 @@ async fn create_episodic_memory(
 }
 
 /// GET /episodic-memory — List all episodic memories
-async fn list_episodic_memory(
-    State(state): State<AppState>,
-) -> Result<Json<Value>, ApiError> {
+async fn list_episodic_memory(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let repo = EpisodicMemoryRepo::new(state.pool.clone());
     let memories = repo.list_all(Some(100)).await?;
     Ok(Json(serde_json::json!(memories)))

@@ -50,6 +50,7 @@ pub async fn tests_run(args: Value) -> Result<Value, Box<dyn std::error::Error +
 }
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use serde_json::json;
 

@@ -1,7 +1,7 @@
+use super::templates;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
-use anyhow::{Result, Context};
-use super::templates;
 
 pub struct SyncReport {
     pub platform: String,

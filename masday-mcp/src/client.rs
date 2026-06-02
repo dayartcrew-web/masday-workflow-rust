@@ -23,7 +23,10 @@ pub fn sanitize_id(id: &str) -> Option<&str> {
         return None;
     }
     // Only allow alphanumeric, hyphens, underscores, dots
-    if id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+    if id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
         Some(id)
     } else {
         None

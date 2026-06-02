@@ -118,7 +118,8 @@ impl WorkflowRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-        let query = r#"UPDATE "Workflow" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
+        let query =
+            r#"UPDATE "Workflow" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
             .await

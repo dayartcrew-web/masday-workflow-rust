@@ -174,8 +174,12 @@ mod tests {
         let path = temp_dir.path().to_str().unwrap();
 
         // Create test files
-        tokio::fs::write(temp_dir.path().join("file1.txt"), "content1").await.unwrap();
-        tokio::fs::create_dir(temp_dir.path().join("subdir")).await.unwrap();
+        tokio::fs::write(temp_dir.path().join("file1.txt"), "content1")
+            .await
+            .unwrap();
+        tokio::fs::create_dir(temp_dir.path().join("subdir"))
+            .await
+            .unwrap();
 
         let args = json!({ "path": path });
         let result = filesystem_list(args).await;

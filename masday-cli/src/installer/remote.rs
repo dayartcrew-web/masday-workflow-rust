@@ -2,9 +2,9 @@
 //!
 //! Handles finding masday-mcp in PATH or resolving remote URLs.
 
-use std::path::PathBuf;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use home::home_dir;
+use std::path::PathBuf;
 
 /// Resolve the MCP binary path for remote mode
 ///

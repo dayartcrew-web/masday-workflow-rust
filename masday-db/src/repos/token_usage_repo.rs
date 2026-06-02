@@ -76,7 +76,11 @@ impl TokenUsageRepo {
     }
 
     /// List all token usage entries for a source
-    pub async fn list_by_source(&self, source: &str, limit: Option<i64>) -> Result<Vec<TokenUsage>> {
+    pub async fn list_by_source(
+        &self,
+        source: &str,
+        limit: Option<i64>,
+    ) -> Result<Vec<TokenUsage>> {
         let client = self
             .pool
             .get()
@@ -93,7 +97,9 @@ impl TokenUsageRepo {
         let rows = client
             .query(query, &[&source, &capped])
             .await
-            .map_err(|e| AppError::Database(format!("Failed to list token usage by source: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to list token usage by source: {}", e))
+            })?;
 
         Ok(rows.iter().map(TokenUsage::from_row).collect())
     }

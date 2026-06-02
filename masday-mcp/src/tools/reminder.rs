@@ -38,21 +38,24 @@ mod tests {
     #[test]
     fn test_reminder_acknowledge_args() {
         let args = json!({ "id": "rem-123" });
-        let reminder_id = args.get("id")
+        let reminder_id = args
+            .get("id")
             .or_else(|| args.get("reminder_id"))
             .and_then(|v| v.as_str());
         assert!(reminder_id.is_some());
         assert_eq!(reminder_id.unwrap(), "rem-123");
 
         let args = json!({ "reminder_id": "rem-456" });
-        let reminder_id = args.get("id")
+        let reminder_id = args
+            .get("id")
             .or_else(|| args.get("reminder_id"))
             .and_then(|v| v.as_str());
         assert!(reminder_id.is_some());
         assert_eq!(reminder_id.unwrap(), "rem-456");
 
         let args = json!({});
-        let reminder_id = args.get("id")
+        let reminder_id = args
+            .get("id")
             .or_else(|| args.get("reminder_id"))
             .and_then(|v| v.as_str());
         assert!(reminder_id.is_none());

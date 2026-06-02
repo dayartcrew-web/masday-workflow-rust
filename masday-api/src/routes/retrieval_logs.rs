@@ -23,9 +23,18 @@ struct ListRetrievalLogsQuery {
 
 pub fn retrieval_log_routes() -> Router<AppState> {
     Router::new()
-        .route("/retrieval-logs", post(create_retrieval_log).get(list_retrieval_logs))
-        .route("/retrieval-logs/{id}", get(get_retrieval_log).delete(delete_retrieval_log))
-        .route("/retrieval-logs/workflow/{workflow_id}", get(list_by_workflow))
+        .route(
+            "/retrieval-logs",
+            post(create_retrieval_log).get(list_retrieval_logs),
+        )
+        .route(
+            "/retrieval-logs/{id}",
+            get(get_retrieval_log).delete(delete_retrieval_log),
+        )
+        .route(
+            "/retrieval-logs/workflow/{workflow_id}",
+            get(list_by_workflow),
+        )
         .route("/retrieval-logs/task/{task_id}", get(list_by_task))
 }
 
@@ -40,7 +49,10 @@ async fn create_retrieval_log(
             .get("workflow_id")
             .and_then(|v| v.as_str())
             .map(String::from),
-        task_id: payload.get("task_id").and_then(|v| v.as_str()).map(String::from),
+        task_id: payload
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
         agent_name: payload
             .get("agent_name")
             .and_then(|v| v.as_str())

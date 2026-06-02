@@ -4,7 +4,7 @@
 //! Column names are camelCase: "sessionId", "sequenceOrder", etc.
 
 use crate::pool::DbPool;
-use crate::schema::{NewEpisodicMemory, EpisodicMemory};
+use crate::schema::{EpisodicMemory, NewEpisodicMemory};
 use masday_core::{AppError, Result};
 
 pub struct EpisodicMemoryRepo {
@@ -38,7 +38,14 @@ impl EpisodicMemoryRepo {
         let row = client
             .query_one(
                 query,
-                &[&id, &memory.session_id, &memory.role, &memory.content, &memory.sequence_order, &now],
+                &[
+                    &id,
+                    &memory.session_id,
+                    &memory.role,
+                    &memory.content,
+                    &memory.sequence_order,
+                    &now,
+                ],
             )
             .await
             .map_err(|e| AppError::Database(format!("Failed to create episodic memory: {}", e)))?;
@@ -94,10 +101,9 @@ impl EpisodicMemoryRepo {
 
         let capped = limit.unwrap_or(100).min(1000);
         let query = r#"SELECT * FROM "EpisodicMemory" ORDER BY "createdAt" DESC LIMIT $1"#;
-        let rows = client
-            .query(query, &[&capped])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to list all episodic memories: {}", e)))?;
+        let rows = client.query(query, &[&capped]).await.map_err(|e| {
+            AppError::Database(format!("Failed to list all episodic memories: {}", e))
+        })?;
 
         Ok(rows.iter().map(EpisodicMemory::from_row).collect())
     }
@@ -127,9 +133,14 @@ impl EpisodicMemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "EpisodicMemory" WHERE "sessionId" = $1"#, &[&session_id])
+            .execute(
+                r#"DELETE FROM "EpisodicMemory" WHERE "sessionId" = $1"#,
+                &[&session_id],
+            )
             .await
-            .map_err(|e| AppError::Database(format!("Failed to delete session episodic memories: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to delete session episodic memories: {}", e))
+            })?;
 
         Ok(result)
     }

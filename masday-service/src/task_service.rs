@@ -298,14 +298,25 @@ impl TaskService {
             WorkflowState::Init => vec![WorkflowState::Done],
             WorkflowState::Analyze => vec![WorkflowState::Done],
             WorkflowState::Plan => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Paused => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Failed => {
                 // Cannot auto-transition from FAILED
-                warn!("Workflow {} is FAILED, skipping auto-transition", workflow_id);
+                warn!(
+                    "Workflow {} is FAILED, skipping auto-transition",
+                    workflow_id
+                );
                 return Ok(());
             }
             WorkflowState::Done => vec![],
@@ -313,8 +324,12 @@ impl TaskService {
 
         // Execute transitions sequentially
         for target in transitions {
-            match workflow_service::WorkflowService::transition_status(pool, workflow_id, target.clone())
-                .await
+            match workflow_service::WorkflowService::transition_status(
+                pool,
+                workflow_id,
+                target.clone(),
+            )
+            .await
             {
                 Ok(_) => {
                     info!("Workflow {} transitioned to {:?}", workflow_id, target);
@@ -348,15 +363,26 @@ mod tests {
             WorkflowState::Init => vec![WorkflowState::Done],
             WorkflowState::Analyze => vec![WorkflowState::Done],
             WorkflowState::Plan => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Paused => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Failed => vec![],
             WorkflowState::Done => vec![],
         };
-        assert_eq!(transitions, vec![WorkflowState::Verify, WorkflowState::Done]);
+        assert_eq!(
+            transitions,
+            vec![WorkflowState::Verify, WorkflowState::Done]
+        );
     }
 
     #[test]
@@ -370,10 +396,18 @@ mod tests {
             WorkflowState::Init => vec![WorkflowState::Done],
             WorkflowState::Analyze => vec![WorkflowState::Done],
             WorkflowState::Plan => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Paused => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Failed => vec![],
             WorkflowState::Done => vec![],
@@ -391,10 +425,18 @@ mod tests {
             WorkflowState::Init => vec![WorkflowState::Done],
             WorkflowState::Analyze => vec![WorkflowState::Done],
             WorkflowState::Plan => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Paused => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Failed => vec![],
             WorkflowState::Done => vec![],
@@ -412,10 +454,18 @@ mod tests {
             WorkflowState::Init => vec![WorkflowState::Done],
             WorkflowState::Analyze => vec![WorkflowState::Done],
             WorkflowState::Plan => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Paused => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Failed => vec![],
             WorkflowState::Done => vec![],
@@ -433,10 +483,18 @@ mod tests {
             WorkflowState::Init => vec![WorkflowState::Done],
             WorkflowState::Analyze => vec![WorkflowState::Done],
             WorkflowState::Plan => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Paused => {
-                vec![WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]
+                vec![
+                    WorkflowState::Execute,
+                    WorkflowState::Verify,
+                    WorkflowState::Done,
+                ]
             }
             WorkflowState::Failed => vec![],
             WorkflowState::Done => vec![],
@@ -461,7 +519,11 @@ mod tests {
         }
 
         // EXECUTE path
-        validate_path(&[WorkflowState::Execute, WorkflowState::Verify, WorkflowState::Done]);
+        validate_path(&[
+            WorkflowState::Execute,
+            WorkflowState::Verify,
+            WorkflowState::Done,
+        ]);
         // VERIFY path
         validate_path(&[WorkflowState::Verify, WorkflowState::Done]);
         // FIX path
