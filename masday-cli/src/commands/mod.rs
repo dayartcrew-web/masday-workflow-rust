@@ -2,7 +2,12 @@
 //!
 //! Command implementations for the masday CLI.
 
+pub mod db;
 pub mod install;
+pub mod mcp_cmd;
+pub mod serve;
+pub mod setup;
+pub mod status;
 pub mod uninstall;
 pub mod update;
 
@@ -16,7 +21,6 @@ mod tests {
 
     #[test]
     fn test_module_exports() {
-        // Test that modules are accessible
         let args = InstallArgs::default();
         assert!(args.remote.is_none());
         assert!(!args.skip_build);

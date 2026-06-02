@@ -1,0 +1,58 @@
+//! Database management commands — start/stop/reset PostgreSQL via Docker.
+
+use anyhow::Result;
+use console::style;
+
+use crate::docker;
+
+/// Start PostgreSQL and Redis containers
+pub fn start() -> Result<()> {
+    println!("{}", style("Starting database containers...").cyan());
+    docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
+    docker::wait_for_postgres("localhost", 5434, 30)?;
+    docker::start_redis()?;
+    println!();
+    println!("{}", style("✓ Database containers ready").green());
+    println!("  PostgreSQL: localhost:5434");
+    println!("  Redis:      localhost:6379");
+    Ok(())
+}
+
+/// Stop PostgreSQL and Redis containers
+pub fn stop() -> Result<()> {
+    println!("{}", style("Stopping database containers...").cyan());
+    docker::stop_all()?;
+    println!();
+    println!("{}", style("✓ Database containers stopped").green());
+    Ok(())
+}
+
+/// Reset PostgreSQL (delete data and recreate)
+pub fn reset() -> Result<()> {
+    println!("{}", style("Resetting database...").cyan());
+    println!();
+    println!("  {} This will DELETE all data!", style("⚠ WARNING:").yellow());
+    let confirm = inquire::Confirm::new("Are you sure?")
+        .with_default(false)
+        .prompt()?;
+
+    if !confirm {
+        println!("Reset cancelled.");
+        return Ok(());
+    }
+
+    docker::reset_postgres("masday", "masdaypass", "masday_workflow")?;
+    docker::wait_for_postgres("localhost", 5434, 30)?;
+
+    // Run migrations on fresh database
+    std::env::set_var("DATABASE_URL", docker::default_database_url());
+    let rt = tokio::runtime::Runtime::new()?;
+    let pool = rt.block_on(masday_db::pool::init_pool_with_retry(5))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    rt.block_on(masday_db::run_migrations(&pool))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    println!();
+    println!("{}", style("✓ Database reset complete").green());
+    Ok(())
+}

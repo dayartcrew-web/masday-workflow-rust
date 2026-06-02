@@ -51,6 +51,45 @@ pub fn embedding_dimensions() -> usize {
         .unwrap_or(768)
 }
 
+/// Run all database migrations from the migrations directory.
+/// Executes each `.sql` file in sorted order.
+pub async fn run_migrations(pool: &DbPool) -> Result<(), String> {
+    let migrations_dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+
+    if !migrations_dir.exists() {
+        tracing::warn!("No migrations directory found at {}", migrations_dir.display());
+        return Ok(());
+    }
+
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| format!("Failed to get DB connection: {}", e))?;
+
+    let mut entries: Vec<_> = std::fs::read_dir(&migrations_dir)
+        .map_err(|e| format!("Failed to read migrations dir: {}", e))?
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("sql") {
+            tracing::info!("Running migration: {}", path.display());
+            let sql = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            client
+                .batch_execute(&sql)
+                .await
+                .map_err(|e| format!("Migration {} failed: {}", path.display(), e))?;
+        }
+    }
+
+    tracing::info!("All migrations applied successfully");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
