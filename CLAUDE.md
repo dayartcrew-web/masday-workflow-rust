@@ -51,8 +51,8 @@ User -> HTTP API (Axum) -----> API Server -> Service Layer -> PostgreSQL
                                         v
                             +----------------------------+
                             |    DATABASE LAYER          |
-                            |  PostgreSQL (port 54341)    |
-                            |  15 repos, deadpool pool   |
+                            |  Local: SQLite (rusqlite)  |
+                            |  Remote: PostgreSQL 54341  |
                             |  16 tables                 |
                             +----------------------------+
 ```
@@ -94,7 +94,8 @@ Binary: `masday-mcp` (stdio transport)
 
 ## Database — 15 Repos, 16 Tables
 
-Connection: `deadpool-postgres` pool via `DATABASE_URL` env var.
+**Local mode (stdio):** SQLite via `rusqlite` at `~/.masday/data.db` (auto-created, zero config).
+**Remote mode (API):** `deadpool-postgres` pool via `DATABASE_URL` env var.
 
 | Repo Module | Table(s) |
 |-------------|----------|
@@ -129,7 +130,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 **Auto-transition:** When all tasks complete, workflow auto-transitions to DONE via `TaskService::auto_transition_if_all_done()`.
 
-Status conventions (ALL UPPERCASE in PostgreSQL):
+Status conventions (ALL UPPERCASE in SQLite/PostgreSQL):
 - Workflow: INIT, ANALYZE, PLAN, EXECUTE, VERIFY, FIX, DONE, FAILED, PAUSED
 - Task: PENDING, RUNNING, DONE, FAILED
 - Plan: ACTIVE, PENDING, READY, DONE
@@ -153,13 +154,12 @@ cargo build -p masday-cli --release
 cargo test
 cargo test -p masday-service
 
-# Run API server
+# Run API server (requires PostgreSQL)
 DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
-# Run MCP server (stdio)
-DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
-  cargo run -p masday-mcp
+# Run MCP server (stdio, SQLite — no DATABASE_URL needed)
+cargo run -p masday-mcp
 
 # Build for release (cross-compile)
 cargo build -p masday-cli --release --target x86_64-unknown-linux-gnu
@@ -192,8 +192,8 @@ Builds 4 binaries: `masday` (CLI) + `masday-mcp` (MCP server) for Linux x86_64 +
 
 | Binary | Linux | Windows | Size |
 |--------|-------|---------|------|
-| masday (CLI) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~7.6MB |
-| masday-mcp (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.4MB |
+| masday (CLI) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~31MB |
+| masday-mcp (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.7MB |
 
 ## Conventions
 

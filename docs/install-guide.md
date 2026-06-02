@@ -96,7 +96,7 @@ curl -fsSL -o masday-mcp https://github.com/dayartcrew-web/masday-workflow-rust/
 
 ### Configure MCP (stdio mode)
 
-Point your MCP client to the `masday-mcp` binary:
+Point your MCP client to the `masday-mcp` binary. **No environment variables needed** — the binary uses SQLite at `~/.masday/data.db` automatically.
 
 **Claude Code** (`.mcp.json` in project root):
 ```json
@@ -104,12 +104,7 @@ Point your MCP client to the `masday-mcp` binary:
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "/home/user/.masday/bin/masday-mcp",
-      "env": {
-        "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "local-mode",
-        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow"
-      }
+      "command": "/home/user/.masday/bin/masday-mcp"
     }
   }
 }
@@ -121,12 +116,7 @@ Point your MCP client to the `masday-mcp` binary:
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "C:\\Users\\YourUser\\.masday\\bin\\masday-mcp.exe",
-      "env": {
-        "MASDAY_API_URL": "http://YOUR_SERVER_IP:30101",
-        "MASDAY_API_KEY": "local-mode",
-        "DATABASE_URL": "postgresql://USER:PASS@YOUR_SERVER_IP:54341/masday_workflow"
-      }
+      "command": "C:\\Users\\YourUser\\.masday\\bin\\masday-mcp.exe"
     }
   }
 }
@@ -148,9 +138,9 @@ If `masday-api` is running, you can connect directly without the MCP binary:
 
 ### Prerequisites for MCP Server
 
-- **PostgreSQL 16** on port 54341 (for persistence)
-- **masday-api** running (for full tool access)
-- Network connectivity between MCP client and PostgreSQL/API
+- **None** — the MCP binary is self-contained and uses SQLite for persistence
+- SQLite database is auto-created at `~/.masday/data.db` on first run
+- PostgreSQL is only required for the API server (`masday-api`) in remote deployments
 
 ## What `masday install` Does
 
@@ -264,18 +254,20 @@ chmod +x ~/.masday/bin/masday-mcp
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "/home/user/.masday/bin/masday-mcp",
-      "env": {
-        "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "local-mode",
-        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow"
-      }
+      "command": "/home/user/.masday/bin/masday-mcp"
     }
   }
 }
 ```
 
-**Alternatively, use HTTP mode** (no binary needed):
+**Check SQLite database exists:**
+
+```bash
+ls -la ~/.masday/data.db
+# If missing, it will be auto-created on first run
+```
+
+**Alternatively, use HTTP mode** (requires API server):
 
 ```json
 {
@@ -301,8 +293,8 @@ chmod +x ~/.masday/bin/masday-mcp
 ## Requirements
 
 - **Claude Code**, **Gemini CLI**, **VS Code Copilot**, or **OpenCode** — any MCP-compatible AI client
-- **PostgreSQL 16** with pgvector (for local mode or self-hosted remote)
-- **Redis 7** (optional, for caching)
+- **PostgreSQL 16** with pgvector (only for API server / remote mode)
+- **Redis 7** (optional, for API server caching)
 
 ## Embedding Setup
 

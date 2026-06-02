@@ -1,6 +1,6 @@
 # Getting Started
 
-Masday Workflow is designed to run **locally first**. Rust workspace with 6 crates, PostgreSQL persistence, and stdio MCP transport.
+Masday Workflow is designed to run **locally first**. Rust workspace with 6 crates, SQLite-backed stdio MCP server (no external database needed), and optional PostgreSQL-backed API server.
 
 ## Quick Start (Rust CLI)
 
@@ -43,21 +43,22 @@ source ~/.cargo/env
 # Build all crates
 cargo build --workspace
 
-# Start API server (port 30101)
+# Start MCP stdio server (SQLite — no database setup needed)
+cargo run -p masday-mcp
+
+# Or start API server (requires PostgreSQL)
 DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-api
-
-# Start MCP stdio server
-DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
-  cargo run -p masday-mcp
 ```
 
 ### Database Setup
 
-The runtime requires PostgreSQL on port 54341 for persistent state.
+**MCP stdio server:** Uses SQLite at `~/.masday/data.db` — auto-created, zero config.
+
+**API server:** Requires PostgreSQL on port 54341.
 
 ```bash
-# Start PostgreSQL + Redis
+# Start PostgreSQL + Redis (API server only)
 docker compose up -d
 
 # Database: masday_workflow (see .env for credentials, port: 54341)
@@ -66,9 +67,10 @@ docker compose up -d
 
 ## What this starts
 
-- **MCP stdio server** (`masday-mcp`) with 20 tool domains
-- **REST API server** (`masday-api`) on port 30101 with 243 routes
-- **PostgreSQL-backed state** — 16 tables for workflow, task, memory, review, session, graph, etc.
+- **MCP stdio server** (`masday-mcp`) with 20 tool domains, SQLite-backed (zero config)
+- **REST API server** (`masday-api`, optional) on port 30101 with 243 routes, PostgreSQL-backed
+- **SQLite-backed state** (stdio mode) — 16 tables auto-created at `~/.masday/data.db`
+- **PostgreSQL-backed state** (API mode) — 16 tables for workflow, task, memory, review, session, graph, etc.
 - **Workflow state machine** — auto-transition to DONE when all tasks complete
 - **4-layer memory** — working, episodic, long-term, knowledge graph
 - **Project-local `.masday/`** artifacts for cached research, plans, and notes

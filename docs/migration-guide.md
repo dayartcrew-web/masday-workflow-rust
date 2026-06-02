@@ -16,7 +16,12 @@ User → Claude Code → Node.js MCP Server → Direct PostgreSQL Connection
 
 ### After (Rust)
 ```
-User → Claude Code → Rust MCP Binary → Rust API Server → PostgreSQL
+User → Claude Code → Rust MCP Binary → SQLite (local mode, zero config)
+                     ├─ 89 tools (same)
+                     ├─ rusqlite (direct SQLite access)
+                     └─ ~/.masday/data.db auto-created
+
+User → Claude Code → Rust MCP Binary → Rust API Server → PostgreSQL (remote mode)
                      ├─ 89 tools (same)
                      ├─ HTTP client (reqwest)
                      └─ State managed by API server
@@ -24,9 +29,10 @@ User → Claude Code → Rust MCP Binary → Rust API Server → PostgreSQL
 
 **Key Differences:**
 1. **Binary vs Interpreter:** Rust compiles to native binary (`masday-mcp`) vs Node.js runtime
-2. **API-based Architecture:** MCP client connects to API server instead of direct DB access
-3. **No `cwd` in config:** Binary path is absolute, no working directory needed
-4. **No `DATABASE_URL` in config:** API handles DB connection, MCP client only needs `MASDAY_API_URL`
+2. **Local mode (default):** MCP binary uses SQLite directly — no API server, no PostgreSQL needed
+3. **Remote mode:** MCP binary connects to API server for multi-user PostgreSQL deployments
+4. **No `cwd` in config:** Binary path is absolute, no working directory needed
+5. **No `DATABASE_URL` in config (local mode):** SQLite auto-created at `~/.masday/data.db`
 
 ## Prerequisites
 
@@ -107,7 +113,19 @@ cargo run -p masday-mcp
 }
 ```
 
-**After (Rust):**
+**After (Rust, local mode — recommended):**
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "type": "stdio",
+      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp"
+    }
+  }
+}
+```
+
+**After (Rust, remote mode):**
 ```json
 {
   "mcpServers": {
@@ -126,10 +144,9 @@ cargo run -p masday-mcp
 **Changes:**
 - `command`: Changed from `node` + `args` to direct binary path
 - Removed `cwd`: Binary doesn't need working directory
-- Removed `DATABASE_URL`: API server handles DB
+- Removed `DATABASE_URL`: Local mode uses SQLite (auto-created); remote mode uses API server
 - Removed `EMBEDDING_*`: Not needed at MCP layer
-- Added `MASDAY_API_URL`: Points to Rust API server
-- Added `MASDAY_API_KEY`: Authentication for API calls
+- `env` section optional: Only needed for remote mode (`MASDAY_API_URL`, `MASDAY_API_KEY`)
 
 ### Step 1b: Update `.mcp.json` (standalone config)
 
@@ -152,17 +169,13 @@ If you have a standalone `.mcp.json` in your home directory or project root, upd
 }
 ```
 
-**After:**
+**After (local mode):**
 ```json
 {
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
-      "env": {
-        "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "PLACEHOLDER"
-      }
+      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp"
     }
   }
 }
@@ -170,9 +183,16 @@ If you have a standalone `.mcp.json` in your home directory or project root, upd
 
 > **Important:** Check ALL MCP config locations: `~/.claude.json`, `~/.mcp.json`, `<project>/.mcp.json`, `<project>/.vscode/mcp.json`, `<project>/.gemini/settings.json`.
 
-### Step 2: Start API Server First
+### Step 2: Start MCP Server (Local Mode — No API Server Needed)
 
-The API server must be running before the MCP server starts:
+The MCP stdio server runs standalone with SQLite:
+
+```bash
+# Just run — SQLite database auto-created at ~/.masday/data.db
+cargo run -p masday-mcp
+```
+
+For **remote mode** (API server required):
 
 ```bash
 # Terminal 1: Start API server
@@ -217,12 +237,14 @@ From Claude Code or your MCP client:
 - `DATABASE_URL` → PostgreSQL connection (API server only)
 - `MASDAY_API_KEY` → Expected API key for validation
 
-### 3. Startup Order Required
+### 3. Startup Order Required (Remote Mode Only)
 **Before:** TypeScript MCP server managed DB connection internally.
 
-**After:** API server must start before MCP server.
+**After (local mode):** No startup order — just run `masday-mcp`. SQLite auto-created.
 
-**Startup sequence:**
+**After (remote mode):** API server must start before MCP server.
+
+**Startup sequence (remote mode):**
 ```bash
 # 1. Start PostgreSQL (if not running)
 docker compose up -d postgres
@@ -417,6 +439,6 @@ For issues or questions:
 
 ---
 
-**Last Updated:** 2025-05-31
-**Rust Version:** masday-workflow-rust Phase 5.3
+**Last Updated:** 2026-06-03
+**Rust Version:** masday-workflow-rust v0.7.0 (SQLite local mode)
 **TypeScript Version:** masday-workflow-rebuild (legacy)

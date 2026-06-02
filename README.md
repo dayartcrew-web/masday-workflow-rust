@@ -37,7 +37,6 @@ masday uninstall          # Remove from project
 ### Prerequisites
 
 - **Rust** 1.85+ ([install](https://rustup.rs/))
-- **PostgreSQL** 16 with pgvector
 - **mingw-w64** (for Windows cross-compile, optional)
 
 ### Setup
@@ -48,21 +47,13 @@ git clone <repo-url>
 cd masday-workflow-rust
 bash scripts/setup.sh
 
-# Start infrastructure (PostgreSQL + pgvector)
-docker-compose up -d
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your DATABASE_URL
-
 # Build Rust crates
 cargo build --workspace
 
-# Run MCP server (exposes tools via stdio)
-DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
-  cargo run -p masday-mcp
+# Run MCP server (exposes tools via stdio, uses SQLite — no database setup needed)
+cargo run -p masday-mcp
 
-# Run API server (REST endpoints)
+# Run API server (REST endpoints, requires PostgreSQL)
 DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
@@ -70,11 +61,25 @@ DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
 cargo build --release --workspace
 ```
 
+> **Note:** The MCP stdio server (`masday-mcp`) runs in **SQLite-only mode** — it creates `~/.masday/data.db` automatically. No PostgreSQL or API server required for local use. PostgreSQL is only needed for the API server (`masday-api`) or remote deployments.
+
 ---
 
 ## Architecture
 
-### MVC Layer Structure
+### Architecture — Local Mode (stdio, SQLite)
+
+```
+┌──────────────┐     ┌──────────────────────────────────┐
+│  MCP Client  │────>│  masday-mcp (standalone binary)   │
+│  (Claude/etc)│stdio│  ┌──────────┐  ┌──────────────┐  │
+└──────────────┘     │  │ 20 Tool  │  │   SQLite     │  │
+                     │  │ Domains  │──│  ~/.masday/  │  │
+                     │  └──────────┘  │  data.db     │  │
+                     └──────────────────────────────────┘
+```
+
+### Architecture — Remote Mode (HTTP, PostgreSQL)
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌─────────────┐
@@ -85,11 +90,7 @@ cargo build --release --workspace
 ┌──────────────┐     │  │Service │  │     ┌─────────────┐
 │  Dashboard   │────>│  │ Layer  │  │────>│ Redis Cache │
 │  (Next.js)   │ HTTP│  └────────┘  │     └─────────────┘
-└──────────────┘     │  ┌────────┐  │
-                     │  │Repo    │  │     ┌─────────────┐
-                     │  │ Layer  │  │────>│  Vector DB  │
-                     │  └────────┘  │     │  (pgvector) │
-                     └──────────────┘     └─────────────┘
+└──────────────┘     └──────────────┘
 ```
 
 ### Rust Crates
@@ -100,7 +101,7 @@ cargo build --release --workspace
 | **masday-db** | Repository layer (sqlx, PostgreSQL, deadpool) |
 | **masday-service** | Business logic (workflow, memory, policy, capability) |
 | **masday-api** | HTTP API layer (Axum, REST endpoints) |
-| **masday-mcp** | MCP server (stdio protocol, 89 tools) |
+| **masday-mcp** | MCP server (stdio protocol, SQLite-backed, 89 tools) |
 | **masday-cli** | Command-line interface |
 
 ### Memory Stack
@@ -218,43 +219,34 @@ bash scripts/release.sh v0.3.0 --dry-run  # test without uploading
 
 | Binary | Linux | Windows | Size |
 |--------|-------|---------|------|
-| **masday** (CLI installer) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~7.6MB |
-| **masday-mcp** (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.4MB |
+| **masday** (CLI installer) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~31MB |
+| **masday-mcp** (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.7MB |
 
 ---
 
 ## Configuration
 
-### Environment Variables
+### Environment Variables (API Server Only)
 
-Create a `.env` file in the project root:
+The MCP stdio server requires **no configuration** — it uses SQLite at `~/.masday/data.db`.
+
+These variables are only needed for the API server (`masday-api`):
 
 ```env
-# Database
+# Database (API server only)
 DATABASE_URL="postgresql://USER:PASS@localhost:54341/masday_workflow"
-POSTGRES_HOST="localhost"
-POSTGRES_PORT="54341"
-POSTGRES_USER="your-db-user"
-POSTGRES_PASSWORD="your-secure-password"
-POSTGRES_DB="masday_workflow"
 
-# Redis (optional, for caching)
-REDIS_URL="redis://localhost:63791"
-
-# API
-API_PORT="8080"
-API_HOST="0.0.0.0"
-
-# MCP
+# MCP (optional logging)
 RUST_LOG="info"                    # debug, info, warn, error
 RUST_BACKTRACE="1"                # Enable backtrace on panic
-
-# Embeddings (semantic search)
-EMBEDDING_PROVIDER="local"          # local (fastembed) | ollama | openai
-EMBEDDING_MODEL="all-MiniLM-L6-v2"  # all-MiniLM-L6-v2 (384d) | bge-base-en-v1.5 (768d)
-EMBEDDING_DIMENSIONS="384"           # must match model output
-FASTEMBED_CACHE_DIR=".cache/fastembed"  # optional: model cache directory
 ```
+
+### MCP Stdio Binary (Zero Config)
+
+The `masday-mcp` binary runs standalone:
+- **Database:** SQLite at `~/.masday/data.db` (auto-created on first run)
+- **No PostgreSQL needed** for local development
+- **No API server needed** — the binary contains all 20 tool domains directly
 
 ### MCP Configuration
 
@@ -280,23 +272,20 @@ chmod +x ~/.masday/bin/masday-mcp
 Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-windows-x86_64.exe" -OutFile "masday-mcp.exe"
 ```
 
-For **stdio mode**, configure your MCP client to point to the binary:
+For **stdio mode** (recommended — SQLite, no external services needed):
 
 ```json
 {
   "mcpServers": {
     "masday": {
       "type": "stdio",
-      "command": "/path/to/masday-mcp",
-      "env": {
-        "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "local-mode",
-        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow"
-      }
+      "command": "/path/to/masday-mcp"
     }
   }
 }
 ```
+
+No environment variables needed — the binary creates `~/.masday/data.db` on first run.
 
 For **HTTP/SSE mode** (no binary needed on client), point directly to the API server:
 
@@ -314,24 +303,32 @@ For **HTTP/SSE mode** (no binary needed on client), point directly to the API se
 
 ## Database
 
-### PostgreSQL + pgvector
+### Local Mode — SQLite (default for stdio)
 
-The project uses PostgreSQL 16 with pgvector for semantic search.
+The MCP stdio binary (`masday-mcp`) uses **SQLite** for persistence. No setup required.
+
+- **Location:** `~/.masday/data.db`
+- **Auto-created** on first run with all required tables
+- **Zero config** — works out of the box
+
+```bash
+# Check your database
+sqlite3 ~/.masday/data.db ".tables"
+```
+
+### Remote Mode — PostgreSQL + pgvector (for API server)
+
+The API server (`masday-api`) uses PostgreSQL 16 with pgvector for multi-user deployments.
 
 ```bash
 # Start PostgreSQL with pgvector
 docker-compose up -d
 
-# Run migrations (if using migrations)
+# Run migrations
 cargo run -p masday-db -- migrate
-
-# Or use SQLx auto-migration (development)
-# sqlx-cli will create tables on first run
 ```
 
-### Schema
-
-The database schema is defined in `masday-db/src/schema.rs` using sqlx compile-time checked queries. Key tables:
+### Schema (16 tables, shared between SQLite and PostgreSQL)
 
 - `workflows` — Workflow instances
 - `tasks` — Task instances
@@ -352,7 +349,7 @@ The database schema is defined in `masday-db/src/schema.rs` using sqlx compile-t
 |-------|-----------|
 | **Language** | Rust (2021 edition) |
 | **Runtime** | Tokio async runtime |
-| **Database** | PostgreSQL 16 + pgvector (via deadpool-postgres) |
+| **Database** | SQLite (stdio, local mode) / PostgreSQL 16 + pgvector (API, remote mode) |
 | **API** | Axum (REST HTTP) |
 | **Protocol** | Model Context Protocol (MCP) over stdio |
 | **Cache** | Redis (optional) |
@@ -499,10 +496,10 @@ cargo update
 rustc --version  # Should be 1.85+
 ```
 
-### Database Connection
+### Database Connection (API Server Only)
 
 ```bash
-# Check PostgreSQL is running
+# Check PostgreSQL is running (API server mode only)
 docker-compose ps
 
 # Check DATABASE_URL in .env
@@ -523,6 +520,9 @@ cargo build -p masday-mcp
 
 # Check logs
 RUST_LOG=debug cargo run -p masday-mcp
+
+# Verify SQLite database
+sqlite3 ~/.masday/data.db ".tables"
 ```
 
 ---
