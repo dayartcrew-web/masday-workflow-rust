@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 masday-core = { path = "../masday-core" }
 masday-db = { path = "../masday-db" }
-masday-api = { path = "../masday-api" }
+masday-api = { path = "../masday-api", default-features = false }
 masday-mcp = { path = "../masday-mcp" }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
@@ -33,3 +33,7 @@ inquire = "0.7"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+
+[features]
+default = ["local-embeddings"]
+local-embeddings = ["masday-api/local-embeddings"]

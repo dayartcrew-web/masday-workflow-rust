@@ -20,7 +20,9 @@ use tracing::{debug, info, warn};
 
 // ── Provider defaults ────────────────────────────────────────────────────────
 
+#[cfg(feature = "local-embeddings")]
 const LOCAL_DEFAULT_MODEL: &str = "all-MiniLM-L6-v2";
+#[cfg(feature = "local-embeddings")]
 const LOCAL_DEFAULT_DIMENSIONS: usize = 384;
 const OLLAMA_DEFAULT_MODEL: &str = "nomic-embed-text";
 const OLLAMA_DEFAULT_DIMENSIONS: usize = 768;
@@ -46,11 +48,17 @@ impl EmbeddingConfig {
         let provider = std::env::var("EMBEDDING_PROVIDER").ok()?;
 
         let (default_model, default_url, default_dims) = match provider.as_str() {
+            #[cfg(feature = "local-embeddings")]
             "local" => (
                 LOCAL_DEFAULT_MODEL.to_string(),
                 String::new(),
                 LOCAL_DEFAULT_DIMENSIONS,
             ),
+            #[cfg(not(feature = "local-embeddings"))]
+            "local" => {
+                warn!("Local embeddings not available (compiled without local-embeddings feature)");
+                return None;
+            }
             "ollama" => (
                 OLLAMA_DEFAULT_MODEL.to_string(),
                 "http://localhost:11434".to_string(),
@@ -91,6 +99,7 @@ impl EmbeddingConfig {
 
     /// Map model name string to fastembed EmbeddingModel enum.
     /// Falls back to AllMiniLML6V2 for unknown names.
+    #[cfg(feature = "local-embeddings")]
     pub fn model_enum(&self) -> fastembed::EmbeddingModel {
         match self.model.as_str() {
             "all-MiniLM-L6-v2" => fastembed::EmbeddingModel::AllMiniLML6V2,
@@ -129,6 +138,7 @@ impl EmbeddingConfig {
 pub struct EmbeddingService {
     config: EmbeddingConfig,
     client: reqwest::Client,
+    #[cfg(feature = "local-embeddings")]
     local_model: Option<Arc<Mutex<fastembed::TextEmbedding>>>,
 }
 
@@ -141,6 +151,7 @@ impl EmbeddingService {
             .build()
             .expect("Failed to create HTTP client");
 
+        #[cfg(feature = "local-embeddings")]
         let local_model = if config.provider == "local" {
             Self::load_local_model(&config)
         } else {
@@ -150,11 +161,13 @@ impl EmbeddingService {
         Self {
             config,
             client,
+            #[cfg(feature = "local-embeddings")]
             local_model,
         }
     }
 
     /// Load the local fastembed model. Returns None on failure.
+    #[cfg(feature = "local-embeddings")]
     fn load_local_model(config: &EmbeddingConfig) -> Option<Arc<Mutex<fastembed::TextEmbedding>>> {
         let model_enum = config.model_enum();
         info!("Loading local embedding model: {:?}", model_enum);
@@ -195,7 +208,10 @@ impl EmbeddingService {
     /// Generate embedding for a single text input
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         match self.config.provider.as_str() {
+            #[cfg(feature = "local-embeddings")]
             "local" => self.embed_local(text).await,
+            #[cfg(not(feature = "local-embeddings"))]
+            "local" => Err(AppError::Internal("Local embeddings not available (compiled without local-embeddings feature)".to_string())),
             "ollama" => self.embed_ollama(text).await,
             "openai" => self.embed_openai(text).await,
             _ => Err(AppError::Internal(format!(
@@ -208,6 +224,7 @@ impl EmbeddingService {
     /// Generate embeddings for multiple texts
     pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         match self.config.provider.as_str() {
+            #[cfg(feature = "local-embeddings")]
             "local" => self.embed_batch_local(texts).await,
             _ => {
                 // Sequential for HTTP providers
@@ -224,7 +241,10 @@ impl EmbeddingService {
     /// Check if the embedding service is healthy
     pub async fn health_check(&self) -> bool {
         match self.config.provider.as_str() {
+            #[cfg(feature = "local-embeddings")]
             "local" => self.local_model.is_some(),
+            #[cfg(not(feature = "local-embeddings"))]
+            "local" => false,
             "ollama" => {
                 let url = format!("{}/api/tags", self.config.base_url);
                 self.client.get(&url).send().await.is_ok()
@@ -258,6 +278,7 @@ impl EmbeddingService {
 
     // ── Local (fastembed ONNX) embedding ─────────────────────────────────────
 
+    #[cfg(feature = "local-embeddings")]
     async fn embed_local(&self, text: &str) -> Result<Vec<f32>> {
         let model = self
             .local_model
@@ -282,6 +303,7 @@ impl EmbeddingService {
         .map_err(|e| AppError::Internal(format!("Blocking task failed: {}", e)))?
     }
 
+    #[cfg(feature = "local-embeddings")]
     async fn embed_batch_local(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         let model = self
             .local_model
@@ -446,6 +468,7 @@ mod tests {
     // ── Config construction tests (no env vars, no race conditions) ──────────
 
     #[test]
+    #[cfg(feature = "local-embeddings")]
     fn test_config_local_construction() {
         let config = EmbeddingConfig {
             provider: "local".into(),
@@ -502,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "local-embeddings")]
     fn test_model_enum_known() {
         let config = EmbeddingConfig {
             provider: "local".into(),
@@ -529,6 +553,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "local-embeddings")]
     fn test_model_enum_unknown_fallback() {
         let config = EmbeddingConfig {
             provider: "local".into(),
@@ -619,6 +644,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "local-embeddings")]
     fn test_local_service_loads_fallback_model() {
         let config = EmbeddingConfig::test_config("local");
         let service = EmbeddingService::new(config);

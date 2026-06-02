@@ -110,9 +110,9 @@ fi
 if [ "$BUILD_WINDOWS" = true ]; then
   info "Building Windows x86_64 release..."
   if [ "$DRY_RUN" = true ]; then
-    ok "(dry-run) Would build: cargo build -p masday-cli --release --target x86_64-pc-windows-gnu"
+    ok "(dry-run) Would build: cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features"
   else
-    if cargo build -p masday-cli --release --target x86_64-pc-windows-gnu 2>&1; then
+    if cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features 2>&1; then
       # Windows strip with mingw
       x86_64-w64-mingw32-strip "target/x86_64-pc-windows-gnu/release/masday.exe" 2>/dev/null || true
       cp "target/x86_64-pc-windows-gnu/release/masday.exe" "${DIST_DIR}/masday-windows-x86_64.exe"
