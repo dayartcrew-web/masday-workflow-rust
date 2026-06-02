@@ -9,10 +9,10 @@ use std::time::Duration;
 
 const POSTGRES_CONTAINER: &str = "masday-postgres";
 const POSTGRES_IMAGE: &str = "pgvector/pgvector:pg16";
-const POSTGRES_PORT: u16 = 5434;
+const POSTGRES_PORT: u16 = 54341;
 const REDIS_CONTAINER: &str = "masday-redis";
 const REDIS_IMAGE: &str = "redis:7-alpine";
-const REDIS_PORT: u16 = 6379;
+const REDIS_PORT: u16 = 63791;
 
 /// Check if Docker CLI is available
 pub fn is_docker_available() -> bool {
@@ -187,7 +187,7 @@ pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()>
 
 /// Get default database URL for local mode
 pub fn default_database_url() -> String {
-    "postgresql://masday:masdaypass@localhost:5434/masday_workflow".to_string()
+    "postgresql://masday:masdaypass@localhost:54341/masday_workflow".to_string()
 }
 
 #[cfg(test)]
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn test_default_database_url() {
         let url = default_database_url();
-        assert!(url.contains("localhost:5434"));
+        assert!(url.contains("localhost:54341"));
         assert!(url.contains("masday_workflow"));
     }
 }

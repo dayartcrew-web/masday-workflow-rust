@@ -89,13 +89,13 @@ fn run_local_setup(project_dir: &Path) -> Result<()> {
 
         // Wait for ready
         let pb = spinner("Waiting for PostgreSQL to be ready...");
-        docker::wait_for_postgres("localhost", 5434, 30)?;
-        pb.finish_with_message(format!("{} PostgreSQL ready on port 5434", style("✓").green()));
+        docker::wait_for_postgres("localhost", 54341, 30)?;
+        pb.finish_with_message(format!("{} PostgreSQL ready on port 54341", style("✓").green()));
 
         // Start Redis too
         let pb = spinner("Starting Redis container...");
         docker::start_redis()?;
-        pb.finish_with_message(format!("{} Redis ready on port 6379", style("✓").green()));
+        pb.finish_with_message(format!("{} Redis ready on port 63791", style("✓").green()));
 
         // Run migrations
         let pb = spinner("Running database migrations...");
@@ -180,9 +180,9 @@ fn run_local_setup(project_dir: &Path) -> Result<()> {
 
     // Step 4: Port
     let port_str = inquire::Text::new("API port:")
-        .with_default("3010")
+        .with_default("30101")
         .prompt()?;
-    let port: u16 = port_str.parse().unwrap_or(3010);
+    let port: u16 = port_str.parse().unwrap_or(30101);
 
     // Step 5: Save config
     let config = MasdayConfig {
@@ -310,7 +310,7 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
         embedding_provider: None,
         embedding_model: None,
         embedding_dimensions: None,
-        port: 3010,
+        port: 30101,
         platforms: platform_names.clone(),
     };
     config.save()?;

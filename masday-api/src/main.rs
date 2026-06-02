@@ -15,7 +15,7 @@ async fn main() {
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(3010);
+        .unwrap_or(30101);
 
     masday_api::run(pool, port).await.expect("API server failed");
 }

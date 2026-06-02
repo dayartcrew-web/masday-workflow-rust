@@ -12,7 +12,7 @@ cargo build --release -p masday-cli
 ./target/release/masday install
 
 # Or connect to a remote API server
-./target/release/masday install --remote https://api.example.com:3010 --api-key <key>
+./target/release/masday install --remote https://api.example.com:30101 --api-key <key>
 ```
 
 See [CLI commands reference](./reference/cli-commands.md) for full command documentation.
@@ -41,31 +41,31 @@ source ~/.cargo/env
 # Build all crates
 cargo build --workspace
 
-# Start API server (port 3010)
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+# Start API server (port 30101)
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
 # Start MCP stdio server
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   cargo run -p masday-mcp
 ```
 
 ### Database Setup
 
-The runtime requires PostgreSQL on port 5434 for persistent state.
+The runtime requires PostgreSQL on port 54341 for persistent state.
 
 ```bash
 # Start PostgreSQL + Redis
 docker compose up -d
 
-# Database: masday_workflow (user: trader, pass: traderpass, port: 5434)
+# Database: masday_workflow (user: trader, pass: traderpass, port: 54341)
 # Tables are created by the Rust application on first run
 ```
 
 ## What this starts
 
 - **MCP stdio server** (`masday-mcp`) with 20 tool domains
-- **REST API server** (`masday-api`) on port 3010 with 243 routes
+- **REST API server** (`masday-api`) on port 30101 with 243 routes
 - **PostgreSQL-backed state** — 16 tables for workflow, task, memory, review, session, graph, etc.
 - **Workflow state machine** — auto-transition to DONE when all tasks complete
 - **4-layer memory** — working, episodic, long-term, knowledge graph

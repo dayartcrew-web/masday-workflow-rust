@@ -47,7 +47,7 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 ┌──────────────────────────┐  ┌──────────────────────────────┐
 │   Skill Layer            │  │   Persistence Layer          │
 │  ┌────────────────────┐  │  │  ┌────────────────────────┐  │
-│  │ filesystem.*       │  │  │  │ PostgreSQL (port 5434)  │  │
+│  │ filesystem.*       │  │  │  │ PostgreSQL (port 54341)  │  │
 │  │ git.*              │  │  │  │ deadpool-postgres pool  │  │
 │  │ tests.*            │  │  │  │ 15 repo modules         │  │
 │  │ npm.*              │  │  │  │ 16 tables               │  │

@@ -19,8 +19,8 @@ import type {
   WSEvent,
 } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3010';
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3010';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:30101';
+const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:30101';
 
 // ============================================================
 // HTTP Client

@@ -237,7 +237,7 @@ mod tests {
 
         let config = McpConfig {
             mcp_binary_path: "/path/to/masday-mcp".into(),
-            api_url: "http://localhost:3010".to_string(),
+            api_url: "http://localhost:30101".to_string(),
             api_key: "test-key".to_string(),
             database_url: Some("postgresql://localhost/db".to_string()),
         };
@@ -248,7 +248,7 @@ mod tests {
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
         assert!(json["mcpServers"]["masday"]["type"] == "stdio");
-        assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:3010");
+        assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:30101");
     }
 
     #[test]
@@ -259,7 +259,7 @@ mod tests {
 
         let config = McpConfig {
             mcp_binary_path: "/path/to/masday-mcp".into(),
-            api_url: "http://localhost:3010".to_string(),
+            api_url: "http://localhost:30101".to_string(),
             api_key: "test-key".to_string(),
             database_url: None,
         };

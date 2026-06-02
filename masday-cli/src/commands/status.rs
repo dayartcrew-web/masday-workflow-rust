@@ -37,7 +37,7 @@ pub async fn run() -> Result<()> {
     if config.mode == "local" {
         if crate::docker::is_docker_available() {
             if crate::docker::is_container_running("masday-postgres") {
-                println!("  PostgreSQL: {} (Docker, port 5434)", style("✓ running").green());
+                println!("  PostgreSQL: {} (Docker, port 54341)", style("✓ running").green());
             } else {
                 println!("  PostgreSQL: {}", style("✗ not running").red());
                 println!(
@@ -47,7 +47,7 @@ pub async fn run() -> Result<()> {
             }
 
             if crate::docker::is_container_running("masday-redis") {
-                println!("  Redis:      {} (Docker, port 6379)", style("✓ running").green());
+                println!("  Redis:      {} (Docker, port 63791)", style("✓ running").green());
             } else {
                 println!("  Redis:      {}", style("✗ not running").yellow());
             }

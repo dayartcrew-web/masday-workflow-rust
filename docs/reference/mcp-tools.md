@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-This page is the canonical contributor-facing reference for the MCP tool surface. The server is `masday-mcp` (Rust, JSON-RPC 2.0 over stdio) with `masday-api` (Axum HTTP API on port 3010). All tools are connected to PostgreSQL via `tokio-postgres` with repos in `masday-db/src/repos/`.
+This page is the canonical contributor-facing reference for the MCP tool surface. The server is `masday-mcp` (Rust, JSON-RPC 2.0 over stdio) with `masday-api` (Axum HTTP API on port 30101). All tools are connected to PostgreSQL via `tokio-postgres` with repos in `masday-db/src/repos/`.
 
 ## Persistence
 

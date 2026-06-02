@@ -29,7 +29,7 @@ jobs:
           POSTGRES_PASSWORD: masday_dev_password
           POSTGRES_DB: masday
         ports:
-          - 5433:5432
+          - 54331:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -67,17 +67,17 @@ jobs:
 
       - name: Run cargo test
         env:
-          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:5433/masday
+          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test --all-targets --all-features
 
       - name: Run integration tests
         env:
-          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:5433/masday
+          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test --test '*'
 
       - name: Run benchmarks
         env:
-          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:5433/masday
+          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test --test benchmarks --release
 
   clippy:

@@ -191,7 +191,7 @@ cat > .mcp.json << MCPEOF
       "cwd": "${ROOT_DIR}",
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
-        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_URL": "http://localhost:30101",
         "MASDAY_API_KEY": "dev-key",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
@@ -213,7 +213,7 @@ if [ ! -f ".gemini/settings.json" ]; then
       "cwd": "${ROOT_DIR}",
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
-        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_URL": "http://localhost:30101",
         "MASDAY_API_KEY": "dev-key",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
@@ -234,7 +234,7 @@ cat > .vscode/mcp.json << VSCODEEOF
       "cwd": "${ROOT_DIR}",
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
-        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_URL": "http://localhost:30101",
         "MASDAY_API_KEY": "dev-key",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
@@ -348,14 +348,14 @@ fi
 echo ""
 echo "Available commands:"
 echo "  cargo run -p masday-mcp     # Start MCP server (stdio)"
-echo "  cargo run -p masday-api     # Start API server (port 3010)"
+echo "  cargo run -p masday-api     # Start API server (port 30101)"
 echo "  cargo test --workspace      # Run tests"
 echo "  cargo clippy --workspace    # Lint"
 echo "  cargo fmt --all --check     # Check formatting"
 echo ""
 echo "Environment variables (.env):"
-echo "  DATABASE_URL=postgresql://user:pass@localhost:5434/masday_workflow"
-echo "  MUSDAY_API_URL=http://localhost:3010"
+echo "  DATABASE_URL=postgresql://user:pass@localhost:54341/masday_workflow"
+echo "  MUSDAY_API_URL=http://localhost:30101"
 echo "  RUST_LOG=info               # Logging level"
 echo ""
 echo "MCP servers configured:"

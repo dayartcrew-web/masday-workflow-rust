@@ -94,7 +94,7 @@ Requires Rust toolchain on the machine. Builds from source, then installs templa
 ### Remote Mode
 
 ```bash
-masday install --remote https://your-server.com:3010 --api-key your-api-key
+masday install --remote https://your-server.com:30101 --api-key your-api-key
 ```
 
 No Rust needed. Downloads MCP server binary and connects to a remote API server for persistence.

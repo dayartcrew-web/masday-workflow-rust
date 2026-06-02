@@ -301,7 +301,7 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
     println!("{}", style("Generating MCP configs...").cyan());
 
-    let api_url = "http://localhost:3010".to_string();
+    let api_url = "http://localhost:30101".to_string();
     let api_key = "local-mode".to_string();
 
     for platform in &platforms {

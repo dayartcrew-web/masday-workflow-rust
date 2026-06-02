@@ -51,7 +51,7 @@ User -> HTTP API (Axum) -----> API Server -> Service Layer -> PostgreSQL
                                         v
                             +----------------------------+
                             |    DATABASE LAYER          |
-                            |  PostgreSQL (port 5434)    |
+                            |  PostgreSQL (port 54341)    |
                             |  15 repos, deadpool pool   |
                             |  16 tables                 |
                             +----------------------------+
@@ -154,11 +154,11 @@ cargo test
 cargo test -p masday-service
 
 # Run API server
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
 # Run MCP server (stdio)
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   cargo run -p masday-mcp
 
 # Build for release (cross-compile)
@@ -168,8 +168,8 @@ cargo build -p masday-cli --release --target x86_64-pc-windows-gnu
 
 ### Infrastructure
 
-- **PostgreSQL 16** on port 5434 (user: trader, pass: traderpass, db: masday_workflow)
-- **Redis 7** on port 6379
+- **PostgreSQL 16** on port 54341 (user: trader, pass: traderpass, db: masday_workflow)
+- **Redis 7** on port 63791
 - Start: `docker compose up -d`
 
 ### Release Pipeline
@@ -213,7 +213,7 @@ Output: `⚡ Masday | DB:✓ | API:✓ | MCP:✓ | 🟢 ▓▓▓▓░░░░
 
 | Segment | Method | States |
 |---------|--------|--------|
-| DB | `isPortOpen(5434)` | ✓/✗ |
+| DB | `isPortOpen(54341)` | ✓/✗ |
 | API | HTTP GET `/api/health` (1s) | ✓ healthy / ⚠ port open but failing / ✗ down |
 | MCP | `pgrep -f masday-mcp` | ✓ running / ⚠ binary only / ✗ not built |
 | Context % | Post-compact bytes / 4 + 18K overhead | 🟢 <50% / 🟡 50-75% / 🔴 ≥75% |

@@ -217,9 +217,9 @@ mod tests {
 
     #[test]
     fn test_init() {
-        let result = init("http://localhost:3010".to_string(), "test-key".to_string());
+        let result = init("http://localhost:30101".to_string(), "test-key".to_string());
         assert!(result.is_ok());
-        assert_eq!(api_url(), "http://localhost:3010");
+        assert_eq!(api_url(), "http://localhost:30101");
         assert_eq!(api_key(), "test-key");
     }
 

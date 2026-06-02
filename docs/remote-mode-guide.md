@@ -14,13 +14,13 @@ This guide covers setting up a remote Masday server on a VPS and connecting clie
 ┌─────────────────┐         ┌──────────────────────────────────────┐
 │   Your Laptop    │         │          VPS (Remote Server)          │
 │                  │  HTTPS  │                                      │
-│  Claude Code ────┼────────►│  masday-api (port 3010)             │
+│  Claude Code ────┼────────►│  masday-api (port 30101)             │
 │  masday CLI      │         │    └── REST API + WebSocket          │
 │                  │         │                                      │
-│  masday-mcp ─────┼────────►│  PostgreSQL 16 (port 5434)          │
+│  masday-mcp ─────┼────────►│  PostgreSQL 16 (port 54341)          │
 │  (MCP protocol)  │  TCP    │    └── pgvector, 16 tables           │
 │                  │         │                                      │
-│                  │         │  Redis 7 (port 6379)                 │
+│                  │         │  Redis 7 (port 63791)                 │
 │                  │         │    └── Caching, sessions              │
 └─────────────────┘         └──────────────────────────────────────┘
 ```
@@ -72,10 +72,10 @@ docker compose ps
 # Create .env file
 cat > .env << 'EOF'
 # Database
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow
 
 # API Server
-API_PORT=3010
+API_PORT=30101
 API_HOST=0.0.0.0
 
 # Embedding (local fastembed — no external service)
@@ -94,7 +94,7 @@ EOF
 # Tables auto-create on first API startup
 # Or run manually:
 source .env && cargo run -p masday-api
-# Wait for "Server listening on 0.0.0.0:3010" then Ctrl+C
+# Wait for "Server listening on 0.0.0.0:30101" then Ctrl+C
 ```
 
 ### Step 5: Start API Server
@@ -133,9 +133,9 @@ sudo systemctl status masday-api
 
 ```bash
 # Allow API port
-sudo ufw allow 3010/tcp
+sudo ufw allow 30101/tcp
 
-# IMPORTANT: Do NOT expose PostgreSQL (5434) or Redis (6379) to the internet!
+# IMPORTANT: Do NOT expose PostgreSQL (54341) or Redis (63791) to the internet!
 # They should only accept connections from localhost.
 # If you need remote MCP access, use SSH tunnel (see below).
 ```
@@ -153,7 +153,7 @@ server {
     server_name masday.yourdomain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:3010;
+        proxy_pass http://127.0.0.1:30101;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -184,10 +184,10 @@ No firewall changes needed. The MCP server on your laptop connects through SSH.
 
 ```bash
 # On your laptop, create SSH tunnel
-ssh -L 5434:localhost:5434 -N user@your-vps-ip &
+ssh -L 54341:localhost:54341 -N user@your-vps-ip &
 
 # Verify tunnel works
-psql postgresql://trader:traderpass@localhost:5434/masday_workflow -c "SELECT 1"
+psql postgresql://trader:traderpass@localhost:54341/masday_workflow -c "SELECT 1"
 ```
 
 ### Option B: Direct PostgreSQL Access (Less Secure)
@@ -196,11 +196,11 @@ psql postgresql://trader:traderpass@localhost:5434/masday_workflow -c "SELECT 1"
 # On VPS: Edit postgres config to allow remote connections
 # In docker-compose.yml, add port mapping:
 #   ports:
-#     - "5434:5432"
+#     - "54341:5432"
 
 # Configure pg_hba.conf for password auth
 # Restrict to specific IP if possible
-sudo ufw allow from YOUR_LAPTOP_IP to any port 5434
+sudo ufw allow from YOUR_LAPTOP_IP to any port 54341
 ```
 
 ---
@@ -244,7 +244,7 @@ Edit `.mcp.json` in your project root:
       "args": [],
       "cwd": "/path/to/your/project",
       "env": {
-        "DATABASE_URL": "postgresql://trader:traderpass@localhost:5434/masday_workflow",
+        "DATABASE_URL": "postgresql://trader:traderpass@localhost:54341/masday_workflow",
         "EMBEDDING_PROVIDER": "local",
         "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
         "EMBEDDING_DIMENSIONS": "384"
@@ -254,20 +254,20 @@ Edit `.mcp.json` in your project root:
 }
 ```
 
-> **Note:** `DATABASE_URL` uses `localhost:5434` because of the SSH tunnel.
+> **Note:** `DATABASE_URL` uses `localhost:54341` because of the SSH tunnel.
 
 ### Step 4: Start SSH Tunnel (if using tunnel)
 
 ```bash
 # Add to ~/.bashrc or run before starting Claude Code
 ssh-tunnel-masday() {
-  ssh -L 5434:localhost:5434 -N user@your-vps-ip -o ServerAliveInterval=60 &
+  ssh -L 54341:localhost:54341 -N user@your-vps-ip -o ServerAliveInterval=60 &
   echo "SSH tunnel active (PID: $!)"
   echo "Run 'kill $!' to stop"
 }
 
 # Auto-start on shell login (optional)
-echo 'ssh -L 5434:localhost:5434 -N -f user@your-vps-ip' >> ~/.bashrc
+echo 'ssh -L 54341:localhost:54341 -N -f user@your-vps-ip' >> ~/.bashrc
 ```
 
 ### Step 5: Verify Connection
@@ -277,7 +277,7 @@ echo 'ssh -L 5434:localhost:5434 -N -f user@your-vps-ip' >> ~/.bashrc
 curl https://masday.yourdomain.com/api/health
 
 # Check database via tunnel
-psql postgresql://trader:traderpass@localhost:5434/masday_workflow -c "SELECT count(*) FROM \"Workflow\""
+psql postgresql://trader:traderpass@localhost:54341/masday_workflow -c "SELECT count(*) FROM \"Workflow\""
 ```
 
 ---
@@ -291,7 +291,7 @@ The MCP server runs on your laptop and connects to the remote database:
 # Just start Claude Code — it reads .mcp.json and launches masday-mcp
 
 # Option B: Manual start for testing
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   EMBEDDING_PROVIDER=local \
   masday-mcp
 ```
@@ -351,11 +351,11 @@ sudo systemctl start masday-api
 
 # Check status
 sudo systemctl status masday-api
-curl http://localhost:3010/api/health
+curl http://localhost:30101/api/health
 
 # ── Laptop (Client) ────────────────────────────────────
 # SSH tunnel
-ssh -L 5434:localhost:5434 -N -f user@your-vps-ip
+ssh -L 54341:localhost:54341 -N -f user@your-vps-ip
 
 # Install masday into project
 masday install --remote https://masday.yourdomain.com
@@ -369,16 +369,16 @@ psql $DATABASE_URL -c "SELECT 1"
 
 ## Troubleshooting
 
-### "Connection refused" on port 5434
+### "Connection refused" on port 54341
 
 SSH tunnel not running:
 ```bash
 # Check if tunnel is active
-ss -tlnp | grep 5434
+ss -tlnp | grep 54341
 
 # Restart tunnel
-pkill -f "ssh -L 5434"
-ssh -L 5434:localhost:5434 -N -f user@your-vps-ip
+pkill -f "ssh -L 54341"
+ssh -L 54341:localhost:54341 -N -f user@your-vps-ip
 ```
 
 ### MCP server not starting
@@ -402,6 +402,6 @@ EMBEDDING_PROVIDER=local cargo run -p masday-mcp
 nginx can't reach the API:
 ```bash
 sudo systemctl status masday-api
-curl http://localhost:3010/api/health
+curl http://localhost:30101/api/health
 sudo nginx -t
 ```

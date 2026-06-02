@@ -9,12 +9,12 @@ use crate::docker;
 pub fn start() -> Result<()> {
     println!("{}", style("Starting database containers...").cyan());
     docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
-    docker::wait_for_postgres("localhost", 5434, 30)?;
+    docker::wait_for_postgres("localhost", 54341, 30)?;
     docker::start_redis()?;
     println!();
     println!("{}", style("✓ Database containers ready").green());
-    println!("  PostgreSQL: localhost:5434");
-    println!("  Redis:      localhost:6379");
+    println!("  PostgreSQL: localhost:54341");
+    println!("  Redis:      localhost:63791");
     Ok(())
 }
 
@@ -42,7 +42,7 @@ pub fn reset() -> Result<()> {
     }
 
     docker::reset_postgres("masday", "masdaypass", "masday_workflow")?;
-    docker::wait_for_postgres("localhost", 5434, 30)?;
+    docker::wait_for_postgres("localhost", 54341, 30)?;
 
     // Run migrations on fresh database
     std::env::set_var("DATABASE_URL", docker::default_database_url());
