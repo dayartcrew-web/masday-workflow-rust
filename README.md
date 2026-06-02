@@ -20,7 +20,7 @@ This is the Rust implementation of masday-workflow, providing a robust, type-saf
 curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/install.sh | bash
 ```
 
-**Manual download:** [Linux x86_64](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-linux-x86_64) · [Windows x86_64](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-windows-x86_64.exe) · [All releases](https://github.com/dayartcrew-web/masday-workflow-rust/releases)
+**Manual download:** [CLI Linux](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-linux-x86_64) · [CLI Windows](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-windows-x86_64.exe) · [MCP Linux](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-linux-x86_64) · [MCP Windows](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-windows-x86_64.exe) · [All releases](https://github.com/dayartcrew-web/masday-workflow-rust/releases)
 
 📖 **Full install guide:** [docs/install-guide.md](docs/install-guide.md)
 
@@ -59,11 +59,11 @@ cp .env.example .env
 cargo build --workspace
 
 # Run MCP server (exposes tools via stdio)
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-mcp
 
 # Run API server (REST endpoints)
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
 # Build release binaries
@@ -202,16 +202,24 @@ cargo clean                         # Remove build artifacts
 ### Release Commands
 
 ```bash
-# Build release binaries
+# Build release binaries (CLI + MCP server)
 cargo build --release --workspace
 
-# Cross-compile for Windows
-cargo build -p masday-cli --release --target x86_64-pc-windows-gnu
+# Cross-compile for Windows (CLI + MCP)
+cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features
+cargo build -p masday-mcp --release --target x86_64-pc-windows-gnu --no-default-features
 
-# Create GitHub Release (local CI)
+# Create GitHub Release (builds 4 binaries: CLI+MCP for Linux+Windows)
 bash scripts/release.sh v0.3.0
 bash scripts/release.sh v0.3.0 --dry-run  # test without uploading
 ```
+
+### Release Artifacts
+
+| Binary | Linux | Windows | Size |
+|--------|-------|---------|------|
+| **masday** (CLI installer) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~7.6MB |
+| **masday-mcp** (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.4MB |
 
 ---
 
@@ -223,11 +231,11 @@ Create a `.env` file in the project root:
 
 ```env
 # Database
-DATABASE_URL="postgresql://trader:traderpass@localhost:54341/masday_workflow"
+DATABASE_URL="postgresql://USER:PASS@localhost:54341/masday_workflow"
 POSTGRES_HOST="localhost"
 POSTGRES_PORT="54341"
-POSTGRES_USER="trader"
-POSTGRES_PASSWORD="traderpass"
+POSTGRES_USER="your-db-user"
+POSTGRES_PASSWORD="your-secure-password"
 POSTGRES_DB="masday_workflow"
 
 # Redis (optional, for caching)
@@ -257,6 +265,50 @@ The `scripts/setup.sh` script generates MCP configuration files for different pl
 - **VS Code Copilot**: `.vscode/mcp.json`
 
 All configurations point to the Rust MCP binary: `target/debug/masday-mcp` (or `target/release/masday-mcp` for release builds).
+
+#### MCP Binary Distribution
+
+The `masday-mcp` binary is distributed separately from the CLI in GitHub Releases:
+
+```bash
+# Download MCP server binary (Linux)
+curl -fsSL -o ~/.masday/bin/masday-mcp \
+  https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-linux-x86_64
+chmod +x ~/.masday/bin/masday-mcp
+
+# Download MCP server binary (Windows PowerShell)
+Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-windows-x86_64.exe" -OutFile "masday-mcp.exe"
+```
+
+For **stdio mode**, configure your MCP client to point to the binary:
+
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "type": "stdio",
+      "command": "/path/to/masday-mcp",
+      "env": {
+        "MASDAY_API_URL": "http://localhost:30101",
+        "MASDAY_API_KEY": "local-mode",
+        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow"
+      }
+    }
+  }
+}
+```
+
+For **HTTP/SSE mode** (no binary needed on client), point directly to the API server:
+
+```json
+{
+  "mcpServers": {
+    "masday": {
+      "url": "http://localhost:30101/mcp"
+    }
+  }
+}
+```
 
 ---
 

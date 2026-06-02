@@ -2,7 +2,7 @@
 #
 # Masday Local Release
 #
-# Builds release binaries (Linux + Windows) and creates a GitHub Release.
+# Builds release binaries (CLI + MCP server) for Linux + Windows and creates a GitHub Release.
 # Called automatically by pre-push hook on tag push, or manually:
 #
 #   bash scripts/release.sh v0.2.0
@@ -85,43 +85,61 @@ if [ "$BUILD_WINDOWS" = true ]; then
   fi
 fi
 
-# --- Build ---
+# --- Build function ---
+# Usage: build_binary <package> <binary_name> <target> <dist_name> [extra_cargo_args...]
+build_binary() {
+  local pkg="$1"
+  local bin_name="$2"
+  local target="$3"
+  local dist_name="$4"
+  shift 4
+
+  local is_windows=false
+  [[ "$target" == *windows* ]] && is_windows=true
+
+  info "Building ${pkg} for ${target}..."
+  if [ "$DRY_RUN" = true ]; then
+    ok "(dry-run) Would build: cargo build -p ${pkg} --release --target ${target} $*"
+    return 0
+  fi
+
+  if source ~/.cargo/env 2>/dev/null; then true; fi
+  if cargo build -p "${pkg}" --release --target "${target}" "$@" 2>&1; then
+    local bin_path="target/${target}/release/${bin_name}"
+
+    # Strip
+    if [ "$is_windows" = true ]; then
+      x86_64-w64-mingw32-strip "${bin_path}" 2>/dev/null || true
+    else
+      strip "${bin_path}" 2>/dev/null || true
+    fi
+
+    cp "${bin_path}" "${DIST_DIR}/${dist_name}"
+    chmod +x "${DIST_DIR}/${dist_name}"
+    ok "${dist_name} built ($(du -h "${DIST_DIR}/${dist_name}" | cut -f1))"
+  else
+    err "${pkg} build failed for ${target}"
+    return 1
+  fi
+}
+
+# --- Build all binaries ---
 FAILED=0
 
-# Linux
-info "Building Linux x86_64 release..."
-if [ "$DRY_RUN" = true ]; then
-  ok "(dry-run) Would build: cargo build -p masday-cli --release --target x86_64-unknown-linux-gnu"
-else
-  if source ~/.cargo/env 2>/dev/null; then true; fi
-  if cargo build -p masday-cli --release --target x86_64-unknown-linux-gnu 2>&1; then
-    # Strip
-    strip "target/x86_64-unknown-linux-gnu/release/masday"
-    cp "target/x86_64-unknown-linux-gnu/release/masday" "${DIST_DIR}/masday-linux-x86_64"
-    chmod +x "${DIST_DIR}/masday-linux-x86_64"
-    ok "Linux binary built ($(du -h "${DIST_DIR}/masday-linux-x86_64" | cut -f1))"
-  else
-    err "Linux build failed"
-    FAILED=1
-  fi
+# ── masday-cli (Linux) ──
+build_binary masday-cli masday x86_64-unknown-linux-gnu masday-linux-x86_64 || FAILED=1
+
+# ── masday-cli (Windows) ──
+if [ "$BUILD_WINDOWS" = true ]; then
+  build_binary masday-cli masday.exe x86_64-pc-windows-gnu masday-windows-x86_64.exe --no-default-features || FAILED=1
 fi
 
-# Windows
+# ── masday-mcp (Linux) ──
+build_binary masday-mcp masday-mcp x86_64-unknown-linux-gnu masday-mcp-linux-x86_64 || FAILED=1
+
+# ── masday-mcp (Windows) ──
 if [ "$BUILD_WINDOWS" = true ]; then
-  info "Building Windows x86_64 release..."
-  if [ "$DRY_RUN" = true ]; then
-    ok "(dry-run) Would build: cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features"
-  else
-    if cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features 2>&1; then
-      # Windows strip with mingw
-      x86_64-w64-mingw32-strip "target/x86_64-pc-windows-gnu/release/masday.exe" 2>/dev/null || true
-      cp "target/x86_64-pc-windows-gnu/release/masday.exe" "${DIST_DIR}/masday-windows-x86_64.exe"
-      ok "Windows binary built ($(du -h "${DIST_DIR}/masday-windows-x86_64.exe" | cut -f1))"
-    else
-      err "Windows build failed"
-      FAILED=1
-    fi
-  fi
+  build_binary masday-mcp masday-mcp.exe x86_64-pc-windows-gnu masday-mcp-windows-x86_64.exe --no-default-features || FAILED=1
 fi
 
 if [ "$FAILED" -eq 1 ]; then
@@ -152,8 +170,11 @@ if [ "$DRY_RUN" = true ]; then
   ok "(dry-run) Would create release:"
   echo "  gh release create ${TAG} \\"
   echo "    ${DIST_DIR}/* \\"
-  echo "    --title \"Masday CLI ${TAG}\" \\"
+  echo "    --title \"Masday ${TAG}\" \\"
   echo "    --notes \"...\""
+  echo ""
+  echo "  Artifacts:"
+  ls -1 "${DIST_DIR}/" | sed 's/^/    /'
   echo ""
   ok "Dry run complete — no changes made"
   rm -rf "$DIST_DIR"
@@ -163,19 +184,26 @@ fi
 info "Creating GitHub Release ${TAG}..."
 
 # Generate release notes
-RELEASE_NOTES="## Masday CLI ${TAG}
+RELEASE_NOTES="## Masday ${TAG}
 
-Self-contained binary with embedded templates (agents, skills, hooks).
+Self-contained binaries for the Masday workflow orchestration platform.
 No source code required — just download and run.
 
-### Install
+### Binaries
+
+| File | Description |
+|------|-------------|
+| \`masday-linux-x86_64\` | CLI installer (Linux) |
+| \`masday-windows-x86_64.exe\` | CLI installer (Windows) |
+| \`masday-mcp-linux-x86_64\` | MCP server (Linux) |
+| \`masday-mcp-windows-x86_64.exe\` | MCP server (Windows) |
+
+### Install CLI
 \`\`\`bash
 # One-line install (Linux/macOS)
 curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/install.sh | bash
-\`\`\`
 
-### Manual download
-\`\`\`bash
+# Manual download
 # Linux
 curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-linux-x86_64
 chmod +x masday
@@ -184,21 +212,43 @@ chmod +x masday
 curl -fsSL -o masday.exe https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-windows-x86_64.exe
 \`\`\`
 
-### Usage
+### Setup MCP Server (stdio mode)
 \`\`\`bash
-masday install                          # Local mode (requires cargo)
-masday install --remote <url> --api-key <key>  # Remote mode
-masday --version
+# Linux — place in PATH or ~/.masday/bin/
+curl -fsSL -o ~/.masday/bin/masday-mcp https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-mcp-linux-x86_64
+chmod +x ~/.masday/bin/masday-mcp
+
+# Windows — place in PATH or %USERPROFILE%\\.masday\\bin\\
+curl -fsSL -o masday-mcp.exe https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-mcp-windows-x86_64.exe
 \`\`\`
 
-### Binary contents
+Then run the CLI installer to configure MCP in your editor:
+\`\`\`bash
+masday install                          # Standalone mode (agents + skills only)
+masday install --local                  # Local mode (builds from source)
+masday install --remote <url> --api-key <key>  # Remote mode
+\`\`\`
+
+### What's Included
+
+**CLI (\`masday\`)**
 - 28 agent definitions (embedded)
 - 30+ skill definitions (embedded)
 - Global + project hooks (embedded)
-- MCP config generation (4 platforms)"
+- MCP config generation (4 platforms: Claude Code, Gemini, VS Code, OpenCode)
+
+**MCP Server (\`masday-mcp\`)**
+- 20 tool domains (96+ MCP tools)
+- stdio transport
+- Requires PostgreSQL + running API server for full functionality
+
+### Prerequisites
+- PostgreSQL 16 on port 54341
+- API server (\`masday-api\`) running for full MCP tool access
+- Node.js for hooks"
 
 if gh release create "$TAG" "${DIST_DIR}"/* \
-  --title "Masday CLI ${TAG}" \
+  --title "Masday ${TAG}" \
   --notes "$RELEASE_NOTES"; then
   ok "Release ${TAG} created successfully!"
   echo ""
@@ -207,7 +257,7 @@ if gh release create "$TAG" "${DIST_DIR}"/* \
 else
   err "GitHub release creation failed"
   err "Manual command:"
-  echo "  gh release create ${TAG} ${DIST_DIR}/* --title \"Masday CLI ${TAG}\""
+  echo "  gh release create ${TAG} ${DIST_DIR}/* --title \"Masday ${TAG}\""
   rm -rf "$DIST_DIR"
   exit 1
 fi

@@ -72,7 +72,7 @@ docker compose ps
 # Create .env file
 cat > .env << 'EOF'
 # Database
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow
 
 # API Server
 API_PORT=30101
@@ -187,7 +187,7 @@ No firewall changes needed. The MCP server on your laptop connects through SSH.
 ssh -L 54341:localhost:54341 -N user@your-vps-ip &
 
 # Verify tunnel works
-psql postgresql://trader:traderpass@localhost:54341/masday_workflow -c "SELECT 1"
+psql postgresql://USER:PASS@localhost:54341/masday_workflow -c "SELECT 1"
 ```
 
 ### Option B: Direct PostgreSQL Access (Less Secure)
@@ -244,7 +244,7 @@ Edit `.mcp.json` in your project root:
       "args": [],
       "cwd": "/path/to/your/project",
       "env": {
-        "DATABASE_URL": "postgresql://trader:traderpass@localhost:54341/masday_workflow",
+        "DATABASE_URL": "postgresql://USER:PASS@localhost:54341/masday_workflow",
         "EMBEDDING_PROVIDER": "local",
         "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
         "EMBEDDING_DIMENSIONS": "384"
@@ -277,7 +277,7 @@ echo 'ssh -L 54341:localhost:54341 -N -f user@your-vps-ip' >> ~/.bashrc
 curl https://masday.yourdomain.com/api/health
 
 # Check database via tunnel
-psql postgresql://trader:traderpass@localhost:54341/masday_workflow -c "SELECT count(*) FROM \"Workflow\""
+psql postgresql://USER:PASS@localhost:54341/masday_workflow -c "SELECT count(*) FROM \"Workflow\""
 ```
 
 ---
@@ -291,7 +291,7 @@ The MCP server runs on your laptop and connects to the remote database:
 # Just start Claude Code — it reads .mcp.json and launches masday-mcp
 
 # Option B: Manual start for testing
-DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
+DATABASE_URL=postgresql://USER:PASS@localhost:54341/masday_workflow \
   EMBEDDING_PROVIDER=local \
   masday-mcp
 ```
@@ -317,7 +317,7 @@ DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
 # Add daily backup cron
 crontab -e
 # Add:
-# 0 3 * * * docker exec masday-postgres pg_dump -U trader masday_workflow | gzip > /backup/masday_$(date +\%Y\%m\%d).sql.gz
+# 0 3 * * * docker exec masday-postgres pg_dump -U $DB_USER masday_workflow | gzip > /backup/masday_$(date +\%Y\%m\%d).sql.gz
 # 0 4 * * * find /backup -name "masday_*.sql.gz" -mtime +30 -delete
 ```
 
@@ -330,7 +330,7 @@ crontab -e
 curl -s https://masday.yourdomain.com/api/health | jq
 
 # Check PostgreSQL
-docker exec -it masday-postgres psql -U trader -d masday_workflow -c "SELECT count(*) FROM \"Workflow\""
+docker exec -it masday-postgres psql -U $DB_USER -d masday_workflow -c "SELECT count(*) FROM \"Workflow\""
 
 # Check logs
 sudo journalctl -u masday-api -f
