@@ -16,8 +16,8 @@ const path = require("path");
 const fs = require("fs");
 
 const PROJECT = "/home/vibe-dev/masday-workflow-rust";
-const DB_PORT = 5434;
-const API_PORT = 3010;
+const DB_PORT = 54341;
+const API_PORT = 30101;
 
 // Context estimation config — calibrated against real Claude CLI readings
 const CONTEXT_WINDOW_TOKENS = 200000;    // 200K tokens (Claude Opus/Sonnet)
@@ -123,7 +123,7 @@ function estimateContext() {
 async function main() {
   const parts = [];
 
-  // Database check (PostgreSQL on 5434)
+  // Database check (PostgreSQL on 54341)
   const dbUp = await isPortOpen(DB_PORT);
   parts.push(`DB:${dbUp ? "✓" : "✗"}`);
 

@@ -32,7 +32,7 @@ function saveToMasday(summary, content) {
     const req = http.request(
       {
         hostname: "localhost",
-        port: 3010,
+        port: 30101,
         path: "/api/memories",
         method: "POST",
         headers: { "Content-Type": "application/json" },

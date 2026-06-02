@@ -41,12 +41,12 @@ async function main() {
   const lines = [];
 
   // Database
-  const dbUp = await isPortOpen(5434);
-  lines.push(`PostgreSQL (5434): ${dbUp ? "✅ running" : "❌ not running — docker compose up -d postgres"}`);
+  const dbUp = await isPortOpen(54341);
+  lines.push(`PostgreSQL (54341): ${dbUp ? "✅ running" : "❌ not running — docker compose up -d postgres"}`);
 
   // Redis
-  const redisUp = await isPortOpen(6379);
-  lines.push(`Redis (6379): ${redisUp ? "✅ running" : "⚠️ not running — docker compose up -d redis"}`);
+  const redisUp = await isPortOpen(63791);
+  lines.push(`Redis (63791): ${redisUp ? "✅ running" : "⚠️ not running — docker compose up -d redis"}`);
 
   // Binaries
   const bins = [
@@ -68,7 +68,7 @@ async function main() {
   let apiHealthy = false;
   try {
     apiHealthy = await new Promise((resolve) => {
-      const req = http.get("http://localhost:3010/api/health", { timeout: 2000 }, (res) => {
+      const req = http.get("http://localhost:30101/api/health", { timeout: 2000 }, (res) => {
         resolve(res.statusCode === 200);
       });
       req.on("error", () => resolve(false));
@@ -76,10 +76,10 @@ async function main() {
     });
   } catch {}
   if (apiHealthy) {
-    lines.push("API (3010): ✅ healthy");
+    lines.push("API (30101): ✅ healthy");
   } else {
-    const portOpen = await isPortOpen(3010);
-    lines.push(`API (3010): ${portOpen ? "⚠️ port open but /api/health failing" : "❌ not running — cargo run --release -p masday-api"}`);
+    const portOpen = await isPortOpen(30101);
+    lines.push(`API (30101): ${portOpen ? "⚠️ port open but /api/health failing" : "❌ not running — cargo run --release -p masday-api"}`);
   }
 
   // MCP process check

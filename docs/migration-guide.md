@@ -61,10 +61,10 @@ cargo build --release
 ### Start API Server
 ```bash
 # Set environment variables
-export DATABASE_URL="postgresql://user:pass@localhost:5433/masday"
+export DATABASE_URL="postgresql://user:pass@localhost:54331/masday"
 export MASDAY_API_KEY="your-api-key"
 
-# Run API server (port 3010)
+# Run API server (port 30101)
 cargo run -p masday-api
 
 # Or use release binary
@@ -74,7 +74,7 @@ cargo run -p masday-api
 ### Start MCP Server
 ```bash
 # Set environment variables
-export MASDAY_API_URL="http://localhost:3010"
+export MASDAY_API_URL="http://localhost:30101"
 export MASDAY_API_KEY="your-api-key"
 
 # Run MCP server (stdio)
@@ -98,7 +98,7 @@ cargo run -p masday-mcp
       "args": ["/path/to/masday-workflow-rebuild/apps/agent-runner/dist/runtime/mcp.js"],
       "cwd": "/path/to/project-root",
       "env": {
-        "DATABASE_URL": "postgresql://user:pass@localhost:5433/masday",
+        "DATABASE_URL": "postgresql://user:pass@localhost:54331/masday",
         "EMBEDDING_PROVIDER": "fastembed",
         "EMBEDDING_MODEL": "fast-bge-base-en-v1.5"
       }
@@ -115,7 +115,7 @@ cargo run -p masday-mcp
       "type": "stdio",
       "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
       "env": {
-        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_URL": "http://localhost:30101",
         "MASDAY_API_KEY": "PLACEHOLDER"
       }
     }
@@ -160,7 +160,7 @@ If you have a standalone `.mcp.json` in your home directory or project root, upd
       "type": "stdio",
       "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
       "env": {
-        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_URL": "http://localhost:30101",
         "MASDAY_API_KEY": "PLACEHOLDER"
       }
     }
@@ -200,7 +200,7 @@ From Claude Code or your MCP client:
 
 **Migration:**
 - All DB access now goes through the API server (`masday-api`)
-- API server must be running on `http://localhost:3010` (or configured `MASDAY_API_URL`)
+- API server must be running on `http://localhost:30101` (or configured `MASDAY_API_URL`)
 
 ### 2. Environment Variables Changed
 **Old (TypeScript):**
@@ -298,7 +298,7 @@ node apps/agent-runner/dist/runtime/mcp.js
 **Fix:**
 ```bash
 # Check if API server is running
-curl http://localhost:3010/health
+curl http://localhost:30101/health
 
 # Start API server if needed
 cargo run -p masday-api
@@ -412,7 +412,7 @@ masday-workflow-rust/
 
 For issues or questions:
 - Check logs: `cargo run -p masday-api 2>&1 | tee api.log`
-- Run health check: `curl http://localhost:3010/health`
+- Run health check: `curl http://localhost:30101/health`
 - Verify tools: `/mcp list-tools masday`
 
 ---

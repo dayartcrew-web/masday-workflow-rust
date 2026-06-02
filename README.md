@@ -59,11 +59,11 @@ cp .env.example .env
 cargo build --workspace
 
 # Run MCP server (exposes tools via stdio)
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   cargo run -p masday-mcp
 
 # Run API server (REST endpoints)
-DATABASE_URL=postgresql://trader:traderpass@localhost:5434/masday_workflow \
+DATABASE_URL=postgresql://trader:traderpass@localhost:54341/masday_workflow \
   cargo run -p masday-api
 
 # Build release binaries
@@ -223,15 +223,15 @@ Create a `.env` file in the project root:
 
 ```env
 # Database
-DATABASE_URL="postgresql://trader:traderpass@localhost:5434/masday_workflow"
+DATABASE_URL="postgresql://trader:traderpass@localhost:54341/masday_workflow"
 POSTGRES_HOST="localhost"
-POSTGRES_PORT="5434"
+POSTGRES_PORT="54341"
 POSTGRES_USER="trader"
 POSTGRES_PASSWORD="traderpass"
 POSTGRES_DB="masday_workflow"
 
 # Redis (optional, for caching)
-REDIS_URL="redis://localhost:6379"
+REDIS_URL="redis://localhost:63791"
 
 # API
 API_PORT="8080"

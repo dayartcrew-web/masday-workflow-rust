@@ -318,7 +318,7 @@ The MCP server no longer imports `@mcp-rebuild/db`. It calls the API:
 // masday-mcp/src/tools/workflow.rs
 pub async fn workflow_create(args: Value) -> Result<Value> {
     let client = reqwest::Client::new();
-    let resp = client.post("http://localhost:3010/api/workflows")
+    let resp = client.post("http://localhost:30101/api/workflows")
         .header("Authorization", format!("Bearer {}", API_KEY))
         .json(&args)
         .send()
@@ -448,7 +448,7 @@ After Rust migration:
       "command": "masday-mcp",
       "args": [],
       "env": {
-        "MASDAY_API_URL": "http://localhost:3010",
+        "MASDAY_API_URL": "http://localhost:30101",
         "MASDAY_API_KEY": "PLACEHOLDER-change-in-prod"
       }
     }
@@ -718,15 +718,15 @@ cargo sqlx migrate run
 
 # 3. Start API server
 cargo run -p masday-api
-# → Listening on http://localhost:3010
+# → Listening on http://localhost:30101
 
 # 4. Start MCP server (in another terminal)
 cargo run -p masday-mcp
-# → Connected to http://localhost:3010
+# → Connected to http://localhost:30101
 
 # 5. Test
-curl http://localhost:3010/api/health
-curl -X POST http://localhost:3010/api/workflows \
+curl http://localhost:30101/api/health
+curl -X POST http://localhost:30101/api/workflows \
   -H "Authorization: Bearer $API_KEY" \
   -d '{"name": "test", "description": "Test workflow"}'
 ```

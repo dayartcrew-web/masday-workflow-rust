@@ -15,7 +15,7 @@ use std::path::PathBuf;
 pub struct MasdayConfig {
     /// "local" | "remote"
     pub mode: String,
-    /// API server URL (e.g. "http://localhost:3010" or "https://masday.example.com")
+    /// API server URL (e.g. "http://localhost:30101" or "https://masday.example.com")
     pub api_url: String,
     /// API key for authentication
     pub api_key: String,
@@ -36,20 +36,20 @@ pub struct MasdayConfig {
 }
 
 fn default_port() -> u16 {
-    3010
+    30101
 }
 
 impl Default for MasdayConfig {
     fn default() -> Self {
         Self {
             mode: "local".to_string(),
-            api_url: "http://localhost:3010".to_string(),
+            api_url: "http://localhost:30101".to_string(),
             api_key: "local-dev".to_string(),
             database_url: None,
             embedding_provider: None,
             embedding_model: None,
             embedding_dimensions: None,
-            port: 3010,
+            port: 30101,
             platforms: vec!["claude-code".to_string()],
         }
     }
@@ -134,7 +134,7 @@ mod tests {
     fn test_default_config() {
         let config = MasdayConfig::default();
         assert_eq!(config.mode, "local");
-        assert_eq!(config.port, 3010);
+        assert_eq!(config.port, 30101);
         assert!(config.database_url.is_none());
     }
 
@@ -148,7 +148,7 @@ mod tests {
             embedding_provider: Some("local".to_string()),
             embedding_model: Some("all-MiniLM-L6-v2".to_string()),
             embedding_dimensions: Some(384),
-            port: 3010,
+            port: 30101,
             platforms: vec!["claude-code".to_string(), "gemini".to_string()],
         };
 

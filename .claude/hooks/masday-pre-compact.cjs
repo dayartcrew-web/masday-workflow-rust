@@ -23,7 +23,7 @@ function apiPost(apiPath, body, timeout = 3000) {
   return new Promise((resolve) => {
     const data = JSON.stringify(body);
     const req = http.request(
-      { hostname: "localhost", port: 3010, path: apiPath, method: "POST",
+      { hostname: "localhost", port: 30101, path: apiPath, method: "POST",
         headers: { "Content-Type": "application/json" }, timeout },
       (res) => {
         let body = "";
@@ -45,7 +45,7 @@ function apiPost(apiPath, body, timeout = 3000) {
 function apiGet(apiPath, timeout = 3000) {
   return new Promise((resolve) => {
     const req = http.request(
-      { hostname: "localhost", port: 3010, path: apiPath, method: "GET", timeout },
+      { hostname: "localhost", port: 30101, path: apiPath, method: "GET", timeout },
       (res) => {
         let body = "";
         res.on("data", (c) => (body += c));
