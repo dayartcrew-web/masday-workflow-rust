@@ -1,10 +1,10 @@
 # Masday Workflow - Architecture
 
-> **Status:** This document describes the Rust runtime architecture. PostgreSQL is the operational source of truth for all workflow, task, memory, and session state.
+> **Status:** This document describes the Rust runtime architecture. The MCP stdio server uses SQLite for local persistence; the API server uses PostgreSQL for multi-user deployments.
 
 ## Overview
 
-Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). Rust workspace with 6 crates, 20 MCP tool domains, 4-layer memory system, and state machine workflow engine — all backed by PostgreSQL via deadpool-postgres.
+Masday Workflow is a unified AI coding agent platform built on the Model Context Protocol (MCP). Rust workspace with 6 crates, 20 MCP tool domains, 4-layer memory system, and state machine workflow engine. **Local mode** uses SQLite (zero config); **remote mode** uses PostgreSQL via deadpool-postgres.
 
 ## System Architecture
 
@@ -25,39 +25,34 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 │  │ stdio        │  │ 20 Tool      │  │ serde_json   │       │
 │  │ transport    │  │ Domains      │  │ validation   │       │
 │  └──────────────┘  └──────────────┘  └──────────────┘       │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Service Layer (masday-service)            │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │ Workflow      │  │ Task         │  │ Memory       │       │
-│  │ Service       │  │ Service      │  │ Service      │       │
-│  │ (state machine)│  │ (auto-       │  │ (4-layer)    │       │
-│  │               │  │  transition) │  │              │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │ Policy        │  │ Review       │  │ Reminder     │       │
-│  │ Service       │  │ Service      │  │ Service      │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                                                              │
+│  Local mode: direct.rs (SQLite via rusqlite)                 │
+│  Remote mode: client.rs (HTTP to masday-api)                │
 └────────────────────────────┬────────────────────────────────┘
                              │
                     ┌────────┴────────┐
-                    ▼                 ▼
+                    ▼ (local)         ▼ (remote)
 ┌──────────────────────────┐  ┌──────────────────────────────┐
-│   Skill Layer            │  │   Persistence Layer          │
+│   SQLite (local mode)    │  │   API Server (masday-api)    │
 │  ┌────────────────────┐  │  │  ┌────────────────────────┐  │
-│  │ filesystem.*       │  │  │  │ PostgreSQL (port 54341)  │  │
-│  │ git.*              │  │  │  │ deadpool-postgres pool  │  │
-│  │ tests.*            │  │  │  │ 15 repo modules         │  │
-│  │ npm.*              │  │  │  │ 16 tables               │  │
-│  │ docker.*           │  │  │  └────────────────────────┘  │
-│  │ github.*           │  │  │  ┌────────────────────────┐  │
-│  │ cicd.*             │  │  │  │ .masday/ (per-project) │  │
-│  └────────────────────┘  │  │  │ research/ context/     │  │
-│                          │  │  │ plans/ notes/          │  │
-│                          │  │  └────────────────────────┘  │
-└──────────────────────────┘  └──────────────────────────────┘
+│  │ ~/.masday/data.db  │  │  │  │ Service Layer           │  │
+│  │ rusqlite           │  │  │  │ 10 services             │  │
+│  │ 16 tables          │  │  │  │ State machine + memory  │  │
+│  └────────────────────┘  │  │  └────────────────────────┘  │
+└──────────────────────────┘  │  ┌────────────────────────┐  │
+                              │  │ PostgreSQL (port 54341)  │  │
+┌──────────────────────────┐  │  │ deadpool-postgres pool  │  │
+│   Skill Layer (shared)   │  │  │ 15 repo modules         │  │
+│  ┌────────────────────┐  │  │  │ 16 tables               │  │
+│  │ filesystem.*       │  │  │  └────────────────────────┘  │
+│  │ git.*              │  │  └──────────────────────────────┘
+│  │ tests.*            │  │
+│  │ npm.*              │  │  ┌──────────────────────────────┐
+│  │ docker.*           │  │  │ .masday/ (per-project)       │
+│  │ github.*           │  │  │ research/ context/ plans/    │
+│  │ cicd.*             │  │  └──────────────────────────────┘
+│  └────────────────────┘  │
+└──────────────────────────┘
 ```
 
 ## Tech Stack
@@ -67,7 +62,7 @@ Masday Workflow is a unified AI coding agent platform built on the Model Context
 | Language        | Rust 2021 edition                             | Memory safety, performance           |
 | Async Runtime   | tokio                                         | Async I/O, task spawning            |
 | HTTP            | Axum 0.8                                      | REST API server                      |
-| Database        | PostgreSQL via deadpool-postgres + tokio-postgres | Connection pool, raw SQL queries |
+| Database        | SQLite via rusqlite (local) / PostgreSQL via deadpool-postgres (remote) | Persistence, raw SQL queries |
 | MCP             | Custom implementation (serde_json)            | 20 tool domains, stdio transport     |
 | CLI             | clap 4.5                                      | Command-line interface               |
 | Error Handling  | thiserror (lib) + anyhow (app)                | Typed errors                         |
@@ -126,7 +121,7 @@ masday-workflow-rust/
 
 ## Status Conventions
 
-All status values stored in **UPPERCASE** in PostgreSQL:
+All status values stored in **UPPERCASE** in both SQLite and PostgreSQL:
 
 | Entity   | Valid Statuses                                                         |
 | -------- | ---------------------------------------------------------------------- |
