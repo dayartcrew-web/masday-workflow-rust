@@ -29,7 +29,7 @@ pub fn stop() -> Result<()> {
 }
 
 /// Reset PostgreSQL (delete data and recreate)
-pub fn reset() -> Result<()> {
+pub async fn reset() -> Result<()> {
     println!("{}", style("Resetting database...").cyan());
     println!();
     println!("  {} This will DELETE all data!", style("⚠ WARNING:").yellow());
@@ -47,10 +47,11 @@ pub fn reset() -> Result<()> {
 
     // Run migrations on fresh database
     std::env::set_var("DATABASE_URL", docker::default_database_url());
-    let rt = tokio::runtime::Runtime::new()?;
-    let pool = rt.block_on(masday_db::pool::init_pool_with_retry(5))
+    let pool = masday_db::pool::init_pool_with_retry(5)
+        .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    rt.block_on(masday_db::run_migrations(&pool))
+    masday_db::run_migrations(&pool)
+        .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!();

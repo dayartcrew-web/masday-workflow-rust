@@ -17,7 +17,7 @@ use crate::config::MasdayConfig;
 use crate::docker;
 
 /// Run the interactive setup wizard
-pub fn run(project_dir: &Path) -> Result<()> {
+pub async fn run(project_dir: &Path) -> Result<()> {
     println!();
     println!(
         "{}",
@@ -56,7 +56,7 @@ pub fn run(project_dir: &Path) -> Result<()> {
     .prompt()?;
 
     if mode.starts_with("Local") {
-        run_local_setup(project_dir)?;
+        run_local_setup(project_dir).await?;
     } else {
         run_remote_setup(project_dir)?;
     }
@@ -64,7 +64,7 @@ pub fn run(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_local_setup(project_dir: &Path) -> Result<()> {
+async fn run_local_setup(project_dir: &Path) -> Result<()> {
     println!();
     println!("{}", style("── Local Mode Setup ──").cyan().bold());
 
@@ -103,11 +103,11 @@ fn run_local_setup(project_dir: &Path) -> Result<()> {
         let db_url = docker::default_database_url();
         std::env::set_var("DATABASE_URL", &db_url);
 
-        // Create a runtime for async migrations
-        let rt = tokio::runtime::Runtime::new()?;
-        let pool = rt.block_on(masday_db::pool::init_pool_with_retry(5))
+        let pool = masday_db::pool::init_pool_with_retry(5)
+            .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        rt.block_on(masday_db::run_migrations(&pool))
+        masday_db::run_migrations(&pool)
+            .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         pb.finish_with_message(format!("{} Migrations complete", style("✓").green()));
 

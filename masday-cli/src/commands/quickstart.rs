@@ -22,7 +22,7 @@ use crate::installer::{
 };
 
 /// Run the quickstart wizard.
-pub fn run(project_dir: &Path) -> Result<()> {
+pub async fn run(project_dir: &Path) -> Result<()> {
     println!();
     println!("{}", style("⚡ Masday Quickstart").cyan().bold());
     println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").cyan());
@@ -73,7 +73,7 @@ pub fn run(project_dir: &Path) -> Result<()> {
     println!();
 
     match mode_choice {
-        s if s.starts_with("Local") => run_local_mode(project_dir, &detected_platforms, has_docker)?,
+        s if s.starts_with("Local") => run_local_mode(project_dir, &detected_platforms, has_docker).await?,
         s if s.starts_with("Remote") => run_remote_mode(project_dir, &detected_platforms)?,
         s if s.starts_with("Standalone") => run_standalone_mode(project_dir, &detected_platforms)?,
         _ => bail!("Invalid selection"),
@@ -86,7 +86,7 @@ pub fn run(project_dir: &Path) -> Result<()> {
 // LOCAL MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn run_local_mode(
+async fn run_local_mode(
     project_dir: &Path,
     detected_platforms: &[Platform],
     has_docker: bool,
@@ -106,16 +106,16 @@ fn run_local_mode(
         .prompt()?;
 
         if db_choice.starts_with("Start Docker") {
-            Some(start_docker_infrastructure()?)
+            Some(start_docker_infrastructure().await?)
         } else {
-            ask_database_url()?
+            ask_database_url().await?
         }
     } else {
         println!(
             "{}",
             style("Docker not found. Provide an existing PostgreSQL URL:").yellow()
         );
-        ask_database_url()?
+        ask_database_url().await?
     };
 
     // ── Embedding (optional) ──────────────────────────────────────────────
@@ -351,7 +351,7 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Start Docker containers + run migrations
-fn start_docker_infrastructure() -> Result<String> {
+async fn start_docker_infrastructure() -> Result<String> {
     println!("{}", style("Starting infrastructure...").cyan());
 
     // PostgreSQL
@@ -378,10 +378,11 @@ fn start_docker_infrastructure() -> Result<String> {
     std::env::set_var("DATABASE_URL", &db_url);
 
     let pb = spinner("Running migrations...");
-    let rt = tokio::runtime::Runtime::new()?;
-    let pool = rt.block_on(masday_db::pool::init_pool_with_retry(5))
+    let pool = masday_db::pool::init_pool_with_retry(5)
+        .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    rt.block_on(masday_db::run_migrations(&pool))
+    masday_db::run_migrations(&pool)
+        .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     pb.finish_with_message(format!("  {} Database migrated", style("✓").green()));
 
@@ -390,7 +391,7 @@ fn start_docker_infrastructure() -> Result<String> {
 }
 
 /// Ask for existing database URL
-fn ask_database_url() -> Result<Option<String>> {
+async fn ask_database_url() -> Result<Option<String>> {
     let url = inquire::Text::new("Database URL:")
         .with_default("postgresql://USER:PASS@localhost:5432/masday_workflow")
         .with_help_message("Full PostgreSQL connection URL")
@@ -399,8 +400,7 @@ fn ask_database_url() -> Result<Option<String>> {
     // Verify connectivity
     std::env::set_var("DATABASE_URL", &url);
     print!("  {} Testing connection...", style("→").cyan());
-    let rt = tokio::runtime::Runtime::new()?;
-    match rt.block_on(masday_db::pool::init_pool_with_retry(3)) {
+    match masday_db::pool::init_pool_with_retry(3).await {
         Ok(_) => {
             println!(" {}", style("✓ connected").green());
         }
