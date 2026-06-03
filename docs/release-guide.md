@@ -64,6 +64,7 @@ v0.2.0  Quickstart wizard
 v0.3.0  Hooks rewrite
 v0.3.7  Previous
 v0.3.8  Hybrid semantic search (embedding + cosine similarity), CLI runtime fix
+v0.3.10 Remote DB status checks (Supabase), Windows build without ONNX, cargo fmt
 ```
 
 ## CI Workflows — DISABLED
