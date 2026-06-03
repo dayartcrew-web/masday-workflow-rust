@@ -227,14 +227,28 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
     let platforms = ask_platforms(detected_platforms)?;
 
     // ── Save config ───────────────────────────────────────────────────────
+    let is_windows = cfg!(target_os = "windows");
+    if is_windows {
+        println!();
+        println!(
+            "{}",
+            style("⚠ Windows — local ONNX embeddings not included.").yellow()
+        );
+        println!("  Edit ~/.masday/config.toml to add a remote embedding provider:");
+        println!("  {}", style("embedding_provider = \"ollama\"    # ollama | openai").cyan());
+        println!("  {}", style("embedding_model = \"nomic-embed-text\"").cyan());
+        println!("  {}", style("embedding_dimensions = 768").cyan());
+        println!();
+    }
+
     let config = MasdayConfig {
         mode: "remote".to_string(),
         api_url: api_url.clone(),
         api_key: api_key.clone(),
         database_url: database_url.clone(),
-        embedding_provider: None,
-        embedding_model: None,
-        embedding_dimensions: None,
+        embedding_provider: if is_windows { Some(String::new()) } else { None },
+        embedding_model: if is_windows { Some(String::new()) } else { None },
+        embedding_dimensions: if is_windows { Some(0) } else { None },
         port: masday_core::constants::ports::api_port(),
         platforms: platform_names(&platforms),
     };
@@ -264,15 +278,32 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
 
     let platforms = ask_platforms(detected_platforms)?;
 
-    // ── Save minimal config ───────────────────────────────────────────────
+    // ── Save config ─────────────────────────────────────────────────────
+    // On Windows, local ONNX embeddings are not included.
+    // Pre-fill empty embedding fields so user can manually add remote provider.
+    let is_windows = cfg!(target_os = "windows");
+    if is_windows {
+        println!();
+        println!(
+            "{}",
+            style("⚠ Windows — local ONNX embeddings not included in this binary.").yellow()
+        );
+        println!("  Edit ~/.masday/config.toml to add a remote embedding provider:");
+        println!();
+        println!("  {}", style("embedding_provider = \"ollama\"    # ollama | openai").cyan());
+        println!("  {}", style("embedding_model = \"nomic-embed-text\"").cyan());
+        println!("  {}", style("embedding_dimensions = 768").cyan());
+        println!();
+    }
+
     let config = MasdayConfig {
         mode: "standalone".to_string(),
-        api_url: String::new(),
-        api_key: String::new(),
+        api_url: "none".to_string(),
+        api_key: "none".to_string(),
         database_url: None,
-        embedding_provider: None,
-        embedding_model: None,
-        embedding_dimensions: None,
+        embedding_provider: if is_windows { Some(String::new()) } else { None },
+        embedding_model: if is_windows { Some(String::new()) } else { None },
+        embedding_dimensions: if is_windows { Some(0) } else { None },
         port: masday_core::constants::ports::api_port(),
         platforms: platform_names(&platforms),
     };
