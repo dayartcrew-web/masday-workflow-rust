@@ -192,7 +192,10 @@ mod tests {
             embedding_provider: Some("local".to_string()),
             embedding_model: Some("all-MiniLM-L6-v2".to_string()),
             embedding_dimensions: Some(384),
-            port: ports::API_PORT,
+            api_port: ports::API_PORT,
+            db_port: ports::POSTGRES_PORT,
+            redis_port: ports::REDIS_PORT,
+            dashboard_port: ports::API_PORT,
             platforms: vec!["claude-code".to_string(), "gemini".to_string()],
         };
 
