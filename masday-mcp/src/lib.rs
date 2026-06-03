@@ -624,13 +624,6 @@ fn register_capability_tools(r: &mut ToolRegistry) {
         schema!("workflowId"),
         cap::capability_workflow_audit
     );
-    reg!(
-        r,
-        "capability_ping",
-        "Ping capability service",
-        schema!(),
-        cap::capability_ping
-    );
 }
 
 // ── Filesystem (5 tools) ─────────────────────────────────────────────────────
@@ -1076,8 +1069,6 @@ fn register_capability_tools_stdio(r: &mut ToolRegistry) {
         schema!("projectRoot"), d::capability_system_readiness);
     reg!(r, "capability_workflow_audit", "Audit a workflow",
         schema!("workflowId"), d::capability_workflow_audit);
-    reg!(r, "capability_ping", "Ping capability service",
-        schema!(), d::capability_ping);
 }
 
 fn register_local_tools_stdio(r: &mut ToolRegistry) {

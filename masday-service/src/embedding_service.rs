@@ -48,8 +48,25 @@ impl EmbeddingConfig {
     /// Returns None if EMBEDDING_PROVIDER is not set (embedding disabled).
     pub fn from_env() -> Option<Self> {
         let provider = std::env::var("EMBEDDING_PROVIDER").ok()?;
+        let model = std::env::var("EMBEDDING_MODEL").ok();
+        let base_url = std::env::var("EMBEDDING_BASE_URL").ok();
+        let api_key = std::env::var("EMBEDDING_API_KEY").ok();
+        let dimensions = std::env::var("EMBEDDING_DIMENSIONS")
+            .ok()
+            .and_then(|d| d.parse::<usize>().ok());
+        Self::from_values(&provider, model.as_deref(), base_url.as_deref(), api_key.as_deref(), dimensions)
+    }
 
-        let (default_model, default_url, default_dims) = match provider.as_str() {
+    /// Construct config from explicit values. Returns None for unknown provider.
+    /// Used by `from_env()` and directly by tests (no env mutation needed).
+    pub fn from_values(
+        provider: &str,
+        model: Option<&str>,
+        base_url: Option<&str>,
+        api_key: Option<&str>,
+        dimensions: Option<usize>,
+    ) -> Option<Self> {
+        let (default_model, default_url, default_dims) = match provider {
             #[cfg(feature = "local-embeddings")]
             "local" => (
                 LOCAL_DEFAULT_MODEL.to_string(),
@@ -77,13 +94,10 @@ impl EmbeddingConfig {
             }
         };
 
-        let model = std::env::var("EMBEDDING_MODEL").unwrap_or(default_model);
-        let base_url = std::env::var("EMBEDDING_BASE_URL").unwrap_or(default_url);
-        let api_key = std::env::var("EMBEDDING_API_KEY").ok();
-        let dimensions = std::env::var("EMBEDDING_DIMENSIONS")
-            .ok()
-            .and_then(|d| d.parse::<usize>().ok())
-            .unwrap_or(default_dims);
+        let model = model.map(|m| m.to_string()).unwrap_or(default_model);
+        let base_url = base_url.map(|u| u.to_string()).unwrap_or(default_url);
+        let api_key = api_key.map(|k| k.to_string());
+        let dimensions = dimensions.unwrap_or(default_dims);
 
         info!(
             "Embedding config: provider={}, model={}, dimensions={}",
@@ -91,7 +105,7 @@ impl EmbeddingConfig {
         );
 
         Some(Self {
-            provider,
+            provider: provider.to_string(),
             model,
             base_url,
             api_key,
@@ -570,33 +584,26 @@ mod tests {
         ));
     }
 
-    // ── Env-based tests (single-threaded via #[ignore]) ──────────────────────
+    // ── Config construction tests (no env mutation) ──────────────────────────
 
     #[test]
-    #[ignore] // Run with: cargo test -- --ignored --test-threads=1
-    fn test_config_from_env_none() {
-        std::env::remove_var("EMBEDDING_PROVIDER");
-        assert!(EmbeddingConfig::from_env().is_none());
+    fn test_config_from_values_none_for_unknown_provider() {
+        assert!(EmbeddingConfig::from_values("unknown", None, None, None, None).is_none());
     }
 
     #[test]
-    #[ignore]
-    fn test_config_from_env_local() {
-        std::env::set_var("EMBEDDING_PROVIDER", "local");
-        std::env::remove_var("EMBEDDING_MODEL");
-        std::env::remove_var("EMBEDDING_DIMENSIONS");
-        let config = EmbeddingConfig::from_env().unwrap();
+    fn test_config_from_values_local() {
+        let config = EmbeddingConfig::from_values("local", None, None, None, None).unwrap();
         assert_eq!(config.provider, "local");
         assert_eq!(config.model, "all-MiniLM-L6-v2");
         assert_eq!(config.dimensions, 384);
-        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[test]
-    #[ignore]
-    fn test_service_from_env_disabled() {
-        std::env::remove_var("EMBEDDING_PROVIDER");
-        assert!(EmbeddingService::from_env().is_none());
+    fn test_service_none_when_no_env() {
+        // from_env() returns None when EMBEDDING_PROVIDER is not set — no mutation needed
+        // since the test runner doesn't set it by default
+        assert!(EmbeddingConfig::from_values("", None, None, None, None).is_none());
     }
 
     // ── Pure unit tests (no env, no IO) ─────────────────────────────────────

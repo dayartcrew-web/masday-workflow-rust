@@ -77,7 +77,7 @@ const EXPECTED_MCP_TOOLS: &[&str] = &[
     // Graph (2 tools)
     "memory_create_entities",
     "memory_search_nodes",
-    // Capability (11 tools)
+    // Capability (10 tools)
     "capability_list_agents",
     "capability_list_skills",
     "capability_list_templates",
@@ -88,7 +88,6 @@ const EXPECTED_MCP_TOOLS: &[&str] = &[
     "capability_scaffold_mcp_server",
     "capability_system_readiness",
     "capability_workflow_audit",
-    "capability_ping",
     // Filesystem (5 tools)
     "filesystem_read",
     "filesystem_write",
@@ -126,12 +125,12 @@ const EXPECTED_MCP_TOOLS: &[&str] = &[
 ];
 
 #[test]
-fn test_all_90_tools_registered() {
+fn test_all_89_tools_registered() {
     // Verify the expected count matches the constant
     assert_eq!(
         EXPECTED_MCP_TOOLS.len(),
-        90,
-        "EXPECTED_MCP_TOOLS should have exactly 90 tools, got {}",
+        89,
+        "EXPECTED_MCP_TOOLS should have exactly 89 tools, got {}",
         EXPECTED_MCP_TOOLS.len()
     );
 }
