@@ -2,27 +2,24 @@
 //
 // Masday Statusline — status + context progress bar
 //
-// Output: "⚡ Masday | DB:✓ | API:✓ | MCP:✓ | ▓▓▓░░░░░░░ 32% | ×4 | rust-wf"
+// Output: "⚡ Masday | DB:✓ | API:✓ | MCP:✓ | ▓▓▓░░░░░░░ 32% | ×4 | project-name"
 //
-// Context estimation: parses session JSONL, finds last compact_boundary,
-// counts user+assistant content bytes after boundary, adds system overhead.
-// Calibrated against real Claude CLI context percentage.
+// Also writes context metrics to bridge file for the context-monitor PostToolUse hook.
+// Bridge file: /tmp/claude-ctx-{session_id}.json
 //
 
-const { execSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 const net = require("net");
 const http = require("http");
-const path = require("path");
-const fs = require("fs");
+const { execSync } = require("child_process");
 
-const PROJECT = "/home/vibe-dev/masday-workflow-rust";
-const DB_PORT = parseInt(process.env.MASDAY_DB_PORT || "54341", 10);
-const API_PORT = parseInt(process.env.MASDAY_API_PORT || "30101", 10);
-
-// Context estimation config — calibrated against real Claude CLI readings
-const CONTEXT_WINDOW_TOKENS = 200000;    // 200K tokens (Claude Opus/Sonnet)
-const BYTES_PER_TOKEN = 2;               // ~2 bytes/token for tool_use/tool_result JSON (token-dense)
-const SYSTEM_OVERHEAD_TOKENS = 5000;     // Base system prompt overhead
+// Context estimation config
+const CONTEXT_WINDOW_TOKENS = 200000;
+const BYTES_PER_TOKEN = 2.5;           // tool_use/tool_result JSON is token-dense
+const SYSTEM_OVERHEAD_TOKENS = 5000;
+const AUTO_COMPACT_BUFFER_PCT = 16.5;  // Claude Code reserves ~16.5% for autocompact
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -36,26 +33,58 @@ function isPortOpen(port) {
 }
 
 /**
- * Estimate active context usage from the current session's JSONL transcript.
- *
- * Strategy:
- *   1. Find the latest session JSONL file
- *   2. Find the last compact_boundary — only count bytes AFTER it
- *   3. Count message.content bytes from user + assistant messages
- *   4. tokens = contentBytes / 2 + 10K overhead
- *
- * Why BYTES_PER_TOKEN = 2: tool_use and tool_result JSON blocks are very token-dense
- * (each JSON string represents many actual tokens). Calibrated against real Claude CLI:
- * 357KB content → 180K tokens = 90% real (±4% accuracy).
- *
- * The 10K overhead covers system prompt + tool schemas injected by Claude Code.
+ * Estimate context from Claude Code's stdin data OR fallback to JSONL parsing.
+ * Claude Code provides context_window in statusline stdin data.
  */
-function estimateContext() {
+function estimateContext(data) {
+  // Method 1: Use Claude Code's own context_window data (most accurate)
+  const remaining = data?.context_window?.remaining_percentage;
+  if (remaining != null) {
+    // Normalize: subtract buffer from remaining, scale to usable range
+    const usableRemaining = Math.max(0, ((remaining - AUTO_COMPACT_BUFFER_PCT) / (100 - AUTO_COMPACT_BUFFER_PCT)) * 100);
+    const used = Math.max(0, Math.min(100, Math.round(100 - usableRemaining)));
+    return { pct: used, remainingPct: remaining, source: "claude-api" };
+  }
+
+  // Method 2: Fallback — parse session JSONL
   try {
-    const sessionDir = path.join(
-      process.env.HOME, ".claude", "projects", "-home-vibe-dev-masday-workflow-rust"
-    );
-    if (!fs.existsSync(sessionDir)) return null;
+    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+    const projectsDir = path.join(claudeDir, "projects");
+    if (!fs.existsSync(projectsDir)) return null;
+
+    // Find the project dir matching current cwd
+    const cwd = data?.workspace?.current_dir || process.cwd();
+    const cwdSlug = cwd.replace(/\//g, "-").replace(/^-/, "");
+    let sessionDir = path.join(projectsDir, cwdSlug);
+
+    // Try alternate slug format (underscores)
+    if (!fs.existsSync(sessionDir)) {
+      const cwdSlugAlt = cwd.replace(/\//g, "-");
+      sessionDir = path.join(projectsDir, cwdSlugAlt);
+    }
+    if (!fs.existsSync(sessionDir)) {
+      // Try to find any project dir
+      const dirs = fs.readdirSync(projectsDir).filter(d => {
+        const full = path.join(projectsDir, d);
+        return fs.statSync(full).isDirectory();
+      });
+      // Use the most recently modified one
+      let best = null;
+      let bestMtime = 0;
+      for (const d of dirs) {
+        const full = path.join(projectsDir, d);
+        const jsonlFiles = fs.readdirSync(full).filter(f => f.endsWith(".jsonl"));
+        for (const f of jsonlFiles) {
+          const stat = fs.statSync(path.join(full, f));
+          if (stat.mtimeMs > bestMtime) {
+            bestMtime = stat.mtimeMs;
+            best = full;
+          }
+        }
+      }
+      if (best) sessionDir = best;
+      else return null;
+    }
 
     const files = fs.readdirSync(sessionDir).filter(f => f.endsWith(".jsonl"));
     if (files.length === 0) return null;
@@ -66,10 +95,7 @@ function estimateContext() {
       try {
         const fp = path.join(sessionDir, f);
         const stat = fs.statSync(fp);
-        if (stat.mtimeMs > latestMtime) {
-          latestMtime = stat.mtimeMs;
-          latest = fp;
-        }
+        if (stat.mtimeMs > latestMtime) { latestMtime = stat.mtimeMs; latest = fp; }
       } catch {}
     }
     if (!latest) return null;
@@ -77,27 +103,23 @@ function estimateContext() {
     const content = fs.readFileSync(latest, "utf8");
     const lines = content.split("\n");
 
-    // Find last compact_boundary — only count active context
+    // Find last compact_boundary — only count active context after it
     let startIdx = 0;
     for (let i = lines.length - 1; i >= 0; i--) {
       if (!lines[i]) continue;
       try {
         const obj = JSON.parse(lines[i]);
-        if (obj.subtype === "compact_boundary") {
-          startIdx = i + 1;
-          break;
-        }
+        if (obj.subtype === "compact_boundary") { startIdx = i + 1; break; }
       } catch {}
     }
 
-    // Count message content bytes (user + assistant only, after boundary)
     let contentBytes = 0;
     for (let i = startIdx; i < lines.length; i++) {
       if (!lines[i]) continue;
       try {
         const obj = JSON.parse(lines[i]);
         if (obj.type === "user" || obj.type === "assistant") {
-          if (obj.message && obj.message.content) {
+          if (obj.message?.content) {
             const c = obj.message.content;
             contentBytes += typeof c === "string" ? c.length : JSON.stringify(c).length;
           } else if (obj.content) {
@@ -109,106 +131,113 @@ function estimateContext() {
 
     const tokens = Math.floor(contentBytes / BYTES_PER_TOKEN) + SYSTEM_OVERHEAD_TOKENS;
     const pct = Math.min(100, Math.max(0, Math.round((tokens / CONTEXT_WINDOW_TOKENS) * 100)));
-
-    const barLen = 10;
-    const filled = Math.min(barLen, Math.round(pct / 100 * barLen));
-    const bar = "▓".repeat(filled) + "░".repeat(barLen - filled);
-
-    return { pct, bar, tokens };
+    return { pct, remainingPct: 100 - pct, source: "jsonl-estimate" };
   } catch {
     return null;
   }
 }
 
 async function main() {
-  const parts = [];
+  // Parse stdin data from Claude Code
+  let input = '';
+  const stdinTimeout = setTimeout(() => process.exit(0), 3000);
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', chunk => input += chunk);
+  process.stdin.on('end', async () => {
+    clearTimeout(stdinTimeout);
 
-  // Database check (PostgreSQL)
-  const dbUp = await isPortOpen(DB_PORT);
-  parts.push(`DB:${dbUp ? "✓" : "✗"}`);
+    let data = {};
+    try { data = JSON.parse(input); } catch {}
 
-  // API health check — verify /api/health responds
-  let apiHealthy = false;
-  try {
-    apiHealthy = await new Promise((resolve) => {
-      const req = http.get(`http://localhost:${API_PORT}/api/health`, { timeout: 1000 }, (res) => {
-        resolve(res.statusCode === 200);
-      });
-      req.on("error", () => resolve(false));
-      req.on("timeout", () => { req.destroy(); resolve(false); });
-    });
-  } catch {}
-  if (apiHealthy) {
-    parts.push("API:✓");
-  } else {
-    const apiPort = await isPortOpen(API_PORT);
-    parts.push(apiPort ? "API:⚠" : "API:✗");
-  }
+    const model = data.model?.display_name || 'Masday';
+    const session = data.session_id || '';
+    const cwd = data.workspace?.current_dir || process.cwd();
+    const dirName = path.basename(cwd);
 
-  // MCP process check — is the binary running?
-  let mcpRunning = false;
-  try {
-    const result = execSync("pgrep -f masday-mcp 2>/dev/null || true", { encoding: "utf-8" }).trim();
-    mcpRunning = result.length > 0;
-  } catch {}
-  if (mcpRunning) {
-    parts.push("MCP:✓");
-  } else {
-    const mcpBin = `${PROJECT}/target/release/masday-mcp`;
-    const mcpExists = fs.existsSync(mcpBin);
-    parts.push(mcpExists ? "MCP:⚠" : "MCP:✗");
-  }
+    const parts = [];
+    const cfgPort = parseInt(process.env.MASDAY_API_PORT || "30101", 10);
+    const cfgDbPort = parseInt(process.env.MASDAY_DB_PORT || "54341", 10);
 
-  // Context progress bar
-  const ctx = estimateContext();
-  if (ctx) {
-    if (ctx.pct >= 75) {
-      parts.push(`🔴 ${ctx.bar} ${ctx.pct}%`);
-    } else if (ctx.pct >= 50) {
-      parts.push(`🟡 ${ctx.bar} ${ctx.pct}%`);
-    } else {
-      parts.push(`🟢 ${ctx.bar} ${ctx.pct}%`);
-    }
-  }
+    // Database check
+    const dbUp = await isPortOpen(cfgDbPort);
+    parts.push(`DB:${dbUp ? "✓" : "✗"}`);
 
-  // Workflow status — show active/stuck if any
-  try {
-    const wfRes = await new Promise((resolve) => {
-      const http = require("http");
-      const req = http.get(`http://localhost:${API_PORT}/api/workflows`, { timeout: 1500 }, (res) => {
-        let body = "";
-        res.on("data", (c) => (body += c));
-        res.on("end", () => {
-          try { resolve(JSON.parse(body)); } catch { resolve(null); }
+    // API health check
+    let apiHealthy = false;
+    try {
+      apiHealthy = await new Promise((resolve) => {
+        const req = http.get(`http://localhost:${cfgPort}/api/health`, { timeout: 1000 }, (res) => {
+          resolve(res.statusCode === 200);
         });
+        req.on("error", () => resolve(false));
+        req.on("timeout", () => { req.destroy(); resolve(false); });
       });
-      req.on("error", () => resolve(null));
-      req.on("timeout", () => { req.destroy(); resolve(null); });
-    });
-    if (Array.isArray(wfRes)) {
-      const activeStatuses = ["EXECUTE", "ANALYZE", "PLAN", "INIT"];
-      const stuckStatuses = ["FAILED", "PAUSED", "FIX"];
-      const projectWfs = wfRes.filter(w => (w.project_path || "").includes("masday-workflow"));
-      const active = projectWfs.filter(w => activeStatuses.includes(w.status)).length;
-      const stuck = projectWfs.filter(w => stuckStatuses.includes(w.status)).length;
-      const wfParts = [];
-      if (active > 0) wfParts.push(`▶ ${active}`);
-      if (stuck > 0) wfParts.push(`⛔ ${stuck}`);
-      if (wfParts.length > 0) parts.push(wfParts.join("|"));
+    } catch {}
+    parts.push(`API:${apiHealthy ? "✓" : "✗"}`);
+
+    // Context estimation
+    const ctx = estimateContext(data);
+    if (ctx) {
+      // Write bridge file for context-monitor hook
+      const sessionSafe = session && !/[/\\]|\.\./.test(session);
+      if (sessionSafe) {
+        try {
+          const bridgePath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
+          fs.writeFileSync(bridgePath, JSON.stringify({
+            session_id: session,
+            remaining_percentage: ctx.remainingPct,
+            used_pct: ctx.pct,
+            timestamp: Math.floor(Date.now() / 1000),
+            source: ctx.source
+          }));
+        } catch {}
+      }
+
+      // Progress bar (10 segments)
+      const barLen = 10;
+      const filled = Math.min(barLen, Math.round(ctx.pct / 100 * barLen));
+      const bar = "▓".repeat(filled) + "░".repeat(barLen - filled);
+
+      if (ctx.pct >= 80) {
+        parts.push(`💀 ${bar} ${ctx.pct}%`);
+      } else if (ctx.pct >= 65) {
+        parts.push(`🟡 ${bar} ${ctx.pct}%`);
+      } else {
+        parts.push(`🟢 ${bar} ${ctx.pct}%`);
+      }
     }
-  } catch {}
 
-  // Project folder name + dirty count
-  try {
-    const dirName = path.basename(PROJECT);
-    const dirty = execSync(
-      `cd ${PROJECT} && git status --porcelain`,
-      { encoding: "utf-8" }
-    ).trim();
-    parts.push(`${dirName}${dirty ? `(${dirty.split("\n").length})` : ""}`);
-  } catch {}
+    // Active workflows
+    try {
+      const wfRes = await new Promise((resolve) => {
+        const req = http.get(`http://localhost:${cfgPort}/api/workflows`, { timeout: 1500 }, (res) => {
+          let body = "";
+          res.on("data", (c) => (body += c));
+          res.on("end", () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+        });
+        req.on("error", () => resolve(null));
+        req.on("timeout", () => { req.destroy(); resolve(null); });
+      });
+      if (Array.isArray(wfRes)) {
+        const active = wfRes.filter(w => ["EXECUTE", "ANALYZE", "PLAN", "INIT"].includes(w.status)).length;
+        const stuck = wfRes.filter(w => ["FAILED", "PAUSED", "FIX"].includes(w.status)).length;
+        const wfParts = [];
+        if (active > 0) wfParts.push(`▶${active}`);
+        if (stuck > 0) wfParts.push(`⛔${stuck}`);
+        if (wfParts.length > 0) parts.push(wfParts.join(" "));
+      }
+    } catch {}
 
-  console.log(`⚡ Masday | ${parts.join(" | ")}`);
+    // Project name + dirty count
+    try {
+      const dirty = execSync(`git status --porcelain 2>/dev/null`, { encoding: "utf-8", cwd }).trim();
+      parts.push(`${dirName}${dirty ? `(${dirty.split("\n").length})` : ""}`);
+    } catch {
+      parts.push(dirName);
+    }
+
+    process.stdout.write(`⚡ Masday | ${parts.join(" | ")}`);
+  });
 }
 
-main().catch(() => console.log("⚡ Masday | ⚠️ error"));
+main();

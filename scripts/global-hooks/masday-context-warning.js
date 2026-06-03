@@ -2,134 +2,60 @@
 //
 // Masday UserPromptSubmit — Context Warning Hook
 //
-// Runs on every user prompt. Estimates context usage from session JSONL.
-// Counts message CONTENT bytes (not raw line bytes) for accuracy.
-// Caches result for 30s to avoid parsing on every prompt.
+// Runs on every user prompt. Reads context metrics from the statusline
+// bridge file (written by masday-statusline.js) and injects a warning
+// when context is high.
+//
+// This is a secondary check — the primary context monitoring is done by
+// masday-context-monitor.js (PostToolUse). This hook catches cases where
+// the user submits a prompt without any tool use in between.
 //
 
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const CONTEXT_WINDOW_TOKENS = 200000;
-const BYTES_PER_TOKEN = 2;          // tool_use/tool_result JSON is token-dense (~2 bytes/token)
-const SYSTEM_OVERHEAD_TOKENS = 5000; // Base system prompt overhead
-const WARN_THRESHOLD = 0.50;
-const CRITICAL_THRESHOLD = 0.75;
-const CACHE_TTL_MS = 30000;
+const CRITICAL_THRESHOLD = 25;
 
-const CACHE_FILE = path.join(os.tmpdir(), "masday-context-cache.json");
-
-function getCached() {
+let input = '';
+const stdinTimeout = setTimeout(() => process.exit(0), 10000);
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', () => {
+  clearTimeout(stdinTimeout);
   try {
-    const raw = fs.readFileSync(CACHE_FILE, "utf8");
-    const cache = JSON.parse(raw);
-    if (Date.now() - cache.ts < CACHE_TTL_MS) return cache.pct;
-  } catch {}
-  return null;
-}
+    const data = JSON.parse(input);
+    const sessionId = data.session_id;
 
-function setCached(pct) {
-  try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify({ pct, ts: Date.now() }));
-  } catch {}
-}
+    if (!sessionId) { process.exit(0); }
+    if (/[/\\]|\.\./.test(sessionId)) { process.exit(0); }
 
-function estimateContextPct() {
-  try {
-    const sessionDir = path.join(
-      process.env.HOME, ".claude", "projects", "-home-vibe-dev-masday-workflow-rust"
-    );
-    if (!fs.existsSync(sessionDir)) return 0;
+    const metricsPath = path.join(os.tmpdir(), `claude-ctx-${sessionId}.json`);
+    if (!fs.existsSync(metricsPath)) { process.exit(0); }
 
-    const files = fs.readdirSync(sessionDir).filter(f => f.endsWith(".jsonl"));
-    if (files.length === 0) return 0;
+    const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
+    const now = Math.floor(Date.now() / 1000);
 
-    let latest = null;
-    let latestMtime = 0;
-    for (const f of files) {
-      try {
-        const fp = path.join(sessionDir, f);
-        const stat = fs.statSync(fp);
-        if (stat.mtimeMs > latestMtime) {
-          latestMtime = stat.mtimeMs;
-          latest = fp;
-        }
-      } catch {}
-    }
-    if (!latest) return 0;
+    // Ignore stale metrics
+    if (metrics.timestamp && (now - metrics.timestamp) > 60) { process.exit(0); }
 
-    const content = fs.readFileSync(latest, "utf8");
-    const lines = content.split("\n");
+    const remaining = metrics.remaining_percentage;
 
-    // Find last compact_boundary — only count active context after it
-    let lastBoundaryIdx = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i]) continue;
-      try {
-        const obj = JSON.parse(lines[i]);
-        if (obj.subtype === "compact_boundary") {
-          lastBoundaryIdx = i;
-          break;
-        }
-      } catch {}
+    // Only warn at critical level on UserPromptSubmit (PostToolUse handles warning level)
+    if (remaining <= CRITICAL_THRESHOLD) {
+      const output = {
+        continue: true,
+        systemMessage:
+          `🔴 CONTEXT CRITICAL: Only ${remaining}% remaining. ` +
+          'Auto-compact will trigger very soon. ' +
+          'Consider running /compact now to control what gets preserved.'
+      };
+      process.stdout.write(JSON.stringify(output));
+      return;
     }
 
-    const startIdx = lastBoundaryIdx >= 0 ? lastBoundaryIdx + 1 : 0;
-
-    // Count message content bytes (user + assistant only, after boundary)
-    let contentBytes = 0;
-    for (let i = startIdx; i < lines.length; i++) {
-      if (!lines[i]) continue;
-      try {
-        const obj = JSON.parse(lines[i]);
-        if (obj.type === "user" || obj.type === "assistant") {
-          if (obj.message && obj.message.content) {
-            const c = obj.message.content;
-            contentBytes += typeof c === "string" ? c.length : JSON.stringify(c).length;
-          } else if (obj.content) {
-            contentBytes += typeof obj.content === "string" ? obj.content.length : JSON.stringify(obj.content).length;
-          }
-        }
-      } catch {}
-    }
-
-    const tokens = Math.floor(contentBytes / BYTES_PER_TOKEN) + SYSTEM_OVERHEAD_TOKENS;
-    return Math.min(1.0, tokens / CONTEXT_WINDOW_TOKENS);
+    process.stdout.write(JSON.stringify({ continue: true }));
   } catch {
-    return 0;
+    process.stdout.write(JSON.stringify({ continue: true }));
   }
-}
-
-async function main() {
-  let pct = getCached();
-  if (pct === null) {
-    pct = estimateContextPct();
-    setCached(pct);
-  }
-  const pctDisplay = Math.round(pct * 100);
-
-  if (pct >= CRITICAL_THRESHOLD) {
-    process.stdout.write(JSON.stringify({
-      continue: true,
-      systemMessage:
-        `🔴 Context at ~${pctDisplay}%. Auto-compact will trigger soon.\n` +
-        `Consider running /compact now to preserve important context.`,
-    }));
-    return;
-  }
-
-  if (pct >= WARN_THRESHOLD) {
-    process.stdout.write(JSON.stringify({
-      continue: true,
-      systemMessage:
-        `🟡 Context at ~${pctDisplay}%. Approaching auto-compact threshold.\n` +
-        `If working on complex multi-step tasks, consider /compact soon.`,
-    }));
-    return;
-  }
-
-  process.stdout.write(JSON.stringify({ continue: true }));
-}
-
-main().catch(() => process.stdout.write(JSON.stringify({ continue: true })));
+});

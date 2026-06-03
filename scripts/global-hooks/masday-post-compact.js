@@ -3,73 +3,61 @@
 // Masday PostCompact Hook
 //
 // Fires AFTER Claude Code completes context compaction.
-// Uses valid hook output schema: systemMessage (not hookSpecificOutput).
+// Injects a recovery reminder so Claude knows to re-read files
+// and restore working context.
+//
+// Hook output schema: { continue: true, systemMessage: "..." }
 //
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
-const LOG_FILE = path.join(process.env.HOME, ".claude", "compact-log.jsonl");
-const STATE_FILE = path.join(process.env.HOME, ".claude", "compact-state.json");
-
-function log(entry) {
+let input = '';
+const stdinTimeout = setTimeout(() => process.exit(0), 10000);
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', () => {
+  clearTimeout(stdinTimeout);
   try {
-    fs.appendFileSync(LOG_FILE, JSON.stringify(entry) + "\n");
-  } catch {}
-}
+    const data = JSON.parse(input);
+    const now = new Date().toISOString();
+    const cwd = data.cwd || process.cwd();
 
-function getState() {
-  try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+    // Read compact state
+    const stateFile = path.join(os.homedir(), ".masday", "compact-state.json");
+    let totalCompacts = 0;
+    try {
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      totalCompacts = state.count || 0;
+    } catch {}
+
+    // Inject recovery prompt
+    const output = {
+      continue: true,
+      systemMessage: [
+        "🔄 CONTEXT COMPACTION COMPLETE",
+        "",
+        `Total compacts this session: ${totalCompacts}`,
+        `Time: ${now}`,
+        "",
+        "IMPORTANT: Your context was just compacted. You may have lost:",
+        "- Recent file reads and edits",
+        "- Tool outputs from earlier in the session",
+        "- Conversation history details",
+        "",
+        "Recovery actions:",
+        "1. Re-read any files you were actively working on",
+        "2. Check git status for current state of changes",
+        "3. Review workflow state if in a masday project (masday status)",
+        "4. Ask the user if you seem to have lost context",
+        "",
+        "Do NOT assume the user knows you were compacted. Just recover naturally.",
+      ].join("\n"),
+    };
+
+    process.stdout.write(JSON.stringify(output));
   } catch {
-    return { count: 0, lastCompact: null };
+    process.stdout.write(JSON.stringify({ continue: true }));
   }
-}
-
-function saveState(state) {
-  try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-  } catch {}
-}
-
-async function main() {
-  const now = new Date().toISOString();
-  const state = getState();
-  state.count++;
-  state.lastCompact = now;
-  state.lastCwd = process.cwd();
-  saveState(state);
-
-  log({
-    event: "PostCompact",
-    timestamp: now,
-    cwd: process.cwd(),
-    totalCompacts: state.count,
-  });
-
-  // Valid output schema — systemMessage injects recovery prompt into Claude
-  const output = {
-    continue: true,
-    systemMessage: [
-      "🔄 CONTEXT COMPACTION COMPLETE",
-      "",
-      `Total compacts this session: ${state.count}`,
-      `Last compact: ${now}`,
-      "",
-      "IMPORTANT: Your context was just compacted. You may have lost:",
-      "- Recent file reads and edits",
-      "- Tool outputs from earlier in the session",
-      "- Conversation history details",
-      "",
-      "Recovery actions:",
-      "1. Check masday memory for auto-saved context",
-      "2. Re-read any files you were working on",
-      "3. Check git status for current state",
-      "4. Review workflow state if in a masday project",
-    ].join("\n"),
-  };
-
-  process.stdout.write(JSON.stringify(output));
-}
-
-main().catch(() => process.stdout.write(JSON.stringify({ continue: true })));
+});

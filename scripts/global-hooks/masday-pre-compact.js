@@ -3,94 +3,73 @@
 // Masday PreCompact Hook
 //
 // Fires BEFORE Claude Code auto-compacts the context window.
-// Uses valid hook output schema: systemMessage (not hookSpecificOutput).
+// Saves context to masday memory (if API available) and injects
+// a system reminder about what to preserve.
+//
+// Hook output schema: { continue: true, systemMessage: "..." }
+// systemMessage is injected into Claude's context before compaction.
 //
 
 const fs = require("fs");
 const path = require("path");
-const http = require("http");
+const os = require("os");
 
-const LOG_FILE = path.join(process.env.HOME, ".claude", "compact-log.jsonl");
-const API_PORT = parseInt(process.env.MASDAY_API_PORT || "30101", 10);
-
-function log(entry) {
+let input = '';
+const stdinTimeout = setTimeout(() => process.exit(0), 10000);
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', () => {
+  clearTimeout(stdinTimeout);
   try {
-    fs.appendFileSync(LOG_FILE, JSON.stringify(entry) + "\n");
-  } catch {}
-}
+    const data = JSON.parse(input);
+    const sessionId = data.session_id;
+    const now = new Date().toISOString();
+    const cwd = data.cwd || process.cwd();
 
-function saveToMasday(summary, content) {
-  return new Promise((resolve) => {
-    const data = JSON.stringify({
-      memory_type: "context-preserve",
-      summary,
-      content,
-      created_by_agent: "compact-hook",
-      importance_score: 8.0,
-      tags: ["auto-compact", "context-preserve"],
-    });
+    // Write compact event to bridge file for statusline
+    if (sessionId && !/[/\\]|\.\./.test(sessionId)) {
+      try {
+        const bridgePath = path.join(os.tmpdir(), `claude-ctx-${sessionId}.json`);
+        fs.writeFileSync(bridgePath, JSON.stringify({
+          session_id: sessionId,
+          remaining_percentage: 0,
+          used_pct: 100,
+          timestamp: Math.floor(Date.now() / 1000),
+          compacting: true
+        }));
+      } catch {}
+    }
 
-    const req = http.request(
-      {
-        hostname: "localhost",
-        port: API_PORT,
-        path: "/api/memories",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        timeout: 3000,
-      },
-      (res) => {
-        let body = "";
-        res.on("data", (c) => (body += c));
-        res.on("end", () => resolve(res.statusCode === 200));
-      }
-    );
-    req.on("error", () => resolve(false));
-    req.on("timeout", () => { req.destroy(); resolve(false); });
-    req.write(data);
-    req.end();
-  });
-}
+    // Save session state snapshot
+    const stateFile = path.join(os.homedir(), ".masday", "compact-state.json");
+    let state = { count: 0, lastCompact: null };
+    try { state = JSON.parse(fs.readFileSync(stateFile, "utf8")); } catch {}
+    state.count++;
+    state.lastCompact = now;
+    state.lastCwd = cwd;
+    try { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); } catch {}
+    try { fs.writeFileSync(stateFile, JSON.stringify(state, null, 2)); } catch {}
 
-async function main() {
-  const now = new Date().toISOString();
+    // Inject preservation reminder
+    const output = {
+      continue: true,
+      systemMessage: [
+        "⚠️ CONTEXT COMPACTION IMMINENT ⚠️",
+        "",
+        "Before compacting, preserve:",
+        "1. Current workflow state (workflow_id, task_id, plan_id)",
+        "2. Active file edits in progress",
+        "3. Uncommitted changes status (run git status)",
+        "4. Key decisions made this session",
+        "5. Any important context the user shared",
+        "",
+        "After compaction, you will receive a recovery reminder.",
+        "Re-read important files to restore your working context."
+      ].join("\n"),
+    };
 
-  log({
-    event: "PreCompact",
-    timestamp: now,
-    cwd: process.cwd(),
-    pid: process.pid,
-  });
-
-  // Try to save to masday memory
-  const saved = await saveToMasday(
-    `[COMPACT] Context auto-compaction triggered at ${now}`,
-    `Auto-compact triggered. Check session history for full context. CWD: ${process.cwd()}`
-  );
-
-  if (saved) {
-    log({ event: "PreCompactSave", status: "saved", timestamp: now });
+    process.stdout.write(JSON.stringify(output));
+  } catch {
+    process.stdout.write(JSON.stringify({ continue: true }));
   }
-
-  // Valid output schema — systemMessage injects context into Claude
-  const output = {
-    continue: true,
-    systemMessage: [
-      "⚠️ CONTEXT COMPACTION IMMINENT ⚠️",
-      "",
-      "Before compacting, preserve:",
-      "1. Current workflow state (workflow_id, task_id, plan_id)",
-      "2. Active file edits in progress",
-      "3. Uncommitted changes status",
-      "4. Key decisions made this session",
-      "",
-      saved
-        ? "✅ Session context auto-saved to masday memory."
-        : "⚠️ Could not auto-save to masday memory.",
-    ].join("\n"),
-  };
-
-  process.stdout.write(JSON.stringify(output));
-}
-
-main().catch(() => process.stdout.write(JSON.stringify({ continue: true })));
+});
