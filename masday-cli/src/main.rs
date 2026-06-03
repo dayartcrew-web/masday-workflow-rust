@@ -33,11 +33,11 @@ fn self_install_if_needed() {
             || std::fs::metadata(&current_path)
                 .and_then(|m| m.modified())
                 .ok()
-                .map_or(true, |current_mtime| {
+                .is_none_or(|current_mtime| {
                     std::fs::metadata(&dest)
                         .and_then(|m| m.modified())
                         .ok()
-                        .map_or(true, |dest_mtime| current_mtime > dest_mtime)
+                        .is_none_or(|dest_mtime| current_mtime > dest_mtime)
                 });
 
         if should_install {
@@ -96,7 +96,7 @@ fn add_to_path(dir: &std::path::Path) {
                     }
                     if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&rc_path) {
                         use std::io::Write;
-                        let _ = writeln!(f, "");
+                        let _ = writeln!(f);
                         let _ = writeln!(f, "# Masday CLI");
                         let _ = writeln!(f, "{}", path_line);
                     }
