@@ -45,9 +45,11 @@ impl ToolRegistry {
             .insert(definition.name.clone(), (definition, handler));
     }
 
-    /// List all registered tools
+    /// List all registered tools (sorted by name for deterministic prompt cache)
     pub fn list_tools(&self) -> Vec<ToolDefinition> {
-        self.tools.values().map(|(def, _)| def.clone()).collect()
+        let mut tools: Vec<_> = self.tools.values().map(|(def, _)| def.clone()).collect();
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        tools
     }
 
     /// Call a tool by name
