@@ -222,10 +222,10 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Setup => {
-            masday_cli::commands::setup::run(&project_dir)?;
+            masday_cli::commands::setup::run(&project_dir).await?;
         }
         Commands::Quickstart => {
-            masday_cli::commands::quickstart::run(&project_dir)?;
+            masday_cli::commands::quickstart::run(&project_dir).await?;
         }
         Commands::Serve { port } => {
             masday_cli::commands::serve::run(port).await?;
@@ -239,7 +239,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Db { action } => match action {
             DbAction::Start => masday_cli::commands::db::start()?,
             DbAction::Stop => masday_cli::commands::db::stop()?,
-            DbAction::Reset => masday_cli::commands::db::reset()?,
+            DbAction::Reset => masday_cli::commands::db::reset().await?,
         },
         Commands::Install {
             remote,

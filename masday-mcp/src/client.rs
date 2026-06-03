@@ -217,7 +217,10 @@ mod tests {
 
     #[test]
     fn test_init() {
-        let result = init(masday_core::constants::ports::api_base_url(), "test-key".to_string());
+        let result = init(
+            masday_core::constants::ports::api_base_url(),
+            "test-key".to_string(),
+        );
         assert!(result.is_ok());
         assert_eq!(api_url(), &masday_core::constants::ports::api_base_url());
         assert_eq!(api_key(), "test-key");

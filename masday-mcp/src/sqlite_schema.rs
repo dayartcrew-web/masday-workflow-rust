@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS memories (
     created_by_agent TEXT NOT NULL,
     tags TEXT DEFAULT '[]',
     source TEXT,
+    embedding BLOB,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     accessed_at TEXT,
