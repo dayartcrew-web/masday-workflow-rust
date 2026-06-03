@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 masday-core = { path = "../masday-core" }
 masday-db = { path = "../masday-db" }
-masday-service = { path = "../masday-service", default-features = false }
+masday-service = { path = "../masday-service" }
+pgvector = "0.4"
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }

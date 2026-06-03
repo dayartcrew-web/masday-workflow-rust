@@ -5,6 +5,7 @@ use axum::{
     extract::{Path, Query, State},
     Json, Router,
 };
+use masday_service::embedding_service::{build_embedding_input, EmbeddingService};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -126,7 +127,34 @@ async fn store_memory(
             .map(String::from),
         embedding: None,
     };
-    let mem = repo.store(&new_mem).await?;
+
+    // Generate embedding if provider is configured
+    let embedding_vec: Option<Vec<f32>> = if let Some(service) = EmbeddingService::cached() {
+        let input = build_embedding_input(&new_mem.summary, &new_mem.content);
+        match service.embed(&input).await {
+            Ok(vec) => {
+                tracing::info!("Generated embedding: {} dimensions", vec.len());
+                Some(vec)
+            }
+            Err(e) => {
+                tracing::warn!("Embedding generation failed: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let mem = if let Some(vec) = &embedding_vec {
+        let new_mem = masday_db::schema::NewMemory {
+            embedding: Some(pgvector::Vector::from(vec.clone())),
+            ..new_mem
+        };
+        repo.store_with_embedding(&new_mem, Some(vec.clone()))
+            .await?
+    } else {
+        repo.store(&new_mem).await?
+    };
     Ok(Json(serde_json::json!(mem)))
 }
 
