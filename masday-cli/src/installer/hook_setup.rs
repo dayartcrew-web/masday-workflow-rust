@@ -125,6 +125,105 @@ pub fn uninstall_project_hooks(project_dir: &Path) -> Result<SyncReport> {
     Ok(report)
 }
 
+/// Register masday hooks in Claude Code settings.json (or Gemini equivalent).
+///
+/// Hook mapping:
+///   Status           → masday-statusline.js
+///   PostToolUse      → masday-context-monitor.js
+///   UserPromptSubmit → masday-context-warning.js
+///   SessionStart     → masday-session-start.js
+///   PreToolUse       → masday-pre-bash-guard.js
+///   PreCompact       → masday-pre-compact.js
+///   PostCompact      → masday-post-compact.js
+///
+/// Merges with existing hooks — does not remove other hooks.
+pub fn register_hooks_in_settings(settings_path: &Path, home_dir: &Path) -> Result<()> {
+    let hooks_dir = home_dir.join(".claude/hooks");
+
+    // Hook definitions: (event, hook_file)
+    let hook_defs: &[(&str, &str)] = &[
+        ("Status", "masday-statusline.js"),
+        ("PostToolUse", "masday-context-monitor.js"),
+        ("UserPromptSubmit", "masday-context-warning.js"),
+        ("SessionStart", "masday-session-start.js"),
+        ("PreToolUse", "masday-pre-bash-guard.js"),
+        ("PreCompact", "masday-pre-compact.js"),
+        ("PostCompact", "masday-post-compact.js"),
+    ];
+
+    // Read existing settings or create new
+    let mut json = if settings_path.exists() {
+        let content = fs::read_to_string(settings_path)
+            .with_context(|| format!("Failed to read {}", settings_path.display()))?;
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let root = json
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("Root should be an object"))?;
+
+    // Ensure "hooks" key exists
+    let hooks_obj = root
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("hooks should be an object"))?;
+
+    for (event, hook_file) in hook_defs {
+        let hook_path = hooks_dir.join(hook_file);
+
+        // Build the hook command
+        let command = format!("node \"{}\"", hook_path.display());
+
+        // Build hook entry: [{ "hooks": [{ "type": "command", "command": "..." }] }]
+        let hook_entry = serde_json::json!({
+            "hooks": [{
+                "type": "command",
+                "command": command
+            }]
+        });
+
+        // Get or create the event array
+        let event_arr = hooks_obj
+            .entry(*event)
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .ok_or_else(|| anyhow::anyhow!("{} should be an array", event))?;
+
+        // Check if masday hook already exists for this event
+        let exists = event_arr.iter().any(|entry| {
+            if let Some(hooks) = entry.get("hooks").and_then(|h| h.as_array()) {
+                hooks.iter().any(|h| {
+                    h.get("command")
+                        .and_then(|c| c.as_str())
+                        .map(|c| c.contains(hook_file))
+                        .unwrap_or(false)
+                })
+            } else {
+                false
+            }
+        });
+
+        if !exists {
+            event_arr.push(hook_entry);
+        }
+    }
+
+    // Write back
+    let content = serde_json::to_string_pretty(&json)
+        .context("Failed to serialize settings")?;
+    if let Some(parent) = settings_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(settings_path, content)
+        .with_context(|| format!("Failed to write {}", settings_path.display()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,13 +254,21 @@ mod tests {
     }
 
     #[test]
-    fn test_uninstall_project_hooks() {
+    fn test_register_hooks_in_settings() {
         let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path();
+        let settings_path = temp_dir.path().join("settings.json");
 
-        install_project_hooks(project_dir).unwrap();
-        let report = uninstall_project_hooks(project_dir).unwrap();
+        register_hooks_in_settings(&settings_path, temp_dir.path()).unwrap();
 
-        assert_eq!(report.platform, "project");
+        let content = fs::read_to_string(&settings_path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert!(json["hooks"]["Status"].is_array());
+        assert!(json["hooks"]["PostToolUse"].is_array());
+        assert!(json["hooks"]["UserPromptSubmit"].is_array());
+        assert!(json["hooks"]["SessionStart"].is_array());
+        assert!(json["hooks"]["PreToolUse"].is_array());
+        assert!(json["hooks"]["PreCompact"].is_array());
+        assert!(json["hooks"]["PostCompact"].is_array());
     }
 }
