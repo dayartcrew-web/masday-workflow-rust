@@ -75,36 +75,57 @@ impl WorkflowRepo {
         Ok(Workflow::from_row(&row))
     }
 
-    /// List workflows with pagination
-    pub async fn list(&self, limit: i64, offset: i64) -> Result<Vec<Workflow>> {
+    /// List workflows with pagination, optionally filtered by project_path
+    pub async fn list(
+        &self,
+        limit: i64,
+        offset: i64,
+        project_path: Option<&str>,
+    ) -> Result<Vec<Workflow>> {
         let client = self
             .pool
             .get()
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Workflow" ORDER BY "createdAt" DESC LIMIT $1 OFFSET $2"#;
-        let rows = client
-            .query(query, &[&limit, &offset])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to list workflows: {}", e)))?;
+        let rows = if let Some(pp) = project_path {
+            let query = r#"SELECT * FROM "Workflow" WHERE "projectPath" = $1 ORDER BY "createdAt" DESC LIMIT $2 OFFSET $3"#;
+            client
+                .query(query, &[&pp, &limit, &offset])
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to list workflows: {}", e)))?
+        } else {
+            let query = r#"SELECT * FROM "Workflow" ORDER BY "createdAt" DESC LIMIT $1 OFFSET $2"#;
+            client
+                .query(query, &[&limit, &offset])
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to list workflows: {}", e)))?
+        };
 
         Ok(rows.iter().map(Workflow::from_row).collect())
     }
 
-    /// Get all active workflows (not DONE or FAILED)
-    pub async fn get_active(&self) -> Result<Vec<Workflow>> {
+    /// Get all active workflows (not DONE or FAILED), optionally filtered by project_path
+    pub async fn get_active(&self, project_path: Option<&str>) -> Result<Vec<Workflow>> {
         let client = self
             .pool
             .get()
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Workflow" WHERE status NOT IN ('DONE', 'FAILED') ORDER BY "createdAt" DESC"#;
-        let rows = client
-            .query(query, &[])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get active workflows: {}", e)))?;
+        let rows = if let Some(pp) = project_path {
+            let query = r#"SELECT * FROM "Workflow" WHERE status NOT IN ('DONE', 'FAILED') AND "projectPath" = $1 ORDER BY "createdAt" DESC"#;
+            client
+                .query(query, &[&pp])
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to get active workflows: {}", e)))?
+        } else {
+            let query = r#"SELECT * FROM "Workflow" WHERE status NOT IN ('DONE', 'FAILED') ORDER BY "createdAt" DESC"#;
+            client
+                .query(query, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to get active workflows: {}", e)))?
+        };
 
         Ok(rows.iter().map(Workflow::from_row).collect())
     }

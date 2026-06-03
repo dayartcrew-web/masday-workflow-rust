@@ -44,15 +44,15 @@ pub async fn workflow_get(args: Value) -> Result<Value, Box<dyn std::error::Erro
     client::api_get(&safe_path!("/api/workflows/{}", workflow_id)).await
 }
 
-/// List workflows
+/// List workflows, optionally filtered by project_path
 pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let page = args.get("page").and_then(|v| v.as_u64()).unwrap_or(1);
     let page_size = args.get("page_size").and_then(|v| v.as_u64()).unwrap_or(50);
-    client::api_get(&format!(
-        "/api/workflows?page={}&page_size={}",
-        page, page_size
-    ))
-    .await
+    let mut url = format!("/api/workflows?page={}&per_page={}", page, page_size);
+    if let Some(pp) = args.get("project_path").and_then(|v| v.as_str()) {
+        url.push_str(&format!("&project_path={}", pp));
+    }
+    client::api_get(&url).await
 }
 
 /// Get active workflow
