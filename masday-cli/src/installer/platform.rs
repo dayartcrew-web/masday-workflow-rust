@@ -78,12 +78,9 @@ impl Platform {
     /// Global MCP config path — user-level config that applies to all projects.
     pub fn global_mcp_config_path(&self) -> Option<PathBuf> {
         match self {
-            Platform::ClaudeCode => home::home_dir().map(|h| h.join(".claude/settings.json")),
+            Platform::ClaudeCode => home::home_dir().map(|h| h.join(".claude.json")),
             Platform::GeminiCli => home::home_dir().map(|h| h.join(".gemini/settings.json")),
-            Platform::VsCodeCopilot => {
-                // VS Code uses project-level only; global is in User/settings.json
-                None
-            }
+            Platform::VsCodeCopilot => None,
             Platform::OpenCode => None,
         }
     }
