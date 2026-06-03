@@ -15,19 +15,25 @@ This is the Rust implementation of masday-workflow, providing a robust, type-saf
 
 ## Install
 
-**One-line install (Linux):**
+**One-line install (Linux/macOS):**
 ```bash
-curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
 ```
 
-**Manual download:** [CLI Linux](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-linux-x86_64) · [CLI Windows](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-windows-x86_64.exe) · [MCP Linux](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-linux-x86_64) · [MCP Windows](https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-windows-x86_64.exe) · [All releases](https://github.com/dayartcrew-web/masday-workflow-rust/releases)
+**One-line install (Windows PowerShell):**
+```powershell
+Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-release/releases/latest/download/masday-windows-x86_64.exe" -OutFile "masday.exe"
+.\masday.exe quickstart
+```
+
+**Manual download:** [Linux x86_64](https://github.com/dayartcrew-web/masday-workflow-release/releases/latest/download/masday-linux-x86_64) · [Windows x86_64](https://github.com/dayartcrew-web/masday-workflow-release/releases/latest/download/masday-windows-x86_64.exe) · [All releases](https://github.com/dayartcrew-web/masday-workflow-release/releases)
 
 📖 **Full install guide:** [docs/install-guide.md](docs/install-guide.md)
 
 ```bash
-masday --version          # Check version
-masday install            # Install into current project (local mode)
-masday uninstall          # Remove from project
+masday quickstart          # One-command setup (db + agents + MCP)
+masday --version           # Check version
+masday status              # Check health
 ```
 
 ---
@@ -209,28 +215,66 @@ cargo clean                         # Remove build artifacts
 ### Release Commands
 
 ```bash
-# Build release binaries (CLI + MCP server)
-cargo build --release --workspace
+# Build and release from VPS (Linux + Windows)
+cd ~/masday-workflow-release
+bash release.sh v0.3.0
 
-# Cross-compile for Windows (CLI + MCP)
-cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features
-cargo build -p masday-mcp --release --target x86_64-pc-windows-gnu --no-default-features
+# Build Linux only
+bash release.sh v0.3.0 --linux-only
 
-# Create GitHub Release (builds 4 binaries: CLI+MCP for Linux+Windows)
-bash scripts/release.sh v0.3.0
-bash scripts/release.sh v0.3.0 --dry-run  # test without uploading
+# Test without uploading
+bash release.sh v0.3.0 --dry-run
 ```
 
 ### Release Artifacts
 
-| Binary | Linux | Windows | Size |
-|--------|-------|---------|------|
-| **masday** (CLI installer) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~31MB |
-| **masday-mcp** (MCP server) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~2.7MB |
+| Binary | Linux | Windows | Notes |
+|--------|-------|---------|-------|
+| **masday** (CLI) | `masday-linux-x86_64` (31MB) | `masday-windows-x86_64.exe` (12MB) | CLI with embedded templates |
+
+> **Note:** Windows binary is built without local ONNX embeddings. Use remote embedding provider (Ollama/OpenAI) on Windows.
 
 ---
 
 ## Configuration
+
+All config lives under `~/.masday/`:
+
+```
+~/.masday/
+├── config.toml       ← Configuration (auto-created by quickstart)
+├── bin/
+│   └── masday       ← CLI binary
+└── data.db          ← SQLite database (local mode, auto-created)
+```
+
+### Quickstart Wizard
+
+Run `masday quickstart` for an interactive setup wizard:
+
+- **Local mode** — Docker PostgreSQL + migrations + API server
+- **Remote mode** — Connect to existing API server (URL + API key + optional DB URL)
+- **Standalone mode** — Agents & skills only, no DB/API
+
+The wizard automatically:
+- Detects installed platforms (Claude Code, Gemini, VS Code, OpenCode)
+- Registers MCP servers for all selected platforms
+- Syncs agents, skills, and hooks
+- Saves config to `~/.masday/config.toml`
+
+### Config File (`~/.masday/config.toml`)
+
+```toml
+mode = "local"                          # local | remote | standalone
+api_url = "http://localhost:30101"
+api_key = "***"
+database_url = "postgresql://USER:PASS@localhost:54341/masday_workflow"
+embedding_provider = "local"             # local | ollama | openai
+embedding_model = "all-MiniLM-L6-v2"
+embedding_dimensions = 384
+port = 30101
+platforms = ["claude-code"]
+```
 
 ### Environment Variables
 
@@ -269,16 +313,21 @@ All configurations point to the Rust MCP binary: `target/debug/masday-mcp` (or `
 
 #### MCP Binary Distribution
 
-The `masday-mcp` binary is distributed separately from the CLI in GitHub Releases:
+The `masday-mcp` binary runs standalone with zero config:
+- **Database:** SQLite at `~/.masday/data.db` (auto-created on first run)
+- **No PostgreSQL needed** for local development
+- **No API server needed** — the binary contains all 20 tool domains directly
+
+Download from [GitHub Releases](https://github.com/dayartcrew-web/masday-workflow-release/releases):
 
 ```bash
-# Download MCP server binary (Linux)
+# Linux
 curl -fsSL -o ~/.masday/bin/masday-mcp \
-  https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-linux-x86_64
+  https://github.com/dayartcrew-web/masday-workflow-release/releases/latest/download/masday-linux-x86_64
 chmod +x ~/.masday/bin/masday-mcp
 
-# Download MCP server binary (Windows PowerShell)
-Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-mcp-windows-x86_64.exe" -OutFile "masday-mcp.exe"
+# Windows PowerShell
+Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-release/releases/latest/download/masday-windows-x86_64.exe" -OutFile "masday.exe"
 ```
 
 For **stdio mode** (recommended — SQLite, no external services needed):
