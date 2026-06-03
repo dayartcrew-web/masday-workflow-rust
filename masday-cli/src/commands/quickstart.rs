@@ -654,7 +654,6 @@ fn spinner(message: &str) -> ProgressBar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_detect_platforms_from_home() {

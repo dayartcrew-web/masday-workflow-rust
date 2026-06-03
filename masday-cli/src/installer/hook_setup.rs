@@ -289,7 +289,7 @@ mod tests {
         let content = fs::read_to_string(&settings_path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-        assert!(json["hooks"]["Status"].is_array());
+        assert!(json["statusLine"].is_object());
         assert!(json["hooks"]["PostToolUse"].is_array());
         assert!(json["hooks"]["UserPromptSubmit"].is_array());
         assert!(json["hooks"]["SessionStart"].is_array());
