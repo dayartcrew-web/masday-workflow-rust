@@ -147,7 +147,9 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
     let page_size = args["page_size"].as_u64().unwrap_or(50);
     let limit = page_size as i64;
     let offset = ((page - 1) * page_size) as i64;
-    let project_path = args.get("project_path").and_then(|v| v.as_str());
+    let project_path = args.get("project_path").and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()));
 
     let workflows = if let Some(pp) = project_path {
         let mut stmt = conn.prepare(
@@ -182,7 +184,9 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
 
 pub async fn workflow_get_active(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
-    let project_path = args.get("project_path").and_then(|v| v.as_str());
+    let project_path = args.get("project_path").and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()));
 
     let workflows = if let Some(pp) = project_path {
         let mut stmt = conn.prepare(
