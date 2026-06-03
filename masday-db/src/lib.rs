@@ -54,11 +54,13 @@ pub fn embedding_dimensions() -> usize {
 /// Run all database migrations from the migrations directory.
 /// Executes each `.sql` file in sorted order.
 pub async fn run_migrations(pool: &DbPool) -> Result<(), String> {
-    let migrations_dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrations_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
 
     if !migrations_dir.exists() {
-        tracing::warn!("No migrations directory found at {}", migrations_dir.display());
+        tracing::warn!(
+            "No migrations directory found at {}",
+            migrations_dir.display()
+        );
         return Ok(());
     }
 

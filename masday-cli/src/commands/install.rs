@@ -10,11 +10,10 @@ use std::path::Path;
 
 use crate::installer::{
     self, all_platforms, check_prerequisites, detect_active_platforms, ensure_env_file,
-    generate_mcp_config, install_global_hooks, install_project_hooks,
-    register_hooks_in_settings, resolve_mcp_binary,
-    sync_agents_to_global, sync_agents_to_project, sync_skills_to_global, sync_skills_to_project,
-    update_global_settings, verify_remote_url, AgentSyncReport, McpConfig, McpServerConfig,
-    Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
+    generate_mcp_config, install_global_hooks, install_project_hooks, register_hooks_in_settings,
+    resolve_mcp_binary, sync_agents_to_global, sync_agents_to_project, sync_skills_to_global,
+    sync_skills_to_project, update_global_settings, verify_remote_url, AgentSyncReport, McpConfig,
+    McpServerConfig, Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
 };
 
 /// Arguments for the install command

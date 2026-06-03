@@ -89,6 +89,6 @@ pub mod ports {
 
 /// API defaults (re-exports from ports for backward compat)
 pub mod api_defaults {
-    pub use super::ports::API_PORT as DEFAULT_API_PORT;
     pub use super::ports::API_HOST as DEFAULT_API_HOST;
+    pub use super::ports::API_PORT as DEFAULT_API_PORT;
 }

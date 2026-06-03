@@ -18,7 +18,12 @@ pub async fn run(port: Option<u16>) -> Result<()> {
     // Create DB pool
     let pool = masday_db::pool::init_pool_with_retry(3)
         .await
-        .map_err(|e| anyhow::anyhow!("Database connection failed: {}. Run 'masday db start' first.", e))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Database connection failed: {}. Run 'masday db start' first.",
+                e
+            )
+        })?;
 
     // Build API router with frontend fallback
     let state = masday_api::AppState::new(pool);

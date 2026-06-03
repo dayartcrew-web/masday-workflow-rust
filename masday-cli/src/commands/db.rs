@@ -32,7 +32,10 @@ pub fn stop() -> Result<()> {
 pub async fn reset() -> Result<()> {
     println!("{}", style("Resetting database...").cyan());
     println!();
-    println!("  {} This will DELETE all data!", style("⚠ WARNING:").yellow());
+    println!(
+        "  {} This will DELETE all data!",
+        style("⚠ WARNING:").yellow()
+    );
     let confirm = inquire::Confirm::new("Are you sure?")
         .with_default(false)
         .prompt()?;

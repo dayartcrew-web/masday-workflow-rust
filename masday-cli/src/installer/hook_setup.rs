@@ -213,8 +213,7 @@ pub fn register_hooks_in_settings(settings_path: &Path, home_dir: &Path) -> Resu
     }
 
     // Write back
-    let content = serde_json::to_string_pretty(&json)
-        .context("Failed to serialize settings")?;
+    let content = serde_json::to_string_pretty(&json).context("Failed to serialize settings")?;
     if let Some(parent) = settings_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -230,7 +229,8 @@ pub fn register_hooks_in_settings(settings_path: &Path, home_dir: &Path) -> Resu
     let mut json = serde_json::from_str::<serde_json::Value>(&content)
         .unwrap_or_else(|_| serde_json::json!({}));
 
-    let root = json.as_object_mut()
+    let root = json
+        .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("Root should be an object"))?;
 
     // Only set statusLine if not already configured by user
@@ -242,8 +242,8 @@ pub fn register_hooks_in_settings(settings_path: &Path, home_dir: &Path) -> Resu
                 "command": statusline_command
             }),
         );
-        let content = serde_json::to_string_pretty(&json)
-            .context("Failed to serialize settings")?;
+        let content =
+            serde_json::to_string_pretty(&json).context("Failed to serialize settings")?;
         fs::write(settings_path, content)?;
     }
 

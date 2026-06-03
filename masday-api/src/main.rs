@@ -17,5 +17,7 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(masday_core::constants::ports::API_PORT);
 
-    masday_api::run(pool, port).await.expect("API server failed");
+    masday_api::run(pool, port)
+        .await
+        .expect("API server failed");
 }

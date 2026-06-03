@@ -54,7 +54,13 @@ impl EmbeddingConfig {
         let dimensions = std::env::var("EMBEDDING_DIMENSIONS")
             .ok()
             .and_then(|d| d.parse::<usize>().ok());
-        Self::from_values(&provider, model.as_deref(), base_url.as_deref(), api_key.as_deref(), dimensions)
+        Self::from_values(
+            &provider,
+            model.as_deref(),
+            base_url.as_deref(),
+            api_key.as_deref(),
+            dimensions,
+        )
     }
 
     /// Construct config from explicit values. Returns None for unknown provider.
@@ -227,7 +233,10 @@ impl EmbeddingService {
             #[cfg(feature = "local-embeddings")]
             "local" => self.embed_local(text).await,
             #[cfg(not(feature = "local-embeddings"))]
-            "local" => Err(AppError::Internal("Local embeddings not available (compiled without local-embeddings feature)".to_string())),
+            "local" => Err(AppError::Internal(
+                "Local embeddings not available (compiled without local-embeddings feature)"
+                    .to_string(),
+            )),
             "ollama" => self.embed_ollama(text).await,
             "openai" => self.embed_openai(text).await,
             _ => Err(AppError::Internal(format!(

@@ -45,9 +45,15 @@ pub struct MasdayConfig {
     pub platforms: Vec<String>,
 }
 
-fn default_api_port() -> u16 { ports::API_PORT }
-fn default_db_port() -> u16 { ports::POSTGRES_PORT }
-fn default_redis_port() -> u16 { ports::REDIS_PORT }
+fn default_api_port() -> u16 {
+    ports::API_PORT
+}
+fn default_db_port() -> u16 {
+    ports::POSTGRES_PORT
+}
+fn default_redis_port() -> u16 {
+    ports::REDIS_PORT
+}
 
 impl Default for MasdayConfig {
     fn default() -> Self {
@@ -162,7 +168,10 @@ impl MasdayConfig {
         map.insert("MASDAY_API_PORT".into(), self.api_port.to_string());
         map.insert("MASDAY_DB_PORT".into(), self.db_port.to_string());
         map.insert("MASDAY_REDIS_PORT".into(), self.redis_port.to_string());
-        map.insert("MASDAY_DASHBOARD_PORT".into(), self.dashboard_port.to_string());
+        map.insert(
+            "MASDAY_DASHBOARD_PORT".into(),
+            self.dashboard_port.to_string(),
+        );
         if let Some(ref url) = self.database_url {
             map.insert("DATABASE_URL".into(), url.clone());
         }
