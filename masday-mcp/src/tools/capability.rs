@@ -71,23 +71,9 @@ pub async fn capability_workflow_audit(
     client::api_get(&format!("/api/capabilities/audit/{}", workflow_id)).await
 }
 
-pub async fn capability_ping(
-    _args: Value,
-) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(serde_json::json!({"status": "pong"}))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_capability_ping() {
-        let result = capability_ping(serde_json::json!({})).await;
-        assert!(result.is_ok());
-        let result_json = result.unwrap();
-        assert_eq!(result_json["status"], "pong");
-    }
 
     #[test]
     fn test_capability_match_agent_args() {

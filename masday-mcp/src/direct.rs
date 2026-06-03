@@ -7,6 +7,22 @@ use rusqlite::params;
 use serde_json::{json, Value};
 use tracing::warn;
 
+/// Load the capability registry from `.claude/registry.json`.
+/// Returns the parsed JSON object, or an empty registry on failure.
+fn load_registry(project_root: &str) -> Value {
+    let path = std::path::Path::new(project_root).join(".claude/registry.json");
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+            warn!("load_registry: failed to parse {}: {e}", path.display());
+            json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": []}})
+        }),
+        Err(e) => {
+            warn!("load_registry: failed to read {}: {e}", path.display());
+            json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": []}})
+        }
+    }
+}
+
 /// Timestamp helper — returns current UTC time as RFC 3339 string.
 fn now() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -1116,16 +1132,13 @@ pub async fn capability_list_agents(args: Value) -> Result<Value, Box<dyn std::e
     let project_root = args["projectRoot"].as_str().or_else(|| args["project_root"].as_str())
         .ok_or_else(|| err("missing projectRoot"))?;
 
-    let agents_dir = std::path::Path::new(project_root).join(".claude/agents");
-    let mut agents = Vec::new();
-    if agents_dir.exists() {
-        for entry in std::fs::read_dir(&agents_dir).map_err(err)?.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".md") {
-                agents.push(json!({"name": name.trim_end_matches(".md")}));
-            }
-        }
-    }
+    let registry = load_registry(project_root);
+    let agents: Vec<Value> = registry["components"]["agents"].as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|a| json!({"name": a["name"]}))
+        .collect();
 
     Ok(json!({"agents": agents}))
 }
@@ -1134,37 +1147,73 @@ pub async fn capability_list_skills(args: Value) -> Result<Value, Box<dyn std::e
     let project_root = args["projectRoot"].as_str().or_else(|| args["project_root"].as_str())
         .ok_or_else(|| err("missing projectRoot"))?;
 
-    let skills_dir = std::path::Path::new(project_root).join(".claude/skills");
-    let mut skills = Vec::new();
-    if skills_dir.exists() {
-        for entry in std::fs::read_dir(&skills_dir).map_err(err)?.flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                skills.push(json!({"name": entry.file_name().to_string_lossy()}));
-            }
-        }
-    }
+    let registry = load_registry(project_root);
+    let skills: Vec<Value> = registry["components"]["skills"].as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| json!({"name": s["name"]}))
+        .collect();
 
     Ok(json!({"skills": skills}))
 }
 
 pub async fn capability_match_agent(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let project_root = args["projectRoot"].as_str().or_else(|| args["project_root"].as_str())
+        .unwrap_or(".");
     let task_desc = args["taskDescription"].as_str().or_else(|| args["task_description"].as_str())
         .ok_or_else(|| err("missing taskDescription"))?;
 
-    // Simple keyword matching
-    let agent = if task_desc.contains("frontend") || task_desc.contains("UI") || task_desc.contains("react") {
-        "masday-frontend"
-    } else if task_desc.contains("test") || task_desc.contains("QA") || task_desc.contains("coverage") {
-        "masday-qa"
-    } else if task_desc.contains("security") || task_desc.contains("vulnerability") {
-        "masday-security"
-    } else if task_desc.contains("debug") || task_desc.contains("fix") || task_desc.contains("error") {
-        "masday-debugger"
-    } else {
-        "masday-orchestrator"
-    };
+    let registry = load_registry(project_root);
+    let agents = registry["components"]["agents"].as_array()
+        .cloned()
+        .unwrap_or_default();
 
-    Ok(json!({"agent": agent}))
+    if agents.is_empty() {
+        return Ok(json!({"agent": "masday-orchestrator", "reason": "no agents in registry, using default"}));
+    }
+
+    // Tokenize task description
+    let task_lower = task_desc.to_lowercase();
+    let task_tokens: Vec<&str> = task_lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| t.len() > 2)
+        .collect();
+
+    // Score each agent by keyword overlap against name + role + description + category
+    let mut best_name = "masday-orchestrator".to_string();
+    let mut best_score = 0.0f64;
+
+    for agent in &agents {
+        let text = format!(
+            "{} {} {} {}",
+            agent["name"].as_str().unwrap_or(""),
+            agent["role"].as_str().unwrap_or(""),
+            agent["description"].as_str().unwrap_or(""),
+            agent["category"].as_str().unwrap_or(""),
+        );
+        let text_lower = text.to_lowercase();
+        let agent_tokens: Vec<&str> = text_lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| t.len() > 2)
+            .collect();
+
+        let agent_set: std::collections::HashSet<&str> = agent_tokens.into_iter().collect();
+        let matches = task_tokens.iter().filter(|t| agent_set.contains(*t)).count();
+        let score = if task_tokens.is_empty() { 0.0 } else { matches as f64 / task_tokens.len() as f64 };
+
+        if score > best_score {
+            best_score = score;
+            best_name = agent["name"].as_str().unwrap_or("masday-orchestrator").to_string();
+        }
+    }
+
+    // Fall back to orchestrator if no meaningful match
+    if best_score < 0.05 {
+        best_name = "masday-orchestrator".to_string();
+    }
+
+    Ok(json!({"agent": best_name}))
 }
 
 pub async fn capability_scaffold_feature(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -1227,10 +1276,6 @@ pub async fn capability_create_skill(args: Value) -> Result<Value, Box<dyn std::
 
 pub async fn capability_list_templates(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     Ok(json!({"templates": []}))
-}
-
-pub async fn capability_ping(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"status": "pong"}))
 }
 
 // ============================================================================
