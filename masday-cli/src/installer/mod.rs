@@ -20,8 +20,8 @@ pub use agent_sync::{
 pub use build::{build_crates, find_api_binary, find_mcp_binary};
 pub use env_setup::{check_prerequisites, ensure_env_file, load_env, Prerequisites};
 pub use hook_setup::{
-    install_global_hooks, install_project_hooks, uninstall_global_hooks, uninstall_project_hooks,
-    SyncReport as HookSyncReport,
+    install_global_hooks, install_project_hooks, register_hooks_in_settings,
+    uninstall_global_hooks, uninstall_project_hooks, SyncReport as HookSyncReport,
 };
 pub use mcp_config::{generate_mcp_config, remove_mcp_config, McpConfig};
 pub use platform::{all_platforms, detect_active_platforms, Platform};

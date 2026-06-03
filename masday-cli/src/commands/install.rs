@@ -10,7 +10,8 @@ use std::path::Path;
 
 use crate::installer::{
     self, all_platforms, check_prerequisites, detect_active_platforms, ensure_env_file,
-    generate_mcp_config, install_global_hooks, install_project_hooks, resolve_mcp_binary,
+    generate_mcp_config, install_global_hooks, install_project_hooks,
+    register_hooks_in_settings, resolve_mcp_binary,
     sync_agents_to_global, sync_agents_to_project, sync_skills_to_global, sync_skills_to_project,
     update_global_settings, verify_remote_url, AgentSyncReport, McpConfig, McpServerConfig,
     Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
@@ -167,6 +168,14 @@ fn sync_templates(
         "  Project hooks: {}",
         style(format!("{} installed", project_hook_count)).green()
     );
+
+    // Register hook events in Claude Code settings
+    if let Some(home) = home::home_dir() {
+        let settings_path = home.join(".claude/settings.json");
+        if let Err(e) = register_hooks_in_settings(&settings_path, &home) {
+            eprintln!("  ⚠ Could not register hooks in settings: {}", e);
+        }
+    }
 
     Ok((
         agent_reports,

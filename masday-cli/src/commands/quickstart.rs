@@ -17,8 +17,8 @@ use crate::config::MasdayConfig;
 use crate::docker;
 use crate::installer::{
     all_platforms, generate_mcp_config, install_global_hooks, install_project_hooks,
-    sync_agents_to_global, sync_agents_to_project, sync_skills_to_global,
-    sync_skills_to_project, Platform, McpConfig,
+    register_hooks_in_settings, sync_agents_to_global, sync_agents_to_project,
+    sync_skills_to_global, sync_skills_to_project, Platform, McpConfig,
 };
 
 /// Run the quickstart wizard.
@@ -518,6 +518,16 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
     // Project hooks (e.g. .claude/hooks/ in project dir)
     let project_report = install_project_hooks(project_dir)?;
     println!("  {} project hooks installed", style(project_report.copied).green());
+    println!();
+
+    // ── Register hooks in Claude Code settings ─────────────────────────
+    if let Some(home) = home::home_dir() {
+        let settings_path = home.join(".claude/settings.json");
+        match register_hooks_in_settings(&settings_path, &home) {
+            Ok(()) => println!("  {} Hook events registered in settings.json", style("✓").green()),
+            Err(e) => println!("  {} Could not register hooks: {}", style("⚠").yellow(), e),
+        }
+    }
     println!();
 
     Ok(())
