@@ -141,8 +141,8 @@ pub fn register_hooks_in_settings(settings_path: &Path, home_dir: &Path) -> Resu
     let hooks_dir = home_dir.join(".claude/hooks");
 
     // Hook definitions: (event, hook_file)
+    // Note: statusline is NOT a hook — it's a separate settings field
     let hook_defs: &[(&str, &str)] = &[
-        ("Status", "masday-statusline.js"),
         ("PostToolUse", "masday-context-monitor.js"),
         ("UserPromptSubmit", "masday-context-warning.js"),
         ("SessionStart", "masday-session-start.js"),
@@ -220,6 +220,32 @@ pub fn register_hooks_in_settings(settings_path: &Path, home_dir: &Path) -> Resu
     }
     fs::write(settings_path, content)
         .with_context(|| format!("Failed to write {}", settings_path.display()))?;
+
+    // Register statusline (separate field, NOT a hook event)
+    let statusline_script = hooks_dir.join("masday-statusline.js");
+    let statusline_command = format!("node \"{}\"", statusline_script.display());
+
+    // Re-read settings (we just wrote it)
+    let content = fs::read_to_string(settings_path)?;
+    let mut json = serde_json::from_str::<serde_json::Value>(&content)
+        .unwrap_or_else(|_| serde_json::json!({}));
+
+    let root = json.as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("Root should be an object"))?;
+
+    // Only set statusLine if not already configured by user
+    if !root.contains_key("statusLine") {
+        root.insert(
+            "statusLine".to_string(),
+            serde_json::json!({
+                "type": "command",
+                "command": statusline_command
+            }),
+        );
+        let content = serde_json::to_string_pretty(&json)
+            .context("Failed to serialize settings")?;
+        fs::write(settings_path, content)?;
+    }
 
     Ok(())
 }

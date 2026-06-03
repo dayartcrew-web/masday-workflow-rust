@@ -533,7 +533,7 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
     if let Some(home) = home::home_dir() {
         let settings_path = home.join(".claude/settings.json");
         match register_hooks_in_settings(&settings_path, &home) {
-            Ok(()) => println!("  {} Hook events registered in settings.json", style("✓").green()),
+            Ok(()) => println!("  {} Hook events + statusline registered in settings.json", style("✓").green()),
             Err(e) => println!("  {} Could not register hooks: {}", style("⚠").yellow(), e),
         }
     }
