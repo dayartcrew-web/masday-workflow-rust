@@ -1,5 +1,15 @@
 # AGENTS
 
+## Release Process
+
+⚠️ **Read [docs/release-guide.md](docs/release-guide.md) before touching releases.**
+
+- Releases are built locally via `~/masday-workflow-release/release.sh`
+- **Do NOT use CI workflows** — they are disabled
+- **Do NOT create releases with version 0.7x** — use 0.x.x format
+- Release repo: `dayartcrew-web/masday-workflow-release` (public)
+- Source repo: `dayartcrew-web/masday-workflow-rust` (private)
+
 ## Masday-First Protocol
 
 1. **masday MCP tools** → `mcp__masday__*` for workflow, memory, search, policy, capability
