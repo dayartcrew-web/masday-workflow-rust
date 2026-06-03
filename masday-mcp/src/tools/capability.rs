@@ -73,8 +73,6 @@ pub async fn capability_workflow_audit(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_capability_match_agent_args() {
         let args = serde_json::json!({ "task": "fix bug in auth module" });

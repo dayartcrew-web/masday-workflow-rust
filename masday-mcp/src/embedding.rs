@@ -135,7 +135,6 @@ pub fn blob_to_vector(blob: &[u8]) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f32::EPSILON;
 
     #[test]
     fn test_determinism() {
@@ -187,7 +186,7 @@ mod tests {
         assert_eq!(original.len(), restored.len());
         for (i, (orig, rest)) in original.iter().zip(restored.iter()).enumerate() {
             assert!(
-                (orig - rest).abs() < EPSILON,
+                (orig - rest).abs() < f32::EPSILON,
                 "Round trip failed at index {}: {} vs {}",
                 i,
                 orig,
