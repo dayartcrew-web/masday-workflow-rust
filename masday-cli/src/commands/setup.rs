@@ -179,22 +179,30 @@ fn run_local_setup(project_dir: &Path) -> Result<()> {
         .map(String::from)
         .collect();
 
-    // Step 4: Port
-    let port_str = inquire::Text::new("API port:")
+    // Step 4: Ports
+    let api_port_str = inquire::Text::new("API port:")
         .with_default(&ports::API_PORT.to_string())
         .prompt()?;
-    let port: u16 = port_str.parse().unwrap_or(ports::API_PORT);
+    let api_port: u16 = api_port_str.parse().unwrap_or(ports::API_PORT);
+
+    let db_port_str = inquire::Text::new("Database port:")
+        .with_default(&ports::POSTGRES_PORT.to_string())
+        .prompt()?;
+    let db_port: u16 = db_port_str.parse().unwrap_or(ports::POSTGRES_PORT);
 
     // Step 5: Save config
     let config = MasdayConfig {
         mode: "local".to_string(),
-        api_url: format!("http://localhost:{}", port),
+        api_url: format!("http://localhost:{}", api_port),
         api_key: "local-dev".to_string(),
         database_url,
         embedding_provider: embed_provider.map(String::from),
         embedding_model: embed_model.map(String::from),
         embedding_dimensions: embed_dims,
-        port,
+        api_port,
+        db_port,
+        redis_port: ports::REDIS_PORT,
+        dashboard_port: api_port,
         platforms: platform_names.clone(),
     };
     config.save()?;
@@ -311,7 +319,10 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
         embedding_provider: None,
         embedding_model: None,
         embedding_dimensions: None,
-        port: ports::API_PORT,
+        api_port: ports::API_PORT,
+        db_port: ports::POSTGRES_PORT,
+        redis_port: ports::REDIS_PORT,
+        dashboard_port: ports::API_PORT,
         platforms: platform_names.clone(),
     };
     config.save()?;
@@ -344,8 +355,8 @@ fn print_success(config: &MasdayConfig) {
     println!();
 
     if config.mode == "local" {
-        println!("  Dashboard: http://localhost:{}", config.port);
-        println!("  API:       http://localhost:{}/api", config.port);
+        println!("  Dashboard: http://localhost:{}", config.api_port);
+        println!("  API:       http://localhost:{}/api", config.api_port);
     } else {
         println!("  Server:    {}", config.api_url);
     }

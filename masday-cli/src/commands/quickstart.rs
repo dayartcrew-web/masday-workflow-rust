@@ -134,7 +134,10 @@ fn run_local_mode(
         embedding_provider: embed_provider,
         embedding_model: embed_model,
         embedding_dimensions: embed_dims,
-        port: masday_core::constants::ports::api_port(),
+        api_port: masday_core::constants::ports::API_PORT,
+        db_port: masday_core::constants::ports::POSTGRES_PORT,
+        redis_port: masday_core::constants::ports::REDIS_PORT,
+        dashboard_port: masday_core::constants::ports::API_PORT,
         platforms: platform_names(&platforms),
     };
     config.save()?;
@@ -249,7 +252,10 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
         embedding_provider: if is_windows { Some(String::new()) } else { None },
         embedding_model: if is_windows { Some(String::new()) } else { None },
         embedding_dimensions: if is_windows { Some(0) } else { None },
-        port: masday_core::constants::ports::api_port(),
+        api_port: masday_core::constants::ports::API_PORT,
+        db_port: masday_core::constants::ports::POSTGRES_PORT,
+        redis_port: masday_core::constants::ports::REDIS_PORT,
+        dashboard_port: masday_core::constants::ports::API_PORT,
         platforms: platform_names(&platforms),
     };
     config.save()?;
@@ -304,7 +310,10 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
         embedding_provider: if is_windows { Some(String::new()) } else { None },
         embedding_model: if is_windows { Some(String::new()) } else { None },
         embedding_dimensions: if is_windows { Some(0) } else { None },
-        port: masday_core::constants::ports::api_port(),
+        api_port: masday_core::constants::ports::API_PORT,
+        db_port: masday_core::constants::ports::POSTGRES_PORT,
+        redis_port: masday_core::constants::ports::REDIS_PORT,
+        dashboard_port: masday_core::constants::ports::API_PORT,
         platforms: platform_names(&platforms),
     };
     config.save()?;
@@ -595,14 +604,21 @@ fn print_local_summary(config: &MasdayConfig) {
     println!("{}", style("  ⚡ Masday is ready! (local mode)").green().bold());
     println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
     println!();
-    println!("  Dashboard: http://localhost:{}", config.port);
-    println!("  API:       http://localhost:{}/api", config.port);
-    println!("  Platforms:  {}", config.platforms.join(", "));
+    println!("  Dashboard: http://localhost:{}", config.api_port);
+    println!("  API:       http://localhost:{}/api", config.api_port);
+    println!("  Database:  localhost:{}", config.db_port);
+    println!("  Redis:     localhost:{}", config.redis_port);
+    println!("  Platforms: {}", config.platforms.join(", "));
     println!();
     println!("  Commands:");
     println!("    {}  Start API server + dashboard", style("masday serve").cyan());
     println!("    {}  Start MCP server (stdio)", style("masday mcp").cyan());
     println!("    {}  Check health", style("masday status").cyan());
+    println!();
+    println!(
+        "  {}",
+        style("💡 Edit ~/.masday/config.toml to change ports (api_port, db_port, redis_port, dashboard_port)").dim()
+    );
     println!();
 }
 

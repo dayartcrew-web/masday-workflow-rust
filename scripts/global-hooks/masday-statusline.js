@@ -33,6 +33,21 @@ function isPortOpen(port) {
 }
 
 /**
+ * Read a port value from ~/.masday/config.toml
+ */
+function readConfigPort(key) {
+  try {
+    const configPath = path.join(os.homedir(), ".masday", "config.toml");
+    if (!fs.existsSync(configPath)) return null;
+    const content = fs.readFileSync(configPath, "utf8");
+    const match = content.match(new RegExp(key + `\\s*=\\s*(\\d+)`));
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Estimate context from Claude Code's stdin data OR fallback to JSONL parsing.
  * Claude Code provides context_window in statusline stdin data.
  */
@@ -155,8 +170,8 @@ async function main() {
     const dirName = path.basename(cwd);
 
     const parts = [];
-    const cfgPort = parseInt(process.env.MASDAY_API_PORT || "30101", 10);
-    const cfgDbPort = parseInt(process.env.MASDAY_DB_PORT || "54341", 10);
+    const cfgPort = parseInt(process.env.MASDAY_API_PORT || readConfigPort("api_port") || "30101", 10);
+    const cfgDbPort = parseInt(process.env.MASDAY_DB_PORT || readConfigPort("db_port") || "54341", 10);
 
     // Database check
     const dbUp = await isPortOpen(cfgDbPort);

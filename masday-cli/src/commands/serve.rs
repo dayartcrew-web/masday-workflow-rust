@@ -11,7 +11,7 @@ pub async fn run(port: Option<u16>) -> Result<()> {
     // Set env vars from config
     config.set_env_vars();
 
-    let listen_port = port.unwrap_or(config.port);
+    let listen_port = port.unwrap_or(config.api_port);
 
     println!("{}", console::style("Starting Masday...").cyan());
 
