@@ -81,6 +81,10 @@ fn write_claude_code_config(path: &Path, config: &McpConfig) -> Result<()> {
         "command".to_string(),
         JsonValue::String(config.mcp_binary_path.display().to_string()),
     );
+    server.insert(
+        "args".to_string(),
+        JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     let mut mcp_servers = serde_json::Map::new();
@@ -141,6 +145,10 @@ fn update_gemini_config(path: &Path, config: &McpConfig) -> Result<()> {
         "command".to_string(),
         JsonValue::String(config.mcp_binary_path.display().to_string()),
     );
+    server.insert(
+        "args".to_string(),
+        JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     let mcp_servers_obj = mcp_servers;
@@ -196,6 +204,10 @@ fn write_vscode_config(path: &Path, config: &McpConfig) -> Result<()> {
         "command".to_string(),
         JsonValue::String(config.mcp_binary_path.display().to_string()),
     );
+    server.insert(
+        "args".to_string(),
+        JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     let mut servers = serde_json::Map::new();
@@ -249,6 +261,7 @@ mod tests {
 
         assert!(json["mcpServers"]["masday"]["type"] == "stdio");
         assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:30101");
+        assert!(json["mcpServers"]["masday"]["args"] == serde_json::json!["mcp"]);
     }
 
     #[test]
@@ -270,5 +283,6 @@ mod tests {
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
         assert!(json["servers"]["masday"]["command"] == "/path/to/masday-mcp");
+        assert!(json["servers"]["masday"]["args"] == serde_json::json!["mcp"]);
     }
 }
