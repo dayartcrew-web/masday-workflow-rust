@@ -62,8 +62,8 @@ Use **0.x.x** format. Do NOT use 0.7x or other schemes — those were from old C
 v0.1.0  Initial release
 v0.2.0  Quickstart wizard
 v0.3.0  Hooks rewrite
-v0.3.4  Latest
-...
+v0.3.7  Previous
+v0.3.8  Hybrid semantic search (embedding + cosine similarity), CLI runtime fix
 ```
 
 ## CI Workflows — DISABLED

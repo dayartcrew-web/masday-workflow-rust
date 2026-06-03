@@ -75,6 +75,7 @@ Binary: `masday-mcp` (stdio transport)
 |--------|--------|-------------|
 | workflow | `workflow.rs` | CRUD, execute, status transitions, task lifecycle |
 | memory | `memory.rs` | Store, search, recall (4-layer: working/episodic/long-term/graph) |
+| embedding | `embedding.rs` | Feature hashing vectorizer (768-dim), cosine similarity, hybrid search |
 | graph | `graph.rs` | Knowledge graph nodes & edges, Jaccard auto-link |
 | context | `context.rs` | Context packs, fingerprints |
 | session | `session.rs` | Session state management |
