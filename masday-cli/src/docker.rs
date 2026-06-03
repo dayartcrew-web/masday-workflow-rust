@@ -43,7 +43,10 @@ pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
     }
 
     if is_container_running(POSTGRES_CONTAINER) {
-        println!("  PostgreSQL already running on port {}", ports::postgres_port());
+        println!(
+            "  PostgreSQL already running on port {}",
+            ports::postgres_port()
+        );
         return Ok(());
     }
 
@@ -99,7 +102,15 @@ pub fn start_redis() -> Result<()> {
 
     println!("  Starting Redis container...");
     let status = Command::new("docker")
-        .args(["run", "-d", "--name", REDIS_CONTAINER, "-p", &format!("{}:6379", ports::redis_port()), REDIS_IMAGE])
+        .args([
+            "run",
+            "-d",
+            "--name",
+            REDIS_CONTAINER,
+            "-p",
+            &format!("{}:6379", ports::redis_port()),
+            REDIS_IMAGE,
+        ])
         .status()
         .context("Failed to run docker command")?;
 
@@ -167,7 +178,9 @@ pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()>
 
     while start.elapsed() < timeout {
         if std::net::TcpStream::connect_timeout(
-            &addr.parse().map_err(|e| anyhow::anyhow!("Invalid address {}: {}", addr, e))?,
+            &addr
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Invalid address {}: {}", addr, e))?,
             Duration::from_secs(2),
         )
         .is_ok()

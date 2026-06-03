@@ -8,10 +8,7 @@ use std::process::Command;
 
 /// Build the masday CLI binary in release mode
 pub fn build_crates(project_dir: &Path) -> Result<()> {
-    println!(
-        "{}",
-        console::style("Building masday binary...").cyan()
-    );
+    println!("{}", console::style("Building masday binary...").cyan());
 
     let status = Command::new("cargo")
         .arg("build")

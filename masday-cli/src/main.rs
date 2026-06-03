@@ -12,7 +12,11 @@ fn self_install_if_needed() {
     };
 
     let install_dir = home.join(".masday").join("bin");
-    let dest = install_dir.join(if cfg!(windows) { "masday.exe" } else { "masday" });
+    let dest = install_dir.join(if cfg!(windows) {
+        "masday.exe"
+    } else {
+        "masday"
+    });
 
     // Already installed in the right place — skip
     if let Ok(current) = std::env::current_exe() {
@@ -47,7 +51,10 @@ fn self_install_if_needed() {
                 Ok(_) => {
                     #[cfg(unix)]
                     {
-                        let _ = std::fs::set_permissions(&dest, std::os::unix::fs::PermissionsExt::from_mode(0o755));
+                        let _ = std::fs::set_permissions(
+                            &dest,
+                            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+                        );
                     }
 
                     // Add ~/.masday/bin to PATH if not already there
@@ -58,12 +65,15 @@ fn self_install_if_needed() {
                     // Check if current PATH includes install dir
                     let path_var = std::env::var("PATH").unwrap_or_default();
                     let path_sep = if cfg!(windows) { ';' } else { ':' };
-                    let in_path = path_var.split(path_sep).any(|p| {
-                        std::path::Path::new(p) == install_dir
-                    });
+                    let in_path = path_var
+                        .split(path_sep)
+                        .any(|p| std::path::Path::new(p) == install_dir);
 
                     if !in_path {
-                        eprintln!("  Add to PATH: export PATH=\"$PATH:{}\"", install_dir.display());
+                        eprintln!(
+                            "  Add to PATH: export PATH=\"$PATH:{}\"",
+                            install_dir.display()
+                        );
                         eprintln!("  Or restart your terminal.");
                     }
                     eprintln!();
@@ -112,7 +122,6 @@ fn add_to_path(dir: &std::path::Path) {
         // The install.sh / PowerShell script handles this.
     }
 }
-
 
 #[derive(Parser)]
 #[command(name = "masday")]

@@ -91,12 +91,20 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
         // Wait for ready
         let pb = spinner("Waiting for PostgreSQL to be ready...");
         docker::wait_for_postgres("localhost", ports::postgres_port(), 30)?;
-        pb.finish_with_message(format!("{} PostgreSQL ready on port {}", style("✓").green(), ports::postgres_port()));
+        pb.finish_with_message(format!(
+            "{} PostgreSQL ready on port {}",
+            style("✓").green(),
+            ports::postgres_port()
+        ));
 
         // Start Redis too
         let pb = spinner("Starting Redis container...");
         docker::start_redis()?;
-        pb.finish_with_message(format!("{} Redis ready on port {}", style("✓").green(), ports::redis_port()));
+        pb.finish_with_message(format!(
+            "{} Redis ready on port {}",
+            style("✓").green(),
+            ports::redis_port()
+        ));
 
         // Run migrations
         let pb = spinner("Running database migrations...");
@@ -142,9 +150,7 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
         s if s.starts_with("bge-small") => {
             (Some("local"), Some("bge-small-en-v1.5"), Some(384usize))
         }
-        s if s.starts_with("bge-base") => {
-            (Some("local"), Some("bge-base-en-v1.5"), Some(768usize))
-        }
+        s if s.starts_with("bge-base") => (Some("local"), Some("bge-base-en-v1.5"), Some(768usize)),
         _ => (None, None, None),
     };
 
@@ -152,12 +158,7 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
     println!();
     let platforms = inquire::MultiSelect::new(
         "Select your AI platforms (space to toggle):",
-        vec![
-            "Claude Code",
-            "Gemini CLI",
-            "VS Code Copilot",
-            "OpenCode",
-        ],
+        vec!["Claude Code", "Gemini CLI", "VS Code Copilot", "OpenCode"],
     )
     .with_default(&[0])
     .with_help_message("Space to toggle, Enter to confirm")
@@ -260,7 +261,11 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
             pb.finish_with_message(format!("{} Server reachable", style("✓").green()));
         }
         Ok(resp) => {
-            pb.finish_with_message(format!("{} Server returned {}", style("⚠").yellow(), resp.status()));
+            pb.finish_with_message(format!(
+                "{} Server returned {}",
+                style("⚠").yellow(),
+                resp.status()
+            ));
             println!(
                 "  {} Server responded but not healthy. Continue anyway?",
                 style("⚠").yellow()
@@ -288,12 +293,7 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
     println!();
     let platforms = inquire::MultiSelect::new(
         "Select your AI platforms (space to toggle):",
-        vec![
-            "Claude Code",
-            "Gemini CLI",
-            "VS Code Copilot",
-            "OpenCode",
-        ],
+        vec!["Claude Code", "Gemini CLI", "VS Code Copilot", "OpenCode"],
     )
     .with_default(&[0])
     .prompt()?;
@@ -349,9 +349,18 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
 
 fn print_success(config: &MasdayConfig) {
     println!();
-    println!("{}", style("╔══════════════════════════════════════╗").green());
-    println!("{}", style("║     ✓ Masday is ready!              ║").green());
-    println!("{}", style("╚══════════════════════════════════════╝").green());
+    println!(
+        "{}",
+        style("╔══════════════════════════════════════╗").green()
+    );
+    println!(
+        "{}",
+        style("║     ✓ Masday is ready!              ║").green()
+    );
+    println!(
+        "{}",
+        style("╚══════════════════════════════════════╝").green()
+    );
     println!();
 
     if config.mode == "local" {
@@ -371,10 +380,7 @@ fn print_success(config: &MasdayConfig) {
             style("masday serve").cyan()
         );
     }
-    println!(
-        "  Run '{}' to check health",
-        style("masday status").cyan()
-    );
+    println!("  Run '{}' to check health", style("masday status").cyan());
     println!(
         "  Config saved to: {}",
         MasdayConfig::config_path().display()

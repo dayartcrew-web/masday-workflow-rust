@@ -108,7 +108,8 @@ async fn list_workflows(
 }
 
 async fn get_active_workflows(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let workflows = masday_service::WorkflowService::get_active_workflows(&state.pool, None).await?;
+    let workflows =
+        masday_service::WorkflowService::get_active_workflows(&state.pool, None).await?;
     Ok(Json(serde_json::json!(workflows)))
 }
 

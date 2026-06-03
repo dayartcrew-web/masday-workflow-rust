@@ -18,14 +18,17 @@ use crate::docker;
 use crate::installer::{
     all_platforms, generate_mcp_config, install_global_hooks, install_project_hooks,
     register_hooks_in_settings, sync_agents_to_global, sync_agents_to_project,
-    sync_skills_to_global, sync_skills_to_project, Platform, McpConfig,
+    sync_skills_to_global, sync_skills_to_project, McpConfig, Platform,
 };
 
 /// Run the quickstart wizard.
 pub async fn run(project_dir: &Path) -> Result<()> {
     println!();
     println!("{}", style("⚡ Masday Quickstart").cyan().bold());
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").cyan());
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").cyan()
+    );
     println!();
 
     // ── Step 1: Detect environment ────────────────────────────────────────
@@ -73,7 +76,9 @@ pub async fn run(project_dir: &Path) -> Result<()> {
     println!();
 
     match mode_choice {
-        s if s.starts_with("Local") => run_local_mode(project_dir, &detected_platforms, has_docker).await?,
+        s if s.starts_with("Local") => {
+            run_local_mode(project_dir, &detected_platforms, has_docker).await?
+        }
         s if s.starts_with("Remote") => run_remote_mode(project_dir, &detected_platforms)?,
         s if s.starts_with("Standalone") => run_standalone_mode(project_dir, &detected_platforms)?,
         _ => bail!("Invalid selection"),
@@ -125,7 +130,10 @@ async fn run_local_mode(
     let platforms = ask_platforms(detected_platforms)?;
 
     // ── Save config ───────────────────────────────────────────────────────
-    let api_url = format!("http://localhost:{}", masday_core::constants::ports::api_port());
+    let api_url = format!(
+        "http://localhost:{}",
+        masday_core::constants::ports::api_port()
+    );
     let config = MasdayConfig {
         mode: "local".to_string(),
         api_url: api_url.clone(),
@@ -149,7 +157,13 @@ async fn run_local_mode(
     sync_templates(project_dir, &platforms)?;
 
     // ── Register MCP servers ──────────────────────────────────────────────
-    register_mcp_servers(project_dir, &platforms, &api_url, "***", database_url.as_deref())?;
+    register_mcp_servers(
+        project_dir,
+        &platforms,
+        &api_url,
+        "***",
+        database_url.as_deref(),
+    )?;
 
     // ── Summary ───────────────────────────────────────────────────────────
     print_local_summary(&config);
@@ -195,7 +209,11 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
             println!(" {}", style("✓ connected").green());
         }
         Ok(resp) => {
-            println!(" {} ({})", style("⚠ server returned").yellow(), resp.status());
+            println!(
+                " {} ({})",
+                style("⚠ server returned").yellow(),
+                resp.status()
+            );
             let cont = inquire::Confirm::new("Continue anyway?")
                 .with_default(true)
                 .prompt()?;
@@ -238,8 +256,14 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
             style("⚠ Windows — local ONNX embeddings not included.").yellow()
         );
         println!("  Edit ~/.masday/config.toml to add a remote embedding provider:");
-        println!("  {}", style("embedding_provider = \"ollama\"    # ollama | openai").cyan());
-        println!("  {}", style("embedding_model = \"nomic-embed-text\"").cyan());
+        println!(
+            "  {}",
+            style("embedding_provider = \"ollama\"    # ollama | openai").cyan()
+        );
+        println!(
+            "  {}",
+            style("embedding_model = \"nomic-embed-text\"").cyan()
+        );
         println!("  {}", style("embedding_dimensions = 768").cyan());
         println!();
     }
@@ -249,8 +273,16 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
         api_url: api_url.clone(),
         api_key: api_key.clone(),
         database_url: database_url.clone(),
-        embedding_provider: if is_windows { Some(String::new()) } else { None },
-        embedding_model: if is_windows { Some(String::new()) } else { None },
+        embedding_provider: if is_windows {
+            Some(String::new())
+        } else {
+            None
+        },
+        embedding_model: if is_windows {
+            Some(String::new())
+        } else {
+            None
+        },
         embedding_dimensions: if is_windows { Some(0) } else { None },
         api_port: masday_core::constants::ports::API_PORT,
         db_port: masday_core::constants::ports::POSTGRES_PORT,
@@ -267,7 +299,13 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
     sync_templates(project_dir, &platforms)?;
 
     // ── Register MCP servers ──────────────────────────────────────────────
-    register_mcp_servers(project_dir, &platforms, &api_url, &api_key, database_url.as_deref())?;
+    register_mcp_servers(
+        project_dir,
+        &platforms,
+        &api_url,
+        &api_key,
+        database_url.as_deref(),
+    )?;
 
     // ── Summary ───────────────────────────────────────────────────────────
     print_remote_summary(&config);
@@ -296,8 +334,14 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
         );
         println!("  Edit ~/.masday/config.toml to add a remote embedding provider:");
         println!();
-        println!("  {}", style("embedding_provider = \"ollama\"    # ollama | openai").cyan());
-        println!("  {}", style("embedding_model = \"nomic-embed-text\"").cyan());
+        println!(
+            "  {}",
+            style("embedding_provider = \"ollama\"    # ollama | openai").cyan()
+        );
+        println!(
+            "  {}",
+            style("embedding_model = \"nomic-embed-text\"").cyan()
+        );
         println!("  {}", style("embedding_dimensions = 768").cyan());
         println!();
     }
@@ -307,8 +351,16 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
         api_url: "none".to_string(),
         api_key: "none".to_string(),
         database_url: None,
-        embedding_provider: if is_windows { Some(String::new()) } else { None },
-        embedding_model: if is_windows { Some(String::new()) } else { None },
+        embedding_provider: if is_windows {
+            Some(String::new())
+        } else {
+            None
+        },
+        embedding_model: if is_windows {
+            Some(String::new())
+        } else {
+            None
+        },
         embedding_dimensions: if is_windows { Some(0) } else { None },
         api_port: masday_core::constants::ports::API_PORT,
         db_port: masday_core::constants::ports::POSTGRES_PORT,
@@ -328,20 +380,24 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
 
     // ── Summary ───────────────────────────────────────────────────────────
     println!();
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
-    println!("{}", style("  ⚡ Masday is ready! (standalone)").green().bold());
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
+    println!(
+        "{}",
+        style("  ⚡ Masday is ready! (standalone)").green().bold()
+    );
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
     println!();
     println!("  Agents and skills installed.");
     println!();
     println!("  For full MCP tools support, connect to an API server:");
-    println!(
-        "    {}",
-        style("masday quickstart").cyan()
-    );
-    println!(
-        "    → Choose 'Remote' mode and provide your server URL + API key"
-    );
+    println!("    {}", style("masday quickstart").cyan());
+    println!("    → Choose 'Remote' mode and provide your server URL + API key");
     println!();
     Ok(())
 }
@@ -360,7 +416,11 @@ async fn start_docker_infrastructure() -> Result<String> {
     } else {
         let pb = spinner("Starting PostgreSQL...");
         docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
-        docker::wait_for_postgres("localhost", masday_core::constants::ports::postgres_port(), 30)?;
+        docker::wait_for_postgres(
+            "localhost",
+            masday_core::constants::ports::postgres_port(),
+            30,
+        )?;
         pb.finish_with_message(format!("  {} PostgreSQL ready", style("✓").green()));
     }
 
@@ -435,15 +495,21 @@ fn ask_embedding_model() -> Result<(Option<String>, Option<String>, Option<usize
     .prompt()?;
 
     let result = match embed_choice {
-        s if s.starts_with("all-MiniLM") => {
-            (Some("local".into()), Some("all-MiniLM-L6-v2".into()), Some(384))
-        }
-        s if s.starts_with("bge-small") => {
-            (Some("local".into()), Some("bge-small-en-v1.5".into()), Some(384))
-        }
-        s if s.starts_with("bge-base") => {
-            (Some("local".into()), Some("bge-base-en-v1.5".into()), Some(768))
-        }
+        s if s.starts_with("all-MiniLM") => (
+            Some("local".into()),
+            Some("all-MiniLM-L6-v2".into()),
+            Some(384),
+        ),
+        s if s.starts_with("bge-small") => (
+            Some("local".into()),
+            Some("bge-small-en-v1.5".into()),
+            Some(384),
+        ),
+        s if s.starts_with("bge-base") => (
+            Some("local".into()),
+            Some("bge-base-en-v1.5".into()),
+            Some(768),
+        ),
         _ => (None, None, None),
     };
 
@@ -494,24 +560,42 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
     println!("{}", style("Syncing agents...").cyan());
     let reports = sync_agents_to_project(project_dir, platforms, true)?;
     for r in &reports {
-        println!("  {}: {} copied, {} skipped", r.platform, style(r.copied).green(), style(r.skipped).dim());
+        println!(
+            "  {}: {} copied, {} skipped",
+            r.platform,
+            style(r.copied).green(),
+            style(r.skipped).dim()
+        );
     }
 
     let global_reports = sync_agents_to_global(platforms, true)?;
     for r in &global_reports {
-        println!("  {} (global): {} copied", r.platform, style(r.copied).green());
+        println!(
+            "  {} (global): {} copied",
+            r.platform,
+            style(r.copied).green()
+        );
     }
 
     println!();
     println!("{}", style("Syncing skills...").cyan());
     let skill_reports = sync_skills_to_project(project_dir, platforms, true)?;
     for r in &skill_reports {
-        println!("  {}: {} copied, {} skipped", r.platform, style(r.copied).green(), style(r.skipped).dim());
+        println!(
+            "  {}: {} copied, {} skipped",
+            r.platform,
+            style(r.copied).green(),
+            style(r.skipped).dim()
+        );
     }
 
     let global_skill_reports = sync_skills_to_global(platforms, true)?;
     for r in &global_skill_reports {
-        println!("  {} (global): {} copied", r.platform, style(r.copied).green());
+        println!(
+            "  {} (global): {} copied",
+            r.platform,
+            style(r.copied).green()
+        );
     }
     println!();
 
@@ -521,19 +605,28 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
     // Global hooks (e.g. ~/.claude/hooks/)
     if let Some(home) = home::home_dir() {
         let global_report = install_global_hooks(&home)?;
-        println!("  {} global hooks installed", style(global_report.copied).green());
+        println!(
+            "  {} global hooks installed",
+            style(global_report.copied).green()
+        );
     }
 
     // Project hooks (e.g. .claude/hooks/ in project dir)
     let project_report = install_project_hooks(project_dir)?;
-    println!("  {} project hooks installed", style(project_report.copied).green());
+    println!(
+        "  {} project hooks installed",
+        style(project_report.copied).green()
+    );
     println!();
 
     // ── Register hooks in Claude Code settings ─────────────────────────
     if let Some(home) = home::home_dir() {
         let settings_path = home.join(".claude/settings.json");
         match register_hooks_in_settings(&settings_path, &home) {
-            Ok(()) => println!("  {} Hook events + statusline registered in settings.json", style("✓").green()),
+            Ok(()) => println!(
+                "  {} Hook events + statusline registered in settings.json",
+                style("✓").green()
+            ),
             Err(e) => println!("  {} Could not register hooks: {}", style("⚠").yellow(), e),
         }
     }
@@ -600,9 +693,18 @@ fn platform_names(platforms: &[Platform]) -> Vec<String> {
 
 fn print_local_summary(config: &MasdayConfig) {
     println!();
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
-    println!("{}", style("  ⚡ Masday is ready! (local mode)").green().bold());
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
+    println!(
+        "{}",
+        style("  ⚡ Masday is ready! (local mode)").green().bold()
+    );
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
     println!();
     println!("  Dashboard: http://localhost:{}", config.api_port);
     println!("  API:       http://localhost:{}/api", config.api_port);
@@ -611,8 +713,14 @@ fn print_local_summary(config: &MasdayConfig) {
     println!("  Platforms: {}", config.platforms.join(", "));
     println!();
     println!("  Commands:");
-    println!("    {}  Start API server + dashboard", style("masday serve").cyan());
-    println!("    {}  Start MCP server (stdio)", style("masday mcp").cyan());
+    println!(
+        "    {}  Start API server + dashboard",
+        style("masday serve").cyan()
+    );
+    println!(
+        "    {}  Start MCP server (stdio)",
+        style("masday mcp").cyan()
+    );
     println!("    {}  Check health", style("masday status").cyan());
     println!();
     println!(
@@ -624,9 +732,18 @@ fn print_local_summary(config: &MasdayConfig) {
 
 fn print_remote_summary(config: &MasdayConfig) {
     println!();
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
-    println!("{}", style("  ⚡ Masday is ready! (remote mode)").green().bold());
-    println!("{}", style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green());
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
+    println!(
+        "{}",
+        style("  ⚡ Masday is ready! (remote mode)").green().bold()
+    );
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
     println!();
     println!("  Server:    {}", config.api_url);
     println!("  Platforms: {}", config.platforms.join(", "));
@@ -634,7 +751,10 @@ fn print_remote_summary(config: &MasdayConfig) {
     println!("  MCP servers registered — your AI platforms can use Masday tools.");
     println!();
     println!("  Commands:");
-    println!("    {}  Start MCP server (stdio)", style("masday mcp").cyan());
+    println!(
+        "    {}  Start MCP server (stdio)",
+        style("masday mcp").cyan()
+    );
     println!("    {}  Check health", style("masday status").cyan());
     println!();
 }

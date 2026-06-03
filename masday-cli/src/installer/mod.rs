@@ -46,9 +46,6 @@ mod tests {
     fn test_module_exports() {
         // Test that module exports are accessible
         let platforms = all_platforms();
-        assert!(
-            !platforms.is_empty(),
-            "Should have at least one platform"
-        );
+        assert!(!platforms.is_empty(), "Should have at least one platform");
     }
 }

@@ -133,8 +133,8 @@ fn update_claude_global_settings(path: &Path, config: &McpConfig) -> Result<()> 
     // Read existing settings, merge masday server
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
-    let mut json = serde_json::from_str::<JsonValue>(&content)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let mut json =
+        serde_json::from_str::<JsonValue>(&content).unwrap_or_else(|_| serde_json::json!({}));
 
     let root_obj = json
         .as_object_mut()
@@ -164,8 +164,7 @@ fn update_gemini_config(path: &Path, config: &McpConfig) -> Result<()> {
         None
     };
 
-    let mut root = existing_json
-        .unwrap_or_else(|| JsonValue::Object(serde_json::Map::new()));
+    let mut root = existing_json.unwrap_or_else(|| JsonValue::Object(serde_json::Map::new()));
 
     let mcp_servers = root
         .as_object_mut()
@@ -262,7 +261,10 @@ mod tests {
         assert!(json["mcpServers"]["masday"]["type"] == "stdio");
         assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:30101");
         // Args must include "mcp" subcommand — single binary contains both CLI and MCP
-        assert_eq!(json["mcpServers"]["masday"]["args"], serde_json::json!(["mcp"]));
+        assert_eq!(
+            json["mcpServers"]["masday"]["args"],
+            serde_json::json!(["mcp"])
+        );
     }
 
     #[test]
@@ -285,7 +287,10 @@ mod tests {
 
         assert!(json["servers"]["masday"]["command"] == "/path/to/masday");
         // Args must include "mcp" subcommand
-        assert_eq!(json["servers"]["masday"]["args"], serde_json::json!(["mcp"]));
+        assert_eq!(
+            json["servers"]["masday"]["args"],
+            serde_json::json!(["mcp"])
+        );
     }
 
     #[test]
@@ -307,7 +312,10 @@ mod tests {
 
         assert!(json["mcpServers"]["masday"]["command"] == "/home/user/.masday/bin/masday");
         // Args must include "mcp" subcommand — single binary contains both CLI and MCP
-        assert_eq!(json["mcpServers"]["masday"]["args"], serde_json::json!(["mcp"]));
+        assert_eq!(
+            json["mcpServers"]["masday"]["args"],
+            serde_json::json!(["mcp"])
+        );
     }
 
     #[test]
@@ -322,7 +330,11 @@ mod tests {
                 "other-server": {"command": "other"}
             }
         });
-        std::fs::write(&settings_path, serde_json::to_string_pretty(&existing).unwrap()).unwrap();
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&existing).unwrap(),
+        )
+        .unwrap();
 
         let config = McpConfig {
             mcp_binary_path: "/home/user/.masday/bin/masday".into(),
@@ -339,7 +351,10 @@ mod tests {
         // Existing server preserved
         assert!(json["mcpServers"]["other-server"]["command"] == "other");
         // New server added with correct args
-        assert_eq!(json["mcpServers"]["masday"]["args"], serde_json::json!(["mcp"]));
+        assert_eq!(
+            json["mcpServers"]["masday"]["args"],
+            serde_json::json!(["mcp"])
+        );
         // Other settings preserved
         assert!(json["env"]["FOO"] == "bar");
     }
