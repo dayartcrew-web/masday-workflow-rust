@@ -16,9 +16,9 @@ use std::path::Path;
 use crate::config::MasdayConfig;
 use crate::docker;
 use crate::installer::{
-    all_platforms, generate_mcp_config, sync_agents_to_global,
-    sync_agents_to_project, sync_skills_to_global, sync_skills_to_project, Platform,
-    McpConfig,
+    all_platforms, generate_mcp_config, install_global_hooks, install_project_hooks,
+    sync_agents_to_global, sync_agents_to_project, sync_skills_to_global,
+    sync_skills_to_project, Platform, McpConfig,
 };
 
 /// Run the quickstart wizard.
@@ -504,6 +504,20 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
     for r in &global_skill_reports {
         println!("  {} (global): {} copied", r.platform, style(r.copied).green());
     }
+    println!();
+
+    // ── Hooks ────────────────────────────────────────────────────────────
+    println!("{}", style("Syncing hooks...").cyan());
+
+    // Global hooks (e.g. ~/.claude/hooks/)
+    if let Some(home) = home::home_dir() {
+        let global_report = install_global_hooks(&home)?;
+        println!("  {} global hooks installed", style(global_report.copied).green());
+    }
+
+    // Project hooks (e.g. .claude/hooks/ in project dir)
+    let project_report = install_project_hooks(project_dir)?;
+    println!("  {} project hooks installed", style(project_report.copied).green());
     println!();
 
     Ok(())
