@@ -14,7 +14,7 @@ use std::path::PathBuf;
 /// Main configuration persisted to disk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MasdayConfig {
-    /// "local" | "remote"
+    /// "local" | "remote" | "standalone"
     pub mode: String,
     /// API server URL (e.g. "http://localhost:30101" or "https://masday.example.com")
     pub api_url: String,
@@ -29,16 +29,25 @@ pub struct MasdayConfig {
     /// Embedding vector dimensions
     pub embedding_dimensions: Option<usize>,
     /// API server port (local mode)
-    #[serde(default = "default_port")]
-    pub port: u16,
+    #[serde(default = "default_api_port")]
+    pub api_port: u16,
+    /// PostgreSQL port (local mode)
+    #[serde(default = "default_db_port")]
+    pub db_port: u16,
+    /// Redis port (local mode)
+    #[serde(default = "default_redis_port")]
+    pub redis_port: u16,
+    /// Dashboard port (local mode)
+    #[serde(default = "default_api_port")]
+    pub dashboard_port: u16,
     /// Target AI platforms: ["claude-code", "gemini", "vscode", "opencode"]
     #[serde(default)]
     pub platforms: Vec<String>,
 }
 
-fn default_port() -> u16 {
-    ports::api_port()
-}
+fn default_api_port() -> u16 { ports::API_PORT }
+fn default_db_port() -> u16 { ports::POSTGRES_PORT }
+fn default_redis_port() -> u16 { ports::REDIS_PORT }
 
 impl Default for MasdayConfig {
     fn default() -> Self {
@@ -50,7 +59,10 @@ impl Default for MasdayConfig {
             embedding_provider: None,
             embedding_model: None,
             embedding_dimensions: None,
-            port: ports::api_port(),
+            api_port: ports::API_PORT,
+            db_port: ports::POSTGRES_PORT,
+            redis_port: ports::REDIS_PORT,
+            dashboard_port: ports::API_PORT,
             platforms: vec!["claude-code".to_string()],
         }
     }
@@ -136,6 +148,25 @@ impl MasdayConfig {
         if let Some(dims) = self.embedding_dimensions {
             std::env::set_var("EMBEDDING_DIMENSIONS", dims.to_string());
         }
+        // Port config → env vars (so hooks, docker, and sub-processes can read them)
+        std::env::set_var("MASDAY_API_PORT", self.api_port.to_string());
+        std::env::set_var("MASDAY_DB_PORT", self.db_port.to_string());
+        std::env::set_var("MASDAY_REDIS_PORT", self.redis_port.to_string());
+        std::env::set_var("MASDAY_DASHBOARD_PORT", self.dashboard_port.to_string());
+    }
+
+    /// Get config as a JSON object suitable for writing to a hook env file
+    /// or passing to Node.js hooks.
+    pub fn to_hook_env(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("MASDAY_API_PORT".into(), self.api_port.to_string());
+        map.insert("MASDAY_DB_PORT".into(), self.db_port.to_string());
+        map.insert("MASDAY_REDIS_PORT".into(), self.redis_port.to_string());
+        map.insert("MASDAY_DASHBOARD_PORT".into(), self.dashboard_port.to_string());
+        if let Some(ref url) = self.database_url {
+            map.insert("DATABASE_URL".into(), url.clone());
+        }
+        map
     }
 }
 
@@ -147,7 +178,7 @@ mod tests {
     fn test_default_config() {
         let config = MasdayConfig::default();
         assert_eq!(config.mode, "local");
-        assert_eq!(config.port, ports::API_PORT);
+        assert_eq!(config.api_port, ports::API_PORT);
         assert!(config.database_url.is_none());
     }
 
