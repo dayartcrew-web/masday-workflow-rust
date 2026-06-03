@@ -1,10 +1,10 @@
 //! Persistent configuration for the all-in-one masday binary.
 //!
-//! Config file: `~/.local/share/masday/config.toml` (Linux)
-//!              `~/Library/Application Support/masday/config.toml` (macOS)
-//!              `%APPDATA%/masday/config.toml` (Windows)
+//! Config file: `~/.masday/config.toml`
+//! Binary:      `~/.masday/bin/masday`
 //!
-//! Written by `masday setup`, read by `masday serve`, `masday mcp`, etc.
+//! Everything under `~/.masday/` — config, binary, data.
+//! Written by `masday quickstart` / `masday setup`, read by `masday serve`, `masday mcp`, etc.
 
 use anyhow::{Context, Result};
 use masday_core::constants::ports;
@@ -57,11 +57,23 @@ impl Default for MasdayConfig {
 }
 
 impl MasdayConfig {
-    /// Get the config directory path.
+    /// Get the masday home directory: `~/.masday/`
+    ///
+    /// Layout:
+    ///   ~/.masday/
+    ///     config.toml       — configuration
+    ///     bin/masday        — CLI binary
+    ///     agents/           — global agents (optional)
+    ///     skills/           — global skills (optional)
+    pub fn masday_home() -> PathBuf {
+        home::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".masday")
+    }
+
+    /// Get the config directory path (same as masday_home).
     pub fn config_dir() -> PathBuf {
-        dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from(".masday"))
-            .join("masday")
+        Self::masday_home()
     }
 
     /// Get the config file path
