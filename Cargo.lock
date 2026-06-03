@@ -2175,6 +2175,7 @@ dependencies = [
  "masday-core",
  "masday-db",
  "masday-service",
+ "pgvector",
  "serde",
  "serde_html_form",
  "serde_json",
