@@ -5,6 +5,7 @@
 pub mod db;
 pub mod install;
 pub mod mcp_cmd;
+pub mod quickstart;
 pub mod serve;
 pub mod setup;
 pub mod status;
