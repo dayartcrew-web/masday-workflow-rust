@@ -136,8 +136,9 @@ jobs:
             ```
 
             ### Usage
-            ```bash
-            masday install                          # Local mode (requires cargo)
+            ```
+            masday quickstart                        # One-command setup (db + install + ready)
+            masday install                           # Local mode (requires cargo)
             masday install --remote <url> --api-key <key>  # Remote mode
             masday --version
             ```

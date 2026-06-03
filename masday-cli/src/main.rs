@@ -16,6 +16,9 @@ enum Commands {
     /// Interactive setup wizard (first-time configuration)
     Setup,
 
+    /// One-command setup — db + migrate + install + ready
+    Quickstart,
+
     /// Start API server + dashboard
     Serve {
         /// Port to listen on (overrides config)
@@ -105,6 +108,9 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Setup => {
             masday_cli::commands::setup::run(&project_dir)?;
+        }
+        Commands::Quickstart => {
+            masday_cli::commands::quickstart::run(&project_dir)?;
         }
         Commands::Serve { port } => {
             masday_cli::commands::serve::run(port).await?;
