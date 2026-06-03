@@ -924,10 +924,10 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
         schema!("workflow_id"), d::workflow_get_status);
     reg!(r, "workflow_get", "Get workflow by ID",
         schema!("workflow_id"), d::workflow_get);
-    reg!(r, "workflow_list", "List all workflows",
-        schema!("page?", "page_size?"), d::workflow_list);
-    reg!(r, "workflow_getActive", "Get active workflows",
-        schema!(), d::workflow_get_active);
+    reg!(r, "workflow_list", "List workflows, optionally filtered by project_path",
+        schema!("page?", "page_size?", "project_path?"), d::workflow_list);
+    reg!(r, "workflow_getActive", "Get active workflows, optionally filtered by project_path",
+        schema!("project_path?"), d::workflow_get_active);
     reg!(r, "workflow_delete", "Delete a workflow",
         schema!("workflow_id"), d::workflow_delete);
     reg!(r, "workflow_addTask", "Add task to workflow",

@@ -2,7 +2,7 @@
 
 use axum::routing::{get, post};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json, Router,
 };
 use serde::Deserialize;
@@ -78,21 +78,37 @@ async fn create_workflow(
     ))
 }
 
+#[derive(Deserialize)]
+struct ListWorkflowsQuery {
+    #[serde(default)]
+    page: Option<usize>,
+    #[serde(default)]
+    per_page: Option<usize>,
+    #[serde(default)]
+    project_path: Option<String>,
+}
+
 async fn list_workflows(
     State(state): State<AppState>,
-    pagination: crate::extractors::pagination::Pagination,
+    Query(query): Query<ListWorkflowsQuery>,
 ) -> Result<Json<Value>, ApiError> {
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(50).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let pp = query.project_path.as_deref();
+
     let workflows = masday_service::WorkflowService::list_workflows(
         &state.pool,
-        pagination.limit() as i64,
-        pagination.offset() as i64,
+        per_page as i64,
+        offset as i64,
+        pp,
     )
     .await?;
     Ok(Json(serde_json::json!(workflows)))
 }
 
 async fn get_active_workflows(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let workflows = masday_service::WorkflowService::get_active_workflows(&state.pool).await?;
+    let workflows = masday_service::WorkflowService::get_active_workflows(&state.pool, None).await?;
     Ok(Json(serde_json::json!(workflows)))
 }
 

@@ -38,7 +38,7 @@ impl ReminderService {
         let service = Self::new(pool.clone());
 
         // Get all active workflows
-        let active_workflows = service.workflow_repo.get_active().await?;
+        let active_workflows = service.workflow_repo.get_active(None).await?;
 
         let mut reminders = Vec::new();
         let now = Utc::now();

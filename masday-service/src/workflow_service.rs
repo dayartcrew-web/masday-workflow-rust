@@ -230,32 +230,45 @@ impl WorkflowService {
         service.repo.get_by_id(id).await
     }
 
-    /// List workflows with pagination
+    /// List workflows with pagination, optionally filtered by project_path
     ///
     /// # Arguments
     /// * `pool` - Database connection pool
     /// * `limit` - Maximum number of results
     /// * `offset` - Number of results to skip
+    /// * `project_path` - Optional project path to filter by
     ///
     /// # Returns
     /// * `Result<Vec<Workflow>>` - List of workflows
-    pub async fn list_workflows(pool: &DbPool, limit: i64, offset: i64) -> Result<Vec<Workflow>> {
-        debug!("Listing workflows: limit={}, offset={}", limit, offset);
+    pub async fn list_workflows(
+        pool: &DbPool,
+        limit: i64,
+        offset: i64,
+        project_path: Option<&str>,
+    ) -> Result<Vec<Workflow>> {
+        debug!(
+            "Listing workflows: limit={}, offset={}, project_path={:?}",
+            limit, offset, project_path
+        );
         let service = Self::new(pool.clone());
-        service.repo.list(limit, offset).await
+        service.repo.list(limit, offset, project_path).await
     }
 
-    /// Get all active workflows (not DONE or FAILED)
+    /// Get all active workflows (not DONE or FAILED), optionally filtered by project_path
     ///
     /// # Arguments
     /// * `pool` - Database connection pool
+    /// * `project_path` - Optional project path to filter by
     ///
     /// # Returns
     /// * `Result<Vec<Workflow>>` - List of active workflows
-    pub async fn get_active_workflows(pool: &DbPool) -> Result<Vec<Workflow>> {
-        debug!("Getting active workflows");
+    pub async fn get_active_workflows(
+        pool: &DbPool,
+        project_path: Option<&str>,
+    ) -> Result<Vec<Workflow>> {
+        debug!("Getting active workflows, project_path={:?}", project_path);
         let service = Self::new(pool.clone());
-        service.repo.get_active().await
+        service.repo.get_active(project_path).await
     }
 
     /// Delete a workflow

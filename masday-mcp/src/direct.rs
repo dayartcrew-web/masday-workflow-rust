@@ -131,36 +131,61 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
     let page_size = args["page_size"].as_u64().unwrap_or(50);
     let limit = page_size as i64;
     let offset = ((page - 1) * page_size) as i64;
+    let project_path = args.get("project_path").and_then(|v| v.as_str());
 
-    let mut stmt = conn.prepare(
-        "SELECT id, name, status, created_at FROM workflows ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
-    ).map_err(err)?;
+    let workflows = if let Some(pp) = project_path {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, status, created_at FROM workflows WHERE project_path = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
+        ).map_err(err)?;
+        let rows = stmt.query_map(params![pp, limit, offset], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "name": row.get::<_, String>(1)?,
+                "status": row.get::<_, String>(2)?,
+                "createdAt": row.get::<_, String>(3)?,
+            }))
+        }).map_err(|e| err(e))?;
+        collect_rows(rows)
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, status, created_at FROM workflows ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
+        ).map_err(err)?;
+        let rows = stmt.query_map(params![limit, offset], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "name": row.get::<_, String>(1)?,
+                "status": row.get::<_, String>(2)?,
+                "createdAt": row.get::<_, String>(3)?,
+            }))
+        }).map_err(|e| err(e))?;
+        collect_rows(rows)
+    };
 
-    let rows = stmt.query_map(params![limit, offset], |row| {
-        Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "name": row.get::<_, String>(1)?,
-            "status": row.get::<_, String>(2)?,
-            "createdAt": row.get::<_, String>(3)?,
-        }))
-    }).map_err(|e| err(e))?;
-
-    let workflows: Vec<Value> = collect_rows(rows);
     Ok(json!({"workflows": workflows, "page": page, "page_size": page_size}))
 }
 
-pub async fn workflow_get_active(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn workflow_get_active(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
+    let project_path = args.get("project_path").and_then(|v| v.as_str());
 
-    let mut stmt = conn.prepare(
-        "SELECT id, name, status FROM workflows WHERE status NOT IN ('DONE','FAILED') ORDER BY created_at DESC"
-    ).map_err(err)?;
+    let workflows = if let Some(pp) = project_path {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, status FROM workflows WHERE status NOT IN ('DONE','FAILED') AND project_path = ?1 ORDER BY created_at DESC"
+        ).map_err(err)?;
+        let rows = stmt.query_map(params![pp], |row| {
+            Ok(json!({"id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
+        }).map_err(|e| err(e))?;
+        collect_rows(rows)
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, status FROM workflows WHERE status NOT IN ('DONE','FAILED') ORDER BY created_at DESC"
+        ).map_err(err)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(json!({"id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
+        }).map_err(|e| err(e))?;
+        collect_rows(rows)
+    };
 
-    let rows = stmt.query_map([], |row| {
-        Ok(json!({"id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?}))
-    }).map_err(|e| err(e))?;
-
-    let workflows: Vec<Value> = collect_rows(rows);
     Ok(json!({"workflows": workflows}))
 }
 
