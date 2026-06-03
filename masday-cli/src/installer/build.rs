@@ -6,19 +6,17 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Build MCP and API crates in release mode
+/// Build the masday CLI binary in release mode
 pub fn build_crates(project_dir: &Path) -> Result<()> {
     println!(
         "{}",
-        console::style("Building masday-mcp and masday-api crates...").cyan()
+        console::style("Building masday binary...").cyan()
     );
 
     let status = Command::new("cargo")
         .arg("build")
         .arg("-p")
-        .arg("masday-mcp")
-        .arg("-p")
-        .arg("masday-api")
+        .arg("masday-cli")
         .arg("--release")
         .current_dir(project_dir)
         .status()
@@ -32,10 +30,10 @@ pub fn build_crates(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Find the MCP binary in target/release or target/debug
+/// Find the masday binary in target/release or target/debug
 pub fn find_mcp_binary(project_dir: &Path) -> Result<PathBuf> {
-    let release_path = project_dir.join("target/release/masday-mcp");
-    let debug_path = project_dir.join("target/debug/masday-mcp");
+    let release_path = project_dir.join("target/release/masday");
+    let debug_path = project_dir.join("target/debug/masday");
 
     if release_path.exists() {
         Ok(release_path)
@@ -43,29 +41,16 @@ pub fn find_mcp_binary(project_dir: &Path) -> Result<PathBuf> {
         Ok(debug_path)
     } else {
         anyhow::bail!(
-            "masday-mcp binary not found. Checked:\n  - {}\n  - {}\nRun: cargo build -p masday-mcp --release",
+            "masday binary not found. Checked:\n  - {}\n  - {}\nRun: cargo build -p masday-cli --release",
             release_path.display(),
             debug_path.display()
-        );
+        )
     }
 }
 
-/// Find the API binary in target/release or target/debug
+/// Find the masday binary in target/release or target/debug (same binary serves as API server)
 pub fn find_api_binary(project_dir: &Path) -> Result<PathBuf> {
-    let release_path = project_dir.join("target/release/masday-api");
-    let debug_path = project_dir.join("target/debug/masday-api");
-
-    if release_path.exists() {
-        Ok(release_path)
-    } else if debug_path.exists() {
-        Ok(debug_path)
-    } else {
-        anyhow::bail!(
-            "masday-api binary not found. Checked:\n  - {}\n  - {}\nRun: cargo build -p masday-api --release",
-            release_path.display(),
-            debug_path.display()
-        );
-    }
+    find_mcp_binary(project_dir)
 }
 
 #[cfg(test)]
@@ -97,10 +82,10 @@ mod tests {
         let project_dir = temp_dir.path();
         let target_dir = project_dir.join("target/release");
         std::fs::create_dir_all(&target_dir).unwrap();
-        std::fs::write(target_dir.join("masday-mcp"), "binary").unwrap();
+        std::fs::write(target_dir.join("masday"), "binary").unwrap();
 
         let result = find_mcp_binary(project_dir).unwrap();
-        assert!(result.ends_with("target/release/masday-mcp"));
+        assert!(result.ends_with("target/release/masday"));
     }
 
     #[test]
@@ -109,10 +94,10 @@ mod tests {
         let project_dir = temp_dir.path();
         let target_dir = project_dir.join("target/debug");
         std::fs::create_dir_all(&target_dir).unwrap();
-        std::fs::write(target_dir.join("masday-mcp"), "binary").unwrap();
+        std::fs::write(target_dir.join("masday"), "binary").unwrap();
 
         let result = find_mcp_binary(project_dir).unwrap();
-        assert!(result.ends_with("target/debug/masday-mcp"));
+        assert!(result.ends_with("target/debug/masday"));
     }
 
     #[test]
@@ -121,10 +106,10 @@ mod tests {
         let project_dir = temp_dir.path();
         let target_dir = project_dir.join("target/release");
         std::fs::create_dir_all(&target_dir).unwrap();
-        std::fs::write(target_dir.join("masday-api"), "binary").unwrap();
+        std::fs::write(target_dir.join("masday"), "binary").unwrap();
 
         let result = find_api_binary(project_dir).unwrap();
-        assert!(result.ends_with("target/release/masday-api"));
+        assert!(result.ends_with("target/release/masday"));
     }
 
     #[test]
@@ -135,10 +120,10 @@ mod tests {
         let debug_dir = project_dir.join("target/debug");
         std::fs::create_dir_all(&release_dir).unwrap();
         std::fs::create_dir_all(&debug_dir).unwrap();
-        std::fs::write(release_dir.join("masday-mcp"), "release").unwrap();
-        std::fs::write(debug_dir.join("masday-mcp"), "debug").unwrap();
+        std::fs::write(release_dir.join("masday"), "release").unwrap();
+        std::fs::write(debug_dir.join("masday"), "debug").unwrap();
 
         let result = find_mcp_binary(project_dir).unwrap();
-        assert!(result.ends_with("target/release/masday-mcp"));
+        assert!(result.ends_with("target/release/masday"));
     }
 }

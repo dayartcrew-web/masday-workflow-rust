@@ -87,12 +87,6 @@ fn build_server_object(config: &McpConfig) -> JsonValue {
             JsonValue::String(config.api_key.clone()),
         );
     }
-    if let Some(ref db_url) = config.database_url {
-        env_map.insert(
-            "DATABASE_URL".to_string(),
-            JsonValue::String(db_url.clone()),
-        );
-    }
 
     let mut server = serde_json::Map::new();
     server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
@@ -100,7 +94,10 @@ fn build_server_object(config: &McpConfig) -> JsonValue {
         "command".to_string(),
         JsonValue::String(config.mcp_binary_path.display().to_string()),
     );
-    // No args needed — mcp_binary_path points to masday-mcp directly (not masday CLI)
+    server.insert(
+        "args".to_string(),
+        JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
+    );
     server.insert("env".to_string(), JsonValue::Object(env_map));
 
     JsonValue::Object(server)
@@ -264,8 +261,8 @@ mod tests {
 
         assert!(json["mcpServers"]["masday"]["type"] == "stdio");
         assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:30101");
-        // No args — binary is masday-mcp, not masday CLI
-        assert!(json["mcpServers"]["masday"].get("args").is_none());
+        // Args must include "mcp" subcommand — single binary contains both CLI and MCP
+        assert_eq!(json["mcpServers"]["masday"]["args"], serde_json::json!(["mcp"]));
     }
 
     #[test]
@@ -287,8 +284,8 @@ mod tests {
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
         assert!(json["servers"]["masday"]["command"] == "/path/to/masday");
-        // No args — binary is masday-mcp, not masday CLI
-        assert!(json["servers"]["masday"].get("args").is_none());
+        // Args must include "mcp" subcommand
+        assert_eq!(json["servers"]["masday"]["args"], serde_json::json!(["mcp"]));
     }
 
     #[test]
@@ -309,8 +306,8 @@ mod tests {
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
         assert!(json["mcpServers"]["masday"]["command"] == "/home/user/.masday/bin/masday");
-        // No args — binary is masday-mcp, not masday CLI
-        assert!(json["mcpServers"]["masday"].get("args").is_none());
+        // Args must include "mcp" subcommand — single binary contains both CLI and MCP
+        assert_eq!(json["mcpServers"]["masday"]["args"], serde_json::json!(["mcp"]));
     }
 
     #[test]
@@ -341,8 +338,8 @@ mod tests {
 
         // Existing server preserved
         assert!(json["mcpServers"]["other-server"]["command"] == "other");
-        // New server added
-        assert!(json["mcpServers"]["masday"].get("args").is_none());
+        // New server added with correct args
+        assert_eq!(json["mcpServers"]["masday"]["args"], serde_json::json!(["mcp"]));
         // Other settings preserved
         assert!(json["env"]["FOO"] == "bar");
     }
