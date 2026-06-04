@@ -352,22 +352,51 @@ impl EmbeddingService {
     // ── Ollama embedding ─────────────────────────────────────────────────────
 
     async fn embed_ollama(&self, text: &str) -> Result<Vec<f32>> {
-        let url = format!("{}/api/embed", self.config.base_url);
+        debug!("Calling Ollama embed: model={}", self.config.model);
 
-        let body = serde_json::json!({
+        // Try new API first (/api/embed with "input"), fall back to legacy (/api/embeddings with "prompt")
+        let new_url = format!("{}/api/embed", self.config.base_url);
+        let new_body = serde_json::json!({
             "model": self.config.model,
             "input": text,
         });
 
-        debug!("Calling Ollama embed: model={}", self.config.model);
-
         let response = self
             .client
-            .post(&url)
-            .json(&body)
+            .post(&new_url)
+            .json(&new_body)
             .send()
             .await
             .map_err(|e| AppError::Internal(format!("Ollama request failed: {}", e)))?;
+
+        if response.status().is_success() {
+            let result: OllamaEmbedResponse = response
+                .json()
+                .await
+                .map_err(|e| AppError::Internal(format!("Failed to parse Ollama response: {}", e)))?;
+
+            return result
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| AppError::Internal("Ollama returned no embeddings".to_string()));
+        }
+
+        // Legacy endpoint fallback (/api/embeddings with "prompt")
+        debug!("Ollama /api/embed not available, trying legacy /api/embeddings");
+        let legacy_url = format!("{}/api/embeddings", self.config.base_url);
+        let legacy_body = serde_json::json!({
+            "model": self.config.model,
+            "prompt": text,
+        });
+
+        let response = self
+            .client
+            .post(&legacy_url)
+            .json(&legacy_body)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Ollama legacy request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -378,16 +407,12 @@ impl EmbeddingService {
             )));
         }
 
-        let result: OllamaEmbedResponse = response
+        let result: OllamaLegacyEmbedResponse = response
             .json()
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to parse Ollama response: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to parse Ollama legacy response: {}", e)))?;
 
-        result
-            .embeddings
-            .into_iter()
-            .next()
-            .ok_or_else(|| AppError::Internal("Ollama returned no embeddings".to_string()))
+        Ok(result.embedding)
     }
 
     // ── OpenAI embedding ─────────────────────────────────────────────────────
@@ -441,10 +466,16 @@ impl EmbeddingService {
 
 // ── API Response Types ────────────────────────────────────────────────────────
 
-/// Ollama embed API response
+/// Ollama embed API response (new /api/embed endpoint)
 #[derive(Debug, Deserialize)]
 struct OllamaEmbedResponse {
     embeddings: Vec<Vec<f32>>,
+}
+
+/// Ollama legacy embed API response (old /api/embeddings endpoint)
+#[derive(Debug, Deserialize)]
+struct OllamaLegacyEmbedResponse {
+    embedding: Vec<f32>,
 }
 
 /// OpenAI embeddings API response
