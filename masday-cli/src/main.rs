@@ -2,6 +2,8 @@
 
 use clap::{Parser, Subcommand};
 
+use masday_cli::commands::embed::EmbedAction;
+
 /// Auto-install masday binary to ~/.masday/bin/ if running from elsewhere.
 /// This handles the case where user downloads masday.exe to Desktop/Downloads
 /// and runs it directly — it copies itself to the proper location.
@@ -205,6 +207,12 @@ enum Commands {
         platform: Option<String>,
     },
 
+    /// Manage local embedding runtime (ONNX Runtime + models)
+    Embed {
+        #[command(subcommand)]
+        action: EmbedAction,
+    },
+
     /// Update masday (re-install with force)
     Update,
 }
@@ -278,6 +286,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Update => {
             masday_cli::commands::update::run(&project_dir)?;
+        }
+        Commands::Embed { action } => {
+            masday_cli::commands::embed::run(action)?;
         }
     }
 

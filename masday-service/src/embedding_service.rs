@@ -194,6 +194,39 @@ impl EmbeddingService {
         let model_enum = config.model_enum();
         info!("Loading local embedding model: {:?}", model_enum);
 
+        // Try to init ONNX Runtime from dynamic lib if available
+        // (for Windows cross-compile / load-dynamic builds)
+        #[cfg(feature = "ort-load-dynamic")]
+        {
+            if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+                let ort_path = std::path::Path::new(&home)
+                    .join(".masday")
+                    .join("embeddings")
+                    .join(if cfg!(windows) {
+                        "onnxruntime.dll"
+                    } else if cfg!(target_os = "macos") {
+                        "libonnxruntime.dylib"
+                    } else {
+                        "libonnxruntime.so"
+                    });
+
+                if ort_path.exists() {
+                    info!("Initializing ONNX Runtime from dynamic lib: {:?}", ort_path);
+                    match ort::init_from(&ort_path) {
+                        Ok(builder) => {
+                            let committed = builder.commit();
+                            if committed {
+                                info!("ONNX Runtime dynamic init success");
+                            } else {
+                                warn!("ONNX Runtime commit returned false");
+                            }
+                        }
+                        Err(e) => warn!("ONNX Runtime init_from failed: {}", e),
+                    }
+                }
+            }
+        }
+
         // Configure cache directory
         let mut opts = fastembed::InitOptions::new(model_enum).with_show_download_progress(true);
 

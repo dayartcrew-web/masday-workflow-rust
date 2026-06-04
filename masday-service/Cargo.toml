@@ -15,8 +15,17 @@ tokio = { version = "1", features = ["full"] }
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
 reqwest = { version = "0.12", features = ["json"] }
-fastembed = { version = "5", optional = true }
+fastembed = { version = "5", default-features = false, features = ["hf-hub-native-tls", "image-models"], optional = true }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
 
 [features]
-default = ["local-embeddings"]
-local-embeddings = ["fastembed"]
+default = ["local-embeddings-static"]
+local-embeddings = ["local-embeddings-static"]
+# Static link ONNX Runtime (default for Linux — downloads prebuilt binaries at compile time)
+local-embeddings-static = ["fastembed", "fastembed/ort-download-binaries-native-tls"]
+# Dynamic load ONNX Runtime at runtime (for Windows cross-compile)
+# ONNX Runtime .dll/.so must be downloaded separately via `masday embed setup`.
+# Build: cargo build --no-default-features --features local-embeddings-dynamic
+local-embeddings-dynamic = ["fastembed", "fastembed/ort-load-dynamic", "ort/load-dynamic"]
+# Legacy alias
+ort-load-dynamic = ["local-embeddings-dynamic"]
