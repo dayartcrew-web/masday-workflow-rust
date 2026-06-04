@@ -1,7 +1,7 @@
 //! Update command implementation
 //!
-//! Updates Masday installation by downloading the latest binary from GitHub Releases
-//! and re-syncing configuration while preserving .env.
+//! Updates Masday by downloading the latest binary from GitHub Releases
+//! and re-syncing configuration while preserving ~/.masday/config.toml.
 
 use anyhow::{Context, Result};
 use console::style;
@@ -12,7 +12,6 @@ use std::io::Read;
 use std::path::Path;
 
 use super::install::{run as install_run, InstallArgs};
-use crate::installer::load_env;
 
 const GITHUB_RELEASE_REPO: &str = "dayartcrew-web/masday-workflow-release";
 
@@ -72,19 +71,18 @@ pub fn run(project_dir: &Path) -> Result<()> {
     println!("{}", style("Updating Masday installation...").cyan().bold());
     println!();
 
-    // Save current .env content
-    let env_backup = load_env(project_dir)?;
-
-    if !env_backup.is_empty() {
-        println!(
-            "{}",
-            style(format!(
-                "Preserved {} environment variables from .env",
-                env_backup.len()
-            ))
-            .cyan()
-        );
-    }
+    // Backup config.toml before update
+    let home =
+        home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
+    let masday_dir = home.join(".masday");
+    let config_path = masday_dir.join("config.toml");
+    let config_backup = if config_path.exists() {
+        let content = fs::read_to_string(&config_path).ok();
+        println!("  {} Preserved config.toml", style("✓").green());
+        content
+    } else {
+        None
+    };
 
     // Download latest binary from GitHub Releases
     let binary_name = release_binary_name();
@@ -96,9 +94,7 @@ pub fn run(project_dir: &Path) -> Result<()> {
     println!("  Downloading latest release...");
     println!("  URL: {}", url);
 
-    let home =
-        home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
-    let install_dir = home.join(".masday").join("bin");
+    let install_dir = masday_dir.join("bin");
     fs::create_dir_all(&install_dir)?;
 
     let binary_filename = if cfg!(windows) {
@@ -123,6 +119,11 @@ pub fn run(project_dir: &Path) -> Result<()> {
 
     println!("  {} Installed to {}", style("✓").green(), dest.display());
 
+    // Restore config.toml (install_run may overwrite)
+    if let Some(ref content) = config_backup {
+        let _ = fs::write(&config_path, content);
+    }
+
     // Re-run install to re-sync agents/skills/hooks/MCP config
     println!();
     println!("{}", style("Re-syncing configuration...").cyan());
@@ -135,12 +136,17 @@ pub fn run(project_dir: &Path) -> Result<()> {
 
     install_run(install_args, project_dir)?;
 
+    // Ensure config.toml is preserved after install
+    if let Some(ref content) = config_backup {
+        let _ = fs::write(&config_path, content);
+    }
+
     println!();
     println!("{}", style("Update complete!").green().bold());
     println!();
 
-    if !env_backup.is_empty() {
-        println!("Environment configuration preserved from .env");
+    if config_backup.is_some() {
+        println!("Configuration preserved from config.toml");
     }
 
     Ok(())
@@ -153,40 +159,40 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_load_env_backup() {
-        let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path();
-        let env_path = project_dir.join(".env");
-
-        fs::write(
-            &env_path,
-            "KEY1=value1\nKEY2=value2\n# comment\n\nKEY3=value3",
-        )
-        .unwrap();
-
-        let env_backup = load_env(project_dir).unwrap();
-        assert_eq!(env_backup.len(), 3);
-        assert_eq!(env_backup.get("KEY1"), Some(&"value1".to_string()));
-        assert_eq!(env_backup.get("KEY2"), Some(&"value2".to_string()));
-        assert_eq!(env_backup.get("KEY3"), Some(&"value3".to_string()));
+    fn test_release_binary_name() {
+        let name = release_binary_name();
+        if cfg!(windows) {
+            assert_eq!(name, "masday-windows-x86_64.exe");
+        } else {
+            assert_eq!(name, "masday-linux-x86_64");
+        }
     }
 
     #[test]
-    fn test_load_env_empty() {
+    fn test_config_backup_read() {
         let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path();
+        let masday_dir = temp_dir.path().join(".masday");
+        fs::create_dir_all(&masday_dir).unwrap();
+        let config_path = masday_dir.join("config.toml");
+        fs::write(&config_path, "mode = \"local\"\nport = 30101").unwrap();
 
-        let env_backup = load_env(project_dir).unwrap();
-        assert!(env_backup.is_empty());
+        let content = fs::read_to_string(&config_path).ok();
+        assert!(content.is_some());
+        assert!(content.unwrap().contains("mode = \"local\""));
     }
 
     #[test]
-    fn test_load_env_nonexistent() {
+    fn test_config_backup_missing() {
         let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path();
+        let masday_dir = temp_dir.path().join(".masday");
+        fs::create_dir_all(&masday_dir).unwrap();
 
-        // .env doesn't exist
-        let env_backup = load_env(project_dir).unwrap();
-        assert!(env_backup.is_empty());
+        let config_path = masday_dir.join("config.toml");
+        let content = if config_path.exists() {
+            fs::read_to_string(&config_path).ok()
+        } else {
+            None
+        };
+        assert!(content.is_none());
     }
 }
