@@ -152,7 +152,7 @@ pub async fn workflow_get_status(
             params![id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     Ok(json!({"id": id, "status": status, "name": name}))
 }
@@ -210,7 +210,7 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
                     "createdAt": row.get::<_, String>(3)?,
                 }))
             })
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
         collect_rows(rows)
     } else {
         let mut stmt = conn.prepare(
@@ -225,7 +225,7 @@ pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Err
                     "createdAt": row.get::<_, String>(3)?,
                 }))
             })
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
         collect_rows(rows)
     };
 
@@ -276,7 +276,7 @@ pub async fn workflow_delete(
         .ok_or_else(|| err("missing workflow_id"))?;
 
     conn.execute("DELETE FROM workflows WHERE id=?1", params![id])
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
     Ok(json!({"deleted": id}))
 }
 
@@ -301,7 +301,7 @@ pub async fn workflow_add_task(
             params![plan_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
     if plan_count == 0 {
         conn.execute(
             "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1,?2,1,'ACTIVE','Auto-created plan','{}','system',?3)",
@@ -358,7 +358,7 @@ pub async fn workflow_complete_task(
             params![wf_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     if pending == 0 {
         conn.execute("UPDATE workflows SET status='DONE', updated_at=?1 WHERE id=?2 AND status NOT IN ('DONE','FAILED')",
@@ -481,7 +481,7 @@ pub async fn workflow_list_tasks(
                 "updatedAt": row.get::<_, String>(7)?,
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let tasks: Vec<Value> = collect_rows(rows);
     Ok(json!({"tasks": tasks}))
@@ -571,7 +571,7 @@ pub async fn workflow_list_parallel_branches(
                 "output": opt_json(row, 5),
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let branches: Vec<Value> = collect_rows(rows);
     Ok(json!({"branches": branches}))
@@ -636,7 +636,7 @@ pub async fn workflow_set_execution_mode(
             params![wf_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
     let mut meta: Value = serde_json::from_str(&meta).unwrap_or_else(|e| {
         warn!(
             "workflow_set_execution_mode: corrupt metadata for {}: {e}",
@@ -668,7 +668,7 @@ pub async fn workflow_resume_suggestion(
             params![wf_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     Ok(json!({"workflow_id": wf_id, "current_status": status,
         "suggestion": format!("Resume workflow '{}' from status '{}'", name, status)}))
@@ -817,7 +817,7 @@ pub async fn memory_search(args: Value) -> Result<Value, Box<dyn std::error::Err
 
             Ok((id, memory_type, summary, importance, created_at, similarity))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     for row_result in rows {
         match row_result {
@@ -896,7 +896,7 @@ pub async fn memory_recall_document_by_type(
                 "createdAt": row.get::<_, String>(4)?,
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"results": results}))
@@ -926,7 +926,7 @@ pub async fn memory_recall_by_task(
                 "createdAt": row.get::<_, String>(5)?,
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"memories": results}))
@@ -952,7 +952,7 @@ pub async fn memory_recall_recent(
                 "createdAt": row.get::<_, String>(4)?,
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"memories": results}))
@@ -974,7 +974,7 @@ pub async fn memory_update(args: Value) -> Result<Value, Box<dyn std::error::Err
                     params![id],
                     |r| r.get(0),
                 )
-                .map_err(|e| err(e))?;
+                .map_err(err)?;
 
             // Regenerate embedding from summary + new content
             let embedding_text = format!("{} {}", summary, c);
@@ -992,7 +992,7 @@ pub async fn memory_update(args: Value) -> Result<Value, Box<dyn std::error::Err
                     params![id],
                     |r| r.get(0),
                 )
-                .map_err(|e| err(e))?;
+                .map_err(err)?;
 
             // Regenerate embedding from summary + new content
             let embedding_text = format!("{} {}", summary, c);
@@ -1011,7 +1011,7 @@ pub async fn memory_update(args: Value) -> Result<Value, Box<dyn std::error::Err
                 "UPDATE memories SET updated_at=?1 WHERE id=?2",
                 params![&t, id],
             )
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
         }
     }
 
@@ -1023,7 +1023,7 @@ pub async fn memory_delete(args: Value) -> Result<Value, Box<dyn std::error::Err
     let id = args["id"].as_str().ok_or_else(|| err("missing id"))?;
 
     conn.execute("DELETE FROM memories WHERE id=?1", params![id])
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
     Ok(json!({"deleted": id}))
 }
 
@@ -1040,7 +1040,7 @@ pub async fn memory_delete_by_workflow(
             "DELETE FROM memories WHERE workflow_id=?1",
             params![workflow_id],
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
     Ok(json!({"deleted": count, "workflow_id": workflow_id}))
 }
 
@@ -1049,7 +1049,7 @@ pub async fn memory_stats(_args: Value) -> Result<Value, Box<dyn std::error::Err
 
     let total: i64 = conn
         .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
     let by_type: String = conn.query_row(
         "SELECT json_group_object(memory_type, cnt) FROM (SELECT memory_type, COUNT(*) as cnt FROM memories GROUP BY memory_type)",
         [], |r| r.get(0)
@@ -1081,7 +1081,7 @@ pub async fn episodic_store(
             params![session_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     conn.execute(
         "INSERT INTO episodic_memories (id, session_id, role, content, sequence_order, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -1114,7 +1114,7 @@ pub async fn episodic_recall(
                 "createdAt": row.get::<_, String>(4)?,
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let results: Vec<Value> = collect_rows(rows);
     Ok(json!({"memories": results}))
@@ -1408,7 +1408,7 @@ pub async fn policy_validate_execution(
             params![workflow_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let valid = wf_status == "EXECUTE" || wf_status == "PLAN";
 
@@ -1419,7 +1419,7 @@ pub async fn policy_validate_execution(
             params![task_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let valid = valid && (task_status == "PENDING" || task_status == "RUNNING");
 
@@ -1562,7 +1562,7 @@ pub async fn reminder_list(args: Value) -> Result<Value, Box<dyn std::error::Err
                 "acknowledged": row.get::<_, i64>(5)? == 1,
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let reminders: Vec<Value> = collect_rows(rows);
     Ok(json!({"reminders": reminders}))
@@ -1651,7 +1651,7 @@ pub async fn memory_search_nodes(
                 "properties": json_col(row, 3),
             }))
         })
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     let nodes: Vec<Value> = collect_rows(rows);
     Ok(json!({"nodes": nodes}))
@@ -1818,7 +1818,7 @@ pub async fn capability_workflow_audit(
             params![workflow_id],
             |r| r.get(0),
         )
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     Ok(json!({"workflow": wf["id"], "status": wf["status"], "tasks_count": task_count}))
 }
@@ -2237,14 +2237,14 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
                     "updatedAt": row.get::<_, String>(7)?,
                 })),
             )
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         // Query task data
         let mut stmt = conn
             .prepare(
                 "SELECT id, title, status, owner_agent, priority, progress_percent, created_at, updated_at FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
             )
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         let rows = stmt
             .query_map(params![workflow_id], |row| {
@@ -2259,7 +2259,7 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
                     "updatedAt": row.get::<_, String>(7)?,
                 }))
             })
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         let task_list: Vec<Value> = collect_rows(rows);
 
@@ -2269,7 +2269,7 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
     // Ensure directory exists (async operation)
     tokio::fs::create_dir_all(&state_dir)
         .await
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     // Build state object
     let state = json!({
@@ -2285,7 +2285,7 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     tokio::fs::write(&workflow_file, state_json)
         .await
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
     Ok(state)
 }
