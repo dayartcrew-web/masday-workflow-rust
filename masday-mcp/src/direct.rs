@@ -481,9 +481,14 @@ pub async fn workflow_create_parallel_branches(
     let wf_id = args["workflow_id"]
         .as_str()
         .ok_or_else(|| err("missing workflow_id"))?;
-    let branches_arr = args["branches"]
-        .as_array()
-        .ok_or_else(|| err("missing branches array"))?;
+    let branches_arr = match args["branches"] {
+        Value::Array(ref arr) => arr.clone(),
+        Value::String(ref s) => serde_json::from_str(s).unwrap_or_default(),
+        _ => return Err(err("missing branches array")),
+    };
+    if branches_arr.is_empty() {
+        return Err(err("branches array is empty — provide at least one branch object with task_id, branch_key, role"));
+    }
     let t = now();
     let mut created = Vec::new();
 

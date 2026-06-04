@@ -35,6 +35,7 @@ macro_rules! reg {
 
 /// Build JSON input schema. `"name"` = required, `"name?"` = optional.
 /// Prefix `#` for number type: `"#name"` = required number, `"#name?"` = optional number.
+/// Prefix `[]` for array type: `"[]name"` = required array, `"[]name?"` = optional array.
 #[macro_export]
 macro_rules! schema {
     ($($key:expr),* $(,)?) => {{
@@ -48,6 +49,8 @@ macro_rules! schema {
             let trimmed = k.trim_end_matches('?');
             let (name, type_val) = if let Some(stripped) = trimmed.strip_prefix('#') {
                 (stripped.to_string(), serde_json::json!({"type":"number"}))
+            } else if let Some(stripped) = trimmed.strip_prefix("[]") {
+                (stripped.to_string(), serde_json::json!({"type":"array","items":{"type":"object"}}))
             } else {
                 (trimmed.to_string(), serde_json::json!({"type":"string"}))
             };
@@ -202,8 +205,8 @@ fn register_workflow_tools(r: &mut ToolRegistry) {
     reg!(
         r,
         "workflow_createParallelBranches",
-        "Create parallel branches",
-        schema!("workflow_id", "branches"),
+        "Create parallel branches. branches is an array of objects: [{\"task_id\": \"...\", \"branch_key\": \"...\", \"role\": \"...\"}]",
+        schema!("workflow_id", "[]branches"),
         w::workflow_create_parallel_branches
     );
     reg!(
@@ -1011,8 +1014,8 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
     reg!(
         r,
         "workflow_createParallelBranches",
-        "Create parallel branches",
-        schema!("workflow_id", "branches"),
+        "Create parallel branches. branches is an array of objects: [{\"task_id\": \"...\", \"branch_key\": \"...\", \"role\": \"...\"}]",
+        schema!("workflow_id", "[]branches"),
         d::workflow_create_parallel_branches
     );
     reg!(
