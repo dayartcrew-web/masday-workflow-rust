@@ -159,13 +159,26 @@ fn extract_ort_from_archive(
     }
 }
 
-/// Download embedding model from HuggingFace using HTTP (no fastembed dep needed here)
+/// Download embedding model from HuggingFace
 fn download_model(model_name: &str, cache_dir: &std::path::Path) -> Result<()> {
-    // HuggingFace model ID → URL mapping
-    let (hf_id, files) = model_files(model_name);
-
-    let model_dir = cache_dir.join(hf_id.replace('/', "__"));
+    let info = get_model_info(model_name)?;
+    let model_dir = cache_dir.join(info.hf_repo.replace('/', "__"));
     fs::create_dir_all(&model_dir)?;
+
+    // Build file list: tokenizer files (root) + ONNX (model-specific path)
+    let mut files: Vec<(&str, String)> = Vec::new();
+
+    for &f in TOKENIZER_FILES {
+        let url = format!("https://huggingface.co/{}/resolve/main/{}", info.hf_repo, f);
+        files.push((f, url));
+    }
+
+    // ONNX model file
+    let onnx_url = format!(
+        "https://huggingface.co/{}/resolve/main/{}",
+        info.hf_repo, info.onnx_path
+    );
+    files.push((info.onnx_path, onnx_url));
 
     for (filename, url) in files {
         let dest = model_dir.join(filename);
@@ -173,39 +186,56 @@ fn download_model(model_name: &str, cache_dir: &std::path::Path) -> Result<()> {
             println!("  {} {} (cached)", style("●").dim(), filename);
             continue;
         }
+
+        // Create parent directory for files in subdirectories (e.g., onnx/)
+        if let Some(parent) = dest.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
+        }
+
         download_file(&url, &dest, &format!("Downloading {}", filename))?;
     }
 
     Ok(())
 }
 
-/// Standard files needed for a HuggingFace ONNX embedding model
-const MODEL_FILES: &[&str] = &[
-    "model.onnx",
+/// Metadata for a single embedding model
+struct ModelInfo {
+    /// HuggingFace repo ID
+    hf_repo: &'static str,
+    /// Path to model.onnx within the repo (e.g., "model.onnx" or "onnx/model.onnx")
+    onnx_path: &'static str,
+}
+
+/// Tokenizer files that always live at the HuggingFace repo root
+const TOKENIZER_FILES: &[&str] = &[
     "tokenizer.json",
     "tokenizer_config.json",
     "special_tokens_map.json",
     "config.json",
 ];
 
-/// Get model files list (name, download URL) for a given model
-fn model_files(model_name: &str) -> (&'static str, Vec<(&'static str, String)>) {
-    let base = "https://huggingface.co";
-    let rev = "main";
-
-    let hf_id = match model_name {
-        "bge-small-en-v1.5" => "BAAI/bge-small-en-v1.5",
-        "bge-base-en-v1.5" => "BAAI/bge-base-en-v1.5",
-        // Default fallback for unknown names
-        _ => "sentence-transformers/all-MiniLM-L6-v2",
-    };
-
-    let files: Vec<(&'static str, String)> = MODEL_FILES
-        .iter()
-        .map(|&f| (f, format!("{}/{}/resolve/{}/{}", base, hf_id, rev, f)))
-        .collect();
-
-    (hf_id, files)
+/// Look up model info by name. Returns error for unknown models.
+fn get_model_info(model_name: &str) -> Result<&'static ModelInfo> {
+    match model_name {
+        "all-MiniLM-L6-v2" => Ok(&ModelInfo {
+            hf_repo: "Qdrant/all-MiniLM-L6-v2-onnx",
+            onnx_path: "model.onnx",
+        }),
+        "bge-small-en-v1.5" => Ok(&ModelInfo {
+            hf_repo: "Xenova/bge-small-en-v1.5",
+            onnx_path: "onnx/model.onnx",
+        }),
+        "bge-base-en-v1.5" => Ok(&ModelInfo {
+            hf_repo: "Xenova/bge-base-en-v1.5",
+            onnx_path: "onnx/model.onnx",
+        }),
+        _ => bail!(
+            "Unknown model '{}'. Supported models: all-MiniLM-L6-v2, bge-small-en-v1.5, bge-base-en-v1.5",
+            model_name
+        ),
+    }
 }
 
 // ─── CLI Entry Points ───────────────────────────────────────────────────
