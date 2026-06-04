@@ -1,11 +1,15 @@
 {
   "servers": {
     "masday": {
-      "command": "/home/vibe-dev/masday-workflow-rust/target/debug/masday-mcp",
+      "args": [
+        "mcp"
+      ],
+      "command": "/home/vibe-dev/masday-workflow-rust/target/release/masday",
       "env": {
-        "MASDAY_API_URL": "http://localhost:3001",
-        "MASDAY_API_KEY": "PLACEHOLDER"
-      }
+        "MASDAY_API_KEY": "local-mode",
+        "MASDAY_API_URL": "http://localhost:30101"
+      },
+      "type": "stdio"
     }
   }
 }

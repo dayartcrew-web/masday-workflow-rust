@@ -5,7 +5,7 @@
 
 use rusqlite::params;
 use serde_json::{json, Value};
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Load the capability registry from `.claude/registry.json`.
 /// Returns the parsed JSON object, or an empty registry on failure.
@@ -36,6 +36,19 @@ fn new_id() -> String {
 /// Error helper — converts any error to the boxed type the registry expects.
 fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> {
     format!("{}", msg).into()
+}
+
+/// Generate embedding vector for text content in standalone mode (synchronous).
+///
+/// In standalone mode, we only support the mock provider (feature hashing) since
+/// SQLite doesn't support vector operations anyway. For Ollama/OpenAI embeddings,
+/// use HTTP mode (local.rs) which sends embeddings to the PostgreSQL API.
+///
+/// Returns None on failure (doesn't crash), Some(Vec<f64>) on success.
+fn generate_embedding_standalone_sync(text: &str) -> Option<Vec<f64>> {
+    // Only mock provider in standalone mode (SQLite has no vector support)
+    let vector = crate::embedding::text_to_vector(text);
+    Some(vector.into_iter().map(|v| v as f64).collect())
 }
 
 /// Parse a JSON text column, return default on failure (with logging).
@@ -1327,6 +1340,14 @@ pub async fn semantic_search_code_search(
             "--include=*.ts",
             "--include=*.js",
             "--include=*.py",
+            "--exclude-dir=node_modules",
+            "--exclude-dir=target",
+            "--exclude-dir=.git",
+            "--exclude-dir=dist",
+            "--exclude-dir=build",
+            "--exclude-dir=.next",
+            "--exclude-dir=__pycache__",
+            "--exclude-dir=.venv",
             query,
             project_path,
         ])
@@ -1851,49 +1872,482 @@ pub async fn capability_list_templates(
 // ============================================================================
 
 pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let conn = crate::sqlite::conn();
-    let workflow_id = args["workflow_id"]
-        .as_str()
-        .ok_or_else(|| err("missing workflow_id"))?;
-    let updates = args.get("updates").cloned().unwrap_or(json!({}));
-    let t = now();
+    let cwd = args
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| err("missing cwd"))?;
 
-    // Update individual fields from updates JSON
-    if let Some(obj) = updates.as_object() {
-        if let Some(name) = obj.get("name").and_then(|v| v.as_str()) {
-            conn.execute(
-                "UPDATE workflows SET name=?1, updated_at=?2 WHERE id=?3",
-                params![name, &t, workflow_id],
-            )
-            .map_err(|e| err(e))?;
+    let workflow_id_opt = args.get("workflow_id").and_then(|v| v.as_str());
+
+    let state_dir = std::path::Path::new(cwd)
+        .join(".masday")
+        .join("state")
+        .join("workflows");
+
+    // Ensure directory exists
+    if !state_dir.exists() {
+        return Ok(json!({
+            "pushed": false,
+            "error": "State directory does not exist",
+            "path": state_dir.to_string_lossy().to_string()
+        }));
+    }
+
+    let mut pushed_workflows: Vec<String> = Vec::new();
+    let mut errors: Vec<Value> = Vec::new();
+
+    // Collect workflow files to push
+    let workflow_files: Vec<std::path::PathBuf> = if let Some(workflow_id) = workflow_id_opt {
+        // Push specific workflow
+        let workflow_id = crate::client::sanitize_id(workflow_id)
+            .ok_or_else(|| err("invalid workflow_id: contains disallowed characters"))?;
+        let workflow_file = state_dir.join(format!("{}.json", workflow_id));
+        if workflow_file.exists() {
+            vec![workflow_file]
+        } else {
+            return Ok(json!({
+                "pushed": false,
+                "error": "Workflow file not found",
+                "workflow_id": workflow_id,
+                "expected_path": workflow_file.to_string_lossy().to_string()
+            }));
         }
-        if let Some(status) = obj.get("status").and_then(|v| v.as_str()) {
-            conn.execute(
-                "UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3",
-                params![status, &t, workflow_id],
-            )
-            .map_err(|e| err(e))?;
+    } else {
+        // Push all workflows
+        let entries = std::fs::read_dir(&state_dir)
+            .map_err(|e| err(format!("Failed to read state directory: {}", e)))?;
+
+        entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("json"))
+            .collect()
+    };
+
+    let conn = crate::sqlite::conn();
+
+    // Push each workflow state
+    for workflow_file in workflow_files {
+        let file_stem = workflow_file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
+        let content = match std::fs::read_to_string(&workflow_file) {
+            Ok(c) => c,
+            Err(e) => {
+                errors.push(json!({
+                    "workflow_id": file_stem,
+                    "error": format!("Failed to read file: {}", e)
+                }));
+                continue;
+            }
+        };
+
+        let state: Value = match serde_json::from_str(&content) {
+            Ok(s) => s,
+            Err(e) => {
+                errors.push(json!({
+                    "workflow_id": file_stem,
+                    "error": format!("Failed to parse JSON: {}", e)
+                }));
+                continue;
+            }
+        };
+
+        // Extract workflow data
+        let workflow_data = state.get("workflow").cloned().unwrap_or(state.clone());
+        let workflow_id = workflow_data
+            .get("id")
+            .or_else(|| workflow_data.get("workflow_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(file_stem);
+
+        // Validate workflow_id is safe
+        if crate::client::sanitize_id(workflow_id).is_none() {
+            errors.push(json!({
+                "workflow_id": file_stem,
+                "error": "Invalid workflow_id (contains disallowed characters)"
+            }));
+            continue;
         }
-        if let Some(path) = obj.get("project_path").and_then(|v| v.as_str()) {
-            conn.execute(
-                "UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3",
-                params![path, &t, workflow_id],
-            )
-            .map_err(|e| err(e))?;
+
+        let t = now();
+
+        // Update workflow in SQLite
+        // Check if workflow exists first
+        let exists: Result<i64, _> = conn.query_row(
+            "SELECT COUNT(*) FROM workflows WHERE id=?1",
+            params![workflow_id],
+            |row| row.get(0),
+        );
+
+        match exists {
+            Ok(0) | Err(_) => {
+                // Workflow doesn't exist, insert it
+                let name = workflow_data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let description = workflow_data.get("description").and_then(|v| v.as_str());
+                let status = workflow_data.get("status").and_then(|v| v.as_str()).unwrap_or("INIT");
+                let project_path = workflow_data.get("projectPath").and_then(|v| v.as_str())
+                    .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()));
+                let metadata = workflow_data.get("metadata").cloned().unwrap_or(json!({}));
+
+                match conn.execute(
+                    "INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                    params![workflow_id, name, description, status, project_path, metadata.to_string(), &t, &t],
+                ) {
+                    Ok(_) => pushed_workflows.push(workflow_id.to_string()),
+                    Err(e) => {
+                        errors.push(json!({
+                            "workflow_id": workflow_id,
+                            "error": format!("Failed to insert workflow: {}", e)
+                        }));
+                        continue;
+                    }
+                }
+            }
+            Ok(_) => {
+                // Workflow exists, update it field by field
+                let mut updated = false;
+
+                if let Some(name) = workflow_data.get("name").and_then(|v| v.as_str()) {
+                    match conn.execute(
+                        "UPDATE workflows SET name=?1, updated_at=?2 WHERE id=?3",
+                        params![name, &t, workflow_id],
+                    ) {
+                        Ok(_) => updated = true,
+                        Err(e) => {
+                            errors.push(json!({
+                                "workflow_id": workflow_id,
+                                "error": format!("Failed to update name: {}", e)
+                            }));
+                        }
+                    }
+                }
+
+                if let Some(description) = workflow_data.get("description").and_then(|v| v.as_str()) {
+                    match conn.execute(
+                        "UPDATE workflows SET description=?1, updated_at=?2 WHERE id=?3",
+                        params![description, &t, workflow_id],
+                    ) {
+                        Ok(_) => updated = true,
+                        Err(e) => {
+                            errors.push(json!({
+                                "workflow_id": workflow_id,
+                                "error": format!("Failed to update description: {}", e)
+                            }));
+                        }
+                    }
+                }
+
+                if let Some(status) = workflow_data.get("status").and_then(|v| v.as_str()) {
+                    match conn.execute(
+                        "UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3",
+                        params![status, &t, workflow_id],
+                    ) {
+                        Ok(_) => updated = true,
+                        Err(e) => {
+                            errors.push(json!({
+                                "workflow_id": workflow_id,
+                                "error": format!("Failed to update status: {}", e)
+                            }));
+                        }
+                    }
+                }
+
+                if let Some(project_path) = workflow_data.get("projectPath").and_then(|v| v.as_str())
+                    .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str())) {
+                    match conn.execute(
+                        "UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3",
+                        params![project_path, &t, workflow_id],
+                    ) {
+                        Ok(_) => updated = true,
+                        Err(e) => {
+                            errors.push(json!({
+                                "workflow_id": workflow_id,
+                                "error": format!("Failed to update project_path: {}", e)
+                            }));
+                        }
+                    }
+                }
+
+                if let Some(metadata) = workflow_data.get("metadata").cloned() {
+                    let metadata_str = metadata.to_string();
+                    match conn.execute(
+                        "UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3",
+                        params![metadata_str, &t, workflow_id],
+                    ) {
+                        Ok(_) => updated = true,
+                        Err(e) => {
+                            errors.push(json!({
+                                "workflow_id": workflow_id,
+                                "error": format!("Failed to update metadata: {}", e)
+                            }));
+                        }
+                    }
+                }
+
+                if updated || errors.is_empty() {
+                    pushed_workflows.push(workflow_id.to_string());
+                }
+            }
         }
-        if let Some(meta) = obj.get("metadata").cloned() {
-            conn.execute(
-                "UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3",
-                params![meta.to_string(), &t, workflow_id],
-            )
-            .map_err(|e| err(e))?;
+
+        // Generate embeddings for memory content in standalone mode
+        // Note: SQLite doesn't support vector operations, so we just log the embedding generation
+        // In HTTP mode (local.rs), embeddings are sent to the API for PostgreSQL storage
+        if let Some(tasks) = state.get("tasks").and_then(|v| v.as_array()) {
+            for task in tasks {
+                if let Some(task_id) = task.get("id").and_then(|v| v.as_str()) {
+                    let embedding_text = {
+                        let output = task.get("output").and_then(|v| v.as_str()).unwrap_or("");
+                        let result = task.get("result").and_then(|v| v.as_str()).unwrap_or("");
+                        format!("{} {}", output, result)
+                    };
+
+                    if !embedding_text.trim().is_empty() {
+                        // Generate embedding in standalone mode (mock provider only for simplicity)
+                        let embedding = generate_embedding_standalone_sync(&embedding_text);
+                        if let Some(embedding) = embedding {
+                            info!("Generated embedding for task {} in standalone mode: {} dimensions (not stored - SQLite lacks vector support)", task_id, embedding.len());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update task states if present
+        if let Some(tasks) = state.get("tasks").and_then(|v| v.as_array()) {
+            for task in tasks {
+                let task_id = task.get("id").and_then(|v| v.as_str());
+                let task_status = task.get("status").and_then(|v| v.as_str());
+
+                if let (Some(tid), Some(tstatus)) = (task_id, task_status) {
+                    // Check if task exists
+                    let task_exists: Result<i64, _> = conn.query_row(
+                        "SELECT COUNT(*) FROM tasks WHERE id=?1",
+                        params![tid],
+                        |row| row.get(0),
+                    );
+
+                    match task_exists {
+                        Ok(0) | Err(_) => {
+                            // Task doesn't exist - need to check if we should insert or skip
+                            // For now, we'll skip tasks that don't exist to avoid FK violations
+                            continue;
+                        }
+                        Ok(_) => {
+                            // Update task status field by field
+                            let result = task.get("result").and_then(|v| v.as_str());
+                            let output = task.get("output").and_then(|v| v.as_str());
+
+                            // Update status and updated_at
+                            if let Err(e) = conn.execute(
+                                "UPDATE tasks SET status=?1, updated_at=?2 WHERE id=?3",
+                                params![tstatus, &t, tid],
+                            ) {
+                                errors.push(json!({
+                                    "workflow_id": workflow_id,
+                                    "task_id": tid,
+                                    "error": format!("Failed to update task status: {}", e)
+                                }));
+                            }
+
+                            // Update result if present
+                            if let Some(r) = result {
+                                if let Err(e) = conn.execute(
+                                    "UPDATE tasks SET result=?1, updated_at=?2 WHERE id=?3",
+                                    params![r, &t, tid],
+                                ) {
+                                    errors.push(json!({
+                                        "workflow_id": workflow_id,
+                                        "task_id": tid,
+                                        "error": format!("Failed to update task result: {}", e)
+                                    }));
+                                }
+                            }
+
+                            // Update output if present
+                            if let Some(o) = output {
+                                if let Err(e) = conn.execute(
+                                    "UPDATE tasks SET output=?1, updated_at=?2 WHERE id=?3",
+                                    params![o, &t, tid],
+                                ) {
+                                    errors.push(json!({
+                                        "workflow_id": workflow_id,
+                                        "task_id": tid,
+                                        "error": format!("Failed to update task output: {}", e)
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    Ok(json!({"id": workflow_id, "updated": true}))
+    Ok(json!({
+        "pushed": true,
+        "workflows_pushed": pushed_workflows,
+        "count": pushed_workflows.len(),
+        "errors": errors
+    }))
 }
 
 pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Delegate to filesystem-based local sync
-    crate::tools::local::local_sync(args).await
+    use crate::sqlite::conn;
+
+    let cwd = args
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| err("missing cwd"))?;
+
+    let workflow_id = args
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| err("missing workflow_id"))?;
+
+    // Sanitize workflow_id for path safety
+    let workflow_id = crate::client::sanitize_id(workflow_id)
+        .ok_or_else(|| err("invalid workflow_id: contains disallowed characters"))?;
+
+    let state_dir = std::path::Path::new(cwd)
+        .join(".masday")
+        .join("state")
+        .join("workflows");
+
+    // Query workflow data from SQLite (synchronous, no await)
+    let (workflow_data, tasks) = {
+        let conn = conn();
+
+        // Query workflow data
+        let wf = conn
+            .query_row(
+                "SELECT id, name, description, status, project_path, metadata, created_at, updated_at FROM workflows WHERE id=?1",
+                params![workflow_id],
+                |row| Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "name": row.get::<_, String>(1)?,
+                    "description": row.get::<_, Option<String>>(2)?,
+                    "status": row.get::<_, String>(3)?,
+                    "projectPath": row.get::<_, Option<String>>(4)?,
+                    "metadata": json_col(row, 5),
+                    "createdAt": row.get::<_, String>(6)?,
+                    "updatedAt": row.get::<_, String>(7)?,
+                })),
+            )
+            .map_err(|e| err(e))?;
+
+        // Query task data
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, title, status, owner_agent, priority, progress_percent, created_at, updated_at FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
+            )
+            .map_err(|e| err(e))?;
+
+        let rows = stmt
+            .query_map(params![workflow_id], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "title": row.get::<_, String>(1)?,
+                    "status": row.get::<_, String>(2)?,
+                    "ownerAgent": row.get::<_, Option<String>>(3)?,
+                    "priority": row.get::<_, Option<String>>(4)?,
+                    "progressPercent": row.get::<_, Option<i64>>(5)?,
+                    "createdAt": row.get::<_, String>(6)?,
+                    "updatedAt": row.get::<_, String>(7)?,
+                }))
+            })
+            .map_err(|e| err(e))?;
+
+        let task_list: Vec<Value> = collect_rows(rows);
+
+        (wf, task_list)
+    };
+
+    // Ensure directory exists (async operation)
+    tokio::fs::create_dir_all(&state_dir)
+        .await
+        .map_err(|e| err(e))?;
+
+    // Build state object
+    let state = json!({
+        "workflow": workflow_data,
+        "tasks": tasks,
+        "syncedAt": now()
+    });
+
+    // Write to file
+    let workflow_file = state_dir.join(format!("{}.json", workflow_id));
+    let state_json = serde_json::to_string_pretty(&state)
+        .map_err(|e| format!("Failed to serialize state: {}", e))?;
+
+    tokio::fs::write(&workflow_file, state_json)
+        .await
+        .map_err(|e| err(e))?;
+
+    Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_local_sync_invalid_workflow_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let cwd = temp_dir.path().to_str().unwrap();
+
+        let args = json!({
+            "cwd": cwd,
+            "workflow_id": "invalid/workflow"
+        });
+
+        let result = local_sync(args).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid workflow_id"));
+    }
+
+    #[test]
+    fn test_generate_embedding_standalone_sync() {
+        let text = "standalone test";
+        let embedding = generate_embedding_standalone_sync(text);
+
+        assert!(embedding.is_some());
+        let vector = embedding.unwrap();
+        assert_eq!(vector.len(), 768); // Feature hashing produces 768-dim vectors
+    }
+
+    #[test]
+    fn test_generate_embedding_standalone_empty() {
+        let text = "";
+        let embedding = generate_embedding_standalone_sync(text);
+
+        assert!(embedding.is_some());
+        let vector = embedding.unwrap();
+        assert_eq!(vector.len(), 768);
+        // Empty text produces zero vector
+        let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
+        assert_eq!(norm_sq, 0.0);
+    }
+
+    #[test]
+    fn test_generate_embedding_standalone_deterministic() {
+        let text = "deterministic standalone test";
+        let embedding1 = generate_embedding_standalone_sync(text);
+        let embedding2 = generate_embedding_standalone_sync(text);
+
+        assert!(embedding1.is_some());
+        assert!(embedding2.is_some());
+        let vec1 = embedding1.unwrap();
+        let vec2 = embedding2.unwrap();
+        assert_eq!(vec1.len(), vec2.len());
+        // Check vectors are identical
+        for (i, (v1, v2)) in vec1.iter().zip(vec2.iter()).enumerate() {
+            assert_eq!(v1, v2, "Vectors differ at index {}", i);
+        }
+    }
 }

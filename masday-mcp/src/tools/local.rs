@@ -1,6 +1,9 @@
 //! Local MCP tools - file-based state operations
 
+use crate::embedding;
+use reqwest::Client;
 use serde_json::Value;
+use tracing::{info, warn};
 
 /// Initialize local state directory
 pub async fn local_init(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -58,11 +61,124 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
-/// Sync local state (read from .masday directory)
+/// Generate embedding vector for text content.
 ///
-/// Ensures the .masday/state/workflows directory exists and gracefully
-/// handles missing workflow state files by returning an empty state.
+/// Supports three providers (configured via EMBEDDING_PROVIDER env var):
+/// - "mock": Use feature hashing vectorizer (default, zero dependencies)
+/// - "ollama": HTTP POST to Ollama API with nomic-embed-text model
+/// - "openai": HTTP POST to OpenAI API with text-embedding-3-small model
+///
+/// Returns None on failure (doesn't crash), Some(Vec<f64>) on success.
+async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
+    let provider = std::env::var("EMBEDDING_PROVIDER")
+        .unwrap_or_else(|_| "mock".to_string())
+        .to_lowercase();
+
+    match provider.as_str() {
+        "mock" => {
+            // Use existing feature hashing vectorizer
+            let vector = embedding::text_to_vector(text);
+            // Convert f32 to f64 for API compatibility
+            Some(vector.into_iter().map(|v| v as f64).collect())
+        }
+        "ollama" => {
+            // Call Ollama API
+            let base_url = std::env::var("OLLAMA_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:11434".to_string());
+            let url = format!("{}/api/embeddings", base_url);
+
+            let client = Client::new();
+            let payload = serde_json::json!({
+                "model": "nomic-embed-text",
+                "input": text
+            });
+
+            match client
+                .post(&url)
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => {
+                    if let Ok(result) = response.json::<serde_json::Value>().await {
+                        if let Some(embedding) = result.get("embedding").and_then(|v| v.as_array()) {
+                            let vector: Vec<f64> = embedding
+                                .iter()
+                                .filter_map(|v| v.as_f64())
+                                .collect();
+                            info!("Generated Ollama embedding with {} dimensions", vector.len());
+                            return Some(vector);
+                        }
+                    }
+                }
+                Ok(response) => {
+                    warn!("Ollama embedding request failed: {}", response.status());
+                }
+                Err(e) => {
+                    warn!("Ollama embedding request error: {}", e);
+                }
+            }
+            None
+        }
+        "openai" => {
+            // Call OpenAI API
+            let base_url = std::env::var("OPENAI_BASE_URL")
+                .unwrap_or_else(|_| "https://api.openai.com".to_string());
+            let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+            let url = format!("{}/v1/embeddings", base_url);
+
+            let client = Client::new();
+            let payload = serde_json::json!({
+                "model": "text-embedding-3-small",
+                "input": text
+            });
+
+            match client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => {
+                    if let Ok(result) = response.json::<serde_json::Value>().await {
+                        if let Some(data) = result.get("data").and_then(|v| v.as_array()) {
+                            if let Some(embedding) = data.first().and_then(|v| v.get("embedding")).and_then(|v| v.as_array()) {
+                                let vector: Vec<f64> = embedding
+                                    .iter()
+                                    .filter_map(|v| v.as_f64())
+                                    .collect();
+                                info!("Generated OpenAI embedding with {} dimensions", vector.len());
+                                return Some(vector);
+                            }
+                        }
+                    }
+                }
+                Ok(response) => {
+                    warn!("OpenAI embedding request failed: {}", response.status());
+                }
+                Err(e) => {
+                    warn!("OpenAI embedding request error: {}", e);
+                }
+            }
+            None
+        }
+        _ => {
+            warn!("Unknown embedding provider: {}, defaulting to mock", provider);
+            let vector = embedding::text_to_vector(text);
+            Some(vector.into_iter().map(|v| v as f64).collect())
+        }
+    }
+}
+
+/// Sync local state from API (HTTP mode)
+///
+/// Pulls workflow and task state from the remote API and writes it to
+/// .masday/state/workflows/{id}.json. This is the HTTP mode version that
+/// uses client::api_get() to fetch data from the API server.
 pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::client;
+
     let cwd = args
         .get("cwd")
         .and_then(|v| v.as_str())
@@ -86,22 +202,43 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .await
         .map_err(|e| format!("Failed to create state directory: {}", e))?;
 
-    let workflow_file = state_dir.join(format!("{}.json", workflow_id));
+    // Query API for workflow data
+    let workflow_data = client::api_get(&format!("/api/workflows/{}", workflow_id))
+        .await
+        .map_err(|e| format!("Failed to fetch workflow from API: {}", e))?;
 
-    let state = if workflow_file.exists() {
-        let content = tokio::fs::read_to_string(&workflow_file)
-            .await
-            .map_err(|e| format!("Failed to read workflow state: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse workflow state JSON: {}", e))?
+    // Query API for task data
+    let tasks_data = client::api_get(&format!("/api/workflows/{}/tasks", workflow_id))
+        .await
+        .map_err(|e| format!("Failed to fetch tasks from API: {}", e))?;
+
+    // Build state object - API returns tasks as array directly or wrapped in "tasks" field
+    let tasks = if tasks_data.is_array() {
+        tasks_data.as_array().cloned().unwrap_or_default()
     } else {
-        serde_json::json!(null)
+        tasks_data
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
     };
 
-    Ok(serde_json::json!({
-        "workflow_id": workflow_id,
-        "state": state
-    }))
+    let state = serde_json::json!({
+        "workflow": workflow_data,
+        "tasks": tasks,
+        "syncedAt": chrono::Utc::now().to_rfc3339()
+    });
+
+    // Write to file
+    let workflow_file = state_dir.join(format!("{}.json", workflow_id));
+    let state_json = serde_json::to_string_pretty(&state)
+        .map_err(|e| format!("Failed to serialize state: {}", e))?;
+
+    tokio::fs::write(&workflow_file, state_json)
+        .await
+        .map_err(|e| format!("Failed to write workflow state file: {}", e))?;
+
+    Ok(state)
 }
 
 /// Push local state to database via API
@@ -233,12 +370,27 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                     for task in tasks {
                         if let Some(task_id) = task.get("id").and_then(|v| v.as_str()) {
                             if let Some(task_status) = task.get("status") {
-                                let task_update = serde_json::json!({
+                                let mut task_update = serde_json::json!({
                                     "task_id": task_id,
                                     "status": task_status,
                                     "result": task.get("result"),
                                     "output": task.get("output")
                                 });
+
+                                // Generate embedding for task output/result content
+                                let embedding_text = {
+                                    let output = task.get("output").and_then(|v| v.as_str()).unwrap_or("");
+                                    let result = task.get("result").and_then(|v| v.as_str()).unwrap_or("");
+                                    format!("{} {}", output, result)
+                                };
+
+                                if !embedding_text.trim().is_empty() {
+                                    if let Some(embedding) = generate_embedding(&embedding_text).await {
+                                        task_update["embedding"] = serde_json::json!(embedding);
+                                        info!("Generated embedding for task {}: {} dimensions", task_id, embedding.len());
+                                    }
+                                }
+
                                 if let Err(e) = client::api_post(
                                     &format!("/api/workflows/{}/complete-task", workflow_id),
                                     task_update,
@@ -368,27 +520,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_local_sync_missing_file() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let cwd = temp_dir.path().to_str().unwrap();
-
-        // Create .masday/state/workflows directory
-        let state_dir = temp_dir.path().join(".masday/state/workflows");
-        tokio::fs::create_dir_all(&state_dir).await.unwrap();
-
-        let args = json!({
-            "cwd": cwd,
-            "workflow_id": "test_workflow"
-        });
-        let result = local_sync(args).await;
-
-        assert!(result.is_ok());
-        let result_json = result.unwrap();
-        assert_eq!(result_json["workflow_id"], "test_workflow");
-        assert_eq!(result_json["state"], json!(null));
-    }
-
-    #[tokio::test]
     async fn test_local_sync_invalid_id() {
         let temp_dir = tempfile::tempdir().unwrap();
         let cwd = temp_dir.path().to_str().unwrap();
@@ -400,6 +531,7 @@ mod tests {
         let result = local_sync(args).await;
 
         assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid workflow_id"));
     }
 
     #[tokio::test]
@@ -505,5 +637,64 @@ mod tests {
             "filename": "test.md"
         });
         assert!(local_save_artifact(args).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_generate_embedding_mock() {
+        std::env::set_var("EMBEDDING_PROVIDER", "mock");
+        let text = "Hello world test";
+        let embedding = generate_embedding(text).await;
+
+        assert!(embedding.is_some());
+        let vector = embedding.unwrap();
+        assert_eq!(vector.len(), 768); // Feature hashing produces 768-dim vectors
+        // Check that values are normalized (unit vector)
+        let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
+        let norm = norm_sq.sqrt();
+        assert!((norm - 1.0).abs() < 0.01, "Vector should be normalized");
+    }
+
+    #[tokio::test]
+    async fn test_generate_embedding_empty_text() {
+        std::env::set_var("EMBEDDING_PROVIDER", "mock");
+        let text = "";
+        let embedding = generate_embedding(text).await;
+
+        assert!(embedding.is_some());
+        let vector = embedding.unwrap();
+        assert_eq!(vector.len(), 768);
+        // Empty text produces zero vector
+        let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
+        assert_eq!(norm_sq, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_generate_embedding_deterministic() {
+        std::env::set_var("EMBEDDING_PROVIDER", "mock");
+        let text = "deterministic test";
+        let embedding1 = generate_embedding(text).await;
+        let embedding2 = generate_embedding(text).await;
+
+        assert!(embedding1.is_some());
+        assert!(embedding2.is_some());
+        let vec1 = embedding1.unwrap();
+        let vec2 = embedding2.unwrap();
+        assert_eq!(vec1.len(), vec2.len());
+        // Check vectors are identical
+        for (i, (v1, v2)) in vec1.iter().zip(vec2.iter()).enumerate() {
+            assert_eq!(v1, v2, "Vectors differ at index {}", i);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_embedding_unknown_provider_fallback() {
+        std::env::set_var("EMBEDDING_PROVIDER", "unknown_provider");
+        let text = "fallback test";
+        let embedding = generate_embedding(text).await;
+
+        // Should fallback to mock
+        assert!(embedding.is_some());
+        let vector = embedding.unwrap();
+        assert_eq!(vector.len(), 768);
     }
 }
