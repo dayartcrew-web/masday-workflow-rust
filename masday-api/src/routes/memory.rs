@@ -165,6 +165,33 @@ async fn search_memories(
     let repo = MemoryRepo::new(state.pool.clone());
     let query = payload.get("query").and_then(|v| v.as_str()).unwrap_or("");
     let limit = payload.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+
+    // Use vector search if embedding service is available, otherwise text search
+    if let Some(service) = EmbeddingService::cached() {
+        if !query.is_empty() {
+            let input = build_embedding_input(query, query);
+            match service.embed(&input).await {
+                Ok(query_vec) => {
+                    let results = repo.vector_search(&query_vec, limit).await?;
+                    let json_results: Vec<Value> = results
+                        .into_iter()
+                        .map(|(mem, sim)| {
+                            let mut obj = serde_json::to_value(&mem).unwrap_or_default();
+                            if let Some(map) = obj.as_object_mut() {
+                                map.insert("similarity".to_string(), Value::from(sim));
+                            }
+                            obj
+                        })
+                        .collect();
+                    return Ok(Json(Value::from(json_results)));
+                }
+                Err(e) => {
+                    tracing::warn!("Query embedding failed, falling back to text search: {}", e);
+                }
+            }
+        }
+    }
+
     let memories = repo.search(query, limit).await?;
     Ok(Json(serde_json::json!(memories)))
 }
