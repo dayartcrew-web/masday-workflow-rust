@@ -1409,24 +1409,58 @@ pub async fn policy_validate_completion(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
-    let _workflow_id = args["workflow_id"]
+    let workflow_id = args["workflow_id"]
         .as_str()
         .ok_or_else(|| err("missing workflow_id"))?;
     let task_id = args["task_id"]
         .as_str()
         .ok_or_else(|| err("missing task_id"))?;
 
-    let task_status: String = conn
-        .query_row(
-            "SELECT status FROM tasks WHERE id=?1",
-            params![task_id],
-            |r| r.get(0),
-        )
-        .map_err(|e| err(e))?;
+    // Check task status
+    let result = conn.query_row(
+        "SELECT status, result FROM tasks WHERE id=?1",
+        params![task_id],
+        |r| Ok((r.get::<_, String>(0).unwrap_or_default(), r.get::<_, Option<String>>(1).unwrap_or_default())),
+    );
 
-    let valid = task_status == "DONE";
+    let (task_status, task_result) = match result {
+        Ok(r) => r,
+        Err(_) => return Err(err(format!("Task {} not found in workflow {}", task_id, workflow_id))),
+    };
 
-    Ok(json!({"valid": valid}))
+    if task_status == "DONE" {
+        // Check if all tasks in workflow are done
+        let incomplete_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status != 'DONE'",
+                params![workflow_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        let all_done = incomplete_count == 0;
+        let detail = if all_done {
+            "Task complete, all workflow tasks done"
+        } else {
+            "Some workflow tasks still pending/running"
+        };
+        let has_result = task_result.is_some();
+        Ok(json!({
+            "valid": true,
+            "task_status": task_status,
+            "has_result": has_result,
+            "all_workflow_tasks_done": all_done,
+            "incomplete_count": incomplete_count,
+            "detail": detail
+        }))
+    } else {
+        Ok(json!({
+            "valid": false,
+            "task_status": task_status,
+            "reason": format!("Task status is {} (expected DONE). Complete the task first with workflow_completeTask.", task_status),
+            "suggestion": "Use workflow_saveProgress to save work, then workflow_completeTask to mark DONE."
+        }))
+    }
 }
 
 pub async fn policy_validate_parallel_completion(
