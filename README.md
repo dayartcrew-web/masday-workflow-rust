@@ -183,9 +183,64 @@ The `masday-mcp` crate exposes 89 MCP tools via stdio. Each tool corresponds to 
 
 ---
 
-## Commands Reference
+## CLI Commands Reference
 
-### Rust Commands
+### Setup & Install
+
+```bash
+masday setup                # Interactive setup wizard (first-time)
+masday quickstart           # One-command setup: db + migrate + install + ready
+masday install              # Install masday into current project
+masday install --force      # Force overwrite existing configs
+masday install --standalone # Standalone mode — templates only, no build
+masday install --remote URL # Connect to remote API server
+masday install --skip-build # Skip cargo build, use existing binaries
+masday uninstall            # Remove masday from current project
+```
+
+### Update
+
+```bash
+masday update               # Download latest binary from GitHub Releases
+                            # Copies to ~/.masday/bin/, re-syncs config
+```
+
+### Services
+
+```bash
+masday status               # Check health of all services
+masday serve                # Start API server + dashboard (port 30101)
+masday serve --port 8080    # Start on custom port
+masday mcp                  # Start MCP server (stdio — used by AI platforms)
+```
+
+### Database
+
+```bash
+masday db start             # Start PostgreSQL and Redis containers
+masday db stop              # Stop all containers
+masday db reset             # Delete data and recreate containers
+```
+
+### Local Embeddings
+
+```bash
+masday embed setup                    # Download ONNX Runtime + default model
+masday embed setup --model bge-small-en-v1.5  # Download specific model
+masday embed status                   # Show embedding setup status
+masday embed remove                   # Remove all embedding artifacts
+masday embed remove --models-only     # Remove models, keep ONNX Runtime
+```
+
+**Supported models:**
+
+| Model | Dimensions | Description |
+|-------|-----------|-------------|
+| `all-MiniLM-L6-v2` (default) | 384 | Fast, good quality |
+| `bge-small-en-v1.5` | 384 | BGE small variant |
+| `bge-base-en-v1.5` | 768 | BGE base, higher quality |
+
+### Developer Commands (from source)
 
 ```bash
 # Build
@@ -196,7 +251,6 @@ cargo build -p masday-mcp           # Build specific crate
 # Run
 cargo run -p masday-mcp             # Start MCP server
 cargo run -p masday-api             # Start API server
-cargo run -p masday-cli             # Run CLI
 
 # Test
 cargo test --workspace              # Run all tests
@@ -217,20 +271,20 @@ cargo clean                         # Remove build artifacts
 ```bash
 # Build and release from VPS (Linux + Windows)
 cd ~/masday-workflow-release
-bash release.sh v0.3.0
+bash release.sh v0.3.13
 
 # Build Linux only
-bash release.sh v0.3.0 --linux-only
+bash release.sh v0.3.13 --linux-only
 
 # Test without uploading
-bash release.sh v0.3.0 --dry-run
+bash release.sh v0.3.13 --dry-run
 ```
 
 ### Release Artifacts
 
-| Binary | Linux | Windows | Notes |
-|--------|-------|---------|-------|
-| **masday** (CLI) | `masday-linux-x86_64` (31MB) | `masday-windows-x86_64.exe` (12MB) | CLI with embedded templates |
+| Binary | Linux | Windows | Size |
+|--------|-------|---------|------|
+| **masday** (CLI) | `masday-linux-x86_64` (36MB) | `masday-windows-x86_64.exe` (17MB) | CLI with embedded templates |
 
 > **Note:** Windows binary is built without local ONNX embeddings. Use remote embedding provider (Ollama/OpenAI) on Windows.
 

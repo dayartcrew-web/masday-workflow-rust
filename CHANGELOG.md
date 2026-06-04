@@ -1,6 +1,23 @@
 # Changelog
 
-All notable changes to masday-workflow-rebuild.
+All notable changes to masday-workflow-rust.
+
+## [0.3.13] - 2026-06-04
+
+### Fixed
+- **`masday update`** now downloads the latest binary from GitHub Releases (`dayartcrew-web/masday-workflow-release`) instead of building from source
+  - Atomic rename pattern (`.tmp` → final) prevents corrupt installs
+  - Sets `0o755` executable permission on Unix
+  - Re-syncs agents/skills/hooks/MCP config after update
+- **`masday embed setup`** fixes HTTP 404 on model downloads — corrected HuggingFace repository mappings:
+  - `all-MiniLM-L6-v2` → `Qdrant/all-MiniLM-L6-v2-onnx` (`model.onnx` at root)
+  - `bge-small-en-v1.5` → `Xenova/bge-small-en-v1.5` (`onnx/model.onnx`)
+  - `bge-base-en-v1.5` → `Xenova/bge-base-en-v1.5` (`onnx/model.onnx`)
+  - New `ModelInfo` registry replaces flat `MODEL_FILES` constant
+  - Subdirectory creation for nested ONNX paths (e.g., `onnx/`)
+
+### Changed
+- Unknown model names in `embed setup` now return a descriptive error instead of silently falling through to a broken URL
 
 ## 2026-05-21 — Prisma to Drizzle ORM Migration
 
