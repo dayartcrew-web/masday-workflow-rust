@@ -19,7 +19,8 @@ fastembed = { version = "5", default-features = false, features = ["hf-hub-nativ
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
 
 [features]
-default = ["local-embeddings-static"]
+default = ["local-embeddings"]
+# Alias — enables local-embeddings-static (which pulls in fastembed + static ORT)
 local-embeddings = ["local-embeddings-static"]
 # Static link ONNX Runtime (default for Linux — downloads prebuilt binaries at compile time)
 local-embeddings-static = ["fastembed", "fastembed/ort-download-binaries-native-tls"]

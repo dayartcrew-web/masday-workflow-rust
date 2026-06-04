@@ -67,7 +67,7 @@ pub fn is_ort_installed() -> bool {
 /// Check if models are cached
 pub fn are_models_cached() -> bool {
     let models = models_dir();
-    models.is_dir() && fs::read_dir(&models).map_or(false, |mut d| d.next().is_some())
+    models.is_dir() && fs::read_dir(&models).is_ok_and(|mut d| d.next().is_some())
 }
 
 /// Download a file with progress bar
@@ -92,16 +92,22 @@ fn download_file(url: &str, dest: &std::path::Path, label: &str) -> Result<()> {
         .progress_chars("#>-"),
     );
 
-    let mut file = fs::File::create(dest)
-        .with_context(|| format!("Failed to create {}", dest.display()))?;
+    let mut file =
+        fs::File::create(dest).with_context(|| format!("Failed to create {}", dest.display()))?;
 
-    // Stream the response body
+    // Stream the response body chunk-by-chunk to avoid loading the entire
+    // file (ONNX Runtime archives are ~200 MB) into RAM at once.
     let mut downloaded: u64 = 0;
-    let body = response.bytes()?;
-    let chunk_size = 8192;
-    for chunk in body.chunks(chunk_size) {
-        std::io::Write::write_all(&mut file, chunk)?;
-        downloaded += chunk.len() as u64;
+    let mut stream = response;
+    let mut buf = [0u8; 8192];
+    loop {
+        use std::io::Read;
+        let n = stream.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        std::io::Write::write_all(&mut file, &buf[..n])?;
+        downloaded += n as u64;
         pb.set_position(downloaded);
     }
 
@@ -110,13 +116,16 @@ fn download_file(url: &str, dest: &std::path::Path, label: &str) -> Result<()> {
 }
 
 /// Extract library from archive (zip on Windows, tgz on Linux/Mac)
-fn extract_ort_from_archive(archive_path: &std::path::Path, dest_dir: &std::path::Path) -> Result<()> {
+fn extract_ort_from_archive(
+    archive_path: &std::path::Path,
+    dest_dir: &std::path::Path,
+) -> Result<()> {
     let lib_name = ort_lib_filename();
 
     if cfg!(windows) {
         let file = fs::File::open(archive_path)?;
-        let mut archive = zip::ZipArchive::new(file)
-            .with_context(|| "Failed to open zip archive")?;
+        let mut archive =
+            zip::ZipArchive::new(file).with_context(|| "Failed to open zip archive")?;
 
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i)?;
@@ -170,69 +179,33 @@ fn download_model(model_name: &str, cache_dir: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+/// Standard files needed for a HuggingFace ONNX embedding model
+const MODEL_FILES: &[&str] = &[
+    "model.onnx",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "config.json",
+];
+
 /// Get model files list (name, download URL) for a given model
 fn model_files(model_name: &str) -> (&'static str, Vec<(&'static str, String)>) {
     let base = "https://huggingface.co";
+    let rev = "main";
 
-    match model_name {
-        "all-MiniLM-L6-v2" => {
-            let id = "sentence-transformers/all-MiniLM-L6-v2";
-            let rev = "main";
-            (
-                id,
-                vec![
-                    ("model.onnx", format!("{}/{}/resolve/{}/model.onnx", base, id, rev)),
-                    ("tokenizer.json", format!("{}/{}/resolve/{}/tokenizer.json", base, id, rev)),
-                    ("tokenizer_config.json", format!("{}/{}/resolve/{}/tokenizer_config.json", base, id, rev)),
-                    ("special_tokens_map.json", format!("{}/{}/resolve/{}/special_tokens_map.json", base, id, rev)),
-                    ("config.json", format!("{}/{}/resolve/{}/config.json", base, id, rev)),
-                ],
-            )
-        }
-        "bge-small-en-v1.5" => {
-            let id = "BAAI/bge-small-en-v1.5";
-            let rev = "main";
-            (
-                id,
-                vec![
-                    ("model.onnx", format!("{}/{}/resolve/{}/model.onnx", base, id, rev)),
-                    ("tokenizer.json", format!("{}/{}/resolve/{}/tokenizer.json", base, id, rev)),
-                    ("tokenizer_config.json", format!("{}/{}/resolve/{}/tokenizer_config.json", base, id, rev)),
-                    ("special_tokens_map.json", format!("{}/{}/resolve/{}/special_tokens_map.json", base, id, rev)),
-                    ("config.json", format!("{}/{}/resolve/{}/config.json", base, id, rev)),
-                ],
-            )
-        }
-        "bge-base-en-v1.5" => {
-            let id = "BAAI/bge-base-en-v1.5";
-            let rev = "main";
-            (
-                id,
-                vec![
-                    ("model.onnx", format!("{}/{}/resolve/{}/model.onnx", base, id, rev)),
-                    ("tokenizer.json", format!("{}/{}/resolve/{}/tokenizer.json", base, id, rev)),
-                    ("tokenizer_config.json", format!("{}/{}/resolve/{}/tokenizer_config.json", base, id, rev)),
-                    ("special_tokens_map.json", format!("{}/{}/resolve/{}/special_tokens_map.json", base, id, rev)),
-                    ("config.json", format!("{}/{}/resolve/{}/config.json", base, id, rev)),
-                ],
-            )
-        }
-        _ => {
-            // Default fallback to all-MiniLM-L6-v2
-            let id = "sentence-transformers/all-MiniLM-L6-v2";
-            let rev = "main";
-            (
-                id,
-                vec![
-                    ("model.onnx", format!("{}/{}/resolve/{}/model.onnx", base, id, rev)),
-                    ("tokenizer.json", format!("{}/{}/resolve/{}/tokenizer.json", base, id, rev)),
-                    ("tokenizer_config.json", format!("{}/{}/resolve/{}/tokenizer_config.json", base, id, rev)),
-                    ("special_tokens_map.json", format!("{}/{}/resolve/{}/special_tokens_map.json", base, id, rev)),
-                    ("config.json", format!("{}/{}/resolve/{}/config.json", base, id, rev)),
-                ],
-            )
-        }
-    }
+    let hf_id = match model_name {
+        "bge-small-en-v1.5" => "BAAI/bge-small-en-v1.5",
+        "bge-base-en-v1.5" => "BAAI/bge-base-en-v1.5",
+        // Default fallback for unknown names
+        _ => "sentence-transformers/all-MiniLM-L6-v2",
+    };
+
+    let files: Vec<(&'static str, String)> = MODEL_FILES
+        .iter()
+        .map(|&f| (f, format!("{}/{}/resolve/{}/{}", base, hf_id, rev, f)))
+        .collect();
+
+    (hf_id, files)
 }
 
 // ─── CLI Entry Points ───────────────────────────────────────────────────
@@ -287,11 +260,15 @@ fn run_setup(model: &str) -> Result<()> {
         let ext = if cfg!(windows) { "zip" } else { "tgz" };
         let archive_path = emb_dir.join(format!("onnxruntime.{}", ext));
 
-        download_file(&url, &archive_path, "Downloading ONNX Runtime")?;
-        extract_ort_from_archive(&archive_path, &emb_dir)?;
+        let ort_result: Result<()> = (|| {
+            download_file(&url, &archive_path, "Downloading ONNX Runtime")?;
+            extract_ort_from_archive(&archive_path, &emb_dir)?;
+            Ok(())
+        })();
 
-        // Clean up archive
+        // Always clean up archive, even on failure
         let _ = fs::remove_file(&archive_path);
+        ort_result?;
     }
 
     println!();
@@ -320,18 +297,24 @@ fn run_setup(model: &str) -> Result<()> {
     println!();
 
     // Print setup instructions
-    println!("{}", style("Add to your shell config (~/.bashrc / ~/.zshrc):").bold());
-    println!("  {}{}",
+    println!(
+        "{}",
+        style("Add to your shell config (~/.bashrc / ~/.zshrc):").bold()
+    );
+    println!(
+        "  {}{}",
         style("export FASTEMBED_CACHE_DIR=").cyan(),
         style(&*model_dir_str).yellow()
     );
     if cfg!(windows) {
-        println!("  {}{}",
+        println!(
+            "  {}{}",
             style("set PATH=").cyan(),
             style(format!("{};%PATH%", &*emb_dir_str)).yellow()
         );
     } else {
-        println!("  {}{}",
+        println!(
+            "  {}{}",
             style("export LD_LIBRARY_PATH=").cyan(),
             style(format!("{}:$LD_LIBRARY_PATH", &*emb_dir_str)).yellow()
         );
@@ -340,7 +323,8 @@ fn run_setup(model: &str) -> Result<()> {
     println!();
     println!("{}", style("Or update config.toml:").bold());
     println!("  {}", style("embedding_provider = \"local\"").cyan());
-    println!("  {}{}",
+    println!(
+        "  {}{}",
         style("embedding_model = \"").cyan(),
         style(format!("{}\"", model)).yellow()
     );
@@ -359,7 +343,10 @@ fn run_status() -> Result<()> {
     println!("Embeddings dir: {}", emb_dir.display());
 
     if !emb_dir.exists() {
-        println!("  {} Not set up — run `masday embed setup`", style("✗").red());
+        println!(
+            "  {} Not set up — run `masday embed setup`",
+            style("✗").red()
+        );
         return Ok(());
     }
 
@@ -367,7 +354,8 @@ fn run_status() -> Result<()> {
     let ort_path = ort_lib_path();
     if ort_path.exists() {
         let meta = fs::metadata(&ort_path)?;
-        println!("  {} ONNX Runtime: {} ({})",
+        println!(
+            "  {} ONNX Runtime: {} ({})",
             style("✓").green(),
             ort_path.display(),
             format_bytes(meta.len())
@@ -383,7 +371,7 @@ fn run_status() -> Result<()> {
         let mut count = 0;
         if let Ok(entries) = fs::read_dir(&mdir) {
             for entry in entries.flatten() {
-                if entry.file_type().map_or(false, |t| t.is_dir()) {
+                if entry.file_type().is_ok_and(|t| t.is_dir()) {
                     count += 1;
                     if let Ok(size) = dir_size(&entry.path()) {
                         total_size += size;
@@ -392,14 +380,15 @@ fn run_status() -> Result<()> {
             }
         }
         if count > 0 {
-            println!("  {} Models: {} cached ({})",
+            println!(
+                "  {} Models: {} cached ({})",
                 style("✓").green(),
                 count,
                 format_bytes(total_size)
             );
             if let Ok(entries) = fs::read_dir(&mdir) {
                 for entry in entries.flatten() {
-                    if entry.file_type().map_or(false, |t| t.is_dir()) {
+                    if entry.file_type().is_ok_and(|t| t.is_dir()) {
                         println!("    - {}", entry.file_name().to_string_lossy());
                     }
                 }

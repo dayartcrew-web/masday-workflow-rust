@@ -214,15 +214,20 @@ impl EmbeddingService {
                     info!("Initializing ONNX Runtime from dynamic lib: {:?}", ort_path);
                     match ort::init_from(&ort_path) {
                         Ok(builder) => {
-                            let committed = builder.commit();
-                            if committed {
+                            // commit() returns bool — false means an environment was already
+                            // configured (which is fine, just informational).
+                            if builder.commit() {
                                 info!("ONNX Runtime dynamic init success");
                             } else {
-                                warn!("ONNX Runtime commit returned false");
+                                info!("ONNX Runtime already initialized, skipping");
                             }
                         }
-                        Err(e) => warn!("ONNX Runtime init_from failed: {}", e),
+                        Err(e) => {
+                            warn!("ONNX Runtime init_from failed: {}. Ensure the ONNX Runtime library matches your platform.", e);
+                        }
                     }
+                } else {
+                    info!("No dynamic ONNX Runtime found at {:?}. Run `masday embed setup` to download.", ort_path);
                 }
             }
         }
@@ -403,10 +408,9 @@ impl EmbeddingService {
             .map_err(|e| AppError::Internal(format!("Ollama request failed: {}", e)))?;
 
         if response.status().is_success() {
-            let result: OllamaEmbedResponse = response
-                .json()
-                .await
-                .map_err(|e| AppError::Internal(format!("Failed to parse Ollama response: {}", e)))?;
+            let result: OllamaEmbedResponse = response.json().await.map_err(|e| {
+                AppError::Internal(format!("Failed to parse Ollama response: {}", e))
+            })?;
 
             return result
                 .embeddings
@@ -440,10 +444,9 @@ impl EmbeddingService {
             )));
         }
 
-        let result: OllamaLegacyEmbedResponse = response
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to parse Ollama legacy response: {}", e)))?;
+        let result: OllamaLegacyEmbedResponse = response.json().await.map_err(|e| {
+            AppError::Internal(format!("Failed to parse Ollama legacy response: {}", e))
+        })?;
 
         Ok(result.embedding)
     }
