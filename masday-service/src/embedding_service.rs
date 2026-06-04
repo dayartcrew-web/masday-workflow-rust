@@ -194,6 +194,44 @@ impl EmbeddingService {
         let model_enum = config.model_enum();
         info!("Loading local embedding model: {:?}", model_enum);
 
+        // Try to init ONNX Runtime from dynamic lib if available
+        // (for Windows cross-compile / load-dynamic builds)
+        #[cfg(feature = "ort-load-dynamic")]
+        {
+            if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+                let ort_path = std::path::Path::new(&home)
+                    .join(".masday")
+                    .join("embeddings")
+                    .join(if cfg!(windows) {
+                        "onnxruntime.dll"
+                    } else if cfg!(target_os = "macos") {
+                        "libonnxruntime.dylib"
+                    } else {
+                        "libonnxruntime.so"
+                    });
+
+                if ort_path.exists() {
+                    info!("Initializing ONNX Runtime from dynamic lib: {:?}", ort_path);
+                    match ort::init_from(&ort_path) {
+                        Ok(builder) => {
+                            // commit() returns bool — false means an environment was already
+                            // configured (which is fine, just informational).
+                            if builder.commit() {
+                                info!("ONNX Runtime dynamic init success");
+                            } else {
+                                info!("ONNX Runtime already initialized, skipping");
+                            }
+                        }
+                        Err(e) => {
+                            warn!("ONNX Runtime init_from failed: {}. Ensure the ONNX Runtime library matches your platform.", e);
+                        }
+                    }
+                } else {
+                    info!("No dynamic ONNX Runtime found at {:?}. Run `masday embed setup` to download.", ort_path);
+                }
+            }
+        }
+
         // Configure cache directory
         let mut opts = fastembed::InitOptions::new(model_enum).with_show_download_progress(true);
 
@@ -370,10 +408,9 @@ impl EmbeddingService {
             .map_err(|e| AppError::Internal(format!("Ollama request failed: {}", e)))?;
 
         if response.status().is_success() {
-            let result: OllamaEmbedResponse = response
-                .json()
-                .await
-                .map_err(|e| AppError::Internal(format!("Failed to parse Ollama response: {}", e)))?;
+            let result: OllamaEmbedResponse = response.json().await.map_err(|e| {
+                AppError::Internal(format!("Failed to parse Ollama response: {}", e))
+            })?;
 
             return result
                 .embeddings
@@ -407,10 +444,9 @@ impl EmbeddingService {
             )));
         }
 
-        let result: OllamaLegacyEmbedResponse = response
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to parse Ollama legacy response: {}", e)))?;
+        let result: OllamaLegacyEmbedResponse = response.json().await.map_err(|e| {
+            AppError::Internal(format!("Failed to parse Ollama legacy response: {}", e))
+        })?;
 
         Ok(result.embedding)
     }

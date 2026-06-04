@@ -29,6 +29,9 @@ toml = "0.8"
 rust-embed = { version = "8", features = ["mime-guess"] }
 axum = "0.8"
 inquire = "0.7"
+zip = "2"
+flate2 = "1"
+tar = "0.4"
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -37,3 +40,7 @@ predicates = "3"
 [features]
 default = ["local-embeddings"]
 local-embeddings = ["masday-api/local-embeddings"]
+# Dynamic load ONNX Runtime — for Windows cross-compile
+# Build: cargo build -p masday-cli --no-default-features --features local-embeddings-dynamic --target x86_64-pc-windows-gnu
+local-embeddings-dynamic = ["masday-api/local-embeddings-dynamic"]
+ort-load-dynamic = ["local-embeddings-dynamic"]

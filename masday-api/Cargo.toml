@@ -22,3 +22,5 @@ serde_html_form = "0.2"
 [features]
 default = ["local-embeddings"]
 local-embeddings = ["masday-service/local-embeddings"]
+local-embeddings-dynamic = ["masday-service/local-embeddings-dynamic"]
+ort-load-dynamic = ["local-embeddings-dynamic"]

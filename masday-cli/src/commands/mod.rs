@@ -3,6 +3,7 @@
 //! Command implementations for the masday CLI.
 
 pub mod db;
+pub mod embed;
 pub mod install;
 pub mod mcp_cmd;
 pub mod quickstart;
