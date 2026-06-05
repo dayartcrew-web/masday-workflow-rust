@@ -202,30 +202,81 @@ async fn check_database_health(config: &MasdayConfig, verbose: bool) -> Componen
     if let Some(ref db_url) = config.database_url {
         check_postgres_external(db_url, verbose).await
     } else {
-        // Try TCP connect to default port before checking Docker
+        // Try to connect to PostgreSQL on configured port
         let db_port = config.db_port;
-        if let Ok(stream) = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", db_port)).await {
-            drop(stream);
-            let mut details = HashMap::new();
-            details.insert("port".to_string(), db_port.to_string());
-            if verbose {
-                details.insert("type".to_string(), "native".to_string());
-                details.insert("hint".to_string(), "port open — set database_url in config for full health check".to_string());
-            }
-            ComponentHealth {
-                status: HealthStatus::Healthy,
-                message: format!("{} port {} open", style("✓").green(), db_port),
-                details: if verbose { Some(details) } else { None },
-            }
-        } else if crate::docker::is_docker_available() {
-            check_postgres_docker(verbose)
-        } else {
-            ComponentHealth {
-                status: HealthStatus::NotConfigured,
-                message: "— no database configured".to_string(),
-                details: None,
+
+        // Build connection string from defaults
+        let default_url = format!(
+            "postgresql://USER:PASS@127.0.0.1:{}/masday",
+            db_port
+        );
+
+        // First try actual DB connection
+        match try_postgres_connect(&default_url).await {
+            Some(health) => health,
+            None => {
+                // If full connection fails, try just TCP port check
+                if let Ok(stream) = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", db_port)).await {
+                    drop(stream);
+                    let mut details = HashMap::new();
+                    details.insert("port".to_string(), db_port.to_string());
+                    if verbose {
+                        details.insert("type".to_string(), "native".to_string());
+                        details.insert("hint".to_string(), "port open but cannot connect — check credentials/database_url".to_string());
+                    }
+                    ComponentHealth {
+                        status: HealthStatus::Degraded,
+                        message: format!("{} port {} open but not accessible", style("⚠").yellow(), db_port),
+                        details: if verbose { Some(details) } else { None },
+                    }
+                } else if crate::docker::is_docker_available() {
+                    check_postgres_docker(verbose)
+                } else {
+                    ComponentHealth {
+                        status: HealthStatus::NotConfigured,
+                        message: "— no database configured".to_string(),
+                        details: None,
+                    }
+                }
             }
         }
+    }
+}
+
+/// Try connecting to PostgreSQL with a connection string.
+/// Returns Some(health) on success or definitive failure, None if can't connect at all.
+async fn try_postgres_connect(db_url: &str) -> Option<ComponentHealth> {
+    std::env::set_var("DATABASE_URL", db_url);
+    let start_time = std::time::Instant::now();
+
+    match masday_db::pool::init_pool_with_retry(2).await {
+        Ok(pool) => {
+            match masday_db::pool::health_check(&pool).await {
+                Ok(_) => {
+                    let latency = start_time.elapsed().as_millis();
+                    let mut details = HashMap::new();
+                    details.insert("latency_ms".to_string(), latency.to_string());
+                    details.insert("type".to_string(), "native".to_string());
+
+                    Some(ComponentHealth {
+                        status: HealthStatus::Healthy,
+                        message: format!("{} connected", style("✓").green()),
+                        details: Some(details),
+                    })
+                }
+                Err(e) => {
+                    let mut details = HashMap::new();
+                    details.insert("error".to_string(), e.to_string());
+
+                    Some(ComponentHealth {
+                        status: HealthStatus::Degraded,
+                        message: format!("{} health check failed", style("⚠").yellow()),
+                        details: Some(details),
+                    })
+                }
+            }
+        }
+        Err(_) => None, // Can't connect at all — caller should try TCP fallback
     }
 }
 
