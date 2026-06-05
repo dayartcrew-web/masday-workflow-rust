@@ -84,7 +84,17 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary
-        run: cargo build -p masday-cli --release --target ${{ matrix.target }}
+        run: |
+          FEATURES=""
+          # ONNX/ort-sys only has prebuilts for Linux x86_64
+          # macOS and Windows builds skip local embeddings
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
+            FEATURES="--features local-embeddings"
+          else
+            FEATURES="--no-default-features"
+          fi
+          cargo build -p masday-cli --release --target ${{ matrix.target }} $FEATURES
+        shell: bash
 
       - name: Strip binary (Unix only)
         if: runner.os != 'Windows'
