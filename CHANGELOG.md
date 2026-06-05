@@ -2,6 +2,17 @@
 
 All notable changes to Masday CLI are documented here.
 
+## [v0.3.22] - 2026-06-05
+
+### Changed
+- Release pipeline now publishes to source repo (no separate release repo needed)
+- Install script URL updated to `masday-workflow-rust/scripts/install-masday.sh`
+- All `PLACEHOLDER`/`CHANGE_ME_REMOVED` placeholders replaced with `CHANGE_ME` (GitGuardian fix)
+
+### Fixed
+- Windows `update.rs`: cfg conditional for `bail!()` (no unreachable statement on non-Windows)
+- `status.rs`: removed unused `gemini_home` variable (clippy fix)
+
 ## [v0.3.19] - 2026-06-05
 
 ### Added

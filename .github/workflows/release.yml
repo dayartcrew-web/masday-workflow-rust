@@ -1,18 +1,9 @@
 # Release masday CLI binary
 #
 # Builds cross-platform release binaries (Linux + macOS + Windows)
-# and publishes to the PUBLIC release repo (masday-workflow-release).
+# and publishes to this repo's GitHub Releases.
 #
 # Triggers on tag push (v*) or manual workflow_dispatch.
-# Source repo stays PRIVATE — only binaries go public.
-#
-# Required secrets:
-#   RELEASE_TOKEN — PAT with write access to masday-workflow-release repo
-#
-# Setup:
-#   Settings → Secrets and variables → Actions → New repository secret
-#   Name: RELEASE_TOKEN
-#   Value: ghp_xxxx (classic PAT with repo scope)
 
 name: Release
 
@@ -30,8 +21,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Public release repo
-  RELEASE_REPO: dayartcrew-web/masday-workflow-release
 
 jobs:
   build:
@@ -141,9 +130,7 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          # Flatten artifacts into single directory
           find artifacts -type f \( -name 'masday-*' -o -name 'masday-*.exe' \) -exec cp {} release-assets/ \;
-          # Generate checksums
           cd release-assets
           sha256sum masday-* > ../checksums-sha256.txt
           cp ../checksums-sha256.txt .
@@ -155,22 +142,9 @@ jobs:
       - name: Copy install script
         run: cp scripts/install-masday.sh release-assets/install.sh
 
-      - name: Create tag on release repo
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          # Create tag on public release repo via API
-          gh api repos/${{ env.RELEASE_REPO }}/git/refs \
-            -f ref="refs/tags/${TAG}" \
-            -f sha=$(gh api repos/${{ env.RELEASE_REPO }}/commits/main --jq '.sha') \
-            2>/dev/null || echo "Tag may already exist"
-
-      - name: Create GitHub Release on public repo
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.RELEASE_TOKEN }}
-          repository: ${{ env.RELEASE_REPO }}
           tag_name: ${{ steps.version.outputs.tag }}
           name: Masday CLI ${{ steps.version.outputs.tag }}
           body: |
@@ -185,28 +159,28 @@ jobs:
 
             ### Install (one-liner)
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-rust/master/scripts/install-masday.sh | bash
             ```
 
             ### Manual download
-            | Platform | File | Size |
-            |----------|------|------|
-            | Linux x86_64 | `masday-linux-x86_64` | ~31 MB |
-            | macOS Apple Silicon | `masday-macos-aarch64` | ~18 MB |
-            | macOS Intel | `masday-macos-x86_64` | ~18 MB |
-            | Windows x86_64 | `masday-windows-x86_64.exe` | ~12 MB |
+            | Platform | File |
+            |----------|------|
+            | Linux x86_64 | `masday-linux-x86_64` |
+            | macOS Apple Silicon | `masday-macos-aarch64` |
+            | macOS Intel | `masday-macos-x86_64` |
+            | Windows x86_64 | `masday-windows-x86_64.exe` |
 
             ```bash
             # Linux
-            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-release/releases/download/${{ steps.version.outputs.tag }}/masday-linux-x86_64
+            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-linux-x86_64
             chmod +x masday-linux-x86_64
 
             # macOS (Apple Silicon)
-            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-release/releases/download/${{ steps.version.outputs.tag }}/masday-macos-aarch64
+            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-macos-aarch64
             chmod +x masday-macos-aarch64
 
             # Windows (PowerShell)
-            Invoke-WebRequest -Uri https://github.com/dayartcrew-web/masday-workflow-release/releases/download/${{ steps.version.outputs.tag }}/masday-windows-x86_64.exe -OutFile masday.exe
+            Invoke-WebRequest -Uri https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-windows-x86_64.exe -OutFile masday.exe
             ```
 
             ### Quick start
