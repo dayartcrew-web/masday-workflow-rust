@@ -13,11 +13,11 @@ use std::path::Path;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::installer::{
-    all_platforms, check_prerequisites, detect_active_platforms, generate_mcp_config,
-    install_global_hooks, install_project_hooks, register_hooks_in_settings, resolve_mcp_binary,
-    sync_agents_to_global, sync_agents_to_project, sync_skills_to_global, sync_skills_to_project,
-    update_global_settings, verify_remote_url, AgentSyncReport, McpConfig, McpServerConfig,
-    Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
+    all_platforms, check_prerequisites, detect_active_platforms, detect_active_platforms_from_home,
+    generate_mcp_config, install_global_hooks, install_project_hooks, register_hooks_in_settings,
+    resolve_mcp_binary, sync_agents_to_global, sync_agents_to_project, sync_skills_to_global,
+    sync_skills_to_project, update_global_settings, verify_remote_url, AgentSyncReport, McpConfig,
+    McpServerConfig, Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
 };
 
 #[cfg(feature = "dev-mode")]
@@ -612,11 +612,39 @@ fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Resul
             }
         }
     } else {
+        // First check config.toml platforms list
+        if let Some(config) = crate::config::MasdayConfig::load() {
+            if !config.platforms.is_empty() {
+                let platforms: Vec<Platform> = config
+                    .platforms
+                    .iter()
+                    .filter_map(|name| match name.to_lowercase().as_str() {
+                        "claude-code" | "claude" => Some(Platform::ClaudeCode),
+                        "gemini" => Some(Platform::GeminiCli),
+                        "vscode" | "copilot" => Some(Platform::VsCodeCopilot),
+                        "opencode" => Some(Platform::OpenCode),
+                        _ => None,
+                    })
+                    .collect();
+                if !platforms.is_empty() {
+                    return Ok(platforms);
+                }
+            }
+        }
+
+        // Then detect from project/home
         let detected = detect_active_platforms(project_dir);
-        if detected.is_empty() {
+        let home_detected = detect_active_platforms_from_home();
+        let mut combined = detected;
+        for p in home_detected {
+            if !combined.contains(&p) {
+                combined.push(p);
+            }
+        }
+        if combined.is_empty() {
             Ok(all_platforms())
         } else {
-            Ok(detected)
+            Ok(combined)
         }
     }
 }

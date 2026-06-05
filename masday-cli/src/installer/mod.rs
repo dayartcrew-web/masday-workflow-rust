@@ -24,7 +24,9 @@ pub use hook_setup::{
     uninstall_global_hooks, uninstall_project_hooks, SyncReport as HookSyncReport,
 };
 pub use mcp_config::{generate_mcp_config, remove_mcp_config, McpConfig};
-pub use platform::{all_platforms, detect_active_platforms, Platform};
+pub use platform::{
+    all_platforms, detect_active_platforms, detect_active_platforms_from_home, Platform,
+};
 pub use remote::{resolve_mcp_binary, verify_remote_url};
 pub use settings::{
     remove_masday_entries, update_global_settings, update_json_config, McpServerConfig,
