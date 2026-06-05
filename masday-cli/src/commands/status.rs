@@ -374,7 +374,7 @@ fn check_redis_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
 /// Send Redis PING command and check for PONG response
 fn redis_ping_check(mut stream: &std::net::TcpStream) -> bool {
     use std::io::{Read, Write};
-    let ping_cmd = format!("*1\r\n$4\r\nPING\r\n");
+    let ping_cmd = "*1\r\n$4\r\nPING\r\n".to_string();
     if stream.write_all(ping_cmd.as_bytes()).is_err() {
         return false;
     }
