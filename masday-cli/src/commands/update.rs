@@ -3,7 +3,7 @@
 //! Updates Masday by downloading the latest binary from GitHub Releases
 //! and re-syncing configuration while preserving ~/.masday/config.toml.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use console::style;
 use home;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -333,6 +333,65 @@ fn restore_config(config_path: &Path, content: &str) -> Result<()> {
 }
 
 /// Run the full update
+/// Replace a binary file, handling Windows file locking.
+/// On Windows, a running process locks its executable, so direct rename fails.
+/// Strategy: old → .old, new → dest. On next run, .old gets cleaned up.
+fn replace_binary(tmp_path: &Path, dest: &Path) -> Result<()> {
+    // Try direct rename first (works on Linux/macOS and Windows if not running)
+    if fs::rename(tmp_path, dest).is_ok() {
+        return Ok(());
+    }
+
+    // Windows: running binary is locked. Use rename-swap strategy.
+    let old_path = dest.with_extension("old");
+
+    // Remove any previous .old file
+    let _ = fs::remove_file(&old_path);
+
+    // Rename current binary to .old
+    if let Err(e) = fs::rename(dest, &old_path) {
+        // If even rename to .old fails, try to copy instead
+        #[cfg(windows)]
+        {
+            // On Windows, try writing a small updater script
+            let script_path = dest.with_extension("update.bat");
+            let dest_str = dest.to_str().unwrap_or("");
+            let tmp_str = tmp_path.to_str().unwrap_or("");
+            let old_str = old_path.to_str().unwrap_or("");
+
+            let script = format!(
+                "@echo off\ntimeout /t 2 /nobreak >nul\nmove /y \"{}\" \"{}\"\ndel /f \"{}\" 2>nul\ndel \"%~f0\"\n",
+                tmp_str.replace('/', "\\"),
+                dest_str.replace('/', "\\"),
+                old_str.replace('/', "\\")
+            );
+            fs::write(&script_path, &script)?;
+
+            bail!(
+                "Cannot replace running binary on Windows.\n\n\
+                Update downloaded to: {}\n\n\
+                Run this to complete the update:\n  {}\n\n\
+                Or close this terminal and run:\n  masday update",
+                tmp_path.display(),
+                script_path.display()
+            );
+        }
+        bail!("Failed to replace binary: {}. Close any running masday processes and try again.", e);
+    }
+
+    // Now rename the new binary into place
+    fs::rename(tmp_path, dest).with_context(|| {
+        // If this fails, try to restore the old binary
+        let _ = fs::rename(&old_path, dest);
+        format!("Failed to install new binary. Old binary restored.")
+    })?;
+
+    // Clean up old binary (best effort)
+    let _ = fs::remove_file(&old_path);
+
+    Ok(())
+}
+
 fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
     let current = current_version();
     let target_version = if let Some(ref version) = args.version {
@@ -411,8 +470,8 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
             fs::set_permissions(&tmp_dest, PermissionsExt::from_mode(0o755))?;
         }
 
-        // Atomic rename
-        fs::rename(&tmp_dest, &dest)?;
+        // Replace binary — handle Windows file locking
+        replace_binary(&tmp_dest, &dest)?;;
 
         println!("  {} Installed to {}", style("✓").green(), dest.display());
     } else {
