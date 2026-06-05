@@ -169,6 +169,7 @@ jobs:
       - name: Create GitHub Release on public repo
         uses: softprops/action-gh-release@v2
         with:
+          token: *** secrets.RELEASE_TOKEN }}
           repository: ${{ env.RELEASE_REPO }}
           tag_name: ${{ steps.version.outputs.tag }}
           name: Masday CLI ${{ steps.version.outputs.tag }}
@@ -221,5 +222,3 @@ jobs:
             release-assets/masday-*
             release-assets/checksums-sha256.txt
             release-assets/install.sh
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
