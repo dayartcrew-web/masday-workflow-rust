@@ -176,12 +176,15 @@ jobs:
           body: |
             ## Masday CLI ${{ steps.version.outputs.tag }}
 
-            Self-contained binary with embedded templates (agents, skills, hooks).
+            Self-contained binary with embedded agents, skills, and hooks.
             No source code required — just download and run.
+
+            **Full Changelog**: https://github.com/dayartcrew-web/masday-workflow-rust/blob/master/CHANGELOG.md
+
+            ---
 
             ### Install (one-liner)
             ```bash
-            # Linux / macOS / Windows (Git Bash)
             curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
             ```
 
