@@ -123,8 +123,7 @@ pub async fn memory_owned(
         data;
 
     if let Ok(client) = pool.get().await {
-        let tags_json: serde_json::Value =
-            serde_json::from_str(&tags).unwrap_or(serde_json::json!([]));
+        let tags_list: Vec<String> = serde_json::from_str::<Vec<String>>(&tags).unwrap_or_default();
         let q = r#"
             INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content,
                                   importance_score, created_by_agent, tags, created_at, updated_at)
@@ -145,7 +144,7 @@ pub async fn memory_owned(
                     &content,
                     &importance,
                     &created_by,
-                    &tags_json,
+                    &tags_list,
                 ],
             )
             .await
@@ -178,8 +177,8 @@ pub async fn memory(data: &MemoryData<'_>) {
     };
 
     if let Ok(client) = pool.get().await {
-        let tags_json: serde_json::Value =
-            serde_json::from_str(data.tags).unwrap_or(serde_json::json!([]));
+        let tags_list: Vec<String> =
+            serde_json::from_str::<Vec<String>>(data.tags).unwrap_or_default();
         let q = r#"
             INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content,
                                   importance_score, created_by_agent, tags, created_at, updated_at)
@@ -200,7 +199,7 @@ pub async fn memory(data: &MemoryData<'_>) {
                     &data.content,
                     &data.importance,
                     &data.created_by,
-                    &tags_json,
+                    &tags_list,
                 ],
             )
             .await
