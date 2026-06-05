@@ -1,6 +1,6 @@
 [package]
 name = "masday-cli"
-version = "0.3.13"
+version = "0.3.19"
 edition = "2021"
 
 [[bin]]
