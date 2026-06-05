@@ -1,0 +1,132 @@
+---
+name: masday-code-analyze
+description: >
+  Analyze codebase structure, dependencies, patterns, and affected files. Performs semantic
+  search, builds context fingerprints, and identifies module relationships. Use when starting
+  a new feature, debugging, or understanding the codebase before planning.
+allowed-tools:
+  - semantic-search_code_search
+  - semantic-search_search_hybrid_context_pack
+  - filesystem_read
+  - filesystem_list
+  - filesystem_stat
+  - git_status
+  - git_diff
+---
+
+# Masday Code Analyze
+
+Analyze codebase for Masday workflow context.
+
+## Steps
+
+This skill enforces **mandatory step completion**. Each step must be completed before proceeding. Do not skip steps.
+
+
+1. **Scan project structure**
+   - Call `filesystem_list` with `recursive: true` on the project root
+   - Identify top-level directories and package structure
+
+2. **Get file metadata**
+   - Call `filesystem_stat` for key files: package.json, tsconfig.json, entry points
+   - Note file sizes and modification dates for change detection
+
+3. **Read key configuration**
+   - Call `filesystem_read` on package.json for dependencies and scripts
+   - Call `filesystem_read` on tsconfig.json for compiler settings
+   - Identify the monorepo package layout (16 packages in this project)
+
+4. **Semantic search**
+   - Call `semantic-search_code_search` with queries related to the task domain
+   - Example: `semantic-search_code_search({ query: "workflow engine state machine" })`
+   - Identify related modules, shared types, and dependency chains
+
+5. **Build context fingerprint**
+   - Call `semantic-search_search_hybrid_context_pack` with the relevant workflow/task IDs
+   - This generates a comprehensive context bundle for downstream tasks
+
+
+**GATE**: Verify steps 1-5 are complete before proceeding.
+
+6. **Check git state**
+   - Call `git_status` for current branch and uncommitted changes
+   - Call `git_diff` for staged and unstaged modifications
+   - Identify files that have been modified but not yet committed
+
+7. **Identify patterns**
+   - Module structure and exports (index.ts barrel files)
+   - Dependencies between packages (imports in package.json)
+   - Test coverage areas (test file locations)
+   - Configuration files (vitest.config.ts, .env patterns)
+
+8. **Summarize findings**
+   ```
+   Project: masday-workflow-reborn
+   Packages: 16 (core, store, db, orchestrator, memory, llm, ...)
+   Key deps: @modelcontextprotocol/sdk, zod, pino, better-sqlite3
+   Entry: apps/agent-runner (70 MCP tools via stdio)
+   Tests: 1017+ across 82+ files (vitest)
+   Git: <branch>, <N> modified files
+   ```
+
+9. **Clean up**
+   - Call `filesystem_delete` for any temporary files created during analysis
+
+## Never
+- Never skip any step — complete each step before proceeding
+- Never bypass a GATE marker without validating prior steps
+- Never claim completion without executing all steps in order
+
+- Never modify source files during analysis -- read-only operation
+- Never skip the git state check -- uncommitted changes affect context
+- Never fabricate file paths -- only reference files found via filesystem tools
+- Never skip the semantic search -- it reveals relationships not visible in file listings
+
+## Mandatory Review Pipeline
+
+When this skill completes work on a workflow task, it MUST follow this pipeline:
+
+`
+STEP 1: Save progress to PostgreSQL
+  workflow_saveProgress({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    agent_name: "<current-agent>",
+    progress_note: "<summary of work done>",
+    evidence: ["<files modified>", "<tests run>"]
+  })
+
+STEP 2: Submit for review
+  review_submit({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>",
+    reviewer_agent: "masday-reviewer",
+    decision: "<APPROVED | REWORK_REQUIRED | BLOCKED>",
+    notes: "<what was done, key decisions>",
+    gaps: ["<any gaps found>"]
+  })
+
+STEP 3: If REWORK_REQUIRED — fix and loop
+  - Fix the gaps identified in the review
+  - Re-save progress (workflow_saveProgress)
+  - Re-submit review (review_submit)
+  - Max 2 rework attempts, then STOP
+
+STEP 4: If APPROVED — validate completion
+  policy_validate_completion({
+    workflow_id: "<workflowId>",
+    task_id: "<taskId>"
+  })
+
+STEP 5: Complete task
+  workflow_completeTask({ workflow_id: "<workflowId>", task_id: "<taskId>" })
+
+STEP 6: Sync local state
+  local_sync({ cwd: process.cwd(), workflow_id: "<workflowId>" })
+`
+
+### Never
+- Never call workflow_completeTask without review_submit (APPROVED)
+- Never skip policy_validate_completion before completion
+- Never skip local_sync after completing a task
+- Never claim done without saving progress to PostgreSQL

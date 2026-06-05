@@ -160,59 +160,160 @@ jobs:
       - name: Copy install script
         run: cp scripts/install-masday.sh release-assets/install.sh
 
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          VERSION_NUM="${VERSION#v}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep '^v' | grep -v "^${VERSION}$" | head -1)
+          
+          echo "Generating changelog: ${VERSION} since ${PREV_TAG}"
+          
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"%s" 2>/dev/null || echo "")
+          else
+            COMMITS=$(git log -20 --pretty=format:"%s")
+          fi
+          
+          ADDED=""
+          FIXED=""
+          CHANGED=""
+          SECURITY=""
+          
+          while IFS= read -r commit; do
+            [ -z "$commit" ] && continue
+            case "$commit" in
+              feat:*|add:*|added:*)
+                line=$(echo "$commit" | sed 's/^[^:]*://;s/^ *//')
+                ADDED="${ADDED}- ${line}\n" ;;
+              fix:*|fixed:*|bugfix:*)
+                line=$(echo "$commit" | sed 's/^[^:]*://;s/^ *//')
+                FIXED="${FIXED}- ${line}\n" ;;
+              change:*|changed:*|refactor:*|update:*|release:*)
+                line=$(echo "$commit" | sed 's/^[^:]*://;s/^ *//')
+                CHANGED="${CHANGED}- ${line}\n" ;;
+              security:*|sec:*)
+                line=$(echo "$commit" | sed 's/^[^:]*://;s/^ *//')
+                SECURITY="${SECURITY}- ${line}\n" ;;
+              docs:*|doc:*)
+                # Skip docs-only commits from changelog body
+                ;;
+              *)
+                case "$commit" in
+                  *fix*|*bug*|*error*|*crash*)
+                    FIXED="${FIXED}- ${commit}\n" ;;
+                  *add*|*new*|*implement*|*support*)
+                    ADDED="${ADDED}- ${commit}\n" ;;
+                  *security*|*credential*|*secret*|*sanitize*)
+                    SECURITY="${SECURITY}- ${commit}\n" ;;
+                  *)
+                    CHANGED="${CHANGED}- ${commit}\n" ;;
+                esac
+                ;;
+            esac
+          done <<< "$COMMITS"
+          
+          # Build changelog body
+          BODY=""
+          if [ -n "$ADDED" ]; then
+            BODY="${BODY}### Added\n${ADDED}\n"
+          fi
+          if [ -n "$FIXED" ]; then
+            BODY="${BODY}### Fixed\n${FIXED}\n"
+          fi
+          if [ -n "$CHANGED" ]; then
+            BODY="${BODY}### Changed\n${CHANGED}\n"
+          fi
+          if [ -n "$SECURITY" ]; then
+            BODY="${BODY}### Security\n${SECURITY}\n"
+          fi
+          
+          # Write to file for multiline output
+          echo -e "$BODY" > /tmp/changelog.md
+          echo "Generated changelog:"
+          cat /tmp/changelog.md
+          
+          # Also update CHANGELOG.md in repo
+          DATE=$(date +%Y-%m-%d)
+          ENTRY="## [${VERSION}] - ${DATE}\n\n${BODY}"
+          
+          if [ -f CHANGELOG.md ]; then
+            if ! grep -q "\[${VERSION}\]" CHANGELOG.md; then
+              HEADER_END=$(grep -n "^## \\[*" CHANGELOG.md | head -1 | cut -d: -f1)
+              if [ -n "$HEADER_END" ]; then
+                head -n $((HEADER_END - 1)) CHANGELOG.md > /tmp/cl_top.md
+                tail -n +$HEADER_END CHANGELOG.md > /tmp/cl_bottom.md
+                (cat /tmp/cl_top.md; echo -e "$ENTRY"; cat /tmp/cl_bottom.md) > CHANGELOG.md
+              else
+                echo -e "$ENTRY" >> CHANGELOG.md
+              fi
+            fi
+          fi
+
+      - name: Build release body
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          cat > /tmp/release_body.md << TEMPLATE
+          ## Masday CLI ${VERSION}
+
+          Self-contained binary with embedded agents, skills, and hooks.
+          No source code required — just download and run.
+
+          **Full Changelog**: https://github.com/dayartcrew-web/masday-workflow-rust/blob/master/CHANGELOG.md
+
+          ---
+
+          ### What's Changed
+
+          TEMPLATE
+          
+          # Append auto-generated changelog
+          if [ -f /tmp/changelog.md ]; then
+            cat /tmp/changelog.md >> /tmp/release_body.md
+          else
+            echo "See [CHANGELOG.md](https://github.com/dayartcrew-web/masday-workflow-rust/blob/master/CHANGELOG.md) for details." >> /tmp/release_body.md
+          fi
+          
+          cat >> /tmp/release_body.md << 'FOOTER'
+
+          ---
+
+          ### Install (one-liner)
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-rust/master/scripts/install-masday.sh | bash
+          ```
+
+          ### Manual download
+          | Platform | File |
+          |----------|------|
+          | Linux x86_64 | `masday-linux-x86_64` |
+          | macOS Apple Silicon | `masday-macos-aarch64` |
+          | macOS Intel | `masday-macos-x86_64` |
+          | Windows x86_64 | `masday-windows-x86_64.exe` |
+
+          ### Quick start
+          ```
+          masday quickstart                              # Interactive setup wizard
+          masday install                                 # Install into current project
+          masday install --remote <url> --api-key <key>  # Remote mode
+          masday status                                  # Check system health
+          ```
+
+          ### Notes
+          - **Linux**: Includes ONNX runtime for local embeddings
+          - **macOS / Windows**: Uses remote embedding provider (Ollama or OpenAI)
+          - Config stored at `~/.masday/config.toml`
+          FOOTER
+          
+          echo "=== Release body ==="
+          cat /tmp/release_body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Masday CLI ${{ steps.version.outputs.tag }}
-          body: |
-            ## Masday CLI ${{ steps.version.outputs.tag }}
-
-            Self-contained binary with embedded agents, skills, and hooks.
-            No source code required — just download and run.
-
-            **Full Changelog**: https://github.com/dayartcrew-web/masday-workflow-rust/blob/master/CHANGELOG.md
-
-            ---
-
-            ### Install (one-liner)
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-rust/master/scripts/install-masday.sh | bash
-            ```
-
-            ### Manual download
-            | Platform | File |
-            |----------|------|
-            | Linux x86_64 | `masday-linux-x86_64` |
-            | macOS Apple Silicon | `masday-macos-aarch64` |
-            | macOS Intel | `masday-macos-x86_64` |
-            | Windows x86_64 | `masday-windows-x86_64.exe` |
-
-            ```bash
-            # Linux
-            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-linux-x86_64
-            chmod +x masday-linux-x86_64
-
-            # macOS (Apple Silicon)
-            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-macos-aarch64
-            chmod +x masday-macos-aarch64
-
-            # Windows (PowerShell)
-            Invoke-WebRequest -Uri https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-windows-x86_64.exe -OutFile masday.exe
-            ```
-
-            ### Quick start
-            ```
-            masday quickstart                              # Interactive setup wizard
-            masday install                                 # Install into current project
-            masday install --remote <url> --api-key <key>  # Remote mode
-            masday status                                  # Check system health
-            ```
-
-            ### Notes
-            - **Linux**: Includes ONNX runtime for local embeddings
-            - **macOS / Windows**: Uses remote embedding provider (Ollama or OpenAI)
-            - Config stored at `~/.masday/config.toml`
+          body_path: /tmp/release_body.md
           files: |
             release-assets/masday-*
             release-assets/checksums-sha256.txt
