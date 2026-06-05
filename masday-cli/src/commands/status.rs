@@ -50,15 +50,26 @@ pub struct HealthReport {
 impl HealthReport {
     /// Calculate overall health status
     pub fn overall_status(&self) -> (i32, String) {
-        let core_healthy = matches!(self.api.status, HealthStatus::Healthy)
-            && matches!(self.database.status, HealthStatus::Healthy);
+        // API is the only true core dependency
+        let api_ok = matches!(self.api.status, HealthStatus::Healthy);
 
-        if !core_healthy {
+        // DB is important but degraded (connected with issues) is acceptable
+        let db_ok = matches!(self.database.status, HealthStatus::Healthy)
+            || matches!(self.database.status, HealthStatus::Degraded);
+
+        if !api_ok {
             return (2, "critical".to_string());
         }
 
+        if !db_ok {
+            // DB unreachable but API ok — degraded, not critical
+            return (1, "degraded".to_string());
+        }
+
+        // Check non-core services
         let has_issues = !matches!(self.redis.status, HealthStatus::Healthy)
             || !matches!(self.mcp.status, HealthStatus::Healthy)
+            || !matches!(self.embedding.status, HealthStatus::Healthy)
             || !matches!(self.embedding.status, HealthStatus::Healthy);
 
         if has_issues {
