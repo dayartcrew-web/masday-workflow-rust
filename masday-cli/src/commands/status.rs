@@ -201,13 +201,30 @@ async fn check_database_health(config: &MasdayConfig, verbose: bool) -> Componen
 
     if let Some(ref db_url) = config.database_url {
         check_postgres_external(db_url, verbose).await
-    } else if crate::docker::is_docker_available() {
-        check_postgres_docker(verbose)
     } else {
-        ComponentHealth {
-            status: HealthStatus::NotConfigured,
-            message: "— no database configured".to_string(),
-            details: None,
+        // Try TCP connect to default port before checking Docker
+        let db_port = config.db_port;
+        if let Ok(stream) = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", db_port)).await {
+            drop(stream);
+            let mut details = HashMap::new();
+            details.insert("port".to_string(), db_port.to_string());
+            if verbose {
+                details.insert("type".to_string(), "native".to_string());
+                details.insert("hint".to_string(), "port open — set database_url in config for full health check".to_string());
+            }
+            ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: format!("{} port {} open", style("✓").green(), db_port),
+                details: if verbose { Some(details) } else { None },
+            }
+        } else if crate::docker::is_docker_available() {
+            check_postgres_docker(verbose)
+        } else {
+            ComponentHealth {
+                status: HealthStatus::NotConfigured,
+                message: "— no database configured".to_string(),
+                details: None,
+            }
         }
     }
 }
@@ -303,38 +320,71 @@ fn check_redis_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
         };
     }
 
-    if crate::docker::is_docker_available() {
-        if crate::docker::is_container_running("masday-redis") {
-            let mut details = HashMap::new();
-            details.insert("port".to_string(), ports::redis_port().to_string());
-            if verbose {
-                details.insert("type".to_string(), "docker".to_string());
-                details.insert("container".to_string(), "masday-redis".to_string());
-            }
+    let redis_port = config.redis_port;
 
-            ComponentHealth {
-                status: HealthStatus::Healthy,
-                message: format!("{} running", style("✓").green()),
-                details: if verbose { Some(details) } else { None },
-            }
-        } else {
-            let mut details = HashMap::new();
-            if verbose {
-                details.insert("hint".to_string(), "run 'masday db start'".to_string());
-            }
+    // 1. Try direct TCP connection + PING
+    if let Ok(stream) = std::net::TcpStream::connect(format!("127.0.0.1:{}", redis_port)) {
+        let ping_ok = redis_ping_check(&stream);
+        let mut details = HashMap::new();
+        details.insert("port".to_string(), redis_port.to_string());
+        if verbose {
+            details.insert("type".to_string(), if ping_ok { "native" } else { "tcp-open" }.to_string());
+        }
 
-            ComponentHealth {
-                status: HealthStatus::Degraded,
-                message: format!("{} not running", style("⚠").yellow()),
-                details: if verbose { Some(details) } else { None },
-            }
+        return ComponentHealth {
+            status: if ping_ok { HealthStatus::Healthy } else { HealthStatus::Degraded },
+            message: if ping_ok {
+                format!("{} connected (port {})", style("✓").green(), redis_port)
+            } else {
+                format!("{} port open but not responding to PING", style("⚠").yellow())
+            },
+            details: if verbose { Some(details) } else { None },
+        };
+    }
+
+    // 2. Check Docker container
+    if crate::docker::is_docker_available() && crate::docker::is_container_running("masday-redis") {
+        let mut details = HashMap::new();
+        details.insert("port".to_string(), redis_port.to_string());
+        if verbose {
+            details.insert("type".to_string(), "docker".to_string());
+            details.insert("container".to_string(), "masday-redis".to_string());
         }
-    } else {
-        ComponentHealth {
-            status: HealthStatus::NotConfigured,
-            message: "— Docker not available".to_string(),
-            details: None,
+
+        return ComponentHealth {
+            status: HealthStatus::Healthy,
+            message: format!("{} running (Docker)", style("✓").green()),
+            details: if verbose { Some(details) } else { None },
+        };
+    }
+
+    // 3. Not available
+    let mut details = HashMap::new();
+    if verbose {
+        details.insert("hint".to_string(), "run 'masday db start' or install Redis".to_string());
+    }
+
+    ComponentHealth {
+        status: HealthStatus::Unhealthy,
+        message: format!("{} not running", style("✗").red()),
+        details: if verbose { Some(details) } else { None },
+    }
+}
+
+/// Send Redis PING command and check for PONG response
+fn redis_ping_check(mut stream: &std::net::TcpStream) -> bool {
+    use std::io::{Read, Write};
+    let ping_cmd = format!("*1\r\n$4\r\nPING\r\n");
+    if stream.write_all(ping_cmd.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 64];
+    match stream.read(&mut buf) {
+        Ok(n) if n > 0 => {
+            let resp = String::from_utf8_lossy(&buf[..n]);
+            resp.contains("PONG")
         }
+        _ => false,
     }
 }
 
@@ -346,8 +396,11 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
     let mcp_exists = mcp_binary.exists();
 
     if mcp_exists {
-        // Dynamically count MCP tools by running --help
+        // Count tools from MCP binary
         let tool_count = count_mcp_tools(&mcp_binary);
+
+        // Check if MCP is registered in Claude Code settings
+        let registered = check_mcp_registration();
 
         let mut details = HashMap::new();
         if verbose {
@@ -355,16 +408,20 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
             if let Some(count) = tool_count {
                 details.insert("tool_count".to_string(), count.to_string());
             }
+            details.insert("registered".to_string(), registered.to_string());
         }
 
-        let message = if let Some(count) = tool_count {
-            format!("{} {} tools", style("✓").green(), count)
-        } else {
-            format!("{} registered", style("✓").green())
+        let message = match (tool_count, registered) {
+            (Some(count), true) => format!("{} {} tools, registered", style("✓").green(), count),
+            (Some(count), false) => format!("{} {} tools, not registered", style("⚠").yellow(), count),
+            (None, true) => format!("{} registered", style("✓").green()),
+            (None, false) => format!("{} binary found, not registered", style("⚠").yellow()),
         };
 
+        let status = if registered { HealthStatus::Healthy } else { HealthStatus::Degraded };
+
         ComponentHealth {
-            status: HealthStatus::Healthy,
+            status,
             message,
             details: if verbose { Some(details) } else { None },
         }
@@ -381,6 +438,33 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
             details: if verbose { Some(details) } else { None },
         }
     }
+}
+
+/// Check if MCP server is registered in Claude Code settings
+fn check_mcp_registration() -> bool {
+    let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    // Check Claude Code settings
+    let claude_settings = home.join(".claude").join("settings.json");
+    if claude_settings.exists() {
+        if let Ok(content) = std::fs::read_to_string(&claude_settings) {
+            if content.contains("masday-mcp") || content.contains("masday") {
+                return true;
+            }
+        }
+    }
+
+    // Check Claude Code project settings
+    let project_settings = std::path::Path::new(".claude").join("settings.json");
+    if project_settings.exists() {
+        if let Ok(content) = std::fs::read_to_string(&project_settings) {
+            if content.contains("masday-mcp") || content.contains("masday") {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// Count MCP tools by parsing --help output
