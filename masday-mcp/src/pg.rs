@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 static PG_POOL: Lazy<Arc<RwLock<Option<DbPool>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
 
 /// Embedded migration SQL — included at compile time from masday-db.
-const MIGRATION_SQL: &str = include_str!("../../masday-db/migrations/001_initial_schema.sql");
+const MIGRATION_SQL: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../masday-db/migrations/001_initial_schema.sql"));
 
 /// Read database_url from ~/.masday/config.toml directly.
 fn read_db_url_from_config() -> Option<String> {
