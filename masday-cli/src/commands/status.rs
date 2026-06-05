@@ -720,7 +720,6 @@ fn count_assets() -> Result<(usize, usize, usize)> {
     let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let masday_home = home.join(".masday");
     let claude_home = home.join(".claude");
-    let gemini_home = home.join(".gemini");
 
     // Count agents from all platforms
     let mut agents_count = 0usize;
