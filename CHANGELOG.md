@@ -2,6 +2,12 @@
 
 All notable changes to Masday CLI are documented here.
 
+## [v0.3.23] - 2026-06-05
+
+### Security
+- Git history rewritten: all credentials removed from entire git history
+- GitGuardian findings resolved (Generic Password, PostgreSQL URI, Database Assignment)
+
 ## [v0.3.22] - 2026-06-05
 
 ### Changed
