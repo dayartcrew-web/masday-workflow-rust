@@ -100,7 +100,7 @@ download_binary() {
     local tmp_file
     tmp_file="$(mktemp)"
 
-    info "Downloading masday ${version} for ${platform}..."
+    info "Downloading masday ${version} for ${platform}..." >&2
 
     if ! curl -fsSL --progress-bar -o "$tmp_file" "$download_url"; then
         rm -f "$tmp_file"
@@ -109,6 +109,7 @@ download_binary() {
         exit 1
     fi
 
+    # Only echo the tmp_file path to stdout (captured by caller)
     echo "$tmp_file"
 }
 
@@ -121,7 +122,7 @@ verify_checksum() {
 
     actual_hash="$(sha256sum "$binary_file" | awk '{print $1}')"
 
-    info "Verifying checksum..."
+    info "Verifying checksum..." >&2
     if checksums="$(curl -fsSL "$checksum_url" 2>/dev/null)"; then
         local platform
         platform="$(detect_platform)"
