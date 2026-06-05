@@ -6,8 +6,8 @@
 # Repo stays private — only the binary is downloaded.
 #
 # Usage:
-#   curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/install.sh | bash
-#   curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/v0.1.0/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
+#   MASDAY_VERSION=v0.3.13 curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
 #
 # Environment variables:
 #   MASDAY_QUICKSTART=1  Auto-run 'masday quickstart' after install (non-interactive)
@@ -16,7 +16,7 @@
 #
 set -euo pipefail
 
-REPO="dayartcrew-web/masday-workflow-rust"
+REPO="dayartcrew-web/masday-workflow-release"
 INSTALL_DIR="${HOME}/.masday/bin"
 BINARY_NAME="masday"
 
@@ -78,11 +78,7 @@ get_artifact_name() {
     case "$os" in
         linux)   echo "masday-linux-${arch}"         ;;
         windows) echo "masday-windows-${arch}.exe"    ;;
-        macos)
-            err "macOS builds are not available yet."
-            err "Track: https://github.com/dayartcrew-web/masday-workflow-release/issues"
-            exit 1
-            ;;
+        macos)   echo "masday-macos-${arch}"          ;;
         *)       echo "masday-${os}-${arch}"          ;;
     esac
 }
