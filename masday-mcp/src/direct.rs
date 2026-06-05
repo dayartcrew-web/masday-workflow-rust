@@ -99,27 +99,51 @@ fn collect_rows(rows: impl Iterator<Item = Result<Value, rusqlite::Error>>) -> V
 pub async fn workflow_create(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let conn = crate::sqlite::conn();
-    let id = new_id();
-    let name = args["name"].as_str().ok_or_else(|| err("missing name"))?;
-    let description = args.get("description").and_then(|v| v.as_str());
-    let status = "INIT";
-    let project_path = args
-        .get("project_path")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| {
-            std::env::current_dir()
-                .ok()
-                .map(|p| p.to_string_lossy().to_string())
-        });
-    let t = now();
-    let meta = args.get("metadata").cloned().unwrap_or(json!({}));
+    let (id, name, status, pg_info) = {
+        let conn = crate::sqlite::conn();
+        let id = new_id();
+        let name = args["name"].as_str().ok_or_else(|| err("missing name"))?;
+        let description = args.get("description").and_then(|v| v.as_str());
+        let status = "INIT";
+        let project_path = args
+            .get("project_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|p| p.to_string_lossy().to_string())
+            });
+        let t = now();
+        let meta = args.get("metadata").cloned().unwrap_or(json!({}));
 
-    conn.execute(
-        "INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-        params![id, name, description, status, project_path, meta.to_string(), &t, &t],
-    ).map_err(|e| err(e))?;
+        conn.execute(
+            "INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            params![id, name, description, status, project_path, meta.to_string(), &t, &t],
+        ).map_err(|e| err(e))?;
+
+        (
+            id.clone(),
+            name.to_string(),
+            status.to_string(),
+            (
+                id,
+                name.to_string(),
+                description.map(String::from),
+                project_path.clone(),
+                meta.to_string(),
+            ),
+        )
+    }; // conn dropped
+
+    crate::direct_pg::workflow_create(
+        &pg_info.0,
+        &pg_info.1,
+        pg_info.2.as_deref(),
+        pg_info.3.as_deref(),
+        &pg_info.4,
+    )
+    .await;
 
     Ok(json!({"id": id, "name": name, "status": status}))
 }
@@ -127,21 +151,27 @@ pub async fn workflow_create(
 pub async fn workflow_execute(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let conn = crate::sqlite::conn();
-    let id = args
-        .get("id")
-        .or_else(|| args.get("workflow_id"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| err("missing id"))?;
-    let t = now();
+    let id_str = {
+        let conn = crate::sqlite::conn();
+        let id = args
+            .get("id")
+            .or_else(|| args.get("workflow_id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| err("missing id"))?;
+        let t = now();
 
-    conn.execute(
-        "UPDATE workflows SET status='EXECUTE', updated_at=?1 WHERE id=?2",
-        params![&t, id],
-    )
-    .map_err(|e| err(e))?;
+        conn.execute(
+            "UPDATE workflows SET status='EXECUTE', updated_at=?1 WHERE id=?2",
+            params![&t, id],
+        )
+        .map_err(|e| err(e))?;
 
-    Ok(json!({"id": id, "status": "EXECUTE"}))
+        id.to_string()
+    }; // conn dropped
+
+    crate::direct_pg::workflow_status(&id_str, "EXECUTE").await;
+
+    Ok(json!({"id": id_str, "status": "EXECUTE"}))
 }
 
 pub async fn workflow_get_status(
@@ -717,50 +747,67 @@ pub async fn workflow_ping(
 // ============================================================================
 
 pub async fn memory_store(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let conn = crate::sqlite::conn();
-    let id = new_id();
-    let memory_type = args["memory_type"]
-        .as_str()
-        .or_else(|| args["type"].as_str())
-        .ok_or_else(|| err("missing type"))?;
-    let summary = args["summary"].as_str().unwrap_or("");
-    let content = args["content"]
-        .as_str()
-        .ok_or_else(|| err("missing content"))?;
-    let created_by = args["created_by_agent"]
-        .as_str()
-        .or_else(|| args["created_by"].as_str())
-        .unwrap_or("masday-mcp");
-    let importance = args["importance_score"]
-        .as_f64()
-        .or_else(|| args["importance"].as_f64())
-        .unwrap_or(0.5);
-    let tags: String = args
-        .get("tags")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            serde_json::Value::Array(
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .map(|s| json!(s))
-                    .collect(),
-            )
-            .to_string()
-        })
-        .unwrap_or("[]".to_string());
-    let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
-    let task_id = args.get("task_id").and_then(|v| v.as_str());
-    let t = now();
+    let (id, pg_args) = {
+        let conn = crate::sqlite::conn();
+        let id = new_id();
+        let memory_type = args["memory_type"]
+            .as_str()
+            .or_else(|| args["type"].as_str())
+            .ok_or_else(|| err("missing type"))?;
+        let summary = args["summary"].as_str().unwrap_or("");
+        let content = args["content"]
+            .as_str()
+            .ok_or_else(|| err("missing content"))?;
+        let created_by = args["created_by_agent"]
+            .as_str()
+            .or_else(|| args["created_by"].as_str())
+            .unwrap_or("masday-mcp");
+        let importance = args["importance_score"]
+            .as_f64()
+            .or_else(|| args["importance"].as_f64())
+            .unwrap_or(0.5);
+        let tags: String = args
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                serde_json::Value::Array(
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .map(|s| json!(s))
+                        .collect(),
+                )
+                .to_string()
+            })
+            .unwrap_or("[]".to_string());
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        let task_id = args.get("task_id").and_then(|v| v.as_str());
+        let t = now();
 
-    // Generate embedding from summary + content
-    let embedding_text = format!("{} {}", summary, content);
-    let embedding_vector = crate::embedding::text_to_vector(&embedding_text);
-    let embedding_blob = crate::embedding::vector_to_blob(&embedding_vector);
+        // Generate embedding from summary + content
+        let embedding_text = format!("{} {}", summary, content);
+        let embedding_vector = crate::embedding::text_to_vector(&embedding_text);
+        let embedding_blob = crate::embedding::vector_to_blob(&embedding_vector);
 
-    conn.execute(
-        "INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, embedding, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
-        params![id, workflow_id, task_id, memory_type, summary, content, importance, created_by, &tags, embedding_blob, &t, &t],
-    ).map_err(|e| err(e))?;
+        conn.execute(
+            "INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, embedding, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+            params![id, workflow_id, task_id, memory_type, summary, content, importance, created_by, &tags, embedding_blob, &t, &t],
+        ).map_err(|e| err(e))?;
+
+        let pg_args = (
+            id.clone(),
+            workflow_id.map(|s| s.to_string()),
+            task_id.map(|s| s.to_string()),
+            memory_type.to_string(),
+            summary.to_string(),
+            content.to_string(),
+            importance,
+            created_by.to_string(),
+            tags,
+        );
+        (id, pg_args)
+    }; // conn dropped
+
+    crate::direct_pg::memory_owned(pg_args).await;
 
     Ok(json!({"id": id, "stored": true}))
 }
@@ -1911,114 +1958,115 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         }));
     }
 
-    let mut pushed_workflows: Vec<String> = Vec::new();
-    let mut errors: Vec<Value> = Vec::new();
+    let (pushed_workflows, errors) = {
+        let mut pushed_workflows: Vec<String> = Vec::new();
+        let mut errors: Vec<Value> = Vec::new();
 
-    // Collect workflow files to push
-    let workflow_files: Vec<std::path::PathBuf> = if let Some(workflow_id) = workflow_id_opt {
-        // Push specific workflow
-        let workflow_id = crate::client::sanitize_id(workflow_id)
-            .ok_or_else(|| err("invalid workflow_id: contains disallowed characters"))?;
-        let workflow_file = state_dir.join(format!("{}.json", workflow_id));
-        if workflow_file.exists() {
-            vec![workflow_file]
+        // Collect workflow files to push
+        let workflow_files: Vec<std::path::PathBuf> = if let Some(workflow_id) = workflow_id_opt {
+            // Push specific workflow
+            let workflow_id = crate::client::sanitize_id(workflow_id)
+                .ok_or_else(|| err("invalid workflow_id: contains disallowed characters"))?;
+            let workflow_file = state_dir.join(format!("{}.json", workflow_id));
+            if workflow_file.exists() {
+                vec![workflow_file]
+            } else {
+                return Ok(json!({
+                    "pushed": false,
+                    "error": "Workflow file not found",
+                    "workflow_id": workflow_id,
+                    "expected_path": workflow_file.to_string_lossy().to_string()
+                }));
+            }
         } else {
-            return Ok(json!({
-                "pushed": false,
-                "error": "Workflow file not found",
-                "workflow_id": workflow_id,
-                "expected_path": workflow_file.to_string_lossy().to_string()
-            }));
-        }
-    } else {
-        // Push all workflows
-        let entries = std::fs::read_dir(&state_dir)
-            .map_err(|e| err(format!("Failed to read state directory: {}", e)))?;
+            // Push all workflows
+            let entries = std::fs::read_dir(&state_dir)
+                .map_err(|e| err(format!("Failed to read state directory: {}", e)))?;
 
-        entries
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("json"))
-            .collect()
-    };
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("json"))
+                .collect()
+        };
 
-    let conn = crate::sqlite::conn();
+        let conn = crate::sqlite::conn();
 
-    // Push each workflow state
-    for workflow_file in workflow_files {
-        let file_stem = workflow_file
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
+        // Push each workflow state
+        for workflow_file in workflow_files {
+            let file_stem = workflow_file
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
 
-        let content = match std::fs::read_to_string(&workflow_file) {
-            Ok(c) => c,
-            Err(e) => {
+            let content = match std::fs::read_to_string(&workflow_file) {
+                Ok(c) => c,
+                Err(e) => {
+                    errors.push(json!({
+                        "workflow_id": file_stem,
+                        "error": format!("Failed to read file: {}", e)
+                    }));
+                    continue;
+                }
+            };
+
+            let state: Value = match serde_json::from_str(&content) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(json!({
+                        "workflow_id": file_stem,
+                        "error": format!("Failed to parse JSON: {}", e)
+                    }));
+                    continue;
+                }
+            };
+
+            // Extract workflow data
+            let workflow_data = state.get("workflow").cloned().unwrap_or(state.clone());
+            let workflow_id = workflow_data
+                .get("id")
+                .or_else(|| workflow_data.get("workflow_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(file_stem);
+
+            // Validate workflow_id is safe
+            if crate::client::sanitize_id(workflow_id).is_none() {
                 errors.push(json!({
                     "workflow_id": file_stem,
-                    "error": format!("Failed to read file: {}", e)
+                    "error": "Invalid workflow_id (contains disallowed characters)"
                 }));
                 continue;
             }
-        };
 
-        let state: Value = match serde_json::from_str(&content) {
-            Ok(s) => s,
-            Err(e) => {
-                errors.push(json!({
-                    "workflow_id": file_stem,
-                    "error": format!("Failed to parse JSON: {}", e)
-                }));
-                continue;
-            }
-        };
+            let t = now();
 
-        // Extract workflow data
-        let workflow_data = state.get("workflow").cloned().unwrap_or(state.clone());
-        let workflow_id = workflow_data
-            .get("id")
-            .or_else(|| workflow_data.get("workflow_id"))
-            .and_then(|v| v.as_str())
-            .unwrap_or(file_stem);
+            // Update workflow in SQLite
+            // Check if workflow exists first
+            let exists: Result<i64, _> = conn.query_row(
+                "SELECT COUNT(*) FROM workflows WHERE id=?1",
+                params![workflow_id],
+                |row| row.get(0),
+            );
 
-        // Validate workflow_id is safe
-        if crate::client::sanitize_id(workflow_id).is_none() {
-            errors.push(json!({
-                "workflow_id": file_stem,
-                "error": "Invalid workflow_id (contains disallowed characters)"
-            }));
-            continue;
-        }
+            match exists {
+                Ok(0) | Err(_) => {
+                    // Workflow doesn't exist, insert it
+                    let name = workflow_data
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let description = workflow_data.get("description").and_then(|v| v.as_str());
+                    let status = workflow_data
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("INIT");
+                    let project_path = workflow_data
+                        .get("projectPath")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()));
+                    let metadata = workflow_data.get("metadata").cloned().unwrap_or(json!({}));
 
-        let t = now();
-
-        // Update workflow in SQLite
-        // Check if workflow exists first
-        let exists: Result<i64, _> = conn.query_row(
-            "SELECT COUNT(*) FROM workflows WHERE id=?1",
-            params![workflow_id],
-            |row| row.get(0),
-        );
-
-        match exists {
-            Ok(0) | Err(_) => {
-                // Workflow doesn't exist, insert it
-                let name = workflow_data
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let description = workflow_data.get("description").and_then(|v| v.as_str());
-                let status = workflow_data
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("INIT");
-                let project_path = workflow_data
-                    .get("projectPath")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()));
-                let metadata = workflow_data.get("metadata").cloned().unwrap_or(json!({}));
-
-                match conn.execute(
+                    match conn.execute(
                     "INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
                     params![workflow_id, name, description, status, project_path, metadata.to_string(), &t, &t],
                 ) {
@@ -2031,183 +2079,185 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                         continue;
                     }
                 }
-            }
-            Ok(_) => {
-                // Workflow exists, update it field by field
-                let mut updated = false;
-
-                if let Some(name) = workflow_data.get("name").and_then(|v| v.as_str()) {
-                    match conn.execute(
-                        "UPDATE workflows SET name=?1, updated_at=?2 WHERE id=?3",
-                        params![name, &t, workflow_id],
-                    ) {
-                        Ok(_) => updated = true,
-                        Err(e) => {
-                            errors.push(json!({
-                                "workflow_id": workflow_id,
-                                "error": format!("Failed to update name: {}", e)
-                            }));
-                        }
-                    }
                 }
+                Ok(_) => {
+                    // Workflow exists, update it field by field
+                    let mut updated = false;
 
-                if let Some(description) = workflow_data.get("description").and_then(|v| v.as_str())
-                {
-                    match conn.execute(
-                        "UPDATE workflows SET description=?1, updated_at=?2 WHERE id=?3",
-                        params![description, &t, workflow_id],
-                    ) {
-                        Ok(_) => updated = true,
-                        Err(e) => {
-                            errors.push(json!({
-                                "workflow_id": workflow_id,
-                                "error": format!("Failed to update description: {}", e)
-                            }));
-                        }
-                    }
-                }
-
-                if let Some(status) = workflow_data.get("status").and_then(|v| v.as_str()) {
-                    match conn.execute(
-                        "UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3",
-                        params![status, &t, workflow_id],
-                    ) {
-                        Ok(_) => updated = true,
-                        Err(e) => {
-                            errors.push(json!({
-                                "workflow_id": workflow_id,
-                                "error": format!("Failed to update status: {}", e)
-                            }));
-                        }
-                    }
-                }
-
-                if let Some(project_path) = workflow_data
-                    .get("projectPath")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()))
-                {
-                    match conn.execute(
-                        "UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3",
-                        params![project_path, &t, workflow_id],
-                    ) {
-                        Ok(_) => updated = true,
-                        Err(e) => {
-                            errors.push(json!({
-                                "workflow_id": workflow_id,
-                                "error": format!("Failed to update project_path: {}", e)
-                            }));
-                        }
-                    }
-                }
-
-                if let Some(metadata) = workflow_data.get("metadata").cloned() {
-                    let metadata_str = metadata.to_string();
-                    match conn.execute(
-                        "UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3",
-                        params![metadata_str, &t, workflow_id],
-                    ) {
-                        Ok(_) => updated = true,
-                        Err(e) => {
-                            errors.push(json!({
-                                "workflow_id": workflow_id,
-                                "error": format!("Failed to update metadata: {}", e)
-                            }));
-                        }
-                    }
-                }
-
-                if updated || errors.is_empty() {
-                    pushed_workflows.push(workflow_id.to_string());
-                }
-            }
-        }
-
-        // Generate embeddings for memory content in standalone mode
-        // Note: SQLite doesn't support vector operations, so we just log the embedding generation
-        // In HTTP mode (local.rs), embeddings are sent to the API for PostgreSQL storage
-        if let Some(tasks) = state.get("tasks").and_then(|v| v.as_array()) {
-            for task in tasks {
-                if let Some(task_id) = task.get("id").and_then(|v| v.as_str()) {
-                    let embedding_text = {
-                        let output = task.get("output").and_then(|v| v.as_str()).unwrap_or("");
-                        let result = task.get("result").and_then(|v| v.as_str()).unwrap_or("");
-                        format!("{} {}", output, result)
-                    };
-
-                    if !embedding_text.trim().is_empty() {
-                        // Generate embedding in standalone mode (mock provider only for simplicity)
-                        let embedding = generate_embedding_standalone_sync(&embedding_text);
-                        if let Some(embedding) = embedding {
-                            info!("Generated embedding for task {} in standalone mode: {} dimensions (not stored - SQLite lacks vector support)", task_id, embedding.len());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Update task states if present
-        if let Some(tasks) = state.get("tasks").and_then(|v| v.as_array()) {
-            for task in tasks {
-                let task_id = task.get("id").and_then(|v| v.as_str());
-                let task_status = task.get("status").and_then(|v| v.as_str());
-
-                if let (Some(tid), Some(tstatus)) = (task_id, task_status) {
-                    // Check if task exists
-                    let task_exists: Result<i64, _> = conn.query_row(
-                        "SELECT COUNT(*) FROM tasks WHERE id=?1",
-                        params![tid],
-                        |row| row.get(0),
-                    );
-
-                    match task_exists {
-                        Ok(0) | Err(_) => {
-                            // Task doesn't exist - need to check if we should insert or skip
-                            // For now, we'll skip tasks that don't exist to avoid FK violations
-                            continue;
-                        }
-                        Ok(_) => {
-                            // Update task status field by field
-                            let result = task.get("result").and_then(|v| v.as_str());
-                            let output = task.get("output").and_then(|v| v.as_str());
-
-                            // Update status and updated_at
-                            if let Err(e) = conn.execute(
-                                "UPDATE tasks SET status=?1, updated_at=?2 WHERE id=?3",
-                                params![tstatus, &t, tid],
-                            ) {
+                    if let Some(name) = workflow_data.get("name").and_then(|v| v.as_str()) {
+                        match conn.execute(
+                            "UPDATE workflows SET name=?1, updated_at=?2 WHERE id=?3",
+                            params![name, &t, workflow_id],
+                        ) {
+                            Ok(_) => updated = true,
+                            Err(e) => {
                                 errors.push(json!({
                                     "workflow_id": workflow_id,
-                                    "task_id": tid,
-                                    "error": format!("Failed to update task status: {}", e)
+                                    "error": format!("Failed to update name: {}", e)
                                 }));
                             }
+                        }
+                    }
 
-                            // Update result if present
-                            if let Some(r) = result {
+                    if let Some(description) =
+                        workflow_data.get("description").and_then(|v| v.as_str())
+                    {
+                        match conn.execute(
+                            "UPDATE workflows SET description=?1, updated_at=?2 WHERE id=?3",
+                            params![description, &t, workflow_id],
+                        ) {
+                            Ok(_) => updated = true,
+                            Err(e) => {
+                                errors.push(json!({
+                                    "workflow_id": workflow_id,
+                                    "error": format!("Failed to update description: {}", e)
+                                }));
+                            }
+                        }
+                    }
+
+                    if let Some(status) = workflow_data.get("status").and_then(|v| v.as_str()) {
+                        match conn.execute(
+                            "UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3",
+                            params![status, &t, workflow_id],
+                        ) {
+                            Ok(_) => updated = true,
+                            Err(e) => {
+                                errors.push(json!({
+                                    "workflow_id": workflow_id,
+                                    "error": format!("Failed to update status: {}", e)
+                                }));
+                            }
+                        }
+                    }
+
+                    if let Some(project_path) = workflow_data
+                        .get("projectPath")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()))
+                    {
+                        match conn.execute(
+                            "UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3",
+                            params![project_path, &t, workflow_id],
+                        ) {
+                            Ok(_) => updated = true,
+                            Err(e) => {
+                                errors.push(json!({
+                                    "workflow_id": workflow_id,
+                                    "error": format!("Failed to update project_path: {}", e)
+                                }));
+                            }
+                        }
+                    }
+
+                    if let Some(metadata) = workflow_data.get("metadata").cloned() {
+                        let metadata_str = metadata.to_string();
+                        match conn.execute(
+                            "UPDATE workflows SET metadata=?1, updated_at=?2 WHERE id=?3",
+                            params![metadata_str, &t, workflow_id],
+                        ) {
+                            Ok(_) => updated = true,
+                            Err(e) => {
+                                errors.push(json!({
+                                    "workflow_id": workflow_id,
+                                    "error": format!("Failed to update metadata: {}", e)
+                                }));
+                            }
+                        }
+                    }
+
+                    if updated || errors.is_empty() {
+                        pushed_workflows.push(workflow_id.to_string());
+                    }
+                }
+            }
+
+            // Generate embeddings for memory content in standalone mode
+            // Note: SQLite doesn't support vector operations, so we just log the embedding generation
+            // In HTTP mode (local.rs), embeddings are sent to the API for PostgreSQL storage
+            if let Some(tasks) = state.get("tasks").and_then(|v| v.as_array()) {
+                for task in tasks {
+                    if let Some(task_id) = task.get("id").and_then(|v| v.as_str()) {
+                        let embedding_text = {
+                            let output = task.get("output").and_then(|v| v.as_str()).unwrap_or("");
+                            let result = task.get("result").and_then(|v| v.as_str()).unwrap_or("");
+                            format!("{} {}", output, result)
+                        };
+
+                        if !embedding_text.trim().is_empty() {
+                            // Generate embedding in standalone mode (mock provider only for simplicity)
+                            let embedding = generate_embedding_standalone_sync(&embedding_text);
+                            if let Some(embedding) = embedding {
+                                info!("Generated embedding for task {} in standalone mode: {} dimensions (not stored - SQLite lacks vector support)", task_id, embedding.len());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update task states if present
+            if let Some(tasks) = state.get("tasks").and_then(|v| v.as_array()) {
+                for task in tasks {
+                    let task_id = task.get("id").and_then(|v| v.as_str());
+                    let task_status = task.get("status").and_then(|v| v.as_str());
+
+                    if let (Some(tid), Some(tstatus)) = (task_id, task_status) {
+                        // Check if task exists
+                        let task_exists: Result<i64, _> = conn.query_row(
+                            "SELECT COUNT(*) FROM tasks WHERE id=?1",
+                            params![tid],
+                            |row| row.get(0),
+                        );
+
+                        match task_exists {
+                            Ok(0) | Err(_) => {
+                                // Task doesn't exist - need to check if we should insert or skip
+                                // For now, we'll skip tasks that don't exist to avoid FK violations
+                                continue;
+                            }
+                            Ok(_) => {
+                                // Update task status field by field
+                                let result = task.get("result").and_then(|v| v.as_str());
+                                let output = task.get("output").and_then(|v| v.as_str());
+
+                                // Update status and updated_at
                                 if let Err(e) = conn.execute(
-                                    "UPDATE tasks SET result=?1, updated_at=?2 WHERE id=?3",
-                                    params![r, &t, tid],
+                                    "UPDATE tasks SET status=?1, updated_at=?2 WHERE id=?3",
+                                    params![tstatus, &t, tid],
                                 ) {
                                     errors.push(json!({
                                         "workflow_id": workflow_id,
                                         "task_id": tid,
-                                        "error": format!("Failed to update task result: {}", e)
+                                        "error": format!("Failed to update task status: {}", e)
                                     }));
                                 }
-                            }
 
-                            // Update output if present
-                            if let Some(o) = output {
-                                if let Err(e) = conn.execute(
-                                    "UPDATE tasks SET output=?1, updated_at=?2 WHERE id=?3",
-                                    params![o, &t, tid],
-                                ) {
-                                    errors.push(json!({
-                                        "workflow_id": workflow_id,
-                                        "task_id": tid,
-                                        "error": format!("Failed to update task output: {}", e)
-                                    }));
+                                // Update result if present
+                                if let Some(r) = result {
+                                    if let Err(e) = conn.execute(
+                                        "UPDATE tasks SET result=?1, updated_at=?2 WHERE id=?3",
+                                        params![r, &t, tid],
+                                    ) {
+                                        errors.push(json!({
+                                            "workflow_id": workflow_id,
+                                            "task_id": tid,
+                                            "error": format!("Failed to update task result: {}", e)
+                                        }));
+                                    }
+                                }
+
+                                // Update output if present
+                                if let Some(o) = output {
+                                    if let Err(e) = conn.execute(
+                                        "UPDATE tasks SET output=?1, updated_at=?2 WHERE id=?3",
+                                        params![o, &t, tid],
+                                    ) {
+                                        errors.push(json!({
+                                            "workflow_id": workflow_id,
+                                            "task_id": tid,
+                                            "error": format!("Failed to update task output: {}", e)
+                                        }));
+                                    }
                                 }
                             }
                         }
@@ -2215,12 +2265,16 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                 }
             }
         }
-    }
+        (pushed_workflows, errors)
+    }; // conn dropped
+       // Sync to PostgreSQL (on-demand)
+    let pg_synced = crate::direct_pg::workflows_bulk(&pushed_workflows).await;
 
     Ok(json!({
         "pushed": true,
         "workflows_pushed": pushed_workflows,
         "count": pushed_workflows.len(),
+        "postgresql_synced": pg_synced,
         "errors": errors
     }))
 }
@@ -2316,78 +2370,6 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .map_err(err)?;
 
     Ok(state)
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PostgreSQL Sync (Local Mode)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Workflow data tuple from SQLite
-#[allow(clippy::type_complexity)]
-type WorkflowRow = (
-    String,
-    String,
-    Option<String>,
-    String,
-    Option<String>,
-    String,
-);
-
-/// Read workflows from SQLite synchronously.
-fn read_sqlite_workflows(workflow_ids: &[String]) -> Vec<WorkflowRow> {
-    let conn = crate::sqlite::conn();
-    let mut results = Vec::new();
-    for wid in workflow_ids {
-        let r: Result<WorkflowRow, _> =
-            conn.query_row(
-                "SELECT id, name, COALESCE(description,''), status, project_path, COALESCE(metadata,'{}') FROM workflows WHERE id=?1",
-                params![wid],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
-            );
-        if let Ok(data) = r {
-            results.push(data);
-        }
-    }
-    results
-}
-
-/// Push workflow data to PostgreSQL after SQLite write.
-/// Called from local_push/local_sync via tokio::spawn to avoid Send issues.
-pub async fn sync_workflows_to_pg(workflow_ids: Vec<String>) -> bool {
-    let pool = match crate::pg::get_pool().await {
-        Some(p) => p,
-        None => return false,
-    };
-
-    // Read from SQLite synchronously (no MutexGuard held across await)
-    let workflows = read_sqlite_workflows(&workflow_ids);
-
-    let mut synced = 0;
-    for (id, name, desc, status, path, metadata) in workflows {
-        if let Ok(client) = pool.get().await {
-            let q = r#"
-                INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
-                ON CONFLICT (id) DO UPDATE SET
-                    name = EXCLUDED.name, description = EXCLUDED.description,
-                    status = EXCLUDED.status, project_path = EXCLUDED.project_path,
-                    metadata = EXCLUDED.metadata, updated_at = NOW()
-            "#;
-            match client
-                .execute(q, &[&id, &name, &desc, &status, &path, &metadata])
-                .await
-            {
-                Ok(_) => synced += 1,
-                Err(e) => tracing::warn!("PG sync failed {}: {}", id, e),
-            }
-        }
-    }
-    tracing::info!(
-        "Synced {}/{} workflows to PostgreSQL",
-        synced,
-        workflow_ids.len()
-    );
-    true
 }
 
 #[cfg(test)]

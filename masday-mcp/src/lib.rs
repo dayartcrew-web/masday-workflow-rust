@@ -6,6 +6,7 @@
 
 pub mod client;
 pub mod direct;
+pub mod direct_pg;
 pub mod embedding;
 pub mod mode;
 pub mod pg;
