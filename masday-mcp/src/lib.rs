@@ -894,21 +894,24 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
     tracing::info!("SQLite initialized");
 
-    // Init PostgreSQL (optional — graceful fallback)
-    let pg_available = pg::init_pg().await;
-    if pg_available {
-        tracing::info!("PostgreSQL connected — full local mode");
+    // PostgreSQL is on-demand — no connection at startup.
+    // pg::get_pool() will connect lazily when a tool needs to store/sync.
+    let pg_ready = pg::is_configured();
+    if pg_ready {
+        tracing::info!("PostgreSQL configured — will connect on-demand (store/sync)");
     } else {
-        tracing::warn!("PostgreSQL not available — SQLite-only fallback");
+        tracing::info!("No PostgreSQL configured — SQLite-only mode");
     }
 
-    // Use the same registry as standalone (direct.rs tools)
-    // direct.rs tools will check pg::get_pool() for PostgreSQL operations
     let registry = build_stdio_registry();
     tracing::info!(
         "Registered {} tools (local mode, PostgreSQL: {})",
         registry.count(),
-        if pg_available { "yes" } else { "no" }
+        if pg_ready {
+            "on-demand"
+        } else {
+            "not configured"
+        }
     );
 
     let mut server = JsonRpcServer::new(registry);
