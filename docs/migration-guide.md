@@ -67,7 +67,7 @@ cargo build --release
 ### Start API Server
 ```bash
 # Set environment variables
-export DATABASE_URL="postgresql://user:pass@localhost:54331/masday"
+export DATABASE_URL="postgresql://USER:PASS@localhost:5432/masday"
 export MASDAY_API_KEY="your-api-key"
 
 # Run API server (port 30101)
@@ -89,7 +89,7 @@ cargo run -p masday-mcp
 ### Start API Server (for Remote Mode)
 ```bash
 # Set environment variables
-export DATABASE_URL="postgresql://user:pass@localhost:54331/masday"
+export DATABASE_URL="postgresql://USER:PASS@localhost:5432/masday"
 export MASDAY_API_KEY="your-api-key"
 
 # Run API server (port 30101)
@@ -110,7 +110,7 @@ cargo run -p masday-api
       "args": ["/path/to/masday-workflow-rebuild/apps/agent-runner/dist/runtime/mcp.js"],
       "cwd": "/path/to/project-root",
       "env": {
-        "DATABASE_URL": "postgresql://user:pass@localhost:54331/masday",
+        "DATABASE_URL": "postgresql://USER:PASS@localhost:5432/masday",
         "EMBEDDING_PROVIDER": "fastembed",
         "EMBEDDING_MODEL": "fast-bge-base-en-v1.5"
       }
