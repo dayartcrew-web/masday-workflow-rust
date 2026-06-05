@@ -458,12 +458,17 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
     let mcp_binary = mcp_paths.iter().find(|p| p.exists()).cloned();
     let mcp_exists = mcp_binary.is_some();
 
-    if mcp_exists {
-        // Count tools from MCP binary
-        let tool_count = count_mcp_tools(mcp_binary.as_ref().unwrap());
+    // Check if MCP is registered in platform settings
+    let registered = check_mcp_registration();
 
-        // Check if MCP is registered in Claude Code settings
-        let registered = check_mcp_registration();
+    // Detect MCP mode from config
+    let config = MasdayConfig::load().unwrap_or_default();
+    let mcp_mode = detect_mcp_mode(&config, &home);
+
+    if mcp_exists {
+        // Count tools — try running binary with --list-tools, fallback to config count
+        let tool_count = count_mcp_tools_from_config(&home)
+            .or_else(|| count_mcp_tools(mcp_binary.as_ref().unwrap()));
 
         let mut details = HashMap::new();
         if verbose {
@@ -472,13 +477,14 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
                 details.insert("tool_count".to_string(), count.to_string());
             }
             details.insert("registered".to_string(), registered.to_string());
+            details.insert("mode".to_string(), mcp_mode.clone());
         }
 
         let message = match (tool_count, registered) {
-            (Some(count), true) => format!("{} {} tools, registered", style("✓").green(), count),
-            (Some(count), false) => format!("{} {} tools, not registered", style("⚠").yellow(), count),
-            (None, true) => format!("{} registered", style("✓").green()),
-            (None, false) => format!("{} binary found, not registered", style("⚠").yellow()),
+            (Some(count), true) => format!("{} {} tools ({}, registered)", style("✓").green(), count, mcp_mode),
+            (Some(count), false) => format!("{} {} tools ({}, not registered)", style("⚠").yellow(), count, mcp_mode),
+            (None, true) => format!("{} {} mode, registered", style("✓").green(), mcp_mode),
+            (None, false) => format!("{} {} mode, not registered", style("⚠").yellow(), mcp_mode),
         };
 
         let status = if registered { HealthStatus::Healthy } else { HealthStatus::Degraded };
@@ -486,6 +492,19 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
         ComponentHealth {
             status,
             message,
+            details: if verbose { Some(details) } else { None },
+        }
+    } else if registered {
+        // MCP registered but binary not at expected paths — might be installed elsewhere
+        let mut details = HashMap::new();
+        if verbose {
+            details.insert("mode".to_string(), mcp_mode.clone());
+            details.insert("registered".to_string(), "true".to_string());
+        }
+
+        ComponentHealth {
+            status: HealthStatus::Healthy,
+            message: format!("{} {} mode, registered", style("✓").green(), mcp_mode),
             details: if verbose { Some(details) } else { None },
         }
     } else {
@@ -501,6 +520,76 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
             details: if verbose { Some(details) } else { None },
         }
     }
+}
+
+/// Detect MCP mode from config and registration
+fn detect_mcp_mode(config: &MasdayConfig, home: &std::path::Path) -> String {
+    // Check ~/.claude.json for MCP server config
+    let claude_json = home.join(".claude.json");
+    if claude_json.exists() {
+        if let Ok(content) = std::fs::read_to_string(&claude_json) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(mcp) = val.get("mcpServers").and_then(|m| m.get("masday")) {
+                    // Check if it uses stdio or sse/http
+                    if mcp.get("url").is_some() {
+                        let url = mcp["url"].as_str().unwrap_or("");
+                        if url.contains("localhost") || url.contains("127.0.0.1") {
+                            return "local".to_string();
+                        }
+                        return "remote".to_string();
+                    }
+                    if mcp.get("command").is_some() {
+                        return "stdio".to_string();
+                    }
+                }
+            }
+            // Fallback: string search
+            if content.contains("\"url\"") && content.contains("localhost") {
+                return "local".to_string();
+            }
+            if content.contains("\"command\"") {
+                return "stdio".to_string();
+            }
+        }
+    }
+
+    // Check config mode
+    match config.mode.as_str() {
+        "local" => "local".to_string(),
+        "remote" => "remote".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+/// Count tools from MCP config / cached tool list
+fn count_mcp_tools_from_config(home: &std::path::Path) -> Option<usize> {
+    // Check for cached tool count
+    let tool_cache = home.join(".masday").join("mcp-tools-count");
+    if tool_cache.exists() {
+        if let Ok(count_str) = std::fs::read_to_string(&tool_cache) {
+            if let Ok(count) = count_str.trim().parse::<usize>() {
+                return Some(count);
+            }
+        }
+    }
+
+    // Count from tool module files
+    let tools_dir = home.join(".masday").join("tools");
+    if tools_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&tools_dir) {
+            let count = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path().extension().map(|ext| ext == "md").unwrap_or(false)
+                })
+                .count();
+            if count > 0 {
+                return Some(count);
+            }
+        }
+    }
+
+    None
 }
 
 /// Check if MCP server is registered in platform settings
@@ -559,19 +648,31 @@ fn check_mcp_registration() -> bool {
 
 /// Count MCP tools by parsing --help output
 fn count_mcp_tools(mcp_binary: &std::path::Path) -> Option<usize> {
+    // Try to get tool count from MCP binary startup log
     let output = Command::new(mcp_binary)
         .arg("--help")
         .output()
         .ok()?;
 
-    if !output.status.success() {
-        return None;
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Look for "Registered N tools" in output
+    for line in combined.lines() {
+        if let Some(pos) = line.find("Registered ") {
+            let rest = &line[pos + 11..];
+            if let Some(end) = rest.find(' ') {
+                if let Ok(count) = rest[..end].parse::<usize>() {
+                    return Some(count);
+                }
+            }
+        }
     }
 
-    let help_text = String::from_utf8(output.stdout).ok()?;
-    // Count lines containing "Available MCP tools:" or similar
-    // This is a fallback heuristic
-    Some(help_text.lines().filter(|line| line.contains("tool")).count())
+    None
 }
 
 /// Check embedding service health
