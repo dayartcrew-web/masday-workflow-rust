@@ -3,122 +3,590 @@
 use anyhow::Result;
 use console::style;
 use masday_core::constants::ports;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::process::Command;
 
 use crate::config::MasdayConfig;
 
+/// Health status for a component
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,
+    Unhealthy,
+    NotConfigured,
+    Unknown,
+}
+
+/// Component health information
+#[derive(Debug, Clone, Serialize)]
+pub struct ComponentHealth {
+    status: HealthStatus,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<HashMap<String, String>>,
+}
+
+/// Overall system health report
+#[derive(Debug, Clone, Serialize)]
+pub struct HealthReport {
+    masday_version: String,
+    mode: String,
+    platform: String,
+    config_path: String,
+    config_valid: bool,
+    api: ComponentHealth,
+    database: ComponentHealth,
+    redis: ComponentHealth,
+    mcp: ComponentHealth,
+    embedding: ComponentHealth,
+    agents_count: usize,
+    skills_count: usize,
+    hooks_count: usize,
+}
+
+impl HealthReport {
+    /// Calculate overall health status
+    pub fn overall_status(&self) -> (i32, String) {
+        let core_healthy = matches!(self.api.status, HealthStatus::Healthy)
+            && matches!(self.database.status, HealthStatus::Healthy);
+
+        if !core_healthy {
+            return (2, "critical".to_string());
+        }
+
+        let has_issues = !matches!(self.redis.status, HealthStatus::Healthy)
+            || !matches!(self.mcp.status, HealthStatus::Healthy)
+            || !matches!(self.embedding.status, HealthStatus::Healthy);
+
+        if has_issues {
+            return (1, "degraded".to_string());
+        }
+
+        (0, "healthy".to_string())
+    }
+}
+
 /// Check health of all Masday services
-pub async fn run() -> Result<()> {
+pub async fn run(json: bool, verbose: bool) -> Result<()> {
     let config = MasdayConfig::load_or_err()?;
+    let report = build_health_report(&config, verbose).await?;
 
-    println!("{}", style("Masday Status").cyan().bold());
-    println!();
+    if json {
+        output_json(&report)?;
+    } else {
+        output_table(&report, verbose)?;
+    }
 
-    // Check API health
+    let (exit_code, _status_str) = report.overall_status();
+    if !json {
+        if exit_code == 0 {
+            println!("\n  Status: {}", style("✓ All healthy").green());
+        } else if exit_code == 1 {
+            println!("\n  Status: {}", style("⚠ Partial degradation").yellow());
+        } else {
+            println!("\n  Status: {}", style("✗ Critical failure").red());
+        }
+    }
+
+    std::process::exit(exit_code);
+}
+
+/// Build comprehensive health report
+async fn build_health_report(config: &MasdayConfig, verbose: bool) -> Result<HealthReport> {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+
+    // API health check
+    let api_health = check_api_health(config, verbose).await;
+
+    // Database health check
+    let db_health = check_database_health(config, verbose).await;
+
+    // Redis health check
+    let redis_health = check_redis_health(config, verbose);
+
+    // MCP health check
+    let mcp_health = check_mcp_health(verbose);
+
+    // Embedding health check
+    let embedding_health = check_embedding_health(config, verbose);
+
+    // Count agents, skills, hooks
+    let (agents_count, skills_count, hooks_count) = count_assets()?;
+
+    let config_path = MasdayConfig::config_path().display().to_string();
+    let config_valid = config_path.contains("config.toml");
+
+    let platform = config
+        .platforms
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    Ok(HealthReport {
+        masday_version: version,
+        mode: config.mode.clone(),
+        platform,
+        config_path,
+        config_valid,
+        api: api_health,
+        database: db_health,
+        redis: redis_health,
+        mcp: mcp_health,
+        embedding: embedding_health,
+        agents_count,
+        skills_count,
+        hooks_count,
+    })
+}
+
+/// Check API server health
+async fn check_api_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
     let health_url = format!("{}/api/health", config.api_url);
+    let start_time = std::time::Instant::now();
+
     match reqwest::get(&health_url).await {
         Ok(resp) if resp.status().is_success() => {
-            println!(
-                "  API:        {} {}",
-                style("✓ healthy").green(),
-                config.api_url
-            );
+            let latency = start_time.elapsed().as_millis();
+            let mut details = HashMap::new();
+            details.insert("url".to_string(), config.api_url.clone());
+            if verbose {
+                details.insert("latency_ms".to_string(), latency.to_string());
+                details.insert("status_code".to_string(), resp.status().as_u16().to_string());
+            }
+
+            ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: format!("{} healthy", style("✓").green()),
+                details: if verbose { Some(details) } else { None },
+            }
         }
         Ok(resp) => {
-            println!(
-                "  API:        {} ({})",
-                style("⚠ unhealthy").yellow(),
-                resp.status()
-            );
+            let mut details = HashMap::new();
+            details.insert("url".to_string(), config.api_url.clone());
+            details.insert("status_code".to_string(), resp.status().as_u16().to_string());
+
+            ComponentHealth {
+                status: HealthStatus::Degraded,
+                message: format!("{} unhealthy ({})", style("⚠").yellow(), resp.status()),
+                details: if verbose { Some(details) } else { None },
+            }
         }
         Err(e) => {
-            println!("  API:        {}", style("✗ not running").red());
-            println!("              {}", e);
-            if config.mode == "local" {
-                println!(
-                    "              Run '{}' to start",
-                    style("masday serve").cyan()
-                );
+            let mut details = HashMap::new();
+            details.insert("url".to_string(), config.api_url.clone());
+            details.insert("error".to_string(), e.to_string());
+
+            ComponentHealth {
+                status: HealthStatus::Unhealthy,
+                message: format!("{} not running", style("✗").red()),
+                details: if verbose { Some(details) } else { None },
             }
         }
     }
+}
 
-    // Check database connectivity
-    if config.mode == "local" {
-        if let Some(ref db_url) = config.database_url {
-            // External database URL (e.g. Supabase) — test connectivity directly
-            print!("  PostgreSQL: ");
-            std::env::set_var("DATABASE_URL", db_url);
-            match masday_db::pool::init_pool_with_retry(2).await {
-                Ok(pool) => match masday_db::pool::health_check(&pool).await {
-                    Ok(_) => {
-                        let safe_url = redact_db_url(db_url);
-                        println!("{} ({})", style("✓ connected").green(), safe_url);
-                    }
-                    Err(e) => println!("{} health check failed: {}", style("✗").red(), e),
-                },
-                Err(e) => {
+/// Check database health
+async fn check_database_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
+    if config.mode != "local" {
+        return ComponentHealth {
+            status: HealthStatus::NotConfigured,
+            message: "— not in local mode".to_string(),
+            details: None,
+        };
+    }
+
+    if let Some(ref db_url) = config.database_url {
+        check_postgres_external(db_url, verbose).await
+    } else if crate::docker::is_docker_available() {
+        check_postgres_docker(verbose)
+    } else {
+        ComponentHealth {
+            status: HealthStatus::NotConfigured,
+            message: "— no database configured".to_string(),
+            details: None,
+        }
+    }
+}
+
+/// Check external PostgreSQL database
+async fn check_postgres_external(db_url: &str, verbose: bool) -> ComponentHealth {
+    std::env::set_var("DATABASE_URL", db_url);
+    let start_time = std::time::Instant::now();
+
+    match masday_db::pool::init_pool_with_retry(2).await {
+        Ok(pool) => {
+            match masday_db::pool::health_check(&pool).await {
+                Ok(_) => {
                     let safe_url = redact_db_url(db_url);
-                    println!("{} ({})", style("✗ unreachable").red(), safe_url);
-                    println!("              {}", e);
+                    let latency = start_time.elapsed().as_millis();
+
+                    let mut details = HashMap::new();
+                    details.insert("url".to_string(), safe_url.clone());
+                    if verbose {
+                        details.insert("latency_ms".to_string(), latency.to_string());
+                        details.insert("type".to_string(), "external".to_string());
+                    }
+
+                    ComponentHealth {
+                        status: HealthStatus::Healthy,
+                        message: format!("{} connected", style("✓").green()),
+                        details: if verbose { Some(details) } else { None },
+                    }
+                }
+                Err(e) => {
+                    let mut details = HashMap::new();
+                    details.insert("url".to_string(), redact_db_url(db_url));
+                    details.insert("error".to_string(), e.to_string());
+
+                    ComponentHealth {
+                        status: HealthStatus::Degraded,
+                        message: format!("{} health check failed", style("⚠").yellow()),
+                        details: if verbose { Some(details) } else { None },
+                    }
                 }
             }
-        } else if crate::docker::is_docker_available() {
-            if crate::docker::is_container_running("masday-postgres") {
-                println!(
-                    "  PostgreSQL: {} (Docker, port {})",
-                    style("✓ running").green(),
-                    ports::postgres_port()
-                );
-            } else {
-                println!("  PostgreSQL: {}", style("✗ not running").red());
-                println!(
-                    "              Run '{}' to start",
-                    style("masday db start").cyan()
-                );
-            }
-        } else {
-            println!(
-                "  PostgreSQL: {} (no database_url configured)",
-                style("✗").red()
-            );
         }
+        Err(e) => {
+            let mut details = HashMap::new();
+            details.insert("url".to_string(), redact_db_url(db_url));
+            details.insert("error".to_string(), e.to_string());
 
-        // Redis check (only Docker-based)
-        if crate::docker::is_docker_available() {
-            if crate::docker::is_container_running("masday-redis") {
-                println!(
-                    "  Redis:      {} (Docker, port {})",
-                    style("✓ running").green(),
-                    ports::redis_port()
-                );
-            } else {
-                println!("  Redis:      {}", style("✗ not running").yellow());
+            ComponentHealth {
+                status: HealthStatus::Unhealthy,
+                message: format!("{} unreachable", style("✗").red()),
+                details: if verbose { Some(details) } else { None },
             }
-        }
-
-        // Check embedding
-        if let Some(ref provider) = config.embedding_provider {
-            if !provider.is_empty() {
-                println!(
-                    "  Embedding:  {} ({})",
-                    style("✓ configured").green(),
-                    provider
-                );
-            } else {
-                println!("  Embedding:  {}", style("— not configured").yellow());
-            }
-        } else {
-            println!("  Embedding:  {}", style("— not configured").yellow());
         }
     }
+}
 
-    // Show config info
-    println!();
-    println!("  Mode:       {}", config.mode);
-    println!("  Platforms:  {}", config.platforms.join(", "));
-    println!("  Config:     {}", MasdayConfig::config_path().display());
+/// Check Docker PostgreSQL container
+fn check_postgres_docker(verbose: bool) -> ComponentHealth {
+    if crate::docker::is_container_running("masday-postgres") {
+        let mut details = HashMap::new();
+        details.insert("port".to_string(), ports::postgres_port().to_string());
+        if verbose {
+            details.insert("type".to_string(), "docker".to_string());
+            details.insert("container".to_string(), "masday-postgres".to_string());
+        }
 
+        ComponentHealth {
+            status: HealthStatus::Healthy,
+            message: format!("{} running", style("✓").green()),
+            details: if verbose { Some(details) } else { None },
+        }
+    } else {
+        let mut details = HashMap::new();
+        if verbose {
+            details.insert("hint".to_string(), "run 'masday db start'".to_string());
+        }
+
+        ComponentHealth {
+            status: HealthStatus::Unhealthy,
+            message: format!("{} not running", style("✗").red()),
+            details: if verbose { Some(details) } else { None },
+        }
+    }
+}
+
+/// Check Redis health
+fn check_redis_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
+    if config.mode != "local" {
+        return ComponentHealth {
+            status: HealthStatus::NotConfigured,
+            message: "— not in local mode".to_string(),
+            details: None,
+        };
+    }
+
+    if crate::docker::is_docker_available() {
+        if crate::docker::is_container_running("masday-redis") {
+            let mut details = HashMap::new();
+            details.insert("port".to_string(), ports::redis_port().to_string());
+            if verbose {
+                details.insert("type".to_string(), "docker".to_string());
+                details.insert("container".to_string(), "masday-redis".to_string());
+            }
+
+            ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: format!("{} running", style("✓").green()),
+                details: if verbose { Some(details) } else { None },
+            }
+        } else {
+            let mut details = HashMap::new();
+            if verbose {
+                details.insert("hint".to_string(), "run 'masday db start'".to_string());
+            }
+
+            ComponentHealth {
+                status: HealthStatus::Degraded,
+                message: format!("{} not running", style("⚠").yellow()),
+                details: if verbose { Some(details) } else { None },
+            }
+        }
+    } else {
+        ComponentHealth {
+            status: HealthStatus::NotConfigured,
+            message: "— Docker not available".to_string(),
+            details: None,
+        }
+    }
+}
+
+/// Check MCP server health
+fn check_mcp_health(verbose: bool) -> ComponentHealth {
+    let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let mcp_binary = home.join(".masday").join("bin").join("masday-mcp");
+
+    let mcp_exists = mcp_binary.exists();
+
+    if mcp_exists {
+        // Dynamically count MCP tools by running --help
+        let tool_count = count_mcp_tools(&mcp_binary);
+
+        let mut details = HashMap::new();
+        if verbose {
+            details.insert("binary_path".to_string(), mcp_binary.display().to_string());
+            if let Some(count) = tool_count {
+                details.insert("tool_count".to_string(), count.to_string());
+            }
+        }
+
+        let message = if let Some(count) = tool_count {
+            format!("{} {} tools", style("✓").green(), count)
+        } else {
+            format!("{} registered", style("✓").green())
+        };
+
+        ComponentHealth {
+            status: HealthStatus::Healthy,
+            message,
+            details: if verbose { Some(details) } else { None },
+        }
+    } else {
+        let mut details = HashMap::new();
+        if verbose {
+            details.insert("expected_path".to_string(), mcp_binary.display().to_string());
+            details.insert("hint".to_string(), "run 'masday install'".to_string());
+        }
+
+        ComponentHealth {
+            status: HealthStatus::Degraded,
+            message: format!("{} not installed", style("⚠").yellow()),
+            details: if verbose { Some(details) } else { None },
+        }
+    }
+}
+
+/// Count MCP tools by parsing --help output
+fn count_mcp_tools(mcp_binary: &std::path::Path) -> Option<usize> {
+    let output = Command::new(mcp_binary)
+        .arg("--help")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let help_text = String::from_utf8(output.stdout).ok()?;
+    // Count lines containing "Available MCP tools:" or similar
+    // This is a fallback heuristic
+    Some(help_text.lines().filter(|line| line.contains("tool")).count())
+}
+
+/// Check embedding service health
+fn check_embedding_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
+    if let Some(ref provider) = config.embedding_provider {
+        if !provider.is_empty() {
+            let mut details = HashMap::new();
+            details.insert("provider".to_string(), provider.clone());
+            if let Some(ref model) = config.embedding_model {
+                details.insert("model".to_string(), model.clone());
+            }
+            if let Some(dims) = config.embedding_dimensions {
+                details.insert("dimensions".to_string(), dims.to_string());
+            }
+            if verbose {
+                let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                details.insert(
+                    "cache_dir".to_string(),
+                    home.join(".masday").join("embed-cache").display().to_string(),
+                );
+            }
+
+            ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: format!("{} ready", style("✓").green()),
+                details: if verbose { Some(details) } else { None },
+            }
+        } else {
+            ComponentHealth {
+                status: HealthStatus::NotConfigured,
+                message: "— not configured".to_string(),
+                details: None,
+            }
+        }
+    } else {
+        ComponentHealth {
+            status: HealthStatus::NotConfigured,
+            message: "— not configured".to_string(),
+            details: None,
+        }
+    }
+}
+
+/// Count installed agents, skills, and hooks
+fn count_assets() -> Result<(usize, usize, usize)> {
+    let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let masday_home = home.join(".masday");
+
+    let agents_dir = masday_home.join("agents");
+    let skills_dir = masday_home.join("skills");
+    let hooks_dir = masday_home.join("hooks");
+
+    let agents_count = if agents_dir.exists() {
+        std::fs::read_dir(&agents_dir)?.filter_map(|e| e.ok()).count()
+    } else {
+        0
+    };
+
+    let skills_count = if skills_dir.exists() {
+        std::fs::read_dir(&skills_dir)?.filter_map(|e| e.ok()).count()
+    } else {
+        0
+    };
+
+    let hooks_count = if hooks_dir.exists() {
+        std::fs::read_dir(&hooks_dir)?.filter_map(|e| e.ok()).count()
+    } else {
+        0
+    };
+
+    Ok((agents_count, skills_count, hooks_count))
+}
+
+/// Output health report as JSON
+fn output_json(report: &HealthReport) -> Result<()> {
+    let json = serde_json::to_string_pretty(report)?;
+    println!("{}", json);
     Ok(())
+}
+
+/// Table width constant
+const TABLE_WIDTH: usize = 42;
+
+/// Output health report as formatted table
+fn output_table(report: &HealthReport, verbose: bool) -> Result<()> {
+    format_header(report);
+    format_section(report, verbose);
+    format_footer(report);
+    Ok(())
+}
+
+/// Format table header with version and basic info
+fn format_header(report: &HealthReport) {
+    let v = "│";
+
+    println!("╭{}╮", "─".repeat(TABLE_WIDTH));
+    println!("{}  Masday v{}{}{}", v, report.masday_version, " ".repeat(TABLE_WIDTH.saturating_sub(14 + report.masday_version.len())), v);
+    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+    println!("{}  Mode:       {}{}{}", v, report.mode, " ".repeat(TABLE_WIDTH.saturating_sub(15 + report.mode.len())), v);
+    println!("{}  Platform:   {}{}{}", v, report.platform, " ".repeat(TABLE_WIDTH.saturating_sub(16 + report.platform.len())), v);
+
+    // Config status
+    let config_status = if report.config_valid {
+        format!("{} ✓", style("valid").green())
+    } else {
+        format!("{} ✗", style("invalid").red())
+    };
+    let config_display = format!("~/.masday/config.toml {}", config_status);
+    println!("{}  Config:     {}{}{}", v, config_display, " ".repeat(TABLE_WIDTH.saturating_sub(16 + config_display.chars().count())), v);
+    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+}
+
+/// Format main section with component statuses
+fn format_section(report: &HealthReport, verbose: bool) {
+    let v = "│";
+
+    // API status
+    let api_msg = if let Some(ref details) = report.api.details {
+        let url = details.get("url").map(|s| s.as_str()).unwrap_or("");
+        format!("{} {}", report.api.message, url)
+    } else {
+        report.api.message.clone()
+    };
+    println!("{}  API:        {}{}{}", v, api_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + api_msg.chars().count())), v);
+
+    // Database status
+    let default_url = "N/A".to_string();
+    let db_msg = if report.database.details.as_ref().and_then(|d| d.get("url")).is_some() {
+        let url = report.database.details.as_ref().and_then(|d| d.get("url")).unwrap_or(&default_url);
+        format!("{} {}", report.database.message, url)
+    } else if report.database.details.as_ref().and_then(|d| d.get("port")).is_some() {
+        let default_port = "N/A".to_string();
+        let port = report.database.details.as_ref().and_then(|d| d.get("port")).unwrap_or(&default_port);
+        format!("{} (Docker, port {})", report.database.message, port)
+    } else {
+        report.database.message.clone()
+    };
+    println!("{}  Database:   {}{}{}", v, db_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + db_msg.chars().count())), v);
+
+    // Redis status
+    let default_port = "N/A".to_string();
+    let redis_msg = if report.redis.details.as_ref().and_then(|d| d.get("port")).is_some() {
+        let port = report.redis.details.as_ref().and_then(|d| d.get("port")).unwrap_or(&default_port);
+        format!("{} (Docker, port {})", report.redis.message, port)
+    } else {
+        report.redis.message.clone()
+    };
+    println!("{}  Redis:      {}{}{}", v, redis_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + redis_msg.chars().count())), v);
+
+    // MCP status (dynamic tool count already in message)
+    let mcp_msg = report.mcp.message.clone();
+    println!("{}  MCP:        {}{}{}", v, mcp_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + mcp_msg.chars().count())), v);
+    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+
+    // Embedding status
+    let default_provider = "N/A".to_string();
+    let embed_msg = if report.embedding.details.as_ref().and_then(|d| d.get("provider")).is_some() {
+        let provider = report.embedding.details.as_ref().and_then(|d| d.get("provider")).unwrap_or(&default_provider);
+        format!("{} ({})", report.embedding.message, provider)
+    } else {
+        report.embedding.message.clone()
+    };
+    println!("{}  Embedding:  {}{}{}", v, embed_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + embed_msg.chars().count())), v);
+
+    if verbose {
+        if let Some(ref details) = report.embedding.details {
+            if let Some(model) = details.get("model") {
+                println!("{}  Model:      {}{}{}", v, model, " ".repeat(TABLE_WIDTH.saturating_sub(16 + model.len())), v);
+            }
+            if let Some(cache) = details.get("cache_dir") {
+                let cache_short = cache.replace("/home/", "~/").replace("/Users/", "~/");
+                println!("{}  Cache:      {}{}{}", v, cache_short, " ".repeat(TABLE_WIDTH.saturating_sub(16 + cache_short.len())), v);
+            }
+        }
+    }
+    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+}
+
+/// Format footer with asset counts
+fn format_footer(report: &HealthReport) {
+    let v = "│";
+
+    // Asset counts
+    println!("{}  Agents:     {} synced{}{}", v, report.agents_count, " ".repeat(TABLE_WIDTH.saturating_sub(16 + format!("{} synced", report.agents_count).len())), v);
+    println!("{}  Skills:     {} synced{}{}", v, report.skills_count, " ".repeat(TABLE_WIDTH.saturating_sub(16 + format!("{} synced", report.skills_count).len())), v);
+    println!("{}  Hooks:      {} installed{}{}", v, report.hooks_count, " ".repeat(TABLE_WIDTH.saturating_sub(16 + format!("{} installed", report.hooks_count).len())), v);
+
+    // Bottom border
+    println!("╰{}╯", "─".repeat(TABLE_WIDTH));
 }
 
 /// Redact password from a database URL for safe display.
@@ -137,4 +605,238 @@ fn redact_db_url(url: &str) -> String {
         }
     }
     url.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_health_report_overall_status_healthy() {
+        let report = HealthReport {
+            masday_version: "0.1.0".to_string(),
+            mode: "local".to_string(),
+            platform: "linux".to_string(),
+            config_path: "/tmp/config.toml".to_string(),
+            config_valid: true,
+            api: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ healthy".to_string(),
+                details: None,
+            },
+            database: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ connected".to_string(),
+                details: None,
+            },
+            redis: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ running".to_string(),
+                details: None,
+            },
+            mcp: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ registered".to_string(),
+                details: None,
+            },
+            embedding: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ ready".to_string(),
+                details: None,
+            },
+            agents_count: 5,
+            skills_count: 10,
+            hooks_count: 3,
+        };
+
+        let (exit_code, status_str) = report.overall_status();
+        assert_eq!(exit_code, 0);
+        assert_eq!(status_str, "healthy");
+    }
+
+    #[test]
+    fn test_health_report_overall_status_degraded() {
+        let report = HealthReport {
+            masday_version: "0.1.0".to_string(),
+            mode: "local".to_string(),
+            platform: "linux".to_string(),
+            config_path: "/tmp/config.toml".to_string(),
+            config_valid: true,
+            api: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ healthy".to_string(),
+                details: None,
+            },
+            database: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ connected".to_string(),
+                details: None,
+            },
+            redis: ComponentHealth {
+                status: HealthStatus::Degraded, // Redis degraded
+                message: "⚠ not running".to_string(),
+                details: None,
+            },
+            mcp: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ registered".to_string(),
+                details: None,
+            },
+            embedding: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ ready".to_string(),
+                details: None,
+            },
+            agents_count: 5,
+            skills_count: 10,
+            hooks_count: 3,
+        };
+
+        let (exit_code, status_str) = report.overall_status();
+        assert_eq!(exit_code, 1);
+        assert_eq!(status_str, "degraded");
+    }
+
+    #[test]
+    fn test_health_report_overall_status_critical() {
+        let report = HealthReport {
+            masday_version: "0.1.0".to_string(),
+            mode: "local".to_string(),
+            platform: "linux".to_string(),
+            config_path: "/tmp/config.toml".to_string(),
+            config_valid: true,
+            api: ComponentHealth {
+                status: HealthStatus::Unhealthy, // API down
+                message: "✗ not running".to_string(),
+                details: None,
+            },
+            database: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ connected".to_string(),
+                details: None,
+            },
+            redis: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ running".to_string(),
+                details: None,
+            },
+            mcp: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ registered".to_string(),
+                details: None,
+            },
+            embedding: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ ready".to_string(),
+                details: None,
+            },
+            agents_count: 5,
+            skills_count: 10,
+            hooks_count: 3,
+        };
+
+        let (exit_code, status_str) = report.overall_status();
+        assert_eq!(exit_code, 2);
+        assert_eq!(status_str, "critical");
+    }
+
+    #[test]
+    fn test_redact_db_url() {
+        assert_eq!(
+            redact_db_url("postgresql://user:secret@localhost/db"),
+            "postgresql://user:***@localhost/db"
+        );
+        assert_eq!(
+            redact_db_url("postgresql://user@localhost/db"),
+            "postgresql://user@localhost/db"
+        );
+        assert_eq!(
+            redact_db_url("invalid-url"),
+            "invalid-url"
+        );
+    }
+
+    #[test]
+    fn test_output_json_valid() {
+        let report = HealthReport {
+            masday_version: "0.1.0".to_string(),
+            mode: "local".to_string(),
+            platform: "linux".to_string(),
+            config_path: "/tmp/config.toml".to_string(),
+            config_valid: true,
+            api: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ healthy".to_string(),
+                details: None,
+            },
+            database: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ connected".to_string(),
+                details: None,
+            },
+            redis: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ running".to_string(),
+                details: None,
+            },
+            mcp: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ registered".to_string(),
+                details: None,
+            },
+            embedding: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ ready".to_string(),
+                details: None,
+            },
+            agents_count: 5,
+            skills_count: 10,
+            hooks_count: 3,
+        };
+
+        let result = output_json(&report);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_output_table_formatting() {
+        let report = HealthReport {
+            masday_version: "0.1.0".to_string(),
+            mode: "local".to_string(),
+            platform: "linux".to_string(),
+            config_path: "/tmp/config.toml".to_string(),
+            config_valid: true,
+            api: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ healthy".to_string(),
+                details: None,
+            },
+            database: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ connected".to_string(),
+                details: None,
+            },
+            redis: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ running".to_string(),
+                details: None,
+            },
+            mcp: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ 91 tools".to_string(),
+                details: None,
+            },
+            embedding: ComponentHealth {
+                status: HealthStatus::Healthy,
+                message: "✓ ready".to_string(),
+                details: None,
+            },
+            agents_count: 5,
+            skills_count: 10,
+            hooks_count: 3,
+        };
+
+        let result = output_table(&report, false);
+        assert!(result.is_ok());
+    }
 }

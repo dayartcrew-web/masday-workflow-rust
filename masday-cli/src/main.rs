@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 
+use masday_cli::commands::config::ConfigSubcommand;
 use masday_cli::commands::embed::EmbedAction;
 
 /// Auto-install masday binary to ~/.masday/bin/ if running from elsewhere.
@@ -130,6 +131,14 @@ fn add_to_path(dir: &std::path::Path) {
 #[command(about = "Masday workflow orchestration — all-in-one binary", long_about = None)]
 #[command(version)]
 struct Cli {
+    /// Enable verbose output
+    #[arg(short = 'v', long = "verbose", global = true)]
+    verbose: bool,
+
+    /// Suppress non-error output
+    #[arg(short = 'q', long = "quiet", global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -153,7 +162,21 @@ enum Commands {
     Mcp,
 
     /// Check health of all services
-    Status,
+    Status {
+        /// Output as JSON (for scripting)
+        #[arg(long = "json")]
+        json: bool,
+
+        /// Show detailed component info
+        #[arg(long = "verbose")]
+        verbose: bool,
+    },
+
+    /// View and manage configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigSubcommand,
+    },
 
     /// Manage PostgreSQL via Docker
     Db {
@@ -163,6 +186,10 @@ enum Commands {
 
     /// Install masday into the current project
     Install {
+        /// Install mode: local | remote | standalone
+        #[arg(long)]
+        mode: Option<String>,
+
         /// Remote API server URL (skips local build, connects to remote)
         #[arg(long)]
         remote: Option<String>,
@@ -175,14 +202,6 @@ enum Commands {
         #[arg(long)]
         platform: Option<String>,
 
-        /// Standalone mode — extract templates only, no build or API server
-        #[arg(long)]
-        standalone: bool,
-
-        /// Force local mode — cargo build from source (requires Rust toolchain)
-        #[arg(long)]
-        local_mode: bool,
-
         /// Skip building Rust crates (use existing binaries)
         #[arg(long)]
         skip_build: bool,
@@ -194,6 +213,14 @@ enum Commands {
         /// Force overwrite existing configs
         #[arg(long)]
         force: bool,
+
+        /// Skip hook installation
+        #[arg(long)]
+        no_hooks: bool,
+
+        /// Skip MCP server registration
+        #[arg(long)]
+        no_mcp: bool,
     },
 
     /// Remove masday from the current project
@@ -214,7 +241,31 @@ enum Commands {
     },
 
     /// Update masday (re-install with force)
-    Update,
+    Update {
+        /// Check for available update without applying
+        #[arg(long)]
+        check: bool,
+
+        /// Update to specific version (default: latest)
+        #[arg(long)]
+        version: Option<String>,
+
+        /// Only update agents/skills/hooks, not the binary
+        #[arg(long)]
+        skip_binary: bool,
+
+        /// Don't overwrite config.toml
+        #[arg(long)]
+        skip_config: bool,
+
+        /// Show what would be updated without changing anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Force re-install even if already up-to-date
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -250,8 +301,11 @@ async fn main() -> anyhow::Result<()> {
         Commands::Mcp => {
             masday_cli::commands::mcp_cmd::run().await?;
         }
-        Commands::Status => {
-            masday_cli::commands::status::run().await?;
+        Commands::Status { json, verbose } => {
+            masday_cli::commands::status::run(json, verbose).await?;
+        }
+        Commands::Config { action } => {
+            masday_cli::commands::config::run(action).await?;
         }
         Commands::Db { action } => match action {
             DbAction::Start => masday_cli::commands::db::start()?,
@@ -259,24 +313,27 @@ async fn main() -> anyhow::Result<()> {
             DbAction::Reset => masday_cli::commands::db::reset().await?,
         },
         Commands::Install {
+            mode,
             remote,
             api_key,
             platform,
-            standalone,
-            local_mode,
             skip_build,
             local_only,
             force,
+            no_hooks,
+            no_mcp,
         } => {
+            let install_mode = mode.as_ref().and_then(|m| m.parse().ok());
             let args = masday_cli::commands::install::InstallArgs {
+                mode: install_mode,
                 remote,
                 api_key,
                 platform,
-                standalone,
-                local_mode,
                 skip_build,
                 local_only,
                 force,
+                no_hooks,
+                no_mcp,
             };
             masday_cli::commands::install::run(args, &project_dir)?;
         }
@@ -284,8 +341,23 @@ async fn main() -> anyhow::Result<()> {
             let args = masday_cli::commands::uninstall::UninstallArgs { global, platform };
             masday_cli::commands::uninstall::run(args, &project_dir)?;
         }
-        Commands::Update => {
-            masday_cli::commands::update::run(&project_dir)?;
+        Commands::Update {
+            check,
+            version,
+            skip_binary,
+            skip_config,
+            dry_run,
+            force,
+        } => {
+            let args = masday_cli::commands::update::UpdateArgs {
+                check,
+                version,
+                skip_binary,
+                skip_config,
+                dry_run,
+                force,
+            };
+            masday_cli::commands::update::run(args, &project_dir)?;
         }
         Commands::Embed { action } => {
             masday_cli::commands::embed::run(action)?;

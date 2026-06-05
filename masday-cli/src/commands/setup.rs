@@ -212,14 +212,15 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
     println!();
     let pb = spinner("Installing agents, skills, and hooks...");
     let install_args = crate::commands::install::InstallArgs {
+        mode: None,
         remote: None,
         api_key: None,
         platform: None,
-        standalone: false,
-        local_mode: false,
         skip_build: true,
         local_only: false,
         force: true,
+        no_hooks: false,
+        no_mcp: false,
     };
     crate::commands::install::run(install_args, project_dir)?;
     pb.finish_with_message(format!("{} Templates synced", style("✓").green()));
@@ -331,14 +332,15 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
     println!();
     let pb = spinner("Installing agents, skills, and hooks...");
     let install_args = crate::commands::install::InstallArgs {
+        mode: Some(crate::commands::install::InstallMode::Remote),
         remote: Some(config.api_url.clone()),
         api_key: Some(config.api_key.clone()),
         platform: None,
-        standalone: false,
-        local_mode: false,
         skip_build: true,
         local_only: false,
         force: true,
+        no_hooks: false,
+        no_mcp: false,
     };
     crate::commands::install::run(install_args, project_dir)?;
     pb.finish_with_message(format!("{} Templates synced", style("✓").green()));

@@ -2,6 +2,7 @@
 //!
 //! Command implementations for the masday CLI.
 
+pub mod config;
 pub mod db;
 pub mod embed;
 pub mod install;
