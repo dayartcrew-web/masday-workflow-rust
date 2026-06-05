@@ -69,7 +69,6 @@ impl HealthReport {
         // Check non-core services
         let has_issues = !matches!(self.redis.status, HealthStatus::Healthy)
             || !matches!(self.mcp.status, HealthStatus::Healthy)
-            || !matches!(self.embedding.status, HealthStatus::Healthy)
             || !matches!(self.embedding.status, HealthStatus::Healthy);
 
         if has_issues {
@@ -799,6 +798,38 @@ fn output_json(report: &HealthReport) -> Result<()> {
 /// Table width constant
 const TABLE_WIDTH: usize = 42;
 
+/// Calculate visual width of a string, ignoring ANSI escape sequences
+fn visual_width(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut width = 0usize;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == 0x1b {
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'[' {
+                i += 1;
+                while i < bytes.len() && !bytes[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+            }
+        } else {
+            width += 1;
+            i += 1;
+        }
+    }
+    width
+}
+
+/// Build a table row with correct right-side padding
+fn table_line(content: &str) -> String {
+    let vw = visual_width(content);
+    let padding = TABLE_WIDTH.saturating_sub(vw);
+    format!("│{}{}│", content, " ".repeat(padding))
+}
+
 /// Output health report as formatted table
 fn output_table(report: &HealthReport, verbose: bool) -> Result<()> {
     format_header(report);
@@ -809,29 +840,23 @@ fn output_table(report: &HealthReport, verbose: bool) -> Result<()> {
 
 /// Format table header with version and basic info
 fn format_header(report: &HealthReport) {
-    let v = "│";
-
     println!("╭{}╮", "─".repeat(TABLE_WIDTH));
-    println!("{}  Masday v{}{}{}", v, report.masday_version, " ".repeat(TABLE_WIDTH.saturating_sub(14 + report.masday_version.len())), v);
-    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
-    println!("{}  Mode:       {}{}{}", v, report.mode, " ".repeat(TABLE_WIDTH.saturating_sub(15 + report.mode.len())), v);
-    println!("{}  Platform:   {}{}{}", v, report.platform, " ".repeat(TABLE_WIDTH.saturating_sub(16 + report.platform.len())), v);
+    println!("{}", table_line(&format!("  Masday v{}", report.masday_version)));
+    println!("{}", table_line(""));
+    println!("{}", table_line(&format!("  Mode:       {}", report.mode)));
+    println!("{}", table_line(&format!("  Platform:   {}", report.platform)));
 
-    // Config status
     let config_status = if report.config_valid {
-        format!("{} ✓", style("valid").green())
+        format!("~/.masday/config.toml {} ✓", style("valid").green())
     } else {
-        format!("{} ✗", style("invalid").red())
+        format!("~/.masday/config.toml {} ✗", style("invalid").red())
     };
-    let config_display = format!("~/.masday/config.toml {}", config_status);
-    println!("{}  Config:     {}{}{}", v, config_display, " ".repeat(TABLE_WIDTH.saturating_sub(16 + config_display.chars().count())), v);
-    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+    println!("{}", table_line(&format!("  Config:     {}", config_status)));
+    println!("{}", table_line(""));
 }
 
 /// Format main section with component statuses
 fn format_section(report: &HealthReport, verbose: bool) {
-    let v = "│";
-
     // API status
     let api_msg = if let Some(ref details) = report.api.details {
         let url = details.get("url").map(|s| s.as_str()).unwrap_or("");
@@ -839,7 +864,7 @@ fn format_section(report: &HealthReport, verbose: bool) {
     } else {
         report.api.message.clone()
     };
-    println!("{}  API:        {}{}{}", v, api_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + api_msg.chars().count())), v);
+    println!("{}", table_line(&format!("  API:        {}", api_msg)));
 
     // Database status
     let default_url = "N/A".to_string();
@@ -853,7 +878,7 @@ fn format_section(report: &HealthReport, verbose: bool) {
     } else {
         report.database.message.clone()
     };
-    println!("{}  Database:   {}{}{}", v, db_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + db_msg.chars().count())), v);
+    println!("{}", table_line(&format!("  Database:   {}", db_msg)));
 
     // Redis status
     let default_port = "N/A".to_string();
@@ -863,12 +888,12 @@ fn format_section(report: &HealthReport, verbose: bool) {
     } else {
         report.redis.message.clone()
     };
-    println!("{}  Redis:      {}{}{}", v, redis_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + redis_msg.chars().count())), v);
+    println!("{}", table_line(&format!("  Redis:      {}", redis_msg)));
 
-    // MCP status (dynamic tool count already in message)
+    // MCP status
     let mcp_msg = report.mcp.message.clone();
-    println!("{}  MCP:        {}{}{}", v, mcp_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + mcp_msg.chars().count())), v);
-    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+    println!("{}", table_line(&format!("  MCP:        {}", mcp_msg)));
+    println!("{}", table_line(""));
 
     // Embedding status
     let default_provider = "N/A".to_string();
@@ -878,32 +903,27 @@ fn format_section(report: &HealthReport, verbose: bool) {
     } else {
         report.embedding.message.clone()
     };
-    println!("{}  Embedding:  {}{}{}", v, embed_msg, " ".repeat(TABLE_WIDTH.saturating_sub(16 + embed_msg.chars().count())), v);
+    println!("{}", table_line(&format!("  Embedding:  {}", embed_msg)));
 
     if verbose {
         if let Some(ref details) = report.embedding.details {
             if let Some(model) = details.get("model") {
-                println!("{}  Model:      {}{}{}", v, model, " ".repeat(TABLE_WIDTH.saturating_sub(16 + model.len())), v);
+                println!("{}", table_line(&format!("  Model:      {}", model)));
             }
             if let Some(cache) = details.get("cache_dir") {
                 let cache_short = cache.replace("/home/", "~/").replace("/Users/", "~/");
-                println!("{}  Cache:      {}{}{}", v, cache_short, " ".repeat(TABLE_WIDTH.saturating_sub(16 + cache_short.len())), v);
+                println!("{}", table_line(&format!("  Cache:      {}", cache_short)));
             }
         }
     }
-    println!("{}{}{}", v, " ".repeat(TABLE_WIDTH), v);
+    println!("{}", table_line(""));
 }
 
 /// Format footer with asset counts
 fn format_footer(report: &HealthReport) {
-    let v = "│";
-
-    // Asset counts
-    println!("{}  Agents:     {} synced{}{}", v, report.agents_count, " ".repeat(TABLE_WIDTH.saturating_sub(16 + format!("{} synced", report.agents_count).len())), v);
-    println!("{}  Skills:     {} synced{}{}", v, report.skills_count, " ".repeat(TABLE_WIDTH.saturating_sub(16 + format!("{} synced", report.skills_count).len())), v);
-    println!("{}  Hooks:      {} installed{}{}", v, report.hooks_count, " ".repeat(TABLE_WIDTH.saturating_sub(16 + format!("{} installed", report.hooks_count).len())), v);
-
-    // Bottom border
+    println!("{}", table_line(&format!("  Agents:     {} synced", report.agents_count)));
+    println!("{}", table_line(&format!("  Skills:     {} synced", report.skills_count)));
+    println!("{}", table_line(&format!("  Hooks:      {} installed", report.hooks_count)));
     println!("╰{}╯", "─".repeat(TABLE_WIDTH));
 }
 

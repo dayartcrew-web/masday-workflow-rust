@@ -104,7 +104,15 @@ pub async fn workflow_create(
     let name = args["name"].as_str().ok_or_else(|| err("missing name"))?;
     let description = args.get("description").and_then(|v| v.as_str());
     let status = "INIT";
-    let project_path = args.get("project_path").and_then(|v| v.as_str());
+    let project_path = args
+        .get("project_path")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+        });
     let t = now();
     let meta = args.get("metadata").cloned().unwrap_or(json!({}));
 

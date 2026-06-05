@@ -2286,7 +2286,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "masday-api"
-version = "0.3.13"
+version = "0.3.19"
 dependencies = [
  "axum",
  "chrono",
@@ -2306,7 +2306,7 @@ dependencies = [
 
 [[package]]
 name = "masday-cli"
-version = "0.3.13"
+version = "0.3.19"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2365,12 +2365,13 @@ dependencies = [
 
 [[package]]
 name = "masday-mcp"
-version = "0.3.13"
+version = "0.3.19"
 dependencies = [
  "chrono",
  "masday-core",
  "masday-db",
  "masday-service",
+ "percent-encoding",
  "reqwest",
  "rusqlite",
  "serde",
@@ -2384,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "masday-service"
-version = "0.3.13"
+version = "0.3.19"
 dependencies = [
  "chrono",
  "fastembed",

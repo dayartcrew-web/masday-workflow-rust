@@ -123,10 +123,17 @@ fn add_to_path(dir: &std::path::Path) {
     }
 }
 
+/// Build version string with build origin: "0.3.19 (production)" or "0.3.19 (development)"
+#[cfg(feature = "dev-mode")]
+const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (development)");
+
+#[cfg(not(feature = "dev-mode"))]
+const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (production)");
+
 #[derive(Parser)]
 #[command(name = "masday")]
 #[command(about = "Masday workflow orchestration — all-in-one binary", long_about = None)]
-#[command(version)]
+#[command(version = FULL_VERSION)]
 struct Cli {
     /// Enable verbose output
     #[arg(short = 'v', long = "verbose", global = true)]
@@ -169,6 +176,13 @@ enum Commands {
         verbose: bool,
     },
 
+    /// Diagnose installation and configuration issues
+    Doctor {
+        /// Output as JSON (for scripting)
+        #[arg(long = "json")]
+        json: bool,
+    },
+
     /// View and manage configuration
     Config {
         #[command(subcommand)]
@@ -199,7 +213,8 @@ enum Commands {
         #[arg(long)]
         platform: Option<String>,
 
-        /// Skip building Rust crates (use existing binaries)
+        /// Skip building Rust crates (dev-mode only, use existing binaries)
+        #[cfg(feature = "dev-mode")]
         #[arg(long)]
         skip_build: bool,
 
@@ -263,6 +278,31 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+
+    /// Development commands (build from source, local install, serve)
+    #[cfg(feature = "dev-mode")]
+    Dev {
+        #[command(subcommand)]
+        action: DevAction,
+    },
+}
+
+/// Dev subcommands (dev-mode only)
+#[cfg(feature = "dev-mode")]
+#[derive(Subcommand)]
+enum DevAction {
+    /// Build all crates from source
+    Build,
+
+    /// Build + install + sync templates + MCP config
+    Install,
+
+    /// Start API server from built binary
+    Serve {
+        /// Port to listen on (overrides config)
+        #[arg(long)]
+        port: Option<u16>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -301,6 +341,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Status { json, verbose } => {
             masday_cli::commands::status::run(json, verbose).await?;
         }
+        Commands::Doctor { json } => {
+            masday_cli::commands::doctor::run(json)?;
+        }
         Commands::Config { action } => {
             masday_cli::commands::config::run(action).await?;
         }
@@ -314,6 +357,7 @@ async fn main() -> anyhow::Result<()> {
             remote,
             api_key,
             platform,
+            #[cfg(feature = "dev-mode")]
             skip_build,
             local_only,
             force,
@@ -326,6 +370,7 @@ async fn main() -> anyhow::Result<()> {
                 remote,
                 api_key,
                 platform,
+                #[cfg(feature = "dev-mode")]
                 skip_build,
                 local_only,
                 force,
@@ -358,6 +403,17 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Embed { action } => {
             masday_cli::commands::embed::run(action)?;
+        }
+        #[cfg(feature = "dev-mode")]
+        Commands::Dev { action } => {
+            let dev_action = match action {
+                DevAction::Build => masday_cli::commands::dev::DevAction::Build,
+                DevAction::Install => masday_cli::commands::dev::DevAction::Install,
+                DevAction::Serve { port } => {
+                    masday_cli::commands::dev::DevAction::Serve { port }
+                }
+            };
+            masday_cli::commands::dev::run(dev_action, &project_dir).await?;
         }
     }
 

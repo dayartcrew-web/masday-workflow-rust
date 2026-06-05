@@ -2,12 +2,26 @@
 
 use crate::client;
 use crate::safe_path;
+use percent_encoding::percent_encode;
+use percent_encoding::AsciiSet;
 use serde_json::Value;
 
-/// Create workflow
+/// Characters that need encoding in URL query values (RFC 3986)
+const QUERY_ENCODE_SET: &AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
+
+/// Create workflow (auto-injects project_path from current directory if not provided)
 pub async fn workflow_create(
-    args: Value,
+    mut args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    if args.get("project_path").is_none() {
+        if let Ok(dir) = std::env::current_dir() {
+            args["project_path"] = serde_json::json!(dir.to_string_lossy().to_string());
+        }
+    }
     client::api_post("/api/workflows", args).await
 }
 
@@ -44,13 +58,25 @@ pub async fn workflow_get(args: Value) -> Result<Value, Box<dyn std::error::Erro
     client::api_get(&safe_path!("/api/workflows/{}", workflow_id)).await
 }
 
-/// List workflows, optionally filtered by project_path
+/// List workflows, filtered by project_path (auto-set to current directory if not provided)
 pub async fn workflow_list(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let page = args.get("page").and_then(|v| v.as_u64()).unwrap_or(1);
     let page_size = args.get("page_size").and_then(|v| v.as_u64()).unwrap_or(50);
     let mut url = format!("/api/workflows?page={}&per_page={}", page, page_size);
-    if let Some(pp) = args.get("project_path").and_then(|v| v.as_str()) {
-        url.push_str(&format!("&project_path={}", pp));
+    let pp = args
+        .get("project_path")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+        });
+    if let Some(pp) = pp {
+        url.push_str(&format!(
+            "&project_path={}",
+            percent_encode(pp.as_bytes(), QUERY_ENCODE_SET)
+        ));
     }
     client::api_get(&url).await
 }

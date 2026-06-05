@@ -1,25 +1,32 @@
 //! Install command implementation
 //!
 //! Orchestrates the full installation workflow for Masday in local, remote, or standalone mode.
+//!
+//! Production builds (no `dev-mode` feature) do not support Local mode — users must
+//! use Remote or Standalone. Development builds (`--features dev-mode`) support all three modes.
 
 use anyhow::Result;
 use console::style;
-use home;
-use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
+#[cfg(feature = "dev-mode")]
+use indicatif::{ProgressBar, ProgressStyle};
+
 use crate::installer::{
-    self, all_platforms, check_prerequisites, detect_active_platforms, ensure_env_file,
+    all_platforms, check_prerequisites, detect_active_platforms,
     generate_mcp_config, install_global_hooks, install_project_hooks, register_hooks_in_settings,
     resolve_mcp_binary, sync_agents_to_global, sync_agents_to_project, sync_skills_to_global,
     sync_skills_to_project, update_global_settings, verify_remote_url, AgentSyncReport, McpConfig,
     McpServerConfig, Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
 };
 
+#[cfg(feature = "dev-mode")]
+use crate::installer::{self, ensure_env_file};
+
 /// Install mode enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallMode {
-    /// Build from source (requires Rust toolchain + Cargo.toml)
+    /// Build from source (requires Rust toolchain + Cargo.toml) — dev-mode only
     Local,
     /// Connect to remote API server
     Remote,
@@ -46,7 +53,10 @@ impl std::str::FromStr for InstallMode {
             "local" => Ok(InstallMode::Local),
             "remote" => Ok(InstallMode::Remote),
             "standalone" => Ok(InstallMode::Standalone),
-            _ => Err(format!("Invalid mode: '{}'. Must be local, remote, or standalone", s)),
+            _ => Err(format!(
+                "Invalid mode: '{}'. Must be local, remote, or standalone",
+                s
+            )),
         }
     }
 }
@@ -54,7 +64,7 @@ impl std::str::FromStr for InstallMode {
 /// Arguments for the install command
 #[derive(Debug, Clone, Default)]
 pub struct InstallArgs {
-    /// Install mode (None = auto-detect based on Cargo.toml)
+    /// Install mode (None = defaults to standalone)
     pub mode: Option<InstallMode>,
     /// Remote API URL (implies remote mode)
     pub remote: Option<String>,
@@ -62,7 +72,8 @@ pub struct InstallArgs {
     pub api_key: Option<String>,
     /// Specific platform to install (None = detect or all)
     pub platform: Option<String>,
-    /// Skip cargo build step
+    /// Skip cargo build step (dev-mode only)
+    #[cfg(feature = "dev-mode")]
     pub skip_build: bool,
     /// Only install to project, skip global sync
     pub local_only: bool,
@@ -74,8 +85,9 @@ pub struct InstallArgs {
     pub no_mcp: bool,
 }
 
-/// Detect which install mode to use based on args and project directory
-fn detect_mode(args: &InstallArgs, project_dir: &Path) -> InstallMode {
+/// Resolve which install mode to use based on args.
+/// No Cargo.toml auto-detection — mode must be explicit or defaults to standalone.
+fn resolve_mode(args: &InstallArgs) -> InstallMode {
     // Explicit --mode flag takes highest priority
     if let Some(mode) = args.mode {
         return mode;
@@ -86,19 +98,32 @@ fn detect_mode(args: &InstallArgs, project_dir: &Path) -> InstallMode {
         return InstallMode::Remote;
     }
 
-    // Auto-detect: if Cargo.toml exists in cwd, use local; otherwise standalone
-    if project_dir.join("Cargo.toml").exists() {
-        InstallMode::Local
-    } else {
-        InstallMode::Standalone
-    }
+    // Default: standalone mode (no build, no API server)
+    InstallMode::Standalone
 }
 
 /// Run the install command
 pub fn run(args: InstallArgs, project_dir: &Path) -> Result<()> {
-    let mode = detect_mode(&args, project_dir);
+    let mode = resolve_mode(&args);
     match mode {
-        InstallMode::Local => run_local_install(args, project_dir),
+        InstallMode::Local => {
+            #[cfg(feature = "dev-mode")]
+            {
+                run_local_install(args, project_dir)
+            }
+            #[cfg(not(feature = "dev-mode"))]
+            {
+                let _ = (args, project_dir);
+                anyhow::bail!(
+                    "Local build mode requires building from source.\n\
+                     Clone the repository and run:\n  \
+                     cargo run --features dev-mode -- dev install\n\n\
+                     For production users, use:\n  \
+                     masday install --remote <url> --api-key <key>\n  \
+                     masday install                  (standalone mode)"
+                );
+            }
+        }
         InstallMode::Remote => run_remote_install(args, project_dir),
         InstallMode::Standalone => run_standalone_install(args, project_dir),
     }
@@ -171,8 +196,8 @@ fn sync_templates(
         println!();
         println!("{}", style("Installing hooks...").cyan());
 
-        if let Some(home) = home::home_dir() {
-            let global_hooks = install_global_hooks(&home)?;
+        if let Some(home_dir) = home::home_dir() {
+            let global_hooks = install_global_hooks(&home_dir)?;
             global_hook_count = global_hooks.copied;
             println!(
                 "  Global hooks: {}",
@@ -188,9 +213,9 @@ fn sync_templates(
         );
 
         // Register hook events in Claude Code settings
-        if let Some(home) = home::home_dir() {
-            let settings_path = home.join(".claude/settings.json");
-            if let Err(e) = register_hooks_in_settings(&settings_path, &home) {
+        if let Some(home_dir) = home::home_dir() {
+            let settings_path = home_dir.join(".claude/settings.json");
+            if let Err(e) = register_hooks_in_settings(&settings_path, &home_dir) {
                 eprintln!("  ⚠ Could not register hooks in settings: {}", e);
             }
         }
@@ -265,9 +290,10 @@ fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-// ── Local mode ───────────────────────────────────────────────────────────────
+// ── Local mode (dev-mode only) ────────────────────────────────────────────────
 
-/// Local mode installation
+/// Local mode installation — requires dev-mode feature
+#[cfg(feature = "dev-mode")]
 fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
     println!(
@@ -349,16 +375,23 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
         }
     } else {
         println!();
-        println!("{}", style("Skipping MCP config generation (--no-mcp)").dim());
+        println!(
+            "{}",
+            style("Skipping MCP config generation (--no-mcp)").dim()
+        );
     }
 
     // Step 8: Update global settings
-    if let Some(home) = home::home_dir() {
-        let settings_path = home.join(".claude/settings.json");
-        let hook_path = home.join(".claude/hooks/masday-statusline.js");
+    if let Some(home_dir) = home::home_dir() {
+        let settings_path = home_dir.join(".claude/settings.json");
+        let hook_path = home_dir.join(".claude/hooks/masday-statusline.js");
 
         let updates = SettingsUpdates {
-            statusline_cmd: if args.no_hooks { None } else { Some(hook_path.display().to_string()) },
+            statusline_cmd: if args.no_hooks {
+                None
+            } else {
+                Some(hook_path.display().to_string())
+            },
             auto_compact: Some(true),
             auto_compact_threshold: Some(0.9),
             mcp_server: if args.no_mcp {
@@ -376,10 +409,7 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 
         update_global_settings(&settings_path, &updates)?;
         println!();
-        println!(
-            "{}",
-            style("Global settings updated").green()
-        );
+        println!("{}", style("Global settings updated").green());
     }
 
     // Success summary
@@ -419,7 +449,10 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     }
 
     // Step 2: Verify remote URL connectivity
-    println!("{}", style("Checking remote API connectivity...").cyan());
+    println!(
+        "{}",
+        style("Checking remote API connectivity...").cyan()
+    );
     verify_remote_url(remote_url)?;
 
     // Step 3: Resolve MCP binary
@@ -446,7 +479,7 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     let api_key = args.api_key.ok_or_else(|| {
         anyhow::anyhow!(
             "--api-key is required for remote mode.\n\
-            Usage: masday install --remote <url> --api-key <key>"
+             Usage: masday install --remote <url> --api-key <key>"
         )
     })?;
 
@@ -467,16 +500,23 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
         }
     } else {
         println!();
-        println!("{}", style("Skipping MCP config generation (--no-mcp)").dim());
+        println!(
+            "{}",
+            style("Skipping MCP config generation (--no-mcp)").dim()
+        );
     }
 
     // Step 7: Update global settings
-    if let Some(home) = home::home_dir() {
-        let settings_path = home.join(".claude/settings.json");
-        let hook_path = home.join(".claude/hooks/masday-statusline.js");
+    if let Some(home_dir) = home::home_dir() {
+        let settings_path = home_dir.join(".claude/settings.json");
+        let hook_path = home_dir.join(".claude/hooks/masday-statusline.js");
 
         let updates = SettingsUpdates {
-            statusline_cmd: if args.no_hooks { None } else { Some(hook_path.display().to_string()) },
+            statusline_cmd: if args.no_hooks {
+                None
+            } else {
+                Some(hook_path.display().to_string())
+            },
             auto_compact: Some(true),
             auto_compact_threshold: Some(0.9),
             mcp_server: if args.no_mcp {
@@ -494,10 +534,7 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 
         update_global_settings(&settings_path, &updates)?;
         println!();
-        println!(
-            "{}",
-            style("Global settings updated").green()
-        );
+        println!("{}", style("Global settings updated").green());
     }
 
     // Success summary
@@ -514,7 +551,10 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Resolve target platforms based on args and detection
-fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Result<Vec<Platform>> {
+fn resolve_platforms(
+    platform_arg: &Option<String>,
+    project_dir: &Path,
+) -> Result<Vec<Platform>> {
     if let Some(ref name) = platform_arg {
         match name.to_lowercase().as_str() {
             "claude-code" => Ok(vec![Platform::ClaudeCode]),
@@ -583,84 +623,94 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    // ── detect_mode tests ────────────────────────────────────────────────────
+    // ── resolve_mode tests ──────────────────────────────────────────────────
 
     #[test]
-    fn test_detect_mode_explicit_local() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_resolve_mode_explicit_local() {
         let args = InstallArgs {
             mode: Some(InstallMode::Local),
             ..Default::default()
         };
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Local);
+        assert_eq!(resolve_mode(&args), InstallMode::Local);
     }
 
     #[test]
-    fn test_detect_mode_explicit_remote() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_resolve_mode_explicit_remote() {
         let args = InstallArgs {
             mode: Some(InstallMode::Remote),
             ..Default::default()
         };
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Remote);
+        assert_eq!(resolve_mode(&args), InstallMode::Remote);
     }
 
     #[test]
-    fn test_detect_mode_explicit_standalone() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_resolve_mode_explicit_standalone() {
         let args = InstallArgs {
             mode: Some(InstallMode::Standalone),
             ..Default::default()
         };
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Standalone);
+        assert_eq!(resolve_mode(&args), InstallMode::Standalone);
     }
 
     #[test]
-    fn test_detect_mode_remote_flag_implies_remote() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_resolve_mode_remote_flag_implies_remote() {
         let args = InstallArgs {
             remote: Some("http://example.com".to_string()),
             ..Default::default()
         };
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Remote);
+        assert_eq!(resolve_mode(&args), InstallMode::Remote);
     }
 
     #[test]
-    fn test_detect_mode_auto_local_when_cargo_toml() {
+    fn test_resolve_mode_defaults_to_standalone() {
+        // No Cargo.toml auto-detection — always defaults to standalone
+        let args = InstallArgs::default();
+        assert_eq!(resolve_mode(&args), InstallMode::Standalone);
+    }
+
+    #[test]
+    fn test_resolve_mode_ignores_cargo_toml() {
+        // Even with Cargo.toml, defaults to standalone (no auto-detect)
         let temp_dir = TempDir::new().unwrap();
         std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]").unwrap();
         let args = InstallArgs::default();
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Local);
+        assert_eq!(resolve_mode(&args), InstallMode::Standalone);
     }
 
     #[test]
-    fn test_detect_mode_auto_standalone_when_no_cargo() {
-        let temp_dir = TempDir::new().unwrap();
-        // No Cargo.toml in temp dir
-        let args = InstallArgs::default();
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Standalone);
-    }
-
-    #[test]
-    fn test_detect_mode_remote_flag_overrides_cargo_toml() {
-        let temp_dir = TempDir::new().unwrap();
-        std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]").unwrap();
+    fn test_resolve_mode_remote_flag_overrides_default() {
         let args = InstallArgs {
             remote: Some("http://example.com".to_string()),
             ..Default::default()
         };
-        // --remote flag overrides auto-detection
-        assert_eq!(detect_mode(&args, temp_dir.path()), InstallMode::Remote);
+        assert_eq!(resolve_mode(&args), InstallMode::Remote);
     }
 
-    // ── InstallArgs default test ───────────────────────────────────────────────
+    // ── InstallMode parsing tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_install_mode_from_str() {
+        assert_eq!("local".parse::<InstallMode>().unwrap(), InstallMode::Local);
+        assert_eq!(
+            "remote".parse::<InstallMode>().unwrap(),
+            InstallMode::Remote
+        );
+        assert_eq!(
+            "standalone".parse::<InstallMode>().unwrap(),
+            InstallMode::Standalone
+        );
+        assert!("invalid".parse::<InstallMode>().is_err());
+    }
+
+    // ── Platform resolution tests ─────────────────────────────────────────────
 
     #[test]
     fn test_resolve_platforms_specific() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
 
-        let platforms = resolve_platforms(&Some("claude-code".to_string()), project_dir).unwrap();
+        let platforms =
+            resolve_platforms(&Some("claude-code".to_string()), project_dir).unwrap();
         assert_eq!(platforms.len(), 1);
         assert_eq!(platforms[0], Platform::ClaudeCode);
     }
@@ -683,17 +733,26 @@ mod tests {
         assert!(list.contains("gemini"));
     }
 
+    // ── Local mode production gate test ────────────────────────────────────────
+
     #[test]
-    fn test_install_args_default() {
-        let args = InstallArgs::default();
-        assert!(args.mode.is_none());
-        assert!(args.remote.is_none());
-        assert!(args.api_key.is_none());
-        assert!(!args.skip_build);
-        assert!(!args.local_only);
-        assert!(!args.force);
-        assert!(!args.no_hooks);
-        assert!(!args.no_mcp);
+    fn test_local_mode_in_production_errors() {
+        // In production builds (no dev-mode feature), Local mode should error
+        if !cfg!(feature = "dev-mode") {
+            let temp_dir = TempDir::new().unwrap();
+            let args = InstallArgs {
+                mode: Some(InstallMode::Local),
+                ..Default::default()
+            };
+            let result = run(args, temp_dir.path());
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("building from source"),
+                "Error should mention building from source: {}",
+                err
+            );
+        }
     }
 
     // ── Standalone install integration tests ─────────────────────────────────

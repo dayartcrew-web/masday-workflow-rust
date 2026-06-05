@@ -9,6 +9,7 @@
 
 use anyhow::{bail, Result};
 use console::style;
+#[cfg(feature = "dev-mode")]
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
@@ -62,25 +63,34 @@ pub async fn run(project_dir: &Path) -> Result<()> {
     println!();
 
     // ── Step 2: Choose mode ───────────────────────────────────────────────
-    let mode_choice = inquire::Select::new(
-        "How will you run Masday?",
-        vec![
-            "Local — everything on this machine (Docker)",
-            "Remote — connect to existing API server",
-            "Standalone — agents & skills only (no DB, no API)",
-        ],
-    )
-    .with_help_message("↑↓ to move, Enter to select")
-    .prompt()?;
+    #[cfg(feature = "dev-mode")]
+    let mode_options = vec![
+        "Local — everything on this machine (Docker)",
+        "Remote — connect to existing API server",
+        "Standalone — agents & skills only (no DB, no API)",
+    ];
+
+    #[cfg(not(feature = "dev-mode"))]
+    let mode_options = vec![
+        "Remote — connect to existing API server",
+        "Standalone — agents & skills only (no DB, no API)",
+    ];
+
+    let mode_choice = inquire::Select::new("How will you run Masday?", mode_options)
+        .with_help_message("↑↓ to move, Enter to select")
+        .prompt()?;
 
     println!();
 
     match mode_choice {
+        #[cfg(feature = "dev-mode")]
         s if s.starts_with("Local") => {
             run_local_mode(project_dir, &detected_platforms, has_docker).await?
         }
         s if s.starts_with("Remote") => run_remote_mode(project_dir, &detected_platforms)?,
-        s if s.starts_with("Standalone") => run_standalone_mode(project_dir, &detected_platforms)?,
+        s if s.starts_with("Standalone") => {
+            run_standalone_mode(project_dir, &detected_platforms)?
+        }
         _ => bail!("Invalid selection"),
     }
 
@@ -88,9 +98,10 @@ pub async fn run(project_dir: &Path) -> Result<()> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LOCAL MODE
+// LOCAL MODE (dev-mode only)
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[cfg(feature = "dev-mode")]
 async fn run_local_mode(
     project_dir: &Path,
     detected_platforms: &[Platform],
@@ -412,7 +423,8 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
 // SHARED HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Start Docker containers + run migrations
+/// Start Docker containers + run migrations (dev-mode only)
+#[cfg(feature = "dev-mode")]
 async fn start_docker_infrastructure() -> Result<String> {
     println!("{}", style("Starting infrastructure...").cyan());
 
@@ -456,7 +468,8 @@ async fn start_docker_infrastructure() -> Result<String> {
     Ok(db_url)
 }
 
-/// Ask for existing database URL
+/// Ask for existing database URL (dev-mode only — used by local mode)
+#[cfg(feature = "dev-mode")]
 async fn ask_database_url() -> Result<Option<String>> {
     let url = inquire::Text::new("Database URL:")
         .with_default("postgresql://USER:PASS@localhost:5432/masday_workflow")
@@ -486,7 +499,8 @@ async fn ask_database_url() -> Result<Option<String>> {
     Ok(Some(url))
 }
 
-/// Ask for embedding model preference
+/// Ask for embedding model preference (dev-mode only — used by local mode)
+#[cfg(feature = "dev-mode")]
 fn ask_embedding_model() -> Result<(Option<String>, Option<String>, Option<usize>)> {
     let embed_choice = inquire::Select::new(
         "Embedding model:",
@@ -697,6 +711,7 @@ fn platform_names(platforms: &[Platform]) -> Vec<String> {
     platforms.iter().map(|p| p.name().to_string()).collect()
 }
 
+#[cfg(feature = "dev-mode")]
 fn print_local_summary(config: &MasdayConfig) {
     println!();
     println!(
@@ -765,6 +780,7 @@ fn print_remote_summary(config: &MasdayConfig) {
     println!();
 }
 
+#[cfg(feature = "dev-mode")]
 fn spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(

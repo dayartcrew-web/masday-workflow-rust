@@ -16,7 +16,22 @@ coverage/
 .gemini/
 .opencode/agent/
 
-# Debug/test artifacts
+# Internal planning docs
+/docs/plan-*.md
+/docs/internal/
+
+# Agent system prompts
+.agents/
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
 screenshots/
 mcp-stderr.txt
 e2e-results.json

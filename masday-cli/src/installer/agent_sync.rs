@@ -8,6 +8,7 @@ pub struct SyncReport {
     pub platform: String,
     pub copied: usize,
     pub skipped: usize,
+    pub warnings: Vec<String>,
 }
 
 pub fn sync_agents_to_project(
@@ -23,6 +24,7 @@ pub fn sync_agents_to_project(
             platform: platform.name().to_string(),
             copied: 0,
             skipped: 0,
+            warnings: Vec::new(),
         };
 
         let target_dir = platform.project_agents_dir(project_dir);
@@ -62,6 +64,7 @@ pub fn sync_agents_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
             platform: platform.name().to_string(),
             copied: 0,
             skipped: 0,
+            warnings: Vec::new(),
         };
 
         let global_dir = if let Some(dir) = platform.global_agents_dir() {
@@ -72,8 +75,12 @@ pub fn sync_agents_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
             continue;
         };
 
-        fs::create_dir_all(&global_dir)
-            .with_context(|| format!("Failed to create directory {}", global_dir.display()))?;
+        if let Err(e) = fs::create_dir_all(&global_dir) {
+            report.warnings.push(format!("Cannot create {}: {}", global_dir.display(), e));
+            report.skipped = agents.iter().filter(|(n, _)| n.starts_with("masday-") && n.ends_with(".md")).count();
+            reports.push(report);
+            continue;
+        }
 
         for (name, content) in agents.iter() {
             if !name.starts_with("masday-") || !name.ends_with(".md") {
@@ -87,9 +94,13 @@ pub fn sync_agents_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
                 continue;
             }
 
-            fs::write(&target_file, content)
-                .with_context(|| format!("Failed to write agent file {}", target_file.display()))?;
-            report.copied += 1;
+            match fs::write(&target_file, content) {
+                Ok(()) => report.copied += 1,
+                Err(e) => {
+                    report.warnings.push(format!("Cannot write {}: {}", target_file.display(), e));
+                    report.skipped += 1;
+                }
+            }
         }
 
         reports.push(report);

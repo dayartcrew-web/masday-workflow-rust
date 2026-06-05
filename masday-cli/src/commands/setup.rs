@@ -14,6 +14,7 @@ use masday_core::constants::ports;
 use std::path::Path;
 
 use crate::config::MasdayConfig;
+#[cfg(feature = "dev-mode")]
 use crate::docker;
 
 /// Run the interactive setup wizard
@@ -45,25 +46,37 @@ pub async fn run(project_dir: &Path) -> Result<()> {
     }
 
     // Step 1: Mode selection
+    #[cfg(feature = "dev-mode")]
+    let mode_options = vec![
+        "Local (everything on this machine)",
+        "Remote (connect to existing server)",
+    ];
+
+    #[cfg(not(feature = "dev-mode"))]
+    let mode_options = vec![
+        "Remote (connect to existing server)",
+    ];
+
     let mode = inquire::Select::new(
         "How would you like to run Masday?",
-        vec![
-            "Local (everything on this machine)",
-            "Remote (connect to existing server)",
-        ],
+        mode_options,
     )
     .with_help_message("↑↓ to move, Enter to select")
     .prompt()?;
 
+    #[cfg(feature = "dev-mode")]
     if mode.starts_with("Local") {
         run_local_setup(project_dir).await?;
-    } else {
-        run_remote_setup(project_dir)?;
+        return Ok(());
     }
+
+    let _ = mode; // Used only in dev-mode branch above
+    run_remote_setup(project_dir)?;
 
     Ok(())
 }
 
+#[cfg(feature = "dev-mode")]
 async fn run_local_setup(project_dir: &Path) -> Result<()> {
     println!();
     println!("{}", style("── Local Mode Setup ──").cyan().bold());
@@ -218,6 +231,7 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
         remote: None,
         api_key: None,
         platform: None,
+        #[cfg(feature = "dev-mode")]
         skip_build: true,
         local_only: false,
         force: true,
@@ -340,6 +354,7 @@ fn run_remote_setup(project_dir: &Path) -> Result<()> {
         remote: Some(config.api_url.clone()),
         api_key: Some(config.api_key.clone()),
         platform: None,
+        #[cfg(feature = "dev-mode")]
         skip_build: true,
         local_only: false,
         force: true,

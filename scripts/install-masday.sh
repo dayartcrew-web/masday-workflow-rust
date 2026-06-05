@@ -83,6 +83,20 @@ get_artifact_name() {
     esac
 }
 
+# Map platform string to MCP artifact name
+get_mcp_artifact_name() {
+    local platform="$1"
+    local os="${platform%%-*}"
+    local arch="${platform##*-}"
+
+    case "$os" in
+        linux)   echo "masday-mcp-linux-${arch}"         ;;
+        windows) echo "masday-mcp-windows-${arch}.exe"    ;;
+        macos)   echo "masday-mcp-macos-${arch}"          ;;
+        *)       echo "masday-mcp-${os}-${arch}"          ;;
+    esac
+}
+
 # Resolve the latest release tag
 get_latest_version() {
     local api_url="https://api.github.com/repos/${REPO}/releases/latest"
@@ -212,6 +226,27 @@ main() {
     mv "$binary_file" "${INSTALL_DIR}/${BINARY_NAME}"
 
     ok "Installed to ${INSTALL_DIR}/${BINARY_NAME}"
+
+    # Download MCP server binary (best-effort)
+    local mcp_artifact
+    mcp_artifact="$(get_mcp_artifact_name "$platform")"
+    local mcp_binary_name
+    case "$platform" in
+        windows-*) mcp_binary_name="masday-mcp.exe" ;;
+        *)         mcp_binary_name="masday-mcp" ;;
+    esac
+    local mcp_url="https://github.com/${REPO}/releases/download/${version}/${mcp_artifact}"
+    local mcp_tmp
+    mcp_tmp="$(mktemp)"
+
+    if curl -fsSL --progress-bar -o "$mcp_tmp" "$mcp_url" 2>/dev/null; then
+        chmod +x "$mcp_tmp"
+        mv "$mcp_tmp" "${INSTALL_DIR}/${mcp_binary_name}"
+        ok "MCP server installed to ${INSTALL_DIR}/${mcp_binary_name}"
+    else
+        rm -f "$mcp_tmp"
+        warn "MCP binary not in this release (use 'masday mcp' subcommand)"
+    fi
 
     # Add to PATH if not already present
     local path_added=0

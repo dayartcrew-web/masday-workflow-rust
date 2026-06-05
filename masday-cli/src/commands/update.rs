@@ -53,8 +53,17 @@ fn release_binary_name() -> &'static str {
     }
 }
 
+/// Release MCP binary name for current platform
+fn release_mcp_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "masday-mcp-windows-x86_64.exe"
+    } else {
+        "masday-mcp-linux-x86_64"
+    }
+}
+
 /// Fetch latest release version from GitHub API
-fn fetch_latest_version() -> Result<String> {
+pub fn fetch_latest_version() -> Result<String> {
     let url = format!(
         "{}/repos/{}/releases/latest",
         GITHUB_API_BASE, GITHUB_RELEASE_REPO
@@ -471,9 +480,38 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
         }
 
         // Replace binary — handle Windows file locking
-        replace_binary(&tmp_dest, &dest)?;;
+        replace_binary(&tmp_dest, &dest)?;
 
         println!("  {} Installed to {}", style("✓").green(), dest.display());
+
+        // Download MCP server binary (best-effort)
+        let mcp_binary_name = release_mcp_binary_name();
+        let mcp_url = format!(
+            "https://github.com/{}/releases/download/{}/{}",
+            GITHUB_RELEASE_REPO, version_tag, mcp_binary_name
+        );
+        let mcp_filename = if cfg!(windows) { "masday-mcp.exe" } else { "masday-mcp" };
+        let mcp_dest = install_dir.join(mcp_filename);
+        let mcp_tmp = install_dir.join(format!("{}.tmp", mcp_filename));
+
+        match download_with_progress(&mcp_url, &mcp_tmp) {
+            Ok(()) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = fs::set_permissions(&mcp_tmp, PermissionsExt::from_mode(0o755));
+                }
+                let _ = replace_binary(&mcp_tmp, &mcp_dest);
+                println!("  {} MCP server installed", style("✓").green());
+            }
+            Err(_) => {
+                let _ = fs::remove_file(&mcp_tmp);
+                println!(
+                    "  {} MCP server not in this release (use 'masday mcp' subcommand)",
+                    style("⚠").yellow()
+                );
+            }
+        }
     } else {
         println!("  {} Skipped binary download", style("⊘").dim());
     }
@@ -488,6 +526,7 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
     println!("{}", style("Re-syncing configuration...").cyan());
 
     let install_args = InstallArgs {
+        #[cfg(feature = "dev-mode")]
         skip_build: true,
         force: true,
         ..Default::default()

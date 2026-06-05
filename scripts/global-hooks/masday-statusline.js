@@ -222,10 +222,11 @@ async function main() {
       }
     }
 
-    // Active workflows
+    // Active workflows (filtered by current project)
     try {
       const wfRes = await new Promise((resolve) => {
-        const req = http.get(`http://localhost:${cfgPort}/api/workflows`, { timeout: 1500 }, (res) => {
+        const projectPath = encodeURIComponent(cwd);
+        const req = http.get(`http://localhost:${cfgPort}/api/workflows?project_path=${projectPath}`, { timeout: 1500 }, (res) => {
           let body = "";
           res.on("data", (c) => (body += c));
           res.on("end", () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });

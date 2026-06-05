@@ -8,6 +8,7 @@ pub struct SyncReport {
     pub platform: String,
     pub copied: usize,
     pub skipped: usize,
+    pub warnings: Vec<String>,
 }
 
 pub fn sync_skills_to_project(
@@ -23,6 +24,7 @@ pub fn sync_skills_to_project(
             platform: platform.name().to_string(),
             copied: 0,
             skipped: 0,
+            warnings: Vec::new(),
         };
 
         let target_dir = platform.project_skills_dir(project_dir);
@@ -85,6 +87,7 @@ pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
             platform: platform.name().to_string(),
             copied: 0,
             skipped: 0,
+            warnings: Vec::new(),
         };
 
         let global_dir = if let Some(dir) = platform.global_skills_dir() {
@@ -111,28 +114,31 @@ pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
             let skill_files = templates::extract_skill_files(skill_name);
 
             if !is_dir_writable(&global_dir) {
+                report.warnings.push(format!("Directory not writable: {}", global_dir.display()));
                 report.skipped += 1;
                 continue;
             }
 
-            fs::create_dir_all(&skill_target_dir).with_context(|| {
-                format!(
-                    "Failed to create skill directory {}",
-                    skill_target_dir.display()
-                )
-            })?;
+            if let Err(e) = fs::create_dir_all(&skill_target_dir) {
+                report.warnings.push(format!("Cannot create {}: {}", skill_target_dir.display(), e));
+                report.skipped += 1;
+                continue;
+            }
 
             let mut copied_skill = false;
             for (file_name, content) in skill_files.iter() {
                 let file_path = skill_target_dir.join(file_name);
                 if let Some(parent) = file_path.parent() {
-                    fs::create_dir_all(parent).with_context(|| {
-                        format!("Failed to create directory {}", parent.display())
-                    })?;
+                    if let Err(e) = fs::create_dir_all(parent) {
+                        report.warnings.push(format!("Cannot create {}: {}", parent.display(), e));
+                        continue;
+                    }
                 }
-                fs::write(&file_path, content).with_context(|| {
-                    format!("Failed to write skill file {}", file_path.display())
-                })?;
+                if let Err(e) = fs::write(&file_path, content) {
+                    report.warnings.push(format!("Cannot write {}: {}", file_path.display(), e));
+                    report.skipped += 1;
+                    continue;
+                }
                 copied_skill = true;
             }
 
