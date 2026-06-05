@@ -80,12 +80,12 @@ jobs:
             TAG="${TAG#v}"
           fi
           echo "Setting version to $TAG"
-          # Update all crate versions
+          # Update all crate versions (compatible with both GNU and BSD sed)
           for toml in */Cargo.toml; do
-            sed -i "s/^version = \"[^\"]*\"/version = \"$TAG\"/" "$toml"
+            sed -i.bak "s/^version = \"[^\"]*\"/version = \"$TAG\"/" "$toml" && rm -f "${toml}.bak"
           done
           # Update workspace dependencies
-          sed -i "s/version = \"[0-9.]\+\"/version = \"$TAG\"/g" Cargo.toml
+          sed -i.bak "s/version = \"[0-9.]\+\"/version = \"$TAG\"/g" Cargo.toml && rm -f Cargo.toml.bak
           echo "Updated versions:"
           grep '^version' */Cargo.toml
         shell: bash
