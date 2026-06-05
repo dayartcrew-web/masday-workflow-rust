@@ -179,21 +179,22 @@ main() {
     # Check for existing installation
     if [ -x "${INSTALL_DIR}/${BINARY_NAME}" ]; then
         local existing_version
-        existing_version="$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | head -1 | sed 's/masday //')" || true
+        existing_version="$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" || true
 
         if [ -n "$existing_version" ]; then
-            warn "masday ${existing_version} is already installed at ${INSTALL_DIR}/${BINARY_NAME}"
+            # Strip 'v' prefix for comparison
+            local new_ver="${version#v}"
 
-            if [ "${MASDAY_FORCE:-0}" = "1" ]; then
-                info "MASDAY_FORCE=1 — reinstalling..."
-            elif [ -t 0 ]; then
-                read -rp "${YELLOW}Reinstall/update? [y/N]${NC} " answer
-                case "$answer" in
-                    y*|Y*) info "Reinstalling..." ;;
-                    *)     info "Skipping. Use MASDAY_FORCE=1 to force reinstall."; exit 0 ;;
-                esac
+            if [ "$existing_version" = "$new_ver" ]; then
+                warn "masday ${existing_version} is already up-to-date at ${INSTALL_DIR}/${BINARY_NAME}"
+                if [ "${MASDAY_FORCE:-0}" != "1" ]; then
+                    info "Already on latest. Use MASDAY_FORCE=1 to force reinstall."
+                    exit 0
+                fi
+                info "MASDAY_FORCE=1 — reinstalling same version..."
             else
-                info "Already installed. Use MASDAY_FORCE=1 to force reinstall."; exit 0
+                # Different version — auto-update
+                info "Updating masday ${existing_version} → ${new_ver}..."
             fi
         fi
     fi
