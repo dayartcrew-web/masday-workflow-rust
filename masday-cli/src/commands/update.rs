@@ -358,8 +358,8 @@ fn replace_binary(tmp_path: &Path, dest: &Path) -> Result<()> {
     let _ = fs::remove_file(&old_path);
 
     // Rename current binary to .old
-    if let Err(e) = fs::rename(dest, &old_path) {
-        // If even rename to .old fails, try to copy instead
+    if let Err(_e) = fs::rename(dest, &old_path) {
+        // If even rename to .old fails, try to generate updater script
         #[cfg(windows)]
         {
             // On Windows, try writing a small updater script
@@ -370,9 +370,9 @@ fn replace_binary(tmp_path: &Path, dest: &Path) -> Result<()> {
 
             let script = format!(
                 "@echo off\ntimeout /t 2 /nobreak >nul\nmove /y \"{}\" \"{}\"\ndel /f \"{}\" 2>nul\ndel \"%~f0\"\n",
-                tmp_str.replace('/', "\\"),
-                dest_str.replace('/', "\\"),
-                old_str.replace('/', "\\")
+                tmp_str.replace('/', "\\\\"),
+                dest_str.replace('/', "\\\\"),
+                old_str.replace('/', "\\\\")
             );
             fs::write(&script_path, &script)?;
 
@@ -385,7 +385,11 @@ fn replace_binary(tmp_path: &Path, dest: &Path) -> Result<()> {
                 script_path.display()
             );
         }
-        bail!("Failed to replace binary: {}. Close any running masday processes and try again.", e);
+
+        #[cfg(not(windows))]
+        {
+            bail!("Failed to replace binary. Close any running masday processes and try again.");
+        }
     }
 
     // Now rename the new binary into place
