@@ -53,16 +53,11 @@ pub async fn run(project_dir: &Path) -> Result<()> {
     ];
 
     #[cfg(not(feature = "dev-mode"))]
-    let mode_options = vec![
-        "Remote (connect to existing server)",
-    ];
+    let mode_options = vec!["Remote (connect to existing server)"];
 
-    let mode = inquire::Select::new(
-        "How would you like to run Masday?",
-        mode_options,
-    )
-    .with_help_message("↑↓ to move, Enter to select")
-    .prompt()?;
+    let mode = inquire::Select::new("How would you like to run Masday?", mode_options)
+        .with_help_message("↑↓ to move, Enter to select")
+        .prompt()?;
 
     #[cfg(feature = "dev-mode")]
     if mode.starts_with("Local") {

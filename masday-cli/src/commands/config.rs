@@ -67,9 +67,7 @@ fn show_config() -> Result<()> {
 /// Get a single config value by key
 fn get_config(key: &str) -> Result<()> {
     if !MasdayConfig::exists() {
-        bail!(
-            "Config file not found. Run 'masday setup' to create it."
-        );
+        bail!("Config file not found. Run 'masday setup' to create it.");
     }
 
     let config = MasdayConfig::load_or_err()?;
@@ -82,16 +80,23 @@ fn get_config(key: &str) -> Result<()> {
         "platforms" => config.platforms.join(", "),
 
         // Nested keys - embedding
-        "embedding.provider" => config.embedding_provider.unwrap_or_else(|| "null".to_string()),
+        "embedding.provider" => config
+            .embedding_provider
+            .unwrap_or_else(|| "null".to_string()),
         "embedding.model" => config.embedding_model.unwrap_or_else(|| "null".to_string()),
-        "embedding.dimensions" => config.embedding_dimensions.map(|d| d.to_string()).unwrap_or_else(|| "null".to_string()),
-        "embedding.base_url" => config.embedding_base_url.unwrap_or_else(|| "null".to_string()),
+        "embedding.dimensions" => config
+            .embedding_dimensions
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "null".to_string()),
+        "embedding.base_url" => config
+            .embedding_base_url
+            .unwrap_or_else(|| "null".to_string()),
         "embedding.api_key" => {
             // Mask API key for security
             match &config.embedding_api_key {
                 Some(key) => {
                     if key.len() > 8 {
-                        format!("{}...{}", &key[..4], &key[key.len()-4..])
+                        format!("{}...{}", &key[..4], &key[key.len() - 4..])
                     } else {
                         "****".to_string()
                     }
@@ -116,9 +121,7 @@ fn get_config(key: &str) -> Result<()> {
 /// Set a config value by key
 fn set_config(key: &str, value: &str) -> Result<()> {
     if !MasdayConfig::exists() {
-        bail!(
-            "Config file not found. Run 'masday setup' to create it."
-        );
+        bail!("Config file not found. Run 'masday setup' to create it.");
     }
 
     let mut config = MasdayConfig::load_or_err()?;
@@ -144,7 +147,11 @@ fn set_config(key: &str, value: &str) -> Result<()> {
             };
         }
         "platforms" => {
-            config.platforms = value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            config.platforms = value
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
 
         // Nested keys - embedding
@@ -166,7 +173,11 @@ fn set_config(key: &str, value: &str) -> Result<()> {
             config.embedding_dimensions = if value == "null" {
                 None
             } else {
-                Some(value.parse().context("Invalid dimensions value - must be a number")?)
+                Some(
+                    value
+                        .parse()
+                        .context("Invalid dimensions value - must be a number")?,
+                )
             };
         }
         "embedding.base_url" => {
@@ -186,23 +197,40 @@ fn set_config(key: &str, value: &str) -> Result<()> {
 
         // Nested keys - ports
         "ports.api_port" => {
-            config.api_port = value.parse().context("Invalid port value - must be a number")?;
+            config.api_port = value
+                .parse()
+                .context("Invalid port value - must be a number")?;
         }
         "ports.db_port" => {
-            config.db_port = value.parse().context("Invalid port value - must be a number")?;
+            config.db_port = value
+                .parse()
+                .context("Invalid port value - must be a number")?;
         }
         "ports.redis_port" => {
-            config.redis_port = value.parse().context("Invalid port value - must be a number")?;
+            config.redis_port = value
+                .parse()
+                .context("Invalid port value - must be a number")?;
         }
         "ports.dashboard_port" => {
-            config.dashboard_port = value.parse().context("Invalid port value - must be a number")?;
+            config.dashboard_port = value
+                .parse()
+                .context("Invalid port value - must be a number")?;
         }
 
         _ => bail!("Unknown config key: '{}'", key),
     }
 
-    config.save().with_context(|| format!("Failed to save config to {}", MasdayConfig::config_path().display()))?;
-    println!("✓ Config updated: {} = {}", style(key).cyan(), style(value).green());
+    config.save().with_context(|| {
+        format!(
+            "Failed to save config to {}",
+            MasdayConfig::config_path().display()
+        )
+    })?;
+    println!(
+        "✓ Config updated: {} = {}",
+        style(key).cyan(),
+        style(value).green()
+    );
     Ok(())
 }
 
@@ -225,10 +253,12 @@ fn edit_config() -> Result<()> {
         }
     });
 
-    let status = Command::new(&editor)
-        .arg(&path)
-        .status()
-        .with_context(|| format!("Failed to open editor '{}'. Try: EDITOR=vim masday config edit", editor))?;
+    let status = Command::new(&editor).arg(&path).status().with_context(|| {
+        format!(
+            "Failed to open editor '{}'. Try: EDITOR=vim masday config edit",
+            editor
+        )
+    })?;
 
     if status.success() {
         println!("✓ Config file closed: {}", path.display());
@@ -242,9 +272,7 @@ fn edit_config() -> Result<()> {
 /// Reset config to defaults (with confirmation)
 fn reset_config() -> Result<()> {
     if !MasdayConfig::exists() {
-        bail!(
-            "Config file not found. Run 'masday setup' to create it."
-        );
+        bail!("Config file not found. Run 'masday setup' to create it.");
     }
 
     print!("Are you sure you want to reset to defaults? [y/N] ");
@@ -260,7 +288,12 @@ fn reset_config() -> Result<()> {
     }
 
     let default_config = MasdayConfig::default();
-    default_config.save().with_context(|| format!("Failed to save config to {}", MasdayConfig::config_path().display()))?;
+    default_config.save().with_context(|| {
+        format!(
+            "Failed to save config to {}",
+            MasdayConfig::config_path().display()
+        )
+    })?;
 
     println!("✓ Config reset to defaults");
     Ok(())

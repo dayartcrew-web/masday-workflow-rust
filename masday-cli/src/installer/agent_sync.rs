@@ -76,8 +76,13 @@ pub fn sync_agents_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
         };
 
         if let Err(e) = fs::create_dir_all(&global_dir) {
-            report.warnings.push(format!("Cannot create {}: {}", global_dir.display(), e));
-            report.skipped = agents.iter().filter(|(n, _)| n.starts_with("masday-") && n.ends_with(".md")).count();
+            report
+                .warnings
+                .push(format!("Cannot create {}: {}", global_dir.display(), e));
+            report.skipped = agents
+                .iter()
+                .filter(|(n, _)| n.starts_with("masday-") && n.ends_with(".md"))
+                .count();
             reports.push(report);
             continue;
         }
@@ -97,7 +102,9 @@ pub fn sync_agents_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
             match fs::write(&target_file, content) {
                 Ok(()) => report.copied += 1,
                 Err(e) => {
-                    report.warnings.push(format!("Cannot write {}: {}", target_file.display(), e));
+                    report
+                        .warnings
+                        .push(format!("Cannot write {}: {}", target_file.display(), e));
                     report.skipped += 1;
                 }
             }

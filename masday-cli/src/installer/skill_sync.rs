@@ -114,13 +114,19 @@ pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
             let skill_files = templates::extract_skill_files(skill_name);
 
             if !is_dir_writable(&global_dir) {
-                report.warnings.push(format!("Directory not writable: {}", global_dir.display()));
+                report
+                    .warnings
+                    .push(format!("Directory not writable: {}", global_dir.display()));
                 report.skipped += 1;
                 continue;
             }
 
             if let Err(e) = fs::create_dir_all(&skill_target_dir) {
-                report.warnings.push(format!("Cannot create {}: {}", skill_target_dir.display(), e));
+                report.warnings.push(format!(
+                    "Cannot create {}: {}",
+                    skill_target_dir.display(),
+                    e
+                ));
                 report.skipped += 1;
                 continue;
             }
@@ -130,12 +136,16 @@ pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
                 let file_path = skill_target_dir.join(file_name);
                 if let Some(parent) = file_path.parent() {
                     if let Err(e) = fs::create_dir_all(parent) {
-                        report.warnings.push(format!("Cannot create {}: {}", parent.display(), e));
+                        report
+                            .warnings
+                            .push(format!("Cannot create {}: {}", parent.display(), e));
                         continue;
                     }
                 }
                 if let Err(e) = fs::write(&file_path, content) {
-                    report.warnings.push(format!("Cannot write {}: {}", file_path.display(), e));
+                    report
+                        .warnings
+                        .push(format!("Cannot write {}: {}", file_path.display(), e));
                     report.skipped += 1;
                     continue;
                 }

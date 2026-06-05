@@ -94,14 +94,17 @@ fn build_server_object(config: &McpConfig) -> JsonValue {
     // If api_url is set and points to a URL, use SSE/HTTP transport
     // Otherwise use stdio (binary runs locally as subprocess)
     let api_url = config.api_url.as_str();
-    let is_url_mode = !api_url.is_empty()
-        && (api_url.starts_with("http://") || api_url.starts_with("https://"));
+    let is_url_mode =
+        !api_url.is_empty() && (api_url.starts_with("http://") || api_url.starts_with("https://"));
 
     if is_url_mode {
         // Local/Remote mode: connect to running API server
         // Use streamableHttp (or sse) transport with URL endpoint
         let mcp_url = format!("{}/mcp", api_url.trim_end_matches('/'));
-        server.insert("type".to_string(), JsonValue::String("streamableHttp".to_string()));
+        server.insert(
+            "type".to_string(),
+            JsonValue::String("streamableHttp".to_string()),
+        );
         server.insert("url".to_string(), JsonValue::String(mcp_url));
         if !config.api_key.is_empty() {
             let mut headers = serde_json::Map::new();

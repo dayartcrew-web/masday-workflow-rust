@@ -88,9 +88,7 @@ pub async fn run(project_dir: &Path) -> Result<()> {
             run_local_mode(project_dir, &detected_platforms, has_docker).await?
         }
         s if s.starts_with("Remote") => run_remote_mode(project_dir, &detected_platforms)?,
-        s if s.starts_with("Standalone") => {
-            run_standalone_mode(project_dir, &detected_platforms)?
-        }
+        s if s.starts_with("Standalone") => run_standalone_mode(project_dir, &detected_platforms)?,
         _ => bail!("Invalid selection"),
     }
 

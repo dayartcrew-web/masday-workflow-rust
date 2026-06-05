@@ -35,10 +35,7 @@ pub async fn run(action: DevAction, project_dir: &Path) -> Result<()> {
 /// Build all crates from source using cargo
 fn run_dev_build(project_dir: &Path) -> Result<()> {
     println!();
-    println!(
-        "{}",
-        style("Building Masday from source...").cyan().bold()
-    );
+    println!("{}", style("Building Masday from source...").cyan().bold());
     println!();
 
     installer::build_crates(project_dir)?;
@@ -67,7 +64,9 @@ fn run_dev_install(project_dir: &Path) -> Result<()> {
     println!();
     println!(
         "{}",
-        style("Installing Masday (development mode)...").cyan().bold()
+        style("Installing Masday (development mode)...")
+            .cyan()
+            .bold()
     );
     println!();
 
@@ -101,7 +100,9 @@ async fn run_dev_serve(port: Option<u16>) -> Result<()> {
     println!();
     println!(
         "{}",
-        style("Starting API server (development mode)...").cyan().bold()
+        style("Starting API server (development mode)...")
+            .cyan()
+            .bold()
     );
     println!();
 

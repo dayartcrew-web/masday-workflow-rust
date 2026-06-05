@@ -246,7 +246,11 @@ pub enum EmbedAction {
 pub fn run(action: EmbedAction) -> Result<()> {
     match action {
         EmbedAction::Status => run_status(),
-        EmbedAction::Download { provider, model, force } => {
+        EmbedAction::Download {
+            provider,
+            model,
+            force,
+        } => {
             run_download(provider, model, force)?;
             Ok(())
         }
@@ -264,11 +268,17 @@ fn run_status() -> Result<()> {
     let config = MasdayConfig::load().unwrap_or_default();
 
     // Provider
-    let provider = config.embedding_provider.as_deref().unwrap_or("not configured");
+    let provider = config
+        .embedding_provider
+        .as_deref()
+        .unwrap_or("not configured");
     print_box_row("Provider", provider);
 
     // Model
-    let model = config.embedding_model.as_deref().unwrap_or("not configured");
+    let model = config
+        .embedding_model
+        .as_deref()
+        .unwrap_or("not configured");
     print_box_row("Model", model);
 
     // Dimensions
@@ -335,7 +345,10 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
     });
 
     if !["ollama", "openai"].contains(&provider_id.as_str()) {
-        bail!("Invalid provider '{}'. Must be 'ollama' or 'openai'", provider_id);
+        bail!(
+            "Invalid provider '{}'. Must be 'ollama' or 'openai'",
+            provider_id
+        );
     }
 
     // Determine model
@@ -435,8 +448,8 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
         }
         "openai" => {
             // OpenAI models don't need local download — just verify API key
-            let has_key = config.embedding_api_key.is_some()
-                || std::env::var("OPENAI_API_KEY").is_ok();
+            let has_key =
+                config.embedding_api_key.is_some() || std::env::var("OPENAI_API_KEY").is_ok();
 
             if !has_key {
                 bail!(
@@ -451,10 +464,7 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
                 "{} OpenAI models are cloud-based — no download needed",
                 style("✓").green()
             );
-            println!(
-                "  API key configured: {}",
-                style("✓").green()
-            );
+            println!("  API key configured: {}", style("✓").green());
         }
         _ => bail!("Unsupported provider: {}", provider_id),
     }
@@ -549,9 +559,7 @@ fn run_list() -> Result<()> {
 /// Run embedding test with sample text
 fn run_test(text: &str) -> Result<()> {
     if !is_embedding_configured() {
-        bail!(
-            "Embedding not configured. Run 'masday embed settings' first."
-        );
+        bail!("Embedding not configured. Run 'masday embed settings' first.");
     }
 
     println!();
@@ -563,7 +571,10 @@ fn run_test(text: &str) -> Result<()> {
 
     let config = MasdayConfig::load().unwrap_or_default();
     let provider = config.embedding_provider.as_deref().unwrap_or("ollama");
-    let model = config.embedding_model.as_deref().unwrap_or("nomic-embed-text");
+    let model = config
+        .embedding_model
+        .as_deref()
+        .unwrap_or("nomic-embed-text");
     let dimensions = config.embedding_dimensions.unwrap_or(768);
 
     let start = Instant::now();
@@ -616,7 +627,8 @@ fn run_test(text: &str) -> Result<()> {
                     let body = resp.text().unwrap_or_default();
                     bail!(
                         "Ollama returned {}:\n  {}\n\nMake sure Ollama is running: ollama serve",
-                        status, body
+                        status,
+                        body
                     );
                 }
                 Err(e) => {
@@ -633,7 +645,7 @@ fn run_test(text: &str) -> Result<()> {
             let api_key = config
                 .embedding_api_key
                 .as_deref()
-                .or_else(|| api_key_env.as_deref())
+                .or(api_key_env.as_deref())
                 .unwrap_or("");
 
             if api_key.is_empty() {
@@ -695,7 +707,10 @@ fn run_clear() -> Result<()> {
     let cache_dir = embed_cache_dir();
 
     if !cache_dir.exists() {
-        println!("{} Nothing to clear — cache doesn't exist", style("✓").green());
+        println!(
+            "{} Nothing to clear — cache doesn't exist",
+            style("✓").green()
+        );
         return Ok(());
     }
 
@@ -716,10 +731,7 @@ fn run_clear() -> Result<()> {
     }
 
     fs::remove_dir_all(&cache_dir)?;
-    println!(
-        "{} Cleared embedding cache",
-        style("✓").green()
-    );
+    println!("{} Cleared embedding cache", style("✓").green());
     println!();
 
     Ok(())

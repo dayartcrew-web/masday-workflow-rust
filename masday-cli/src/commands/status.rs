@@ -164,7 +164,10 @@ async fn check_api_health(config: &MasdayConfig, verbose: bool) -> ComponentHeal
             details.insert("url".to_string(), config.api_url.clone());
             if verbose {
                 details.insert("latency_ms".to_string(), latency.to_string());
-                details.insert("status_code".to_string(), resp.status().as_u16().to_string());
+                details.insert(
+                    "status_code".to_string(),
+                    resp.status().as_u16().to_string(),
+                );
             }
 
             ComponentHealth {
@@ -176,7 +179,10 @@ async fn check_api_health(config: &MasdayConfig, verbose: bool) -> ComponentHeal
         Ok(resp) => {
             let mut details = HashMap::new();
             details.insert("url".to_string(), config.api_url.clone());
-            details.insert("status_code".to_string(), resp.status().as_u16().to_string());
+            details.insert(
+                "status_code".to_string(),
+                resp.status().as_u16().to_string(),
+            );
 
             ComponentHealth {
                 status: HealthStatus::Degraded,
@@ -215,27 +221,34 @@ async fn check_database_health(config: &MasdayConfig, verbose: bool) -> Componen
         let db_port = config.db_port;
 
         // Build connection string from defaults
-        let default_url = format!(
-            "postgresql://127.0.0.1:{}/masday",
-            db_port
-        );
+        let default_url = format!("postgresql://127.0.0.1:{}/masday", db_port);
 
         // First try actual DB connection
         match try_postgres_connect(&default_url).await {
             Some(health) => health,
             None => {
                 // If full connection fails, try just TCP port check
-                if let Ok(stream) = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", db_port)).await {
+                if let Ok(stream) =
+                    tokio::net::TcpStream::connect(format!("127.0.0.1:{}", db_port)).await
+                {
                     drop(stream);
                     let mut details = HashMap::new();
                     details.insert("port".to_string(), db_port.to_string());
                     if verbose {
                         details.insert("type".to_string(), "native".to_string());
-                        details.insert("hint".to_string(), "port open but cannot connect — check credentials/database_url".to_string());
+                        details.insert(
+                            "hint".to_string(),
+                            "port open but cannot connect — check credentials/database_url"
+                                .to_string(),
+                        );
                     }
                     ComponentHealth {
                         status: HealthStatus::Degraded,
-                        message: format!("{} port {} open but not accessible", style("⚠").yellow(), db_port),
+                        message: format!(
+                            "{} port {} open but not accessible",
+                            style("⚠").yellow(),
+                            db_port
+                        ),
                         details: if verbose { Some(details) } else { None },
                     }
                 } else if crate::docker::is_docker_available() {
@@ -259,32 +272,30 @@ async fn try_postgres_connect(db_url: &str) -> Option<ComponentHealth> {
     let start_time = std::time::Instant::now();
 
     match masday_db::pool::init_pool_with_retry(2).await {
-        Ok(pool) => {
-            match masday_db::pool::health_check(&pool).await {
-                Ok(_) => {
-                    let latency = start_time.elapsed().as_millis();
-                    let mut details = HashMap::new();
-                    details.insert("latency_ms".to_string(), latency.to_string());
-                    details.insert("type".to_string(), "native".to_string());
+        Ok(pool) => match masday_db::pool::health_check(&pool).await {
+            Ok(_) => {
+                let latency = start_time.elapsed().as_millis();
+                let mut details = HashMap::new();
+                details.insert("latency_ms".to_string(), latency.to_string());
+                details.insert("type".to_string(), "native".to_string());
 
-                    Some(ComponentHealth {
-                        status: HealthStatus::Healthy,
-                        message: format!("{} connected", style("✓").green()),
-                        details: Some(details),
-                    })
-                }
-                Err(e) => {
-                    let mut details = HashMap::new();
-                    details.insert("error".to_string(), e.to_string());
-
-                    Some(ComponentHealth {
-                        status: HealthStatus::Degraded,
-                        message: format!("{} health check failed", style("⚠").yellow()),
-                        details: Some(details),
-                    })
-                }
+                Some(ComponentHealth {
+                    status: HealthStatus::Healthy,
+                    message: format!("{} connected", style("✓").green()),
+                    details: Some(details),
+                })
             }
-        }
+            Err(e) => {
+                let mut details = HashMap::new();
+                details.insert("error".to_string(), e.to_string());
+
+                Some(ComponentHealth {
+                    status: HealthStatus::Degraded,
+                    message: format!("{} health check failed", style("⚠").yellow()),
+                    details: Some(details),
+                })
+            }
+        },
         Err(_) => None, // Can't connect at all — caller should try TCP fallback
     }
 }
@@ -295,38 +306,36 @@ async fn check_postgres_external(db_url: &str, verbose: bool) -> ComponentHealth
     let start_time = std::time::Instant::now();
 
     match masday_db::pool::init_pool_with_retry(2).await {
-        Ok(pool) => {
-            match masday_db::pool::health_check(&pool).await {
-                Ok(_) => {
-                    let safe_url = redact_db_url(db_url);
-                    let latency = start_time.elapsed().as_millis();
+        Ok(pool) => match masday_db::pool::health_check(&pool).await {
+            Ok(_) => {
+                let safe_url = redact_db_url(db_url);
+                let latency = start_time.elapsed().as_millis();
 
-                    let mut details = HashMap::new();
-                    details.insert("url".to_string(), safe_url.clone());
-                    if verbose {
-                        details.insert("latency_ms".to_string(), latency.to_string());
-                        details.insert("type".to_string(), "external".to_string());
-                    }
-
-                    ComponentHealth {
-                        status: HealthStatus::Healthy,
-                        message: format!("{} connected", style("✓").green()),
-                        details: if verbose { Some(details) } else { None },
-                    }
+                let mut details = HashMap::new();
+                details.insert("url".to_string(), safe_url.clone());
+                if verbose {
+                    details.insert("latency_ms".to_string(), latency.to_string());
+                    details.insert("type".to_string(), "external".to_string());
                 }
-                Err(e) => {
-                    let mut details = HashMap::new();
-                    details.insert("url".to_string(), redact_db_url(db_url));
-                    details.insert("error".to_string(), e.to_string());
 
-                    ComponentHealth {
-                        status: HealthStatus::Degraded,
-                        message: format!("{} health check failed", style("⚠").yellow()),
-                        details: if verbose { Some(details) } else { None },
-                    }
+                ComponentHealth {
+                    status: HealthStatus::Healthy,
+                    message: format!("{} connected", style("✓").green()),
+                    details: if verbose { Some(details) } else { None },
                 }
             }
-        }
+            Err(e) => {
+                let mut details = HashMap::new();
+                details.insert("url".to_string(), redact_db_url(db_url));
+                details.insert("error".to_string(), e.to_string());
+
+                ComponentHealth {
+                    status: HealthStatus::Degraded,
+                    message: format!("{} health check failed", style("⚠").yellow()),
+                    details: if verbose { Some(details) } else { None },
+                }
+            }
+        },
         Err(e) => {
             let mut details = HashMap::new();
             details.insert("url".to_string(), redact_db_url(db_url));
@@ -388,15 +397,25 @@ fn check_redis_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
         let mut details = HashMap::new();
         details.insert("port".to_string(), redis_port.to_string());
         if verbose {
-            details.insert("type".to_string(), if ping_ok { "native" } else { "tcp-open" }.to_string());
+            details.insert(
+                "type".to_string(),
+                if ping_ok { "native" } else { "tcp-open" }.to_string(),
+            );
         }
 
         return ComponentHealth {
-            status: if ping_ok { HealthStatus::Healthy } else { HealthStatus::Degraded },
+            status: if ping_ok {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Degraded
+            },
             message: if ping_ok {
                 format!("{} connected (port {})", style("✓").green(), redis_port)
             } else {
-                format!("{} port open but not responding to PING", style("⚠").yellow())
+                format!(
+                    "{} port open but not responding to PING",
+                    style("⚠").yellow()
+                )
             },
             details: if verbose { Some(details) } else { None },
         };
@@ -421,7 +440,10 @@ fn check_redis_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
     // 3. Not available
     let mut details = HashMap::new();
     if verbose {
-        details.insert("hint".to_string(), "run 'masday db start' or install Redis".to_string());
+        details.insert(
+            "hint".to_string(),
+            "run 'masday db start' or install Redis".to_string(),
+        );
     }
 
     ComponentHealth {
@@ -453,7 +475,7 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
     let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
 
     // Try multiple MCP binary locations
-    let mcp_paths = vec![
+    let mcp_paths = [
         home.join(".masday").join("bin").join("masday-mcp"),
         std::path::PathBuf::from("/home/vibe-dev/masday-workflow-rust/target/release/masday-mcp"),
     ];
@@ -475,7 +497,10 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
 
         let mut details = HashMap::new();
         if verbose {
-            details.insert("binary_path".to_string(), mcp_binary.as_ref().unwrap().display().to_string());
+            details.insert(
+                "binary_path".to_string(),
+                mcp_binary.as_ref().unwrap().display().to_string(),
+            );
             if let Some(count) = tool_count {
                 details.insert("tool_count".to_string(), count.to_string());
             }
@@ -484,13 +509,27 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
         }
 
         let message = match (tool_count, registered) {
-            (Some(count), true) => format!("{} {} tools ({}, registered)", style("✓").green(), count, mcp_mode),
-            (Some(count), false) => format!("{} {} tools ({}, not registered)", style("⚠").yellow(), count, mcp_mode),
+            (Some(count), true) => format!(
+                "{} {} tools ({}, registered)",
+                style("✓").green(),
+                count,
+                mcp_mode
+            ),
+            (Some(count), false) => format!(
+                "{} {} tools ({}, not registered)",
+                style("⚠").yellow(),
+                count,
+                mcp_mode
+            ),
             (None, true) => format!("{} {} mode, registered", style("✓").green(), mcp_mode),
             (None, false) => format!("{} {} mode, not registered", style("⚠").yellow(), mcp_mode),
         };
 
-        let status = if registered { HealthStatus::Healthy } else { HealthStatus::Degraded };
+        let status = if registered {
+            HealthStatus::Healthy
+        } else {
+            HealthStatus::Degraded
+        };
 
         ComponentHealth {
             status,
@@ -513,7 +552,10 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
     } else {
         let mut details = HashMap::new();
         if verbose {
-            details.insert("expected_path".to_string(), mcp_paths[0].display().to_string());
+            details.insert(
+                "expected_path".to_string(),
+                mcp_paths[0].display().to_string(),
+            );
             details.insert("hint".to_string(), "run 'masday install'".to_string());
         }
 
@@ -590,9 +632,7 @@ fn count_mcp_tools_from_config(home: &std::path::Path) -> Option<usize> {
         if let Ok(entries) = std::fs::read_dir(&tools_dir) {
             let count = entries
                 .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path().extension().map(|ext| ext == "md").unwrap_or(false)
-                })
+                .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
                 .count();
             if count > 0 {
                 return Some(count);
@@ -613,7 +653,11 @@ fn check_mcp_registration() -> bool {
         if let Ok(content) = std::fs::read_to_string(&claude_json) {
             // Try structured parse first
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                if val.get("mcpServers").and_then(|m| m.get("masday")).is_some() {
+                if val
+                    .get("mcpServers")
+                    .and_then(|m| m.get("masday"))
+                    .is_some()
+                {
                     return true;
                 }
             }
@@ -660,10 +704,7 @@ fn check_mcp_registration() -> bool {
 /// Count MCP tools by parsing --help output
 fn count_mcp_tools(mcp_binary: &std::path::Path) -> Option<usize> {
     // Try to get tool count from MCP binary startup log
-    let output = Command::new(mcp_binary)
-        .arg("--help")
-        .output()
-        .ok()?;
+    let output = Command::new(mcp_binary).arg("--help").output().ok()?;
 
     let combined = format!(
         "{}\n{}",
@@ -688,11 +729,64 @@ fn count_mcp_tools(mcp_binary: &std::path::Path) -> Option<usize> {
 
 /// Check embedding service health
 fn check_embedding_health(config: &MasdayConfig, verbose: bool) -> ComponentHealth {
-    if let Some(ref provider) = config.embedding_provider {
-        if !provider.is_empty() {
+    // Check embedding config from multiple sources:
+    // 1. config.toml fields
+    // 2. Environment variables
+    // 3. ~/.claude.json mcpServer env block
+
+    let provider = config
+        .embedding_provider
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .map(String::from)
+        .or_else(|| std::env::var("EMBEDDING_PROVIDER").ok())
+        .or_else(|| {
+            // Check ~/.claude.json for embedding env vars
+            let home = home::home_dir()?;
+            let claude_json = std::fs::read_to_string(home.join(".claude.json")).ok()?;
+            if claude_json.contains("\"EMBEDDING_PROVIDER\"") {
+                // Extract from JSON
+                serde_json::from_str::<serde_json::Value>(&claude_json)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("mcpServers")?
+                            .get("masday")?
+                            .get("env")?
+                            .get("EMBEDDING_PROVIDER")?
+                            .as_str()
+                            .map(String::from)
+                    })
+            } else {
+                None
+            }
+        });
+
+    let model = config
+        .embedding_model
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .map(String::from)
+        .or_else(|| std::env::var("EMBEDDING_MODEL").ok())
+        .or_else(|| {
+            let home = home::home_dir()?;
+            let claude_json = std::fs::read_to_string(home.join(".claude.json")).ok()?;
+            serde_json::from_str::<serde_json::Value>(&claude_json)
+                .ok()
+                .and_then(|v| {
+                    v.get("mcpServers")?
+                        .get("masday")?
+                        .get("env")?
+                        .get("EMBEDDING_MODEL")?
+                        .as_str()
+                        .map(String::from)
+                })
+        });
+
+    match (provider, model) {
+        (Some(provider), model) if !provider.is_empty() => {
             let mut details = HashMap::new();
             details.insert("provider".to_string(), provider.clone());
-            if let Some(ref model) = config.embedding_model {
+            if let Some(ref model) = model {
                 details.insert("model".to_string(), model.clone());
             }
             if let Some(dims) = config.embedding_dimensions {
@@ -702,28 +796,50 @@ fn check_embedding_health(config: &MasdayConfig, verbose: bool) -> ComponentHeal
                 let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
                 details.insert(
                     "cache_dir".to_string(),
-                    home.join(".masday").join("embed-cache").display().to_string(),
+                    home.join(".masday")
+                        .join("embed-cache")
+                        .display()
+                        .to_string(),
                 );
             }
 
+            // Check if Ollama is reachable (for ollama provider)
+            let status = if provider == "ollama" {
+                let ollama_port =
+                    std::env::var("OLLAMA_PORT").unwrap_or_else(|_| "11434".to_string());
+                match std::net::TcpStream::connect(format!("127.0.0.1:{}", ollama_port)) {
+                    Ok(_) => HealthStatus::Healthy,
+                    Err(_) => HealthStatus::Degraded,
+                }
+            } else {
+                HealthStatus::Healthy
+            };
+
+            let model_display = model.as_deref().unwrap_or("unknown");
+            let msg = match status {
+                HealthStatus::Healthy => {
+                    format!("{} {} / {}", style("✓").green(), provider, model_display)
+                }
+                HealthStatus::Degraded => format!(
+                    "{} {} / {} (ollama not running)",
+                    style("⚠").yellow(),
+                    provider,
+                    model_display
+                ),
+                _ => format!("{} {} / {}", style("✓").green(), provider, model_display),
+            };
+
             ComponentHealth {
-                status: HealthStatus::Healthy,
-                message: format!("{} ready", style("✓").green()),
+                status,
+                message: msg,
                 details: if verbose { Some(details) } else { None },
             }
-        } else {
-            ComponentHealth {
-                status: HealthStatus::NotConfigured,
-                message: "— not configured".to_string(),
-                details: None,
-            }
         }
-    } else {
-        ComponentHealth {
+        _ => ComponentHealth {
             status: HealthStatus::NotConfigured,
             message: "— not configured".to_string(),
             details: None,
-        }
+        },
     }
 }
 
@@ -749,9 +865,9 @@ fn count_assets() -> Result<(usize, usize, usize)> {
     count_dir_entries(&claude_home.join("hooks"), &mut hooks_count);
 
     // Deduplicate — prefer the larger count (most recent sync)
-    let agents = agents_count.max(0);
-    let skills = skills_count.max(0);
-    let hooks = hooks_count.max(0);
+    let agents = agents_count;
+    let skills = skills_count;
+    let hooks = hooks_count;
 
     Ok((agents, skills, hooks))
 }
@@ -852,17 +968,26 @@ fn output_table(report: &HealthReport, verbose: bool) -> Result<()> {
 /// Format table header with version and basic info
 fn format_header(report: &HealthReport) {
     println!("╭{}╮", "─".repeat(TABLE_WIDTH));
-    println!("{}", table_line(&format!("  Masday v{}", report.masday_version)));
+    println!(
+        "{}",
+        table_line(&format!("  Masday v{}", report.masday_version))
+    );
     println!("{}", table_line(""));
     println!("{}", table_line(&format!("  Mode:       {}", report.mode)));
-    println!("{}", table_line(&format!("  Platform:   {}", report.platform)));
+    println!(
+        "{}",
+        table_line(&format!("  Platform:   {}", report.platform))
+    );
 
     let config_status = if report.config_valid {
         format!("~/.masday/config.toml {} ✓", style("valid").green())
     } else {
         format!("~/.masday/config.toml {} ✗", style("invalid").red())
     };
-    println!("{}", table_line(&format!("  Config:     {}", config_status)));
+    println!(
+        "{}",
+        table_line(&format!("  Config:     {}", config_status))
+    );
     println!("{}", table_line(""));
 }
 
@@ -879,12 +1004,34 @@ fn format_section(report: &HealthReport, verbose: bool) {
 
     // Database status
     let default_url = "N/A".to_string();
-    let db_msg = if report.database.details.as_ref().and_then(|d| d.get("url")).is_some() {
-        let url = report.database.details.as_ref().and_then(|d| d.get("url")).unwrap_or(&default_url);
+    let db_msg = if report
+        .database
+        .details
+        .as_ref()
+        .and_then(|d| d.get("url"))
+        .is_some()
+    {
+        let url = report
+            .database
+            .details
+            .as_ref()
+            .and_then(|d| d.get("url"))
+            .unwrap_or(&default_url);
         format!("{} {}", report.database.message, url)
-    } else if report.database.details.as_ref().and_then(|d| d.get("port")).is_some() {
+    } else if report
+        .database
+        .details
+        .as_ref()
+        .and_then(|d| d.get("port"))
+        .is_some()
+    {
         let default_port = "N/A".to_string();
-        let port = report.database.details.as_ref().and_then(|d| d.get("port")).unwrap_or(&default_port);
+        let port = report
+            .database
+            .details
+            .as_ref()
+            .and_then(|d| d.get("port"))
+            .unwrap_or(&default_port);
         format!("{} (Docker, port {})", report.database.message, port)
     } else {
         report.database.message.clone()
@@ -893,8 +1040,19 @@ fn format_section(report: &HealthReport, verbose: bool) {
 
     // Redis status
     let default_port = "N/A".to_string();
-    let redis_msg = if report.redis.details.as_ref().and_then(|d| d.get("port")).is_some() {
-        let port = report.redis.details.as_ref().and_then(|d| d.get("port")).unwrap_or(&default_port);
+    let redis_msg = if report
+        .redis
+        .details
+        .as_ref()
+        .and_then(|d| d.get("port"))
+        .is_some()
+    {
+        let port = report
+            .redis
+            .details
+            .as_ref()
+            .and_then(|d| d.get("port"))
+            .unwrap_or(&default_port);
         format!("{} (Docker, port {})", report.redis.message, port)
     } else {
         report.redis.message.clone()
@@ -908,8 +1066,19 @@ fn format_section(report: &HealthReport, verbose: bool) {
 
     // Embedding status
     let default_provider = "N/A".to_string();
-    let embed_msg = if report.embedding.details.as_ref().and_then(|d| d.get("provider")).is_some() {
-        let provider = report.embedding.details.as_ref().and_then(|d| d.get("provider")).unwrap_or(&default_provider);
+    let embed_msg = if report
+        .embedding
+        .details
+        .as_ref()
+        .and_then(|d| d.get("provider"))
+        .is_some()
+    {
+        let provider = report
+            .embedding
+            .details
+            .as_ref()
+            .and_then(|d| d.get("provider"))
+            .unwrap_or(&default_provider);
         format!("{} ({})", report.embedding.message, provider)
     } else {
         report.embedding.message.clone()
@@ -932,9 +1101,18 @@ fn format_section(report: &HealthReport, verbose: bool) {
 
 /// Format footer with asset counts
 fn format_footer(report: &HealthReport) {
-    println!("{}", table_line(&format!("  Agents:     {} synced", report.agents_count)));
-    println!("{}", table_line(&format!("  Skills:     {} synced", report.skills_count)));
-    println!("{}", table_line(&format!("  Hooks:      {} installed", report.hooks_count)));
+    println!(
+        "{}",
+        table_line(&format!("  Agents:     {} synced", report.agents_count))
+    );
+    println!(
+        "{}",
+        table_line(&format!("  Skills:     {} synced", report.skills_count))
+    );
+    println!(
+        "{}",
+        table_line(&format!("  Hooks:      {} installed", report.hooks_count))
+    );
     println!("╰{}╯", "─".repeat(TABLE_WIDTH));
 }
 
@@ -1099,10 +1277,7 @@ mod tests {
             redact_db_url("postgresql://user@localhost/db"),
             "postgresql://user@localhost/db"
         );
-        assert_eq!(
-            redact_db_url("invalid-url"),
-            "invalid-url"
-        );
+        assert_eq!(redact_db_url("invalid-url"), "invalid-url");
     }
 
     #[test]

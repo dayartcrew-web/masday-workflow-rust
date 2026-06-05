@@ -15,7 +15,10 @@ pub async fn run() -> Result<()> {
     }
 
     // Determine mode from config
-    let mode = config.as_ref().map(|c| c.mode.as_str()).unwrap_or("standalone");
+    let mode = config
+        .as_ref()
+        .map(|c| c.mode.as_str())
+        .unwrap_or("standalone");
 
     match mode {
         "local" | "remote" => {
@@ -24,7 +27,10 @@ pub async fn run() -> Result<()> {
             let api_url = cfg.api_url.clone();
             let api_key = cfg.api_key.clone();
 
-            eprintln!("[masday] MCP server starting in {} mode → {}", mode, api_url);
+            eprintln!(
+                "[masday] MCP server starting in {} mode → {}",
+                mode, api_url
+            );
 
             masday_mcp::run_http(api_url, api_key)
                 .await

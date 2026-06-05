@@ -119,7 +119,7 @@ fn add_to_path(dir: &std::path::Path) {
     #[cfg(windows)]
     {
         let _ = dir; // suppress unused warning
-        // Windows PATH is handled by install.sh / PowerShell script
+                     // Windows PATH is handled by install.sh / PowerShell script
     }
 }
 
@@ -409,9 +409,7 @@ async fn main() -> anyhow::Result<()> {
             let dev_action = match action {
                 DevAction::Build => masday_cli::commands::dev::DevAction::Build,
                 DevAction::Install => masday_cli::commands::dev::DevAction::Install,
-                DevAction::Serve { port } => {
-                    masday_cli::commands::dev::DevAction::Serve { port }
-                }
+                DevAction::Serve { port } => masday_cli::commands::dev::DevAction::Serve { port },
             };
             masday_cli::commands::dev::run(dev_action, &project_dir).await?;
         }

@@ -80,10 +80,7 @@ pub fn fetch_latest_version() -> Result<String> {
         .with_context(|| format!("Failed to fetch release info from {}", url))?;
 
     if !response.status().is_success() {
-        anyhow::bail!(
-            "GitHub API request failed: HTTP {}",
-            response.status()
-        );
+        anyhow::bail!("GitHub API request failed: HTTP {}", response.status());
     }
 
     let json: serde_json::Value = response.json().context("Failed to parse GitHub response")?;
@@ -137,7 +134,8 @@ fn parse_version(version: &str) -> Result<Vec<u32>> {
     version
         .split('.')
         .map(|s| {
-            s.parse().with_context(|| format!("Invalid version component '{}' in '{}'", s, version))
+            s.parse()
+                .with_context(|| format!("Invalid version component '{}' in '{}'", s, version))
         })
         .collect()
 }
@@ -233,7 +231,10 @@ fn run_check(args: &UpdateArgs) -> Result<bool> {
         }
         std::cmp::Ordering::Equal => {
             println!();
-            println!("{}", style("✓ You're already on the latest version").green());
+            println!(
+                "{}",
+                style("✓ You're already on the latest version").green()
+            );
             if args.force {
                 println!("  Use {} to re-install.", style("--force").cyan());
             }
@@ -254,7 +255,12 @@ fn run_check(args: &UpdateArgs) -> Result<bool> {
 /// Dry run - show what would be updated
 fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
     println!();
-    println!("{}", style("Dry run — preview of update operations").cyan().bold());
+    println!(
+        "{}",
+        style("Dry run — preview of update operations")
+            .cyan()
+            .bold()
+    );
     println!();
 
     let home =
@@ -285,7 +291,10 @@ fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
             "masday"
         };
         println!("  Download: masday binary from GitHub releases");
-        println!("  Install:  {}", install_dir.join(binary_filename).display());
+        println!(
+            "  Install:  {}",
+            install_dir.join(binary_filename).display()
+        );
         println!();
     }
 
@@ -302,7 +311,10 @@ fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
     } else {
         println!("{}", style("Configuration:").cyan());
         if config_path.exists() {
-            println!("  config.toml: {} (backup & restore)", style("preserve").yellow());
+            println!(
+                "  config.toml: {} (backup & restore)",
+                style("preserve").yellow()
+            );
         } else {
             println!("  config.toml: {} (will be created)", style("new").green());
         }
@@ -310,13 +322,22 @@ fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
     }
 
     println!("{}", style("Summary:").cyan());
-    println!("  Binary download: {}", if args.skip_binary { "skip" } else { "yes" });
-    println!("  Config update: {}", if args.skip_config { "skip" } else { "yes" });
+    println!(
+        "  Binary download: {}",
+        if args.skip_binary { "skip" } else { "yes" }
+    );
+    println!(
+        "  Config update: {}",
+        if args.skip_config { "skip" } else { "yes" }
+    );
     println!("  Asset sync: yes");
     println!();
 
     if version_compare(&target_version, &current) == std::cmp::Ordering::Equal && !args.force {
-        println!("{}", style("⚠ Already up-to-date (use --force to reinstall)").yellow());
+        println!(
+            "{}",
+            style("⚠ Already up-to-date (use --force to reinstall)").yellow()
+        );
     } else {
         println!("{}", style("✓ Update would proceed").green());
     }
@@ -396,7 +417,7 @@ fn replace_binary(tmp_path: &Path, dest: &Path) -> Result<()> {
     fs::rename(tmp_path, dest).with_context(|| {
         // If this fails, try to restore the old binary
         let _ = fs::rename(&old_path, dest);
-        format!("Failed to install new binary. Old binary restored.")
+        "Failed to install new binary. Old binary restored.".to_string()
     })?;
 
     // Clean up old binary (best effort)
@@ -428,9 +449,12 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
     println!();
     println!(
         "{}",
-        style(format!("Updating Masday {} -> {}...", current, target_version))
-            .cyan()
-            .bold()
+        style(format!(
+            "Updating Masday {} -> {}...",
+            current, target_version
+        ))
+        .cyan()
+        .bold()
     );
     println!();
 
@@ -494,7 +518,11 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
             "https://github.com/{}/releases/download/{}/{}",
             GITHUB_RELEASE_REPO, version_tag, mcp_binary_name
         );
-        let mcp_filename = if cfg!(windows) { "masday-mcp.exe" } else { "masday-mcp" };
+        let mcp_filename = if cfg!(windows) {
+            "masday-mcp.exe"
+        } else {
+            "masday-mcp"
+        };
         let mcp_dest = install_dir.join(mcp_filename);
         let mcp_tmp = install_dir.join(format!("{}.tmp", mcp_filename));
 
@@ -597,10 +625,19 @@ mod tests {
     #[test]
     fn test_version_compare() {
         assert_eq!(version_compare("1.2.3", "1.2.3"), std::cmp::Ordering::Equal);
-        assert_eq!(version_compare("1.2.4", "1.2.3"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("1.2.4", "1.2.3"),
+            std::cmp::Ordering::Greater
+        );
         assert_eq!(version_compare("1.2.2", "1.2.3"), std::cmp::Ordering::Less);
-        assert_eq!(version_compare("1.10.0", "1.2.0"), std::cmp::Ordering::Greater);
-        assert_eq!(version_compare("2.0.0", "1.9.9"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("1.10.0", "1.2.0"),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            version_compare("2.0.0", "1.9.9"),
+            std::cmp::Ordering::Greater
+        );
     }
 
     #[test]
@@ -659,19 +696,28 @@ mod tests {
 
     #[test]
     fn test_version_compare_patch() {
-        assert_eq!(version_compare("1.0.1", "1.0.0"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("1.0.1", "1.0.0"),
+            std::cmp::Ordering::Greater
+        );
         assert_eq!(version_compare("1.0.0", "1.0.1"), std::cmp::Ordering::Less);
     }
 
     #[test]
     fn test_version_compare_minor() {
-        assert_eq!(version_compare("1.1.0", "1.0.0"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("1.1.0", "1.0.0"),
+            std::cmp::Ordering::Greater
+        );
         assert_eq!(version_compare("1.0.0", "1.1.0"), std::cmp::Ordering::Less);
     }
 
     #[test]
     fn test_version_compare_major() {
-        assert_eq!(version_compare("2.0.0", "1.0.0"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("2.0.0", "1.0.0"),
+            std::cmp::Ordering::Greater
+        );
         assert_eq!(version_compare("1.0.0", "2.0.0"), std::cmp::Ordering::Less);
     }
 
@@ -681,9 +727,15 @@ mod tests {
     fn test_check_flag_returns_correct_version_comparison() {
         // Test that version_compare returns correct ordering
         assert_eq!(version_compare("1.0.0", "1.0.0"), std::cmp::Ordering::Equal);
-        assert_eq!(version_compare("1.0.1", "1.0.0"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("1.0.1", "1.0.0"),
+            std::cmp::Ordering::Greater
+        );
         assert_eq!(version_compare("1.0.0", "1.0.1"), std::cmp::Ordering::Less);
-        assert_eq!(version_compare("2.0.0", "1.9.9"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            version_compare("2.0.0", "1.9.9"),
+            std::cmp::Ordering::Greater
+        );
     }
 
     #[test]
@@ -751,7 +803,10 @@ mod tests {
             None
         };
 
-        assert!(config_backup.is_none(), "skip_config should not backup config");
+        assert!(
+            config_backup.is_none(),
+            "skip_config should not backup config"
+        );
 
         // Verify original content unchanged
         let current = fs::read_to_string(&config_path).unwrap();
@@ -845,7 +900,10 @@ mod tests {
         restore_config(&config_path, backup.as_ref().unwrap()).unwrap();
 
         let restored = fs::read_to_string(&config_path).unwrap();
-        assert_eq!(restored, original_content, "Config should be restored to original");
+        assert_eq!(
+            restored, original_content,
+            "Config should be restored to original"
+        );
     }
 
     #[test]

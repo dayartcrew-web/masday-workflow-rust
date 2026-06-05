@@ -13,11 +13,11 @@ use std::path::Path;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::installer::{
-    all_platforms, check_prerequisites, detect_active_platforms,
-    generate_mcp_config, install_global_hooks, install_project_hooks, register_hooks_in_settings,
-    resolve_mcp_binary, sync_agents_to_global, sync_agents_to_project, sync_skills_to_global,
-    sync_skills_to_project, update_global_settings, verify_remote_url, AgentSyncReport, McpConfig,
-    McpServerConfig, Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
+    all_platforms, check_prerequisites, detect_active_platforms, generate_mcp_config,
+    install_global_hooks, install_project_hooks, register_hooks_in_settings, resolve_mcp_binary,
+    sync_agents_to_global, sync_agents_to_project, sync_skills_to_global, sync_skills_to_project,
+    update_global_settings, verify_remote_url, AgentSyncReport, McpConfig, McpServerConfig,
+    Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
 };
 
 #[cfg(feature = "dev-mode")]
@@ -259,10 +259,44 @@ fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     // Step 2: Sync agents, skills, hooks
     println!();
     println!("{}", style("Syncing agents...").cyan());
-    let (agent_reports, skill_reports, _gh, _ph) =
-        sync_templates(project_dir, &platforms, args.force, args.local_only, args.no_hooks)?;
+    let (agent_reports, skill_reports, _gh, _ph) = sync_templates(
+        project_dir,
+        &platforms,
+        args.force,
+        args.local_only,
+        args.no_hooks,
+    )?;
 
-    // Step 3: Count totals
+    // Step 3: Register MCP config for each platform
+    if !args.no_mcp {
+        println!();
+        println!("{}", style("Registering MCP server...").cyan());
+
+        let mcp_binary =
+            std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("masday"));
+        let config = crate::config::MasdayConfig::load();
+
+        let (api_url, api_key) = match &config {
+            Some(c) => (c.api_url.clone(), c.api_key.clone()),
+            None => (String::new(), String::new()),
+        };
+
+        let mcp_config = McpConfig {
+            mcp_binary_path: mcp_binary,
+            api_url,
+            api_key,
+            database_url: None,
+        };
+
+        for platform in &platforms {
+            match generate_mcp_config(platform, project_dir, &mcp_config) {
+                Ok(_) => println!("  {} — {}", style("✓").green(), platform.name()),
+                Err(e) => eprintln!("  {} — {}: {}", style("⚠").yellow(), platform.name(), e),
+            }
+        }
+    }
+
+    // Step 4: Count totals
     let total_agents: usize = agent_reports.iter().map(|r| r.copied).sum();
     let total_skills: usize = skill_reports.iter().map(|r| r.copied).sum();
 
@@ -352,7 +386,13 @@ fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     // Step 6: Sync agents, skills, hooks
     println!();
     println!("{}", style("Syncing agents...").cyan());
-    sync_templates(project_dir, &platforms, args.force, args.local_only, args.no_hooks)?;
+    sync_templates(
+        project_dir,
+        &platforms,
+        args.force,
+        args.local_only,
+        args.no_hooks,
+    )?;
 
     // Step 7: Generate MCP configs (unless --no-mcp specified)
     let api_url = masday_core::constants::ports::api_base_url();
@@ -449,10 +489,7 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     }
 
     // Step 2: Verify remote URL connectivity
-    println!(
-        "{}",
-        style("Checking remote API connectivity...").cyan()
-    );
+    println!("{}", style("Checking remote API connectivity...").cyan());
     verify_remote_url(remote_url)?;
 
     // Step 3: Resolve MCP binary
@@ -472,7 +509,13 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     // Step 5: Sync agents, skills, hooks
     println!();
     println!("{}", style("Syncing agents...").cyan());
-    sync_templates(project_dir, &platforms, args.force, args.local_only, args.no_hooks)?;
+    sync_templates(
+        project_dir,
+        &platforms,
+        args.force,
+        args.local_only,
+        args.no_hooks,
+    )?;
 
     // Step 6: Generate MCP configs (with remote URL, unless --no-mcp specified)
     let api_url = remote_url.to_string();
@@ -551,10 +594,7 @@ fn run_remote_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Resolve target platforms based on args and detection
-fn resolve_platforms(
-    platform_arg: &Option<String>,
-    project_dir: &Path,
-) -> Result<Vec<Platform>> {
+fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Result<Vec<Platform>> {
     if let Some(ref name) = platform_arg {
         match name.to_lowercase().as_str() {
             "claude-code" => Ok(vec![Platform::ClaudeCode]),
@@ -709,8 +749,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
 
-        let platforms =
-            resolve_platforms(&Some("claude-code".to_string()), project_dir).unwrap();
+        let platforms = resolve_platforms(&Some("claude-code".to_string()), project_dir).unwrap();
         assert_eq!(platforms.len(), 1);
         assert_eq!(platforms[0], Platform::ClaudeCode);
     }

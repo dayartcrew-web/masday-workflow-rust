@@ -100,10 +100,7 @@ fn check_binary(report: &mut DoctorReport) {
     report.checks.push(CheckResult {
         name: "Binary".into(),
         status: CheckStatus::Ok,
-        message: format!(
-            "v{} ({})",
-            report.version, report.build_origin
-        ),
+        message: format!("v{} ({})", report.version, report.build_origin),
         detail: Some(report.binary_path.clone()),
     });
 }
@@ -166,9 +163,7 @@ fn check_path(report: &mut DoctorReport) {
     let bin_dir = home.join("bin");
     let path_var = std::env::var("PATH").unwrap_or_default();
     let path_sep = if cfg!(windows) { ';' } else { ':' };
-    let in_path = path_var
-        .split(path_sep)
-        .any(|p| Path::new(p) == bin_dir);
+    let in_path = path_var.split(path_sep).any(|p| Path::new(p) == bin_dir);
 
     report.checks.push(CheckResult {
         name: "PATH".into(),
@@ -248,7 +243,11 @@ fn check_api_connectivity(report: &mut DoctorReport) {
 }
 
 fn check_mcp_binary(report: &mut DoctorReport) {
-    let binary_name = if cfg!(windows) { "masday.exe" } else { "masday" };
+    let binary_name = if cfg!(windows) {
+        "masday.exe"
+    } else {
+        "masday"
+    };
     let home = MasdayConfig::masday_home();
     let bin_path = home.join("bin").join(binary_name);
 
@@ -279,10 +278,7 @@ fn check_mcp_binary(report: &mut DoctorReport) {
             name: "MCP Binary".into(),
             status: CheckStatus::Fail,
             message: "Not found".into(),
-            detail: Some(format!(
-                "Checked: {} and current exe",
-                bin_path.display()
-            )),
+            detail: Some(format!("Checked: {} and current exe", bin_path.display())),
         });
     }
 }
@@ -308,14 +304,8 @@ fn check_embedding(report: &mut DoctorReport) {
                 status: CheckStatus::Ok,
                 message: format!(
                     "Provider: {} ({})",
-                    config
-                        .embedding_provider
-                        .as_deref()
-                        .unwrap_or("unknown"),
-                    config
-                        .embedding_model
-                        .as_deref()
-                        .unwrap_or("unknown")
+                    config.embedding_provider.as_deref().unwrap_or("unknown"),
+                    config.embedding_model.as_deref().unwrap_or("unknown")
                 ),
                 detail: None,
             });
@@ -470,7 +460,10 @@ fn print_report(report: &DoctorReport) {
     println!();
 
     println!("{}", style("  Checks:").cyan().bold());
-    println!("{}", style("  ───────────────────────────────────────").dim());
+    println!(
+        "{}",
+        style("  ───────────────────────────────────────").dim()
+    );
 
     for check in &report.checks {
         let icon = match check.status {
@@ -480,7 +473,12 @@ fn print_report(report: &DoctorReport) {
             CheckStatus::Skip => style("—").dim(),
         };
 
-        println!("  {} {}: {}", icon, style(&check.name).bold(), check.message);
+        println!(
+            "  {} {}: {}",
+            icon,
+            style(&check.name).bold(),
+            check.message
+        );
 
         if let Some(ref detail) = check.detail {
             println!("    {}", style(detail).dim());
@@ -488,7 +486,10 @@ fn print_report(report: &DoctorReport) {
     }
 
     println!();
-    println!("{}", style("  ───────────────────────────────────────").dim());
+    println!(
+        "{}",
+        style("  ───────────────────────────────────────").dim()
+    );
 
     let overall = report.overall();
     let overall_style = match overall {
