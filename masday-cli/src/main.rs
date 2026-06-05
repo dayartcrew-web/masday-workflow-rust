@@ -90,22 +90,21 @@ fn self_install_if_needed() {
     }
 }
 
-/// Add directory to shell PATH in .bashrc/.zshrc (Linux/macOS) or PATH env (Windows)
+/// Add directory to shell PATH in .bashrc/.zshrc (Linux/macOS)
 fn add_to_path(dir: &std::path::Path) {
-    let path_line = format!("export PATH=\"$PATH:{}\"", dir.display());
-    let home = match home::home_dir() {
-        Some(h) => h,
-        None => return,
-    };
-
     #[cfg(unix)]
     {
+        let path_line = format!("export PATH=\"$PATH:{}\"", dir.display());
+        let home = match home::home_dir() {
+            Some(h) => h,
+            None => return,
+        };
         for rc_file in &[".bashrc", ".zshrc", ".profile"] {
             let rc_path = home.join(rc_file);
             if rc_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&rc_path) {
                     if content.contains(dir.to_str().unwrap_or("")) {
-                        continue; // Already in this file
+                        continue;
                     }
                     if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&rc_path) {
                         use std::io::Write;
@@ -117,12 +116,10 @@ fn add_to_path(dir: &std::path::Path) {
             }
         }
     }
-
     #[cfg(windows)]
     {
-        // On Windows, we can't easily modify PATH permanently from a console app.
-        // Just show a message — the user can add it manually or via System Properties.
-        // The install.sh / PowerShell script handles this.
+        let _ = dir; // suppress unused warning
+        // Windows PATH is handled by install.sh / PowerShell script
     }
 }
 
