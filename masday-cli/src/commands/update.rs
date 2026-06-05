@@ -558,7 +558,6 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
     println!("{}", style("Re-syncing configuration...").cyan());
 
     let install_args = InstallArgs {
-        #[cfg(feature = "dev-mode")]
         skip_build: true,
         force: true,
         ..Default::default()

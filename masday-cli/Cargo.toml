@@ -46,5 +46,3 @@ local-embeddings-dynamic = ["masday-api/local-embeddings-dynamic"]
 ort-load-dynamic = ["local-embeddings-dynamic"]
 # Development mode — enables local build from source (cargo build, Local install mode)
 # Release builds should NOT include this feature.
-# Usage: cargo build -p masday-cli --features dev-mode
-dev-mode = []

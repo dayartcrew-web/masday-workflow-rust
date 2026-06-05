@@ -15,7 +15,6 @@ pub mod status;
 pub mod uninstall;
 pub mod update;
 
-#[cfg(feature = "dev-mode")]
 pub mod dev;
 
 pub use install::{run as install_run, InstallArgs};
@@ -34,7 +33,6 @@ mod tests {
         assert!(!args.local_only);
         assert!(!args.no_hooks);
         assert!(!args.no_mcp);
-        #[cfg(feature = "dev-mode")]
         {
             assert!(!args.skip_build);
         }

@@ -2,14 +2,13 @@
 //!
 //! Orchestrates the full installation workflow for Masday in local, remote, or standalone mode.
 //!
-//! Production builds (no `dev-mode` feature) do not support Local mode — users must
-//! use Remote or Standalone. Development builds (`--features dev-mode`) support all three modes.
+//! Production builds (no `` feature) do not support Local mode — users must
+//! use Remote or Standalone. Development builds (`--features `) support all three modes.
 
 use anyhow::Result;
 use console::style;
 use std::path::Path;
 
-#[cfg(feature = "dev-mode")]
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::installer::{
@@ -20,13 +19,12 @@ use crate::installer::{
     McpServerConfig, Platform, Prerequisites, SettingsUpdates, SkillSyncReport,
 };
 
-#[cfg(feature = "dev-mode")]
 use crate::installer::{self, ensure_env_file};
 
 /// Install mode enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallMode {
-    /// Build from source (requires Rust toolchain + Cargo.toml) — dev-mode only
+    /// Build from source (requires Rust toolchain + Cargo.toml) —
     Local,
     /// Connect to remote API server
     Remote,
@@ -72,8 +70,7 @@ pub struct InstallArgs {
     pub api_key: Option<String>,
     /// Specific platform to install (None = detect or all)
     pub platform: Option<String>,
-    /// Skip cargo build step (dev-mode only)
-    #[cfg(feature = "dev-mode")]
+    /// Skip cargo build step ()
     pub skip_build: bool,
     /// Only install to project, skip global sync
     pub local_only: bool,
@@ -106,24 +103,7 @@ fn resolve_mode(args: &InstallArgs) -> InstallMode {
 pub fn run(args: InstallArgs, project_dir: &Path) -> Result<()> {
     let mode = resolve_mode(&args);
     match mode {
-        InstallMode::Local => {
-            #[cfg(feature = "dev-mode")]
-            {
-                run_local_install(args, project_dir)
-            }
-            #[cfg(not(feature = "dev-mode"))]
-            {
-                let _ = (args, project_dir);
-                anyhow::bail!(
-                    "Local build mode requires building from source.\n\
-                     Clone the repository and run:\n  \
-                     cargo run --features dev-mode -- dev install\n\n\
-                     For production users, use:\n  \
-                     masday install --remote <url> --api-key <key>\n  \
-                     masday install                  (standalone mode)"
-                );
-            }
-        }
+        InstallMode::Local => run_local_install(args, project_dir),
         InstallMode::Remote => run_remote_install(args, project_dir),
         InstallMode::Standalone => run_standalone_install(args, project_dir),
     }
@@ -324,10 +304,9 @@ fn run_standalone_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-// ── Local mode (dev-mode only) ────────────────────────────────────────────────
+// ── Local mode () ────────────────────────────────────────────────
 
-/// Local mode installation — requires dev-mode feature
-#[cfg(feature = "dev-mode")]
+/// Local mode installation — requires  feature
 fn run_local_install(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
     println!(
@@ -798,28 +777,6 @@ mod tests {
         let list = platform_list(&platforms);
         assert!(list.contains("claude-code"));
         assert!(list.contains("gemini"));
-    }
-
-    // ── Local mode production gate test ────────────────────────────────────────
-
-    #[test]
-    fn test_local_mode_in_production_errors() {
-        // In production builds (no dev-mode feature), Local mode should error
-        if !cfg!(feature = "dev-mode") {
-            let temp_dir = TempDir::new().unwrap();
-            let args = InstallArgs {
-                mode: Some(InstallMode::Local),
-                ..Default::default()
-            };
-            let result = run(args, temp_dir.path());
-            assert!(result.is_err());
-            let err = result.unwrap_err().to_string();
-            assert!(
-                err.contains("building from source"),
-                "Error should mention building from source: {}",
-                err
-            );
-        }
     }
 
     // ── Standalone install integration tests ─────────────────────────────────

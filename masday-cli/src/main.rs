@@ -124,10 +124,6 @@ fn add_to_path(dir: &std::path::Path) {
 }
 
 /// Build version string with build origin: "0.3.19 (production)" or "0.3.19 (development)"
-#[cfg(feature = "dev-mode")]
-const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (development)");
-
-#[cfg(not(feature = "dev-mode"))]
 const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (production)");
 
 #[derive(Parser)]
@@ -214,7 +210,7 @@ enum Commands {
         platform: Option<String>,
 
         /// Skip building Rust crates (dev-mode only, use existing binaries)
-        #[cfg(feature = "dev-mode")]
+        /// Skip cargo build step
         #[arg(long)]
         skip_build: bool,
 
@@ -280,7 +276,6 @@ enum Commands {
     },
 
     /// Development commands (build from source, local install, serve)
-    #[cfg(feature = "dev-mode")]
     Dev {
         #[command(subcommand)]
         action: DevAction,
@@ -288,7 +283,6 @@ enum Commands {
 }
 
 /// Dev subcommands (dev-mode only)
-#[cfg(feature = "dev-mode")]
 #[derive(Subcommand)]
 enum DevAction {
     /// Build all crates from source
@@ -357,7 +351,6 @@ async fn main() -> anyhow::Result<()> {
             remote,
             api_key,
             platform,
-            #[cfg(feature = "dev-mode")]
             skip_build,
             local_only,
             force,
@@ -370,7 +363,6 @@ async fn main() -> anyhow::Result<()> {
                 remote,
                 api_key,
                 platform,
-                #[cfg(feature = "dev-mode")]
                 skip_build,
                 local_only,
                 force,
@@ -404,7 +396,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Embed { action } => {
             masday_cli::commands::embed::run(action)?;
         }
-        #[cfg(feature = "dev-mode")]
         Commands::Dev { action } => {
             let dev_action = match action {
                 DevAction::Build => masday_cli::commands::dev::DevAction::Build,
