@@ -12,6 +12,9 @@ use tokio::sync::RwLock;
 /// Global PostgreSQL pool — lazily initialized on first use, not at startup.
 static PG_POOL: Lazy<Arc<RwLock<Option<DbPool>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
 
+/// Embedded migration SQL — included at compile time from masday-db.
+const MIGRATION_SQL: &str = include_str!("../../masday-db/migrations/001_initial_schema.sql");
+
 /// Read database_url from ~/.masday/config.toml directly.
 fn read_db_url_from_config() -> Option<String> {
     let home = home::home_dir()?;
@@ -37,6 +40,46 @@ fn read_db_url_from_config() -> Option<String> {
         }
     }
     None
+}
+
+/// Run embedded migrations directly (doesn't depend on filesystem migrations dir).
+async fn run_embedded_migrations(pool: &DbPool) -> Result<(), String> {
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| format!("Failed to get DB connection: {}", e))?;
+
+    // Split by semicolons and execute each statement
+    for statement in MIGRATION_SQL.split(';') {
+        let trimmed = statement.trim();
+        if trimmed.is_empty() || trimmed.starts_with("--") {
+            continue;
+        }
+        // Skip comment-only blocks
+        let sql: String = trimmed
+            .lines()
+            .filter(|line| !line.trim().starts_with("--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if sql.trim().is_empty() {
+            continue;
+        }
+        if let Err(e) = client.execute(&sql, &[]).await {
+            // Some statements may fail if already exist (CREATE EXTENSION, CREATE TABLE)
+            let msg = e.to_string();
+            if msg.contains("already exists") {
+                tracing::debug!(
+                    "Schema already exists, skipping: {}",
+                    &msg[..msg.len().min(80)]
+                );
+            } else {
+                tracing::warn!("Migration statement warning: {}", msg);
+            }
+        }
+    }
+
+    tracing::info!("PostgreSQL schema ready (embedded migrations)");
+    Ok(())
 }
 
 /// Get or create PostgreSQL pool on demand.
@@ -80,11 +123,8 @@ pub async fn get_pool() -> Option<DbPool> {
         }
     }
 
-    // Run migrations (first connect only)
-    match masday_db::run_migrations(&pool).await {
-        Ok(_) => tracing::info!("PostgreSQL schema ready"),
-        Err(e) => tracing::warn!("Migration warning: {}", e),
-    }
+    // Run embedded migrations (first connect only)
+    let _ = run_embedded_migrations(&pool).await;
 
     // Store pool for reuse
     let mut pg = PG_POOL.write().await;
