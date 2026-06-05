@@ -227,26 +227,8 @@ main() {
 
     ok "Installed to ${INSTALL_DIR}/${BINARY_NAME}"
 
-    # Download MCP server binary (best-effort)
-    local mcp_artifact
-    mcp_artifact="$(get_mcp_artifact_name "$platform")"
-    local mcp_binary_name
-    case "$platform" in
-        windows-*) mcp_binary_name="masday-mcp.exe" ;;
-        *)         mcp_binary_name="masday-mcp" ;;
-    esac
-    local mcp_url="https://github.com/${REPO}/releases/download/${version}/${mcp_artifact}"
-    local mcp_tmp
-    mcp_tmp="$(mktemp)"
-
-    if curl -fsSL --progress-bar -o "$mcp_tmp" "$mcp_url" 2>/dev/null; then
-        chmod +x "$mcp_tmp"
-        mv "$mcp_tmp" "${INSTALL_DIR}/${mcp_binary_name}"
-        ok "MCP server installed to ${INSTALL_DIR}/${mcp_binary_name}"
-    else
-        rm -f "$mcp_tmp"
-        warn "MCP binary not in this release (use 'masday mcp' subcommand)"
-    fi
+    # MCP server runs as subcommand: 'masday mcp' — no separate binary needed
+    ok "MCP server available via 'masday mcp' subcommand"
 
     # Add to PATH if not already present
     local path_added=0
