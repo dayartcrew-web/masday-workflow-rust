@@ -85,6 +85,20 @@ fn get_config(key: &str) -> Result<()> {
         "embedding.provider" => config.embedding_provider.unwrap_or_else(|| "null".to_string()),
         "embedding.model" => config.embedding_model.unwrap_or_else(|| "null".to_string()),
         "embedding.dimensions" => config.embedding_dimensions.map(|d| d.to_string()).unwrap_or_else(|| "null".to_string()),
+        "embedding.base_url" => config.embedding_base_url.unwrap_or_else(|| "null".to_string()),
+        "embedding.api_key" => {
+            // Mask API key for security
+            match &config.embedding_api_key {
+                Some(key) => {
+                    if key.len() > 8 {
+                        format!("{}...{}", &key[..4], &key[key.len()-4..])
+                    } else {
+                        "****".to_string()
+                    }
+                }
+                None => "null".to_string(),
+            }
+        }
 
         // Nested keys - ports
         "ports.api_port" => config.api_port.to_string(),
@@ -153,6 +167,20 @@ fn set_config(key: &str, value: &str) -> Result<()> {
                 None
             } else {
                 Some(value.parse().context("Invalid dimensions value - must be a number")?)
+            };
+        }
+        "embedding.base_url" => {
+            config.embedding_base_url = if value == "null" {
+                None
+            } else {
+                Some(value.to_string())
+            };
+        }
+        "embedding.api_key" => {
+            config.embedding_api_key = if value == "null" {
+                None
+            } else {
+                Some(value.to_string())
             };
         }
 

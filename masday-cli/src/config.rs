@@ -28,6 +28,10 @@ pub struct MasdayConfig {
     pub embedding_model: Option<String>,
     /// Embedding vector dimensions
     pub embedding_dimensions: Option<usize>,
+    /// Embedding base URL override (e.g., http://localhost:11434 for Ollama)
+    pub embedding_base_url: Option<String>,
+    /// Embedding API key (for OpenAI or other cloud providers)
+    pub embedding_api_key: Option<String>,
     /// API server port (local mode)
     #[serde(default = "default_api_port")]
     pub api_port: u16,
@@ -65,6 +69,8 @@ impl Default for MasdayConfig {
             embedding_provider: None,
             embedding_model: None,
             embedding_dimensions: None,
+            embedding_base_url: None,
+            embedding_api_key: None,
             api_port: ports::API_PORT,
             db_port: ports::POSTGRES_PORT,
             redis_port: ports::REDIS_PORT,
@@ -201,6 +207,8 @@ mod tests {
             embedding_provider: Some("local".to_string()),
             embedding_model: Some("all-MiniLM-L6-v2".to_string()),
             embedding_dimensions: Some(384),
+            embedding_base_url: None,
+            embedding_api_key: None,
             api_port: ports::API_PORT,
             db_port: ports::POSTGRES_PORT,
             redis_port: ports::REDIS_PORT,

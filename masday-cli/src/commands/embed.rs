@@ -17,6 +17,7 @@ use console::style;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Instant;
 
 use crate::config::MasdayConfig;
@@ -345,32 +346,31 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
             .unwrap_or_else(|| "nomic-embed-text".to_string())
     });
 
-    // Find model metadata
-    let model_info = find_model(&model_id).with_context(|| {
-        format!(
-            "Unknown model '{}'. Run 'masday embed list' to see available models",
-            model_id
-        )
-    })?;
+    // Find model metadata (allow custom models not in list)
+    let model_info = find_model(&model_id);
+    let dimensions = model_info.map(|m| m.dimensions).unwrap_or(768);
+    let display_name = model_info.map(|m| m.name).unwrap_or(&model_id);
 
-    // Verify provider matches
-    if model_info.provider != provider_id {
-        bail!(
-            "Model '{}' is for {}, but you specified {}",
-            model_id,
-            model_info.provider,
-            provider_id
-        );
+    // Verify provider matches for known models
+    if let Some(info) = model_info {
+        if info.provider != provider_id {
+            bail!(
+                "Model '{}' is for {}, but you specified {}",
+                model_id,
+                info.provider,
+                provider_id
+            );
+        }
     }
 
     println!();
     println!(
         "{} {}",
         style("Downloading model:").bold().cyan(),
-        style(&model_info.name).yellow()
+        style(display_name).yellow()
     );
     println!("  Provider: {}", style(&provider_id).cyan());
-    println!("  Dimensions: {}", style(model_info.dimensions).cyan());
+    println!("  Dimensions: {}", style(dimensions).cyan());
     println!();
 
     // Create cache directory
@@ -378,57 +378,112 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
     fs::create_dir_all(&cache_dir)
         .with_context(|| format!("Failed to create cache directory {}", cache_dir.display()))?;
 
-    // Simulate download (in real implementation, this would call Ollama/OpenAI APIs)
     let model_cache_path = cache_dir.join(&model_id);
-    if model_cache_path.exists() && !force {
-        println!(
-            "{} Model already cached (use --force to re-download)",
-            style("✓").green()
-        );
-        return Ok(());
-    }
 
-    println!("  {} Downloading...", style("→").dim());
-
-    // Simulate download progress
-    for i in 0..=10 {
-        print!("\r  [");
-        for j in 0..10 {
-            if j < i {
-                print!("{}", style("█").green());
-            } else {
-                print!("░");
+    match provider_id.as_str() {
+        "ollama" => {
+            // Check if ollama is installed
+            let ollama_path = which::which("ollama").ok();
+            if ollama_path.is_none() {
+                bail!(
+                    "Ollama not found in PATH. Install it:\n  https://ollama.com/download\n\nOr use OpenAI provider: masday embed settings"
+                );
             }
-        }
-        print!("] {}%", i * 10);
-        std::io::stdout().flush()?;
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    println!();
 
-    // Create cache marker
-    fs::create_dir_all(&model_cache_path)?;
+            // Check if model already pulled
+            if !force {
+                let list_output = Command::new("ollama")
+                    .args(["list"])
+                    .output()
+                    .context("Failed to run 'ollama list'")?;
+
+                let list_text = String::from_utf8_lossy(&list_output.stdout);
+                if list_text.contains(&model_id) {
+                    println!(
+                        "{} Model '{}' already pulled in Ollama (use --force to re-download)",
+                        style("✓").green(),
+                        style(&model_id).cyan()
+                    );
+                    // Create cache marker anyway
+                    create_cache_marker(&model_cache_path, &provider_id, &model_id, dimensions)?;
+                    return Ok(());
+                }
+            }
+
+            // Pull model via ollama
+            println!("  {} Pulling via Ollama...", style("→").dim());
+            println!();
+
+            let status = Command::new("ollama")
+                .args(["pull", &model_id])
+                .status()
+                .context("Failed to run 'ollama pull'")?;
+
+            if !status.success() {
+                bail!("Failed to pull model '{}' via Ollama", model_id);
+            }
+
+            // Create cache marker
+            create_cache_marker(&model_cache_path, &provider_id, &model_id, dimensions)?;
+
+            println!();
+            println!(
+                "{} Model '{}' downloaded successfully",
+                style("✓").green(),
+                style(&model_id).cyan()
+            );
+        }
+        "openai" => {
+            // OpenAI models don't need local download — just verify API key
+            let has_key = config.embedding_api_key.is_some()
+                || std::env::var("OPENAI_API_KEY").is_ok();
+
+            if !has_key {
+                bail!(
+                    "OpenAI API key not configured.\n  Set it via: masday config set embedding.api_key sk-...\n  Or env: export OPENAI_API_KEY=sk-..."
+                );
+            }
+
+            // Create cache marker
+            create_cache_marker(&model_cache_path, &provider_id, &model_id, dimensions)?;
+
+            println!(
+                "{} OpenAI models are cloud-based — no download needed",
+                style("✓").green()
+            );
+            println!(
+                "  API key configured: {}",
+                style("✓").green()
+            );
+        }
+        _ => bail!("Unsupported provider: {}", provider_id),
+    }
+
+    println!();
+    Ok(())
+}
+
+/// Create a cache marker file for a downloaded model
+fn create_cache_marker(
+    path: &std::path::Path,
+    provider: &str,
+    model: &str,
+    dimensions: usize,
+) -> Result<()> {
+    fs::create_dir_all(path)?;
     fs::write(
-        model_cache_path.join(".cached"),
+        path.join(".cached"),
         format!(
             "provider: {}\nmodel: {}\ndimensions: {}\ndownloaded: {}",
-            provider_id,
-            model_id,
-            model_info.dimensions,
+            provider,
+            model,
+            dimensions,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
         ),
     )?;
-
-    println!(
-        "{} Downloaded to {}",
-        style("✓").green(),
-        style(model_cache_path.display()).cyan()
-    );
-    println!();
-
     Ok(())
 }
 
@@ -507,28 +562,131 @@ fn run_test(text: &str) -> Result<()> {
     println!();
 
     let config = MasdayConfig::load().unwrap_or_default();
+    let provider = config.embedding_provider.as_deref().unwrap_or("ollama");
+    let model = config.embedding_model.as_deref().unwrap_or("nomic-embed-text");
+    let dimensions = config.embedding_dimensions.unwrap_or(768);
 
-    // Simulate embedding generation (in real implementation, would call actual embedding API)
     let start = Instant::now();
 
-    // Mock embedding vector generation
-    let dimensions = config.embedding_dimensions.unwrap_or(768);
-    let _mock_embedding: Vec<f32> = (0..dimensions).map(|i| (i as f32).sin()).collect();
-    let latency = start.elapsed();
+    match provider {
+        "ollama" => {
+            // Test via Ollama API
+            let base_url = config
+                .embedding_base_url
+                .as_deref()
+                .unwrap_or("http://localhost:11434");
 
-    println!(
-        "{} Generated embedding vector in {}",
-        style("✓").green(),
-        style(format!("{:.2}s", latency.as_secs_f64())).green()
-    );
-    println!("  Provider: {}", style(config.embedding_provider.unwrap_or_default()).cyan());
-    println!("  Model: {}", style(config.embedding_model.unwrap_or_default()).cyan());
-    println!(
-        "  Dimensions: {}",
-        style(dimensions).cyan()
-    );
+            let client = reqwest::blocking::Client::new();
+            let response = client
+                .post(format!("{}/api/embeddings", base_url))
+                .json(&serde_json::json!({
+                    "model": model,
+                    "prompt": text
+                }))
+                .timeout(std::time::Duration::from_secs(30))
+                .send();
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let latency = start.elapsed();
+                    let body: serde_json::Value = resp.json()?;
+                    let embedding = body.get("embedding").and_then(|e| e.as_array());
+                    let actual_dims = embedding.map(|e| e.len()).unwrap_or(0);
+
+                    println!(
+                        "{} Generated embedding in {}",
+                        style("✓").green(),
+                        style(format!("{:.2}s", latency.as_secs_f64())).green()
+                    );
+                    println!("  Provider: {}", style("ollama").cyan());
+                    println!("  Model: {}", style(model).cyan());
+                    println!("  Dimensions: {}", style(actual_dims).cyan());
+
+                    if actual_dims != dimensions {
+                        println!(
+                            "  {} Expected {} dims, got {}",
+                            style("⚠").yellow(),
+                            dimensions,
+                            actual_dims
+                        );
+                    }
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    let body = resp.text().unwrap_or_default();
+                    bail!(
+                        "Ollama returned {}:\n  {}\n\nMake sure Ollama is running: ollama serve",
+                        status, body
+                    );
+                }
+                Err(e) => {
+                    bail!(
+                        "Failed to connect to Ollama at {}: {}\n\nMake sure Ollama is running: ollama serve",
+                        base_url, e
+                    );
+                }
+            }
+        }
+        "openai" => {
+            // Test via OpenAI API
+            let api_key_env = std::env::var("OPENAI_API_KEY").ok();
+            let api_key = config
+                .embedding_api_key
+                .as_deref()
+                .or_else(|| api_key_env.as_deref())
+                .unwrap_or("");
+
+            if api_key.is_empty() {
+                bail!("OpenAI API key not set. Run: masday config set embedding.api_key sk-...");
+            }
+
+            let client = reqwest::blocking::Client::new();
+            let response = client
+                .post("https://api.openai.com/v1/embeddings")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&serde_json::json!({
+                    "model": model,
+                    "input": text
+                }))
+                .timeout(std::time::Duration::from_secs(30))
+                .send();
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let latency = start.elapsed();
+                    let body: serde_json::Value = resp.json()?;
+                    let embedding = body
+                        .get("data")
+                        .and_then(|d| d.get(0))
+                        .and_then(|d| d.get("embedding"))
+                        .and_then(|e| e.as_array());
+                    let actual_dims = embedding.map(|e| e.len()).unwrap_or(0);
+
+                    println!(
+                        "{} Generated embedding in {}",
+                        style("✓").green(),
+                        style(format!("{:.2}s", latency.as_secs_f64())).green()
+                    );
+                    println!("  Provider: {}", style("openai").cyan());
+                    println!("  Model: {}", style(model).cyan());
+                    println!("  Dimensions: {}", style(actual_dims).cyan());
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    let body = resp.text().unwrap_or_default();
+                    bail!("OpenAI returned {}:\n  {}", status, body);
+                }
+                Err(e) => {
+                    bail!("Failed to connect to OpenAI: {}", e);
+                }
+            }
+        }
+        _ => {
+            bail!("Unsupported provider: {}", provider);
+        }
+    }
+
     println!();
-
     Ok(())
 }
 

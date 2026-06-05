@@ -142,6 +142,8 @@ async fn run_local_mode(
         embedding_provider: embed_provider,
         embedding_model: embed_model,
         embedding_dimensions: embed_dims,
+        embedding_base_url: None,
+        embedding_api_key: None,
         api_port: masday_core::constants::ports::API_PORT,
         db_port: masday_core::constants::ports::POSTGRES_PORT,
         redis_port: masday_core::constants::ports::REDIS_PORT,
@@ -284,6 +286,8 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
             None
         },
         embedding_dimensions: if is_windows { Some(0) } else { None },
+        embedding_base_url: None,
+        embedding_api_key: None,
         api_port: masday_core::constants::ports::API_PORT,
         db_port: masday_core::constants::ports::POSTGRES_PORT,
         redis_port: masday_core::constants::ports::REDIS_PORT,
@@ -362,6 +366,8 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
             None
         },
         embedding_dimensions: if is_windows { Some(0) } else { None },
+        embedding_base_url: None,
+        embedding_api_key: None,
         api_port: masday_core::constants::ports::API_PORT,
         db_port: masday_core::constants::ports::POSTGRES_PORT,
         redis_port: masday_core::constants::ports::REDIS_PORT,
