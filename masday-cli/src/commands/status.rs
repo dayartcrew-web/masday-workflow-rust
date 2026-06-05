@@ -50,19 +50,23 @@ pub struct HealthReport {
 impl HealthReport {
     /// Calculate overall health status
     pub fn overall_status(&self) -> (i32, String) {
-        // API is the only true core dependency
         let api_ok = matches!(self.api.status, HealthStatus::Healthy);
-
-        // DB is important but degraded (connected with issues) is acceptable
         let db_ok = matches!(self.database.status, HealthStatus::Healthy)
             || matches!(self.database.status, HealthStatus::Degraded);
+        let db_connected = matches!(self.database.status, HealthStatus::Healthy)
+            || matches!(self.database.status, HealthStatus::Degraded);
 
-        if !api_ok {
+        // In local mode, API not running is degraded (user just needs to `masday serve`)
+        // Only truly critical if DB is unreachable
+        if !api_ok && !db_connected {
             return (2, "critical".to_string());
         }
 
+        if !api_ok {
+            return (1, "degraded".to_string());
+        }
+
         if !db_ok {
-            // DB unreachable but API ok — degraded, not critical
             return (1, "degraded".to_string());
         }
 
