@@ -1449,12 +1449,22 @@ pub async fn policy_validate_completion(
     let result = conn.query_row(
         "SELECT status, result FROM tasks WHERE id=?1",
         params![task_id],
-        |r| Ok((r.get::<_, String>(0).unwrap_or_default(), r.get::<_, Option<String>>(1).unwrap_or_default())),
+        |r| {
+            Ok((
+                r.get::<_, String>(0).unwrap_or_default(),
+                r.get::<_, Option<String>>(1).unwrap_or_default(),
+            ))
+        },
     );
 
     let (task_status, task_result) = match result {
         Ok(r) => r,
-        Err(_) => return Err(err(format!("Task {} not found in workflow {}", task_id, workflow_id))),
+        Err(_) => {
+            return Err(err(format!(
+                "Task {} not found in workflow {}",
+                task_id, workflow_id
+            )))
+        }
     };
 
     if task_status == "DONE" {
@@ -1993,10 +2003,18 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         match exists {
             Ok(0) | Err(_) => {
                 // Workflow doesn't exist, insert it
-                let name = workflow_data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let name = workflow_data
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let description = workflow_data.get("description").and_then(|v| v.as_str());
-                let status = workflow_data.get("status").and_then(|v| v.as_str()).unwrap_or("INIT");
-                let project_path = workflow_data.get("projectPath").and_then(|v| v.as_str())
+                let status = workflow_data
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("INIT");
+                let project_path = workflow_data
+                    .get("projectPath")
+                    .and_then(|v| v.as_str())
                     .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()));
                 let metadata = workflow_data.get("metadata").cloned().unwrap_or(json!({}));
 
@@ -2033,7 +2051,8 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                     }
                 }
 
-                if let Some(description) = workflow_data.get("description").and_then(|v| v.as_str()) {
+                if let Some(description) = workflow_data.get("description").and_then(|v| v.as_str())
+                {
                     match conn.execute(
                         "UPDATE workflows SET description=?1, updated_at=?2 WHERE id=?3",
                         params![description, &t, workflow_id],
@@ -2063,8 +2082,11 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                     }
                 }
 
-                if let Some(project_path) = workflow_data.get("projectPath").and_then(|v| v.as_str())
-                    .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str())) {
+                if let Some(project_path) = workflow_data
+                    .get("projectPath")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| workflow_data.get("project_path").and_then(|v| v.as_str()))
+                {
                     match conn.execute(
                         "UPDATE workflows SET project_path=?1, updated_at=?2 WHERE id=?3",
                         params![project_path, &t, workflow_id],
@@ -2275,9 +2297,7 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
     };
 
     // Ensure directory exists (async operation)
-    tokio::fs::create_dir_all(&state_dir)
-        .await
-        .map_err(err)?;
+    tokio::fs::create_dir_all(&state_dir).await.map_err(err)?;
 
     // Build state object
     let state = json!({
@@ -2298,6 +2318,78 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
     Ok(state)
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PostgreSQL Sync (Local Mode)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Workflow data tuple from SQLite
+#[allow(clippy::type_complexity)]
+type WorkflowRow = (
+    String,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    String,
+);
+
+/// Read workflows from SQLite synchronously.
+fn read_sqlite_workflows(workflow_ids: &[String]) -> Vec<WorkflowRow> {
+    let conn = crate::sqlite::conn();
+    let mut results = Vec::new();
+    for wid in workflow_ids {
+        let r: Result<WorkflowRow, _> =
+            conn.query_row(
+                "SELECT id, name, COALESCE(description,''), status, project_path, COALESCE(metadata,'{}') FROM workflows WHERE id=?1",
+                params![wid],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+            );
+        if let Ok(data) = r {
+            results.push(data);
+        }
+    }
+    results
+}
+
+/// Push workflow data to PostgreSQL after SQLite write.
+/// Called from local_push/local_sync via tokio::spawn to avoid Send issues.
+pub async fn sync_workflows_to_pg(workflow_ids: Vec<String>) -> bool {
+    let pool = match crate::pg::get_pool().await {
+        Some(p) => p,
+        None => return false,
+    };
+
+    // Read from SQLite synchronously (no MutexGuard held across await)
+    let workflows = read_sqlite_workflows(&workflow_ids);
+
+    let mut synced = 0;
+    for (id, name, desc, status, path, metadata) in workflows {
+        if let Ok(client) = pool.get().await {
+            let q = r#"
+                INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    name = EXCLUDED.name, description = EXCLUDED.description,
+                    status = EXCLUDED.status, project_path = EXCLUDED.project_path,
+                    metadata = EXCLUDED.metadata, updated_at = NOW()
+            "#;
+            match client
+                .execute(q, &[&id, &name, &desc, &status, &path, &metadata])
+                .await
+            {
+                Ok(_) => synced += 1,
+                Err(e) => tracing::warn!("PG sync failed {}: {}", id, e),
+            }
+        }
+    }
+    tracing::info!(
+        "Synced {}/{} workflows to PostgreSQL",
+        synced,
+        workflow_ids.len()
+    );
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2316,7 +2408,10 @@ mod tests {
         let result = local_sync(args).await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid workflow_id"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid workflow_id"));
     }
 
     #[test]

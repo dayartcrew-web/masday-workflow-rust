@@ -93,20 +93,17 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
                 "input": text
             });
 
-            match client
-                .post(&url)
-                .json(&payload)
-                .send()
-                .await
-            {
+            match client.post(&url).json(&payload).send().await {
                 Ok(response) if response.status().is_success() => {
                     if let Ok(result) = response.json::<serde_json::Value>().await {
-                        if let Some(embedding) = result.get("embedding").and_then(|v| v.as_array()) {
-                            let vector: Vec<f64> = embedding
-                                .iter()
-                                .filter_map(|v| v.as_f64())
-                                .collect();
-                            info!("Generated Ollama embedding with {} dimensions", vector.len());
+                        if let Some(embedding) = result.get("embedding").and_then(|v| v.as_array())
+                        {
+                            let vector: Vec<f64> =
+                                embedding.iter().filter_map(|v| v.as_f64()).collect();
+                            info!(
+                                "Generated Ollama embedding with {} dimensions",
+                                vector.len()
+                            );
                             return Some(vector);
                         }
                     }
@@ -143,12 +140,17 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
                 Ok(response) if response.status().is_success() => {
                     if let Ok(result) = response.json::<serde_json::Value>().await {
                         if let Some(data) = result.get("data").and_then(|v| v.as_array()) {
-                            if let Some(embedding) = data.first().and_then(|v| v.get("embedding")).and_then(|v| v.as_array()) {
-                                let vector: Vec<f64> = embedding
-                                    .iter()
-                                    .filter_map(|v| v.as_f64())
-                                    .collect();
-                                info!("Generated OpenAI embedding with {} dimensions", vector.len());
+                            if let Some(embedding) = data
+                                .first()
+                                .and_then(|v| v.get("embedding"))
+                                .and_then(|v| v.as_array())
+                            {
+                                let vector: Vec<f64> =
+                                    embedding.iter().filter_map(|v| v.as_f64()).collect();
+                                info!(
+                                    "Generated OpenAI embedding with {} dimensions",
+                                    vector.len()
+                                );
                                 return Some(vector);
                             }
                         }
@@ -164,7 +166,10 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
             None
         }
         _ => {
-            warn!("Unknown embedding provider: {}, defaulting to mock", provider);
+            warn!(
+                "Unknown embedding provider: {}, defaulting to mock",
+                provider
+            );
             let vector = embedding::text_to_vector(text);
             Some(vector.into_iter().map(|v| v as f64).collect())
         }
@@ -379,15 +384,23 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
                                 // Generate embedding for task output/result content
                                 let embedding_text = {
-                                    let output = task.get("output").and_then(|v| v.as_str()).unwrap_or("");
-                                    let result = task.get("result").and_then(|v| v.as_str()).unwrap_or("");
+                                    let output =
+                                        task.get("output").and_then(|v| v.as_str()).unwrap_or("");
+                                    let result =
+                                        task.get("result").and_then(|v| v.as_str()).unwrap_or("");
                                     format!("{} {}", output, result)
                                 };
 
                                 if !embedding_text.trim().is_empty() {
-                                    if let Some(embedding) = generate_embedding(&embedding_text).await {
+                                    if let Some(embedding) =
+                                        generate_embedding(&embedding_text).await
+                                    {
                                         task_update["embedding"] = serde_json::json!(embedding);
-                                        info!("Generated embedding for task {}: {} dimensions", task_id, embedding.len());
+                                        info!(
+                                            "Generated embedding for task {}: {} dimensions",
+                                            task_id,
+                                            embedding.len()
+                                        );
                                     }
                                 }
 
@@ -531,7 +544,10 @@ mod tests {
         let result = local_sync(args).await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid workflow_id"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid workflow_id"));
     }
 
     #[tokio::test]
@@ -648,7 +664,7 @@ mod tests {
         assert!(embedding.is_some());
         let vector = embedding.unwrap();
         assert_eq!(vector.len(), 768); // Feature hashing produces 768-dim vectors
-        // Check that values are normalized (unit vector)
+                                       // Check that values are normalized (unit vector)
         let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
         let norm = norm_sq.sqrt();
         assert!((norm - 1.0).abs() < 0.01, "Vector should be normalized");

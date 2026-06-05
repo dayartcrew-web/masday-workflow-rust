@@ -2371,6 +2371,7 @@ dependencies = [
  "masday-core",
  "masday-db",
  "masday-service",
+ "once_cell",
  "percent-encoding",
  "reqwest",
  "rusqlite",

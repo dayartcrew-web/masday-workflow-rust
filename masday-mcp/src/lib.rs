@@ -8,6 +8,7 @@ pub mod client;
 pub mod direct;
 pub mod embedding;
 pub mod mode;
+pub mod pg;
 pub mod registry;
 pub mod sqlite;
 pub mod sqlite_schema;
@@ -876,6 +877,39 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
 
     let registry = build_stdio_registry();
     tracing::info!("Registered {} tools (standalone)", registry.count());
+
+    let mut server = JsonRpcServer::new(registry);
+    server.run().await
+}
+
+/// Run the MCP stdio server in local mode.
+/// Uses PostgreSQL (primary) + SQLite (cache) + Ollama (embed).
+/// Falls back to SQLite-only if PostgreSQL is unavailable.
+pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    // Init SQLite (always needed for cache/fingerprints)
+    sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
+    tracing::info!("SQLite initialized");
+
+    // Init PostgreSQL (optional — graceful fallback)
+    let pg_available = pg::init_pg().await;
+    if pg_available {
+        tracing::info!("PostgreSQL connected — full local mode");
+    } else {
+        tracing::warn!("PostgreSQL not available — SQLite-only fallback");
+    }
+
+    // Use the same registry as standalone (direct.rs tools)
+    // direct.rs tools will check pg::get_pool() for PostgreSQL operations
+    let registry = build_stdio_registry();
+    tracing::info!(
+        "Registered {} tools (local mode, PostgreSQL: {})",
+        registry.count(),
+        if pg_available { "yes" } else { "no" }
+    );
 
     let mut server = JsonRpcServer::new(registry);
     server.run().await

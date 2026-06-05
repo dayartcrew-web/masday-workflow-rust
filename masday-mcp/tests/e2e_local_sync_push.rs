@@ -14,7 +14,10 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 /// Helper: Create a test workflow via API
-async fn create_test_workflow(api_url: &str, api_key: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+async fn create_test_workflow(
+    api_url: &str,
+    api_key: &str,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
     let client = Client::new();
     let url = format!("{}/api/workflows", api_url);
 
@@ -94,7 +97,10 @@ async fn start_task(
 
     if !response.status().is_success() {
         let status_code = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("Failed to start task: {} - {}", status_code, error_text).into());
     }
 
@@ -182,7 +188,10 @@ async fn delete_workflow(
 }
 
 /// Helper: Read local state file
-async fn read_local_state_file(cwd: &str, workflow_id: &str) -> Result<Value, Box<dyn std::error::Error>> {
+async fn read_local_state_file(
+    cwd: &str,
+    workflow_id: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let state_file = std::path::Path::new(cwd)
         .join(".masday")
         .join("state")
@@ -220,7 +229,9 @@ async fn write_local_state_file(
 async fn test_e2e_local_sync_push_roundtrip() {
     // Setup
     let api_url = masday_core::constants::ports::api_base_url();
-    let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_default().to_string(); // From .env
+    let api_key = std::env::var("MASDAY_API_KEY")
+        .unwrap_or_default()
+        .to_string(); // From .env
     let cwd = "/home/vibe-dev/masday-workflow-rust";
 
     // Initialize client module
@@ -306,7 +317,10 @@ async fn test_e2e_local_sync_push_roundtrip() {
     let mut modified_state = local_state.clone();
 
     // Change task status
-    if let Some(tasks) = modified_state.get_mut("tasks").and_then(|v| v.as_array_mut()) {
+    if let Some(tasks) = modified_state
+        .get_mut("tasks")
+        .and_then(|v| v.as_array_mut())
+    {
         if let Some(task) = tasks.get_mut(0) {
             if let Some(status) = task.get_mut("status") {
                 *status = json!("DONE");
@@ -383,9 +397,7 @@ async fn test_e2e_local_sync_push_roundtrip() {
 
     // Verify result was pushed (stored in test_evidence field by API)
     assert_eq!(
-        api_tasks[0]
-            .get("test_evidence")
-            .and_then(|v| v.as_str()),
+        api_tasks[0].get("test_evidence").and_then(|v| v.as_str()),
         Some("Test result from local modification"),
         "Task result mismatch after push (stored in test_evidence field)"
     );
@@ -422,7 +434,9 @@ async fn test_e2e_local_sync_push_roundtrip() {
 async fn test_local_sync_invalid_workflow_id() {
     // Setup
     let api_url = masday_core::constants::ports::api_base_url();
-    let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_default().to_string();
+    let api_key = std::env::var("MASDAY_API_KEY")
+        .unwrap_or_default()
+        .to_string();
     let cwd = "/home/vibe-dev/masday-workflow-rust";
 
     // Initialize client module (may already be initialized from other tests)
@@ -436,12 +450,17 @@ async fn test_local_sync_invalid_workflow_id() {
 
     let result = local::local_sync(sync_args).await;
 
-    assert!(result.is_err(), "local_sync should reject invalid workflow ID");
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Invalid workflow_id"),
-        "Error should mention invalid workflow_id");
+    assert!(
+        result.is_err(),
+        "local_sync should reject invalid workflow ID"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid workflow_id"),
+        "Error should mention invalid workflow_id"
+    );
 }
 
 #[tokio::test]
@@ -449,7 +468,9 @@ async fn test_local_sync_invalid_workflow_id() {
 async fn test_local_push_nonexistent_workflow() {
     // Setup
     let api_url = masday_core::constants::ports::api_base_url();
-    let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_default().to_string();
+    let api_key = std::env::var("MASDAY_API_KEY")
+        .unwrap_or_default()
+        .to_string();
     let cwd = "/home/vibe-dev/masday-workflow-rust";
 
     // Initialize client module (may already be initialized from other tests)
@@ -464,7 +485,10 @@ async fn test_local_push_nonexistent_workflow() {
     let result = local::local_push(push_args).await;
 
     // Should succeed but return error about file not found
-    assert!(result.is_ok(), "local_push should not fail for missing file");
+    assert!(
+        result.is_ok(),
+        "local_push should not fail for missing file"
+    );
     let result_json = result.unwrap();
     assert_eq!(
         result_json.get("pushed").and_then(|v| v.as_bool()),

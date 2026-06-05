@@ -1,44 +1,45 @@
 //! MCP command — starts the MCP stdio server.
 //!
-//! Reads config to determine mode:
-//! - "standalone" or no config → SQLite-only (no external deps)
-//! - "local" or "remote" → HTTP proxy to API server (reads api_url + api_key from config)
+//! Mode selection:
+//! - "standalone" → SQLite only (no external deps)
+//! - "local" → PostgreSQL (primary) + SQLite (cache) + Ollama (embed)
+//! - "remote" → HTTP proxy to API server
 
 use anyhow::Result;
 
 /// Start the MCP stdio server
 pub async fn run() -> Result<()> {
-    // Load config if available and set env vars (non-fatal if missing)
     let config = crate::config::MasdayConfig::load();
     if let Some(ref cfg) = config {
         cfg.set_env_vars();
     }
 
-    // Determine mode from config
     let mode = config
         .as_ref()
         .map(|c| c.mode.as_str())
         .unwrap_or("standalone");
 
     match mode {
-        "local" | "remote" => {
-            // HTTP proxy mode — connect to API server
+        "remote" => {
             let cfg = config.as_ref().unwrap();
             let api_url = cfg.api_url.clone();
             let api_key = cfg.api_key.clone();
 
-            eprintln!(
-                "[masday] MCP server starting in {} mode → {}",
-                mode, api_url
-            );
+            eprintln!("[masday] MCP server starting in remote mode → {}", api_url);
 
             masday_mcp::run_http(api_url, api_key)
                 .await
                 .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
         }
+        "local" => {
+            eprintln!("[masday] MCP server starting in local mode (PostgreSQL + SQLite + Ollama)");
+
+            masday_mcp::run_local()
+                .await
+                .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
+        }
         _ => {
-            // Standalone mode — SQLite, no external deps
-            eprintln!("[masday] MCP server starting in standalone mode (SQLite)");
+            eprintln!("[masday] MCP server starting in standalone mode (SQLite only)");
 
             masday_mcp::run_stdio()
                 .await
