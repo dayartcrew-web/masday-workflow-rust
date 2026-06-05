@@ -2368,6 +2368,7 @@ name = "masday-mcp"
 version = "0.3.19"
 dependencies = [
  "chrono",
+ "home",
  "masday-core",
  "masday-db",
  "masday-service",
