@@ -334,7 +334,7 @@ cargo run -p masday-api
 **Fix:**
 ```bash
 # Ensure MASDAY_API_KEY matches between API server and MCP client config
-export MASDAY_API_KEY="PLACEHOLDER"
+export MASDAY_API_KEY="CHANGE_ME"
 ```
 
 ### Issue: "Database connection failed" in API server logs

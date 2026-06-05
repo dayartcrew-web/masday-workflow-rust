@@ -220,7 +220,7 @@ async fn write_local_state_file(
 async fn test_e2e_local_sync_push_roundtrip() {
     // Setup
     let api_url = masday_core::constants::ports::api_base_url();
-    let api_key = "CHANGE_ME_REMOVED".to_string(); // From .env
+    let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_default().to_string(); // From .env
     let cwd = "/home/vibe-dev/masday-workflow-rust";
 
     // Initialize client module
@@ -422,7 +422,7 @@ async fn test_e2e_local_sync_push_roundtrip() {
 async fn test_local_sync_invalid_workflow_id() {
     // Setup
     let api_url = masday_core::constants::ports::api_base_url();
-    let api_key = "CHANGE_ME_REMOVED".to_string();
+    let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_default().to_string();
     let cwd = "/home/vibe-dev/masday-workflow-rust";
 
     // Initialize client module (may already be initialized from other tests)
@@ -449,7 +449,7 @@ async fn test_local_sync_invalid_workflow_id() {
 async fn test_local_push_nonexistent_workflow() {
     // Setup
     let api_url = masday_core::constants::ports::api_base_url();
-    let api_key = "CHANGE_ME_REMOVED".to_string();
+    let api_key = std::env::var("MASDAY_API_KEY").unwrap_or_default().to_string();
     let cwd = "/home/vibe-dev/masday-workflow-rust";
 
     // Initialize client module (may already be initialized from other tests)

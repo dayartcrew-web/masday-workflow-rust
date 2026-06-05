@@ -449,7 +449,7 @@ After Rust migration:
       "args": [],
       "env": {
         "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "PLACEHOLDER-change-in-prod"
+        "MASDAY_API_KEY": "CHANGE_ME"
       }
     }
   }

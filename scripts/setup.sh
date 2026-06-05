@@ -192,7 +192,7 @@ cat > .mcp.json << MCPEOF
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
         "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "PLACEHOLDER",
+        "MASDAY_API_KEY": "CHANGE_ME",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
     }
@@ -214,7 +214,7 @@ if [ ! -f ".gemini/settings.json" ]; then
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
         "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "PLACEHOLDER",
+        "MASDAY_API_KEY": "CHANGE_ME",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
     }
@@ -235,7 +235,7 @@ cat > .vscode/mcp.json << VSCODEEOF
       "env": {
         "DATABASE_URL": "${DATABASE_URL:-}",
         "MASDAY_API_URL": "http://localhost:30101",
-        "MASDAY_API_KEY": "PLACEHOLDER",
+        "MASDAY_API_KEY": "CHANGE_ME",
         "RUST_LOG": "${RUST_LOG:-info}"
       }
     }
