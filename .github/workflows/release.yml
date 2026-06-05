@@ -51,8 +51,8 @@ jobs:
             target: aarch64-apple-darwin
             artifact: masday-macos-aarch64
             ext: ''
-          # macOS Intel
-          - os: macos-13
+          # macOS Intel (build on macos-latest with x86_64 target via rosetta)
+          - os: macos-latest
             target: x86_64-apple-darwin
             artifact: masday-macos-x86_64
             ext: ''
