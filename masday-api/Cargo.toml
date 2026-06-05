@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 masday-core = { path = "../masday-core" }
 masday-db = { path = "../masday-db" }
-masday-service = { path = "../masday-service" }
+masday-service = { path = "../masday-service", default-features = false }
 pgvector = "0.4"
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
