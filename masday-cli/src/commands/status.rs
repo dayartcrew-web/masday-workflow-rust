@@ -529,7 +529,22 @@ fn detect_mcp_mode(config: &MasdayConfig, home: &std::path::Path) -> String {
         if let Ok(content) = std::fs::read_to_string(&claude_json) {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(mcp) = val.get("mcpServers").and_then(|m| m.get("masday")) {
-                    // Check if it uses stdio or sse/http
+                    // Check transport type
+                    if let Some(mcp_type) = mcp.get("type").and_then(|t| t.as_str()) {
+                        match mcp_type {
+                            "streamableHttp" | "sse" => {
+                                if let Some(url) = mcp.get("url").and_then(|u| u.as_str()) {
+                                    if url.contains("localhost") || url.contains("127.0.0.1") {
+                                        return "local".to_string();
+                                    }
+                                    return "remote".to_string();
+                                }
+                            }
+                            "stdio" => return "stdio".to_string(),
+                            _ => {}
+                        }
+                    }
+                    // Fallback: check for url vs command
                     if mcp.get("url").is_some() {
                         let url = mcp["url"].as_str().unwrap_or("");
                         if url.contains("localhost") || url.contains("127.0.0.1") {
@@ -541,13 +556,6 @@ fn detect_mcp_mode(config: &MasdayConfig, home: &std::path::Path) -> String {
                         return "stdio".to_string();
                     }
                 }
-            }
-            // Fallback: string search
-            if content.contains("\"url\"") && content.contains("localhost") {
-                return "local".to_string();
-            }
-            if content.contains("\"command\"") {
-                return "stdio".to_string();
             }
         }
     }
