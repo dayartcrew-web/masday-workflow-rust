@@ -19,21 +19,25 @@ pub async fn workflow_create(
         None => return,
     };
 
+    // Parse metadata as JSON for proper jsonb casting
+    let meta_json: serde_json::Value =
+        serde_json::from_str(metadata).unwrap_or(serde_json::json!({}));
+
     if let Ok(client) = pool.get().await {
         let q = r#"
             INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at)
-            VALUES ($1, $2, $3, 'INIT', $4, $5::jsonb, NOW(), NOW())
+            VALUES ($1, $2, $3, 'INIT', $4, $5, NOW(), NOW())
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name, description = EXCLUDED.description,
                 metadata = EXCLUDED.metadata, updated_at = NOW()
         "#;
         if let Err(e) = client
-            .execute(q, &[&id, &name, &description, &project_path, &metadata])
+            .execute(q, &[&id, &name, &description, &project_path, &meta_json])
             .await
         {
             tracing::warn!("PG workflow create sync failed {}: {}", id, e);
         } else {
-            tracing::debug!("Synced workflow {} to PostgreSQL", id);
+            tracing::info!("Synced workflow {} to PostgreSQL", id);
         }
     }
 }
@@ -66,17 +70,19 @@ pub async fn workflows_bulk(workflow_ids: &[String]) -> bool {
 
     let mut synced = 0;
     for (id, name, desc, status, path, metadata) in workflows {
+        let meta_json: serde_json::Value =
+            serde_json::from_str(&metadata).unwrap_or(serde_json::json!({}));
         if let Ok(client) = pool.get().await {
             let q = r#"
                 INSERT INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     name = EXCLUDED.name, description = EXCLUDED.description,
                     status = EXCLUDED.status, project_path = EXCLUDED.project_path,
                     metadata = EXCLUDED.metadata, updated_at = NOW()
             "#;
             match client
-                .execute(q, &[&id, &name, &desc, &status, &path, &metadata])
+                .execute(q, &[&id, &name, &desc, &status, &path, &meta_json])
                 .await
             {
                 Ok(_) => synced += 1,
@@ -117,10 +123,12 @@ pub async fn memory_owned(
         data;
 
     if let Ok(client) = pool.get().await {
+        let tags_json: serde_json::Value =
+            serde_json::from_str(&tags).unwrap_or(serde_json::json!([]));
         let q = r#"
             INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content,
                                   importance_score, created_by_agent, tags, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
             ON CONFLICT (id) DO UPDATE SET
                 summary = EXCLUDED.summary, content = EXCLUDED.content,
                 importance_score = EXCLUDED.importance_score, updated_at = NOW()
@@ -137,14 +145,14 @@ pub async fn memory_owned(
                     &content,
                     &importance,
                     &created_by,
-                    &tags,
+                    &tags_json,
                 ],
             )
             .await
         {
             tracing::warn!("PG memory sync failed {}: {}", id, e);
         } else {
-            tracing::debug!("Synced memory {} to PostgreSQL", id);
+            tracing::info!("Synced memory {} to PostgreSQL", id);
         }
     }
 }
@@ -170,10 +178,12 @@ pub async fn memory(data: &MemoryData<'_>) {
     };
 
     if let Ok(client) = pool.get().await {
+        let tags_json: serde_json::Value =
+            serde_json::from_str(data.tags).unwrap_or(serde_json::json!([]));
         let q = r#"
             INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content,
                                   importance_score, created_by_agent, tags, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
             ON CONFLICT (id) DO UPDATE SET
                 summary = EXCLUDED.summary, content = EXCLUDED.content,
                 importance_score = EXCLUDED.importance_score, updated_at = NOW()
@@ -190,7 +200,7 @@ pub async fn memory(data: &MemoryData<'_>) {
                     &data.content,
                     &data.importance,
                     &data.created_by,
-                    &data.tags,
+                    &tags_json,
                 ],
             )
             .await

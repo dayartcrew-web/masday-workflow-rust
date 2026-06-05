@@ -13,7 +13,10 @@ use tokio::sync::RwLock;
 static PG_POOL: Lazy<Arc<RwLock<Option<DbPool>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
 
 /// Embedded migration SQL — included at compile time from masday-db.
-const MIGRATION_SQL: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../masday-db/migrations/001_initial_schema.sql"));
+const MIGRATION_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../masday-db/migrations/001_initial_schema.sql"
+));
 
 /// Read database_url from ~/.masday/config.toml directly.
 fn read_db_url_from_config() -> Option<String> {
@@ -43,42 +46,62 @@ fn read_db_url_from_config() -> Option<String> {
 }
 
 /// Run embedded migrations directly (doesn't depend on filesystem migrations dir).
+/// Splits SQL by statement boundaries (lines ending with ;).
 async fn run_embedded_migrations(pool: &DbPool) -> Result<(), String> {
     let client = pool
         .get()
         .await
         .map_err(|e| format!("Failed to get DB connection: {}", e))?;
 
-    // Split by semicolons and execute each statement
-    for statement in MIGRATION_SQL.split(';') {
-        let trimmed = statement.trim();
+    // Collect multi-line statements (accumulate until we hit a line ending with ';')
+    let mut current = String::new();
+    let mut statements = Vec::new();
+
+    for line in MIGRATION_SQL.lines() {
+        let trimmed = line.trim();
+        // Skip empty lines and comment-only lines
         if trimmed.is_empty() || trimmed.starts_with("--") {
             continue;
         }
-        // Skip comment-only blocks
-        let sql: String = trimmed
-            .lines()
-            .filter(|line| !line.trim().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        if sql.trim().is_empty() {
-            continue;
+        // Add non-comment parts of the line
+        current.push_str(line);
+        current.push('\n');
+        if trimmed.ends_with(';') {
+            let stmt = current.trim().trim_end_matches(';').trim().to_string();
+            if !stmt.is_empty() {
+                statements.push(stmt);
+            }
+            current.clear();
         }
-        if let Err(e) = client.execute(&sql, &[]).await {
-            // Some statements may fail if already exist (CREATE EXTENSION, CREATE TABLE)
+    }
+    // Handle any remaining statement without trailing semicolon
+    if !current.trim().is_empty() {
+        statements.push(current.trim().to_string());
+    }
+
+    let mut ok = 0;
+    for sql in &statements {
+        if let Err(e) = client.execute(sql, &[]).await {
             let msg = e.to_string();
             if msg.contains("already exists") {
-                tracing::debug!(
-                    "Schema already exists, skipping: {}",
+                tracing::debug!("Schema exists: {}", &msg[..msg.len().min(60)]);
+            } else {
+                tracing::warn!(
+                    "Migration: {} — {}",
+                    &sql[..sql.len().min(50)],
                     &msg[..msg.len().min(80)]
                 );
-            } else {
-                tracing::warn!("Migration statement warning: {}", msg);
             }
+        } else {
+            ok += 1;
         }
     }
 
-    tracing::info!("PostgreSQL schema ready (embedded migrations)");
+    tracing::info!(
+        "PostgreSQL schema ready ({}/{} statements OK)",
+        ok,
+        statements.len()
+    );
     Ok(())
 }
 
