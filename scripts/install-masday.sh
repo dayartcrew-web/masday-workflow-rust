@@ -9,6 +9,11 @@
 #   curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/install.sh | bash
 #   curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/v0.1.0/install.sh | bash
 #
+# Environment variables:
+#   MASDAY_QUICKSTART=1  Auto-run 'masday quickstart' after install (non-interactive)
+#   MASDAY_VERSION=X.Y.Z  Install specific version (default: latest)
+#   MASDAY_FORCE=1       Force reinstall even if already installed
+#
 set -euo pipefail
 
 REPO="dayartcrew-web/masday-workflow-rust"
@@ -33,11 +38,19 @@ detect_platform() {
 
     os="$(uname -s 2>/dev/null || echo unknown)"
     case "$os" in
-        Linux)  os="linux" ;;
-        Darwin) os="macos" ;;
+        Linux*)  os="linux" ;;
+        Darwin*) os="macos" ;;
+        MINGW*|MSYS*|CYGWIN*)
+            os="windows" ;;
         *)
-            err "Unsupported OS: $os. Only Linux and macOS are supported."
-            exit 1
+            # Fallback: check for Windows without Unix layer
+            if [ -f /c/Windows/System32/cmd.exe ] 2>/dev/null; then
+                os="windows"
+            else
+                err "Unsupported OS: $(uname -s)"
+                err "Supported: Linux, macOS, Windows (via Git Bash / MSYS2 / WSL)"
+                exit 1
+            fi
             ;;
     esac
 
@@ -46,12 +59,32 @@ detect_platform() {
         x86_64|amd64)  arch="x86_64" ;;
         arm64|aarch64) arch="aarch64" ;;
         *)
-            err "Unsupported architecture: $arch. Only x86_64 and aarch64 are supported."
+            err "Unsupported architecture: $(uname -m)"
+            err "Supported: x86_64, aarch64 (arm64)"
             exit 1
             ;;
     esac
 
     echo "${os}-${arch}"
+}
+
+# Map platform string to GitHub Release artifact name
+# Input: platform string like "linux-x86_64", "windows-x86_64", "macos-aarch64"
+get_artifact_name() {
+    local platform="$1"
+    local os="${platform%%-*}"
+    local arch="${platform##*-}"
+
+    case "$os" in
+        linux)   echo "masday-linux-${arch}"         ;;
+        windows) echo "masday-windows-${arch}.exe"    ;;
+        macos)
+            err "macOS builds are not available yet."
+            err "Track: https://github.com/dayartcrew-web/masday-workflow-release/issues"
+            exit 1
+            ;;
+        *)       echo "masday-${os}-${arch}"          ;;
+    esac
 }
 
 # Resolve the latest release tag
@@ -64,7 +97,8 @@ get_latest_version() {
 download_binary() {
     local version="$1"
     local platform="$2"
-    local artifact="masday-${platform}"
+    local artifact
+    artifact="$(get_artifact_name "$platform")"
     local download_url="https://github.com/${REPO}/releases/download/${version}/${artifact}"
 
     local tmp_file
@@ -95,8 +129,10 @@ verify_checksum() {
     if checksums="$(curl -fsSL "$checksum_url" 2>/dev/null)"; then
         local platform
         platform="$(detect_platform)"
+        local artifact
+        artifact="$(get_artifact_name "$platform")"
         local expected
-        expected="$(echo "$checksums" | grep "masday-${platform}" | awk '{print $1}')"
+        expected="$(echo "$checksums" | grep "${artifact}" | awk '{print $1}')"
 
         if [ -n "$expected" ] && [ "$actual_hash" = "$expected" ]; then
             ok "Checksum verified"
@@ -123,6 +159,13 @@ main() {
     platform="$(detect_platform)"
     info "Platform: ${platform}"
 
+    # Set binary name for Windows
+    if [[ "$platform" == windows-* ]]; then
+        BINARY_NAME="masday.exe"
+    else
+        BINARY_NAME="masday"
+    fi
+
     # Resolve version
     local version="${MASDAY_VERSION:-}"
     if [ -z "$version" ]; then
@@ -135,6 +178,28 @@ main() {
         fi
     fi
     ok "Version: ${version}"
+
+    # Check for existing installation
+    if [ -x "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        local existing_version
+        existing_version="$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | head -1 | sed 's/masday //')" || true
+
+        if [ -n "$existing_version" ]; then
+            warn "masday ${existing_version} is already installed at ${INSTALL_DIR}/${BINARY_NAME}"
+
+            if [ "${MASDAY_FORCE:-0}" = "1" ]; then
+                info "MASDAY_FORCE=1 — reinstalling..."
+            elif [ -t 0 ]; then
+                read -rp "${YELLOW}Reinstall/update? [y/N]${NC} " answer
+                case "$answer" in
+                    y*|Y*) info "Reinstalling..." ;;
+                    *)     info "Skipping. Use MASDAY_FORCE=1 to force reinstall."; exit 0 ;;
+                esac
+            else
+                info "Already installed. Use MASDAY_FORCE=1 to force reinstall."; exit 0
+            fi
+        fi
+    fi
 
     # Download
     local binary_file
@@ -151,21 +216,62 @@ main() {
     ok "Installed to ${INSTALL_DIR}/${BINARY_NAME}"
 
     # Add to PATH if not already present
-    local shell_rc=""
-    if [ -f "${HOME}/.bashrc" ]; then shell_rc="${HOME}/.bashrc"; fi
-    if [ -f "${HOME}/.zshrc" ]; then shell_rc="${HOME}/.zshrc"; fi
-
-    local path_line="export PATH=\"\${PATH}:${INSTALL_DIR}\""
+    local path_added=0
 
     if echo ":${PATH}:" | grep -q ":${INSTALL_DIR}:"; then
         ok "Already in PATH"
-    elif [ -n "$shell_rc" ] && ! grep -q "$INSTALL_DIR" "$shell_rc" 2>/dev/null; then
-        echo "" >> "$shell_rc"
-        echo "# Masday CLI" >> "$shell_rc"
-        echo "$path_line" >> "$shell_rc"
-        ok "Added to PATH in ${shell_rc}"
-        warn "Run 'source ${shell_rc}' or start a new terminal to use masday"
-    else
+        path_added=1
+    fi
+
+    # Windows PATH registration
+    if [[ "$platform" == windows-* ]] && [ $path_added -eq 0 ]; then
+        # Try PowerShell User PATH registration
+        if command -v powershell.exe &>/dev/null; then
+            local win_path
+            win_path="$(cygpath -w "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")"
+            if powershell.exe -NoProfile -Command \
+                "[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';${win_path}', 'User')" \
+                2>/dev/null; then
+                ok "Added to Windows PATH (User scope)"
+                path_added=1
+            fi
+        fi
+
+        # Also update Git Bash profile
+        if [ $path_added -eq 0 ]; then
+            for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile"; do
+                if [ -f "$rc_file" ] && ! grep -q 'masday/bin' "$rc_file" 2>/dev/null; then
+                    echo '' >> "$rc_file"
+                    echo '# Masday CLI' >> "$rc_file"
+                    echo 'export PATH="$HOME/.masday/bin:$PATH"' >> "$rc_file"
+                    ok "Added to $(basename "$rc_file")"
+                    path_added=1
+                    break
+                fi
+            done
+        fi
+    fi
+
+    # Unix PATH registration (Linux/macOS)
+    if [ $path_added -eq 0 ]; then
+        local shell_rc=""
+        if [ -f "${HOME}/.bashrc" ]; then shell_rc="${HOME}/.bashrc"; fi
+        if [ -f "${HOME}/.zshrc" ]; then shell_rc="${HOME}/.zshrc"; fi
+
+        local path_line="export PATH=\"\${PATH}:${INSTALL_DIR}\""
+
+        if [ -n "$shell_rc" ] && ! grep -q "$INSTALL_DIR" "$shell_rc" 2>/dev/null; then
+            echo "" >> "$shell_rc"
+            echo "# Masday CLI" >> "$shell_rc"
+            echo "$path_line" >> "$shell_rc"
+            ok "Added to PATH in ${shell_rc}"
+            warn "Run 'source ${shell_rc}' or start a new terminal to use masday"
+            path_added=1
+        fi
+    fi
+
+    # Fallback: manual instructions
+    if [ $path_added -eq 0 ]; then
         info "Add to PATH manually:"
         echo "  export PATH=\"\${PATH}:${INSTALL_DIR}\""
     fi
@@ -177,7 +283,23 @@ main() {
     echo "  ${BINARY_NAME} --version"
     echo "  ${BINARY_NAME} install --help"
     echo ""
-    info "Next: cd your-project && masday install"
+
+    # Auto-execute quickstart
+    if [ "${MASDAY_QUICKSTART:-0}" = "1" ]; then
+        info "Auto-running 'masday quickstart'..."
+        "${INSTALL_DIR}/${BINARY_NAME}" quickstart
+    elif [ -t 0 ]; then
+        # Interactive terminal — ask user
+        echo ""
+        read -rp "${GREEN}Run 'masday quickstart' now? [Y/n]${NC} " answer
+        case "$answer" in
+            n*|N*) info "Okay. Run 'masday quickstart' when ready." ;;
+            *)     "${INSTALL_DIR}/${BINARY_NAME}" quickstart ;;
+        esac
+    else
+        # Non-interactive (piped curl | bash)
+        info "Run 'masday quickstart' to complete setup."
+    fi
     echo ""
 }
 
