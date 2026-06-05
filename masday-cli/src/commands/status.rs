@@ -119,12 +119,7 @@ async fn build_health_report(config: &MasdayConfig, verbose: bool) -> Result<Hea
     let config_path = MasdayConfig::config_path().display().to_string();
     let config_valid = config_path.contains("config.toml");
 
-    let platform = config
-        .platforms
-        .first()
-        .map(|s| s.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let platform = detect_platforms();
 
     Ok(HealthReport {
         masday_version: version,
@@ -442,20 +437,26 @@ fn redis_ping_check(mut stream: &std::net::TcpStream) -> bool {
 /// Check MCP server health
 fn check_mcp_health(verbose: bool) -> ComponentHealth {
     let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let mcp_binary = home.join(".masday").join("bin").join("masday-mcp");
 
-    let mcp_exists = mcp_binary.exists();
+    // Try multiple MCP binary locations
+    let mcp_paths = vec![
+        home.join(".masday").join("bin").join("masday-mcp"),
+        std::path::PathBuf::from("/home/vibe-dev/masday-workflow-rust/target/release/masday-mcp"),
+    ];
+
+    let mcp_binary = mcp_paths.iter().find(|p| p.exists()).cloned();
+    let mcp_exists = mcp_binary.is_some();
 
     if mcp_exists {
         // Count tools from MCP binary
-        let tool_count = count_mcp_tools(&mcp_binary);
+        let tool_count = count_mcp_tools(mcp_binary.as_ref().unwrap());
 
         // Check if MCP is registered in Claude Code settings
         let registered = check_mcp_registration();
 
         let mut details = HashMap::new();
         if verbose {
-            details.insert("binary_path".to_string(), mcp_binary.display().to_string());
+            details.insert("binary_path".to_string(), mcp_binary.as_ref().unwrap().display().to_string());
             if let Some(count) = tool_count {
                 details.insert("tool_count".to_string(), count.to_string());
             }
@@ -479,7 +480,7 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
     } else {
         let mut details = HashMap::new();
         if verbose {
-            details.insert("expected_path".to_string(), mcp_binary.display().to_string());
+            details.insert("expected_path".to_string(), mcp_paths[0].display().to_string());
             details.insert("hint".to_string(), "run 'masday install'".to_string());
         }
 
@@ -491,11 +492,28 @@ fn check_mcp_health(verbose: bool) -> ComponentHealth {
     }
 }
 
-/// Check if MCP server is registered in Claude Code settings
+/// Check if MCP server is registered in platform settings
 fn check_mcp_registration() -> bool {
     let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    // Check Claude Code settings
+    // Check ~/.claude.json (Claude Code MCP registration)
+    let claude_json = home.join(".claude.json");
+    if claude_json.exists() {
+        if let Ok(content) = std::fs::read_to_string(&claude_json) {
+            // Try structured parse first
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if val.get("mcpServers").and_then(|m| m.get("masday")).is_some() {
+                    return true;
+                }
+            }
+            // Fallback: string search
+            if content.contains("\"masday\"") && content.contains("mcpServers") {
+                return true;
+            }
+        }
+    }
+
+    // Check ~/.claude/settings.json (legacy)
     let claude_settings = home.join(".claude").join("settings.json");
     if claude_settings.exists() {
         if let Ok(content) = std::fs::read_to_string(&claude_settings) {
@@ -505,11 +523,21 @@ fn check_mcp_registration() -> bool {
         }
     }
 
-    // Check Claude Code project settings
+    // Check project-level .claude/settings.json
     let project_settings = std::path::Path::new(".claude").join("settings.json");
     if project_settings.exists() {
         if let Ok(content) = std::fs::read_to_string(&project_settings) {
             if content.contains("masday-mcp") || content.contains("masday") {
+                return true;
+            }
+        }
+    }
+
+    // Check ~/.gemini/ for Gemini CLI
+    let gemini_settings = home.join(".gemini").join("settings.json");
+    if gemini_settings.exists() {
+        if let Ok(content) = std::fs::read_to_string(&gemini_settings) {
+            if content.contains("masday") {
                 return true;
             }
         }
@@ -580,30 +608,73 @@ fn check_embedding_health(config: &MasdayConfig, verbose: bool) -> ComponentHeal
 fn count_assets() -> Result<(usize, usize, usize)> {
     let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let masday_home = home.join(".masday");
+    let claude_home = home.join(".claude");
+    let gemini_home = home.join(".gemini");
 
-    let agents_dir = masday_home.join("agents");
-    let skills_dir = masday_home.join("skills");
-    let hooks_dir = masday_home.join("hooks");
+    // Count agents from all platforms
+    let mut agents_count = 0usize;
+    let mut skills_count = 0usize;
+    let mut hooks_count = 0usize;
 
-    let agents_count = if agents_dir.exists() {
-        std::fs::read_dir(&agents_dir)?.filter_map(|e| e.ok()).count()
+    // ~/.masday/ (primary)
+    count_dir_entries(&masday_home.join("agents"), &mut agents_count);
+    count_dir_entries(&masday_home.join("skills"), &mut skills_count);
+    count_dir_entries(&masday_home.join("hooks"), &mut hooks_count);
+
+    // ~/.claude/ (Claude Code platform)
+    count_dir_entries(&claude_home.join("agents"), &mut agents_count);
+    count_dir_entries(&claude_home.join("skills"), &mut skills_count);
+    count_dir_entries(&claude_home.join("hooks"), &mut hooks_count);
+
+    // Deduplicate — prefer the larger count (most recent sync)
+    let agents = agents_count.max(0);
+    let skills = skills_count.max(0);
+    let hooks = hooks_count.max(0);
+
+    Ok((agents, skills, hooks))
+}
+
+fn count_dir_entries(dir: &std::path::Path, count: &mut usize) {
+    if dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            *count = (*count).max(entries.filter_map(|e| e.ok()).count());
+        }
+    }
+}
+
+/// Detect actually installed platforms
+fn detect_platforms() -> String {
+    let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let mut platforms = Vec::new();
+
+    // Claude Code — ~/.claude/agents/ or ~/.claude/settings.json
+    if home.join(".claude").join("agents").exists()
+        || home.join(".claude").join("settings.json").exists()
+        || home.join(".claude.json").exists()
+    {
+        platforms.push("claude-code");
+    }
+
+    // Gemini CLI — ~/.gemini/
+    if home.join(".gemini").exists() {
+        platforms.push("gemini");
+    }
+
+    // VS Code Copilot — .vscode/extensions
+    if home.join(".vscode").join("extensions").exists() {
+        platforms.push("vscode");
+    }
+
+    // OpenCode — ~/.opencode/
+    if home.join(".opencode").exists() {
+        platforms.push("opencode");
+    }
+
+    if platforms.is_empty() {
+        "none".to_string()
     } else {
-        0
-    };
-
-    let skills_count = if skills_dir.exists() {
-        std::fs::read_dir(&skills_dir)?.filter_map(|e| e.ok()).count()
-    } else {
-        0
-    };
-
-    let hooks_count = if hooks_dir.exists() {
-        std::fs::read_dir(&hooks_dir)?.filter_map(|e| e.ok()).count()
-    } else {
-        0
-    };
-
-    Ok((agents_count, skills_count, hooks_count))
+        platforms.join(", ")
+    }
 }
 
 /// Output health report as JSON
