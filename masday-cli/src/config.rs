@@ -239,7 +239,7 @@ mod tests {
             embedding_provider: Some("local".to_string()),
             embedding_model: Some("test-model".to_string()),
             embedding_dimensions: Some(384),
-            database_url: Some("postgresql://USER:PASS@localhost/db".to_string()),
+            database_url: Some("postgresql://localhost/db".to_string()),
             ..MasdayConfig::default()
         };
 
@@ -247,7 +247,7 @@ mod tests {
 
         assert_eq!(
             std::env::var("DATABASE_URL").ok(),
-            Some("postgresql://USER:PASS@localhost/db".to_string())
+            Some("postgresql://localhost/db".to_string())
         );
         assert_eq!(
             std::env::var("EMBEDDING_PROVIDER").ok(),

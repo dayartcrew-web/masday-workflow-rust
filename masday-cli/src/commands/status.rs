@@ -212,7 +212,7 @@ async fn check_database_health(config: &MasdayConfig, verbose: bool) -> Componen
 
         // Build connection string from defaults
         let default_url = format!(
-            "postgresql://USER:PASS@127.0.0.1:{}/masday",
+            "postgresql://127.0.0.1:{}/masday",
             db_port
         );
 

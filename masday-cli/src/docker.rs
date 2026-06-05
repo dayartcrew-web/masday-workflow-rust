@@ -200,7 +200,7 @@ pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()>
 /// Get default database URL for local mode
 pub fn default_database_url() -> String {
     format!(
-        "postgresql://USER:PASS@localhost:{}/masday_workflow",
+        "postgresql://localhost:{}/masday_workflow",
         ports::postgres_port()
     )
 }

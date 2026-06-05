@@ -472,7 +472,7 @@ async fn start_docker_infrastructure() -> Result<String> {
 #[cfg(feature = "dev-mode")]
 async fn ask_database_url() -> Result<Option<String>> {
     let url = inquire::Text::new("Database URL:")
-        .with_default("postgresql://USER:PASS@localhost:5432/masday_workflow")
+        .with_default("postgresql://localhost:5432/masday_workflow")
         .with_help_message("Full PostgreSQL connection URL")
         .prompt()?;
 

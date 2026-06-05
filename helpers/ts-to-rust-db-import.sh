@@ -17,8 +17,8 @@
 
 set -euo pipefail
 
-SOURCE_DB="${1:-postgresql://postgres.REDACTED:REDACTED@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres}"
-TARGET_DB="${2:-postgresql://USER:PASS@localhost:54341/masday_workflow}"
+SOURCE_DB="${1:?Usage: $0 SOURCE_DB [TARGET_DB]}"
+TARGET_DB="${2:-postgresql://localhost:54341/masday_workflow}"
 
 echo "=== Masday TS → Rust DB Import ==="
 echo "Source: $SOURCE_DB"
