@@ -1,8 +1,18 @@
 # Release masday CLI binary
 #
-# Builds cross-platform release binaries and uploads to GitHub Releases.
+# Builds cross-platform release binaries (Linux + macOS + Windows)
+# and publishes to the PUBLIC release repo (masday-workflow-release).
+#
 # Triggers on tag push (v*) or manual workflow_dispatch.
-# Repo stays PRIVATE — only the binary is published to releases.
+# Source repo stays PRIVATE — only binaries go public.
+#
+# Required secrets:
+#   RELEASE_TOKEN — PAT with write access to masday-workflow-release repo
+#
+# Setup:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   Name: RELEASE_TOKEN
+#   Value: ghp_xxxx (classic PAT with repo scope)
 
 name: Release
 
@@ -12,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version (e.g., v0.1.0)'
+        description: 'Version (e.g., v0.4.0)'
         required: true
 
 permissions:
@@ -20,23 +30,37 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Public release repo
+  RELEASE_REPO: dayartcrew-web/masday-workflow-release
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # Linux x86_64 (with ONNX local embeddings)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: masday-linux-x86_64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: masday-macos-x86_64
+            ext: ''
+          # macOS Apple Silicon (M1/M2/M3)
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: masday-macos-aarch64
+            ext: ''
+          # macOS Intel
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: masday-macos-x86_64
+            ext: ''
+          # Windows x86_64 (no ONNX, remote provider only)
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: masday-windows-x86_64
+            ext: '.exe'
 
     steps:
       - name: Checkout code
@@ -48,7 +72,7 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      - name: Cache dependencies
+      - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
@@ -56,32 +80,37 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary
         run: cargo build -p masday-cli --release --target ${{ matrix.target }}
 
-      - name: Strip binary (Linux/macOS)
-        run: strip target/${{ matrix.target }}/release/masday
+      - name: Strip binary (Unix only)
+        if: runner.os != 'Windows'
+        run: strip target/${{ matrix.target }}/release/masday${{ matrix.ext }}
 
       - name: Rename binary
+        shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/masday ${{ matrix.artifact }}
-          chmod +x ${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/masday${{ matrix.ext }} ${{ matrix.artifact }}${{ matrix.ext }}
+          chmod +x ${{ matrix.artifact }}${{ matrix.ext }} || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}${{ matrix.ext }}
+          if-no-files-found: error
 
   release:
-    name: Create Release
+    name: Publish Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Checkout code
+      - name: Checkout source (for install script)
         uses: actions/checkout@v4
 
       - name: Determine version
@@ -97,19 +126,40 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: false
 
-      - name: Generate checksums
+      - name: Prepare release assets
         run: |
-          cd artifacts
-          sha256sum */masday-* > ../checksums-sha256.txt
-          cat ../checksums-sha256.txt
+          mkdir -p release-assets
+          # Flatten artifacts into single directory
+          find artifacts -type f \( -name 'masday-*' -o -name 'masday-*.exe' \) -exec cp {} release-assets/ \;
+          # Generate checksums
+          cd release-assets
+          sha256sum masday-* > ../checksums-sha256.txt
+          cp ../checksums-sha256.txt .
+          echo "=== Checksums ==="
+          cat checksums-sha256.txt
+          echo "=== Files ==="
+          ls -lh
 
       - name: Copy install script
-        run: cp scripts/install-masday.sh install.sh
+        run: cp scripts/install-masday.sh release-assets/install.sh
 
-      - name: Create GitHub Release
+      - name: Create tag on release repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          # Create tag on public release repo via API
+          gh api repos/${{ env.RELEASE_REPO }}/git/refs \
+            -f ref="refs/tags/${TAG}" \
+            -f sha=$(gh api repos/${{ env.RELEASE_REPO }}/commits/main --jq '.sha') \
+            2>/dev/null || echo "Tag may already exist"
+
+      - name: Create GitHub Release on public repo
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ env.RELEASE_REPO }}
           tag_name: ${{ steps.version.outputs.tag }}
           name: Masday CLI ${{ steps.version.outputs.tag }}
           body: |
@@ -118,39 +168,48 @@ jobs:
             Self-contained binary with embedded templates (agents, skills, hooks).
             No source code required — just download and run.
 
-            ### Install
+            ### Install (one-liner)
             ```bash
-            # One-line install (Linux/macOS)
-            curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/install.sh | bash
+            # Linux / macOS / Windows (Git Bash)
+            curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
             ```
 
             ### Manual download
+            | Platform | File | Size |
+            |----------|------|------|
+            | Linux x86_64 | `masday-linux-x86_64` | ~31 MB |
+            | macOS Apple Silicon | `masday-macos-aarch64` | ~18 MB |
+            | macOS Intel | `masday-macos-x86_64` | ~18 MB |
+            | Windows x86_64 | `masday-windows-x86_64.exe` | ~12 MB |
+
             ```bash
             # Linux
-            curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-linux-x86_64
-            chmod +x masday
+            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-release/releases/download/${{ steps.version.outputs.tag }}/masday-linux-x86_64
+            chmod +x masday-linux-x86_64
 
             # macOS (Apple Silicon)
-            curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${{ steps.version.outputs.tag }}/masday-macos-aarch64
-            chmod +x masday
+            curl -fsSL -O https://github.com/dayartcrew-web/masday-workflow-release/releases/download/${{ steps.version.outputs.tag }}/masday-macos-aarch64
+            chmod +x masday-macos-aarch64
+
+            # Windows (PowerShell)
+            Invoke-WebRequest -Uri https://github.com/dayartcrew-web/masday-workflow-release/releases/download/${{ steps.version.outputs.tag }}/masday-windows-x86_64.exe -OutFile masday.exe
             ```
 
-            ### Usage
+            ### Quick start
             ```
-            masday quickstart                        # One-command setup (db + install + ready)
-            masday install                           # Local mode (requires cargo)
+            masday quickstart                              # Interactive setup wizard
+            masday install                                 # Install into current project
             masday install --remote <url> --api-key <key>  # Remote mode
-            masday --version
+            masday status                                  # Check system health
             ```
 
-            ### Binary contents
-            - 28 agent definitions (embedded)
-            - 30+ skill definitions (embedded)
-            - Global + project hooks (embedded)
-            - MCP config generation (4 platforms)
+            ### Notes
+            - **Linux**: Includes ONNX runtime for local embeddings
+            - **macOS / Windows**: Uses remote embedding provider (Ollama or OpenAI)
+            - Config stored at `~/.masday/config.toml`
           files: |
-            artifacts/*/masday-*
-            checksums-sha256.txt
-            install.sh
+            release-assets/masday-*
+            release-assets/checksums-sha256.txt
+            release-assets/install.sh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
