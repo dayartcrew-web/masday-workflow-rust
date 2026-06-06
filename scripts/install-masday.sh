@@ -102,7 +102,7 @@ get_latest_version() {
     local version
 
     # Method 1: GitHub API (fast, structured)
-    version=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    version=$(curl -fsSL --connect-timeout 10 --max-time 15 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
         | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
     if [ -n "$version" ]; then
         echo "$version"
@@ -110,7 +110,7 @@ get_latest_version() {
     fi
 
     # Method 2: Scrape release page HTML (fallback for rate-limited API)
-    version=$(curl -fsSL "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+    version=$(curl -fsSL --connect-timeout 10 --max-time 15 "https://github.com/${REPO}/releases/latest" 2>/dev/null \
         | grep -oE '/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+' \
         | head -1 | sed 's|.*/v||' | sed 's/^/v/')
     if [ -n "$version" ]; then
@@ -119,7 +119,7 @@ get_latest_version() {
     fi
 
     # Method 3: Scrape releases list page
-    version=$(curl -fsSL "https://github.com/${REPO}/releases" 2>/dev/null \
+    version=$(curl -fsSL --connect-timeout 10 --max-time 15 "https://github.com/${REPO}/releases" 2>/dev/null \
         | grep -oE '/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+' \
         | head -1 | sed 's|.*/v||' | sed 's/^/v/')
     if [ -n "$version" ]; then
@@ -142,8 +142,10 @@ download_binary() {
     tmp_file="$(mktemp)"
 
     info "Downloading masday ${version} for ${platform}..." >&2
+    info "URL: ${download_url}" >&2
 
-    if ! curl -fsSL --progress-bar -o "$tmp_file" "$download_url"; then
+    # Download with timeout (300s = 5 min for large binary on slow connection)
+    if ! curl -fSL --progress-bar --connect-timeout 15 --max-time 300 -o "$tmp_file" "$download_url"; then
         rm -f "$tmp_file"
         err "Failed to download from ${download_url}"
         err "Make sure the release exists and the repo has access configured."
@@ -164,7 +166,7 @@ verify_checksum() {
     actual_hash="$(sha256sum "$binary_file" | awk '{print $1}')"
 
     info "Verifying checksum..." >&2
-    if checksums="$(curl -fsSL "$checksum_url" 2>/dev/null)"; then
+    if checksums="$(curl -fSL --connect-timeout 10 --max-time 30 "$checksum_url" 2>/dev/null)"; then
         local platform
         platform="$(detect_platform)"
         local artifact
