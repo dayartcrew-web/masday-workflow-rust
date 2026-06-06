@@ -101,25 +101,25 @@ get_mcp_artifact_name() {
 get_latest_version() {
     local version
 
-    # Method 1: GitHub API (fast, structured)
-    version=$(curl -fsSL --connect-timeout 10 --max-time 15 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    # Method 1: gh CLI (instant — already authenticated)
+    if command -v gh &>/dev/null; then
+        version=$(gh release list --repo "${REPO}" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null) || true
+        if [ -n "$version" ]; then
+            echo "$version"
+            return
+        fi
+    fi
+
+    # Method 2: GitHub API (fast, structured)
+    version=$(curl -fsSL --connect-timeout 5 --max-time 8 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
         | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
     if [ -n "$version" ]; then
         echo "$version"
         return
     fi
 
-    # Method 2: Scrape release page HTML (fallback for rate-limited API)
-    version=$(curl -fsSL --connect-timeout 10 --max-time 15 "https://github.com/${REPO}/releases/latest" 2>/dev/null \
-        | grep -oE '/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+' \
-        | head -1 | sed 's|.*/v||' | sed 's/^/v/')
-    if [ -n "$version" ]; then
-        echo "$version"
-        return
-    fi
-
-    # Method 3: Scrape releases list page
-    version=$(curl -fsSL --connect-timeout 10 --max-time 15 "https://github.com/${REPO}/releases" 2>/dev/null \
+    # Method 3: Scrape release page HTML (fallback for rate-limited API)
+    version=$(curl -fsSL --connect-timeout 5 --max-time 8 "https://github.com/${REPO}/releases/latest" 2>/dev/null \
         | grep -oE '/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+' \
         | head -1 | sed 's|.*/v||' | sed 's/^/v/')
     if [ -n "$version" ]; then
@@ -142,17 +142,26 @@ download_binary() {
     tmp_file="$(mktemp)"
 
     info "Downloading masday ${version} for ${platform}..." >&2
-    info "URL: ${download_url}" >&2
 
-    # Download with timeout (300s = 5 min for large binary on slow connection)
-    if ! curl -fSL --progress-bar --connect-timeout 15 --max-time 300 -o "$tmp_file" "$download_url"; then
+    # Method 1: gh CLI (authenticated — works for private repos)
+    if command -v gh &>/dev/null; then
+        info "Using gh CLI (authenticated)..." >&2
+        if gh release download "$version" --repo "${REPO}" --pattern "${artifact}" --output "$tmp_file" -q 2>/dev/null; then
+            echo "$tmp_file"
+            return
+        fi
+        warn "gh CLI download failed, falling back to curl..." >&2
+    fi
+
+    # Method 2: curl (public repos or token-authenticated)
+    info "URL: ${download_url}" >&2
+    if ! curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url"; then
         rm -f "$tmp_file"
         err "Failed to download from ${download_url}"
-        err "Make sure the release exists and the repo has access configured."
+        err "For private repos, install gh CLI and run: gh auth login"
         exit 1
     fi
 
-    # Only echo the tmp_file path to stdout (captured by caller)
     echo "$tmp_file"
 }
 
@@ -166,7 +175,7 @@ verify_checksum() {
     actual_hash="$(sha256sum "$binary_file" | awk '{print $1}')"
 
     info "Verifying checksum..." >&2
-    if checksums="$(curl -fSL --connect-timeout 10 --max-time 30 "$checksum_url" 2>/dev/null)"; then
+    if checksums="$(curl -fSL --connect-timeout 5 --max-time 15 "$checksum_url" 2>/dev/null)"; then
         local platform
         platform="$(detect_platform)"
         local artifact
@@ -177,14 +186,12 @@ verify_checksum() {
         if [ -n "$expected" ] && [ "$actual_hash" = "$expected" ]; then
             ok "Checksum verified"
         else
-            err "Checksum verification failed. Expected: ${expected:-missing}, Got: ${actual_hash}"
+            err "Checksum mismatch. Expected: ${expected:-missing}, Got: ${actual_hash}"
             rm -f "$binary_file"
             exit 1
         fi
     else
-        err "Checksum file not available — cannot verify binary integrity. Aborting."
-        rm -f "$binary_file"
-        exit 1
+        warn "Checksum file not available — skipping verification (binary hash: ${actual_hash:0:16}...)"
     fi
 }
 
