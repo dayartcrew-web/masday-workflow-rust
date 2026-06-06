@@ -336,7 +336,7 @@ async fn main() -> anyhow::Result<()> {
             masday_cli::commands::status::run(json, verbose).await?;
         }
         Commands::Doctor { json } => {
-            masday_cli::commands::doctor::run(json)?;
+            masday_cli::commands::doctor::run(json).await?;
         }
         Commands::Config { action } => {
             masday_cli::commands::config::run(action).await?;

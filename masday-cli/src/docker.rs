@@ -13,6 +13,27 @@ const POSTGRES_IMAGE: &str = "pgvector/pgvector:pg16";
 const REDIS_CONTAINER: &str = "masday-redis";
 const REDIS_IMAGE: &str = "redis:7-alpine";
 
+/// Default PostgreSQL credentials for Docker containers.
+/// Can be overridden via environment variables MASDAY_PG_USER / MASDAY_PG_PASSWORD / MASDAY_PG_DB.
+pub const DEFAULT_PG_USER: &str = "masday";
+pub const DEFAULT_PG_PASSWORD: &str = "masdaypass";
+pub const DEFAULT_PG_DB: &str = "masday_workflow";
+
+/// Read PG user from env or return default.
+pub fn pg_user() -> String {
+    std::env::var("MASDAY_PG_USER").unwrap_or_else(|_| DEFAULT_PG_USER.to_string())
+}
+
+/// Read PG password from env or return default.
+pub fn pg_password() -> String {
+    std::env::var("MASDAY_PG_PASSWORD").unwrap_or_else(|_| DEFAULT_PG_PASSWORD.to_string())
+}
+
+/// Read PG database name from env or return default.
+pub fn pg_db() -> String {
+    std::env::var("MASDAY_PG_DB").unwrap_or_else(|_| DEFAULT_PG_DB.to_string())
+}
+
 /// Check if Docker CLI is available
 pub fn is_docker_available() -> bool {
     which::which("docker").is_ok()
@@ -197,11 +218,26 @@ pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()>
     )
 }
 
-/// Get default database URL for local mode
+/// Start PostgreSQL container with default masday credentials.
+pub fn start_postgres_default() -> Result<()> {
+    start_postgres(&pg_user(), &pg_password(), &pg_db())
+}
+
+/// Reset PostgreSQL container with default masday credentials.
+pub fn reset_postgres_default() -> Result<()> {
+    reset_postgres(&pg_user(), &pg_password(), &pg_db())
+}
+
+/// Get default database URL for local mode (includes credentials).
+/// Reads from MASDAY_PG_USER, MASDAY_PG_PASSWORD, MASDAY_PG_DB env vars
+/// with sensible defaults.
 pub fn default_database_url() -> String {
     format!(
-        "postgresql://localhost:{}/masday_workflow",
-        ports::postgres_port()
+        "postgresql://{}:{}@localhost:{}/{}",
+        pg_user(),
+        pg_password(),
+        ports::postgres_port(),
+        pg_db()
     )
 }
 
@@ -225,5 +261,30 @@ mod tests {
         let url = default_database_url();
         assert!(url.contains(&format!("localhost:{}", ports::POSTGRES_PORT)));
         assert!(url.contains("masday_workflow"));
+    }
+
+    #[test]
+    fn test_default_database_url_includes_credentials() {
+        let url = default_database_url();
+        assert!(
+            url.starts_with("postgresql://masday:masdaypass@"),
+            "URL must contain user:password@host, got: {}",
+            url
+        );
+        assert!(url.contains("/masday_workflow"));
+    }
+
+    #[test]
+    fn test_pg_credential_helpers() {
+        assert_eq!(pg_user(), "masday");
+        assert_eq!(pg_password(), "masdaypass");
+        assert_eq!(pg_db(), "masday_workflow");
+    }
+
+    #[test]
+    fn test_pg_credential_constants() {
+        assert_eq!(DEFAULT_PG_USER, "masday");
+        assert_eq!(DEFAULT_PG_PASSWORD, "masdaypass");
+        assert_eq!(DEFAULT_PG_DB, "masday_workflow");
     }
 }

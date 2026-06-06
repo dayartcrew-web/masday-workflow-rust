@@ -86,7 +86,7 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
 
         // Start PostgreSQL container
         let pb = spinner("Starting PostgreSQL container...");
-        docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
+        docker::start_postgres_default()?;
         pb.finish_with_message(format!("{} PostgreSQL started", style("✓").green()));
 
         // Wait for ready
@@ -124,7 +124,12 @@ async fn run_local_setup(project_dir: &Path) -> Result<()> {
     } else {
         // Prompt for existing connection
         let url = inquire::Text::new("Database URL:")
-            .with_default("postgresql://localhost:5432/masday_workflow")
+            .with_default(&format!(
+                "postgresql://{}:{}@localhost:5432/{}",
+                docker::DEFAULT_PG_USER,
+                docker::DEFAULT_PG_PASSWORD,
+                docker::DEFAULT_PG_DB
+            ))
             .with_help_message("Full PostgreSQL connection URL")
             .prompt()?;
         Some(url)

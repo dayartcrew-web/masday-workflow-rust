@@ -221,7 +221,13 @@ async fn check_database_health(config: &MasdayConfig, verbose: bool) -> Componen
         let db_port = config.db_port;
 
         // Build connection string from defaults
-        let default_url = format!("postgresql://127.0.0.1:{}/masday", db_port);
+        let default_url = format!(
+            "postgresql://{}:{}@localhost:{}/{}",
+            crate::docker::pg_user(),
+            crate::docker::pg_password(),
+            db_port,
+            crate::docker::pg_db()
+        );
 
         // First try actual DB connection
         match try_postgres_connect(&default_url).await {

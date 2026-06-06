@@ -9,7 +9,7 @@ use crate::docker;
 /// Start PostgreSQL and Redis containers
 pub fn start() -> Result<()> {
     println!("{}", style("Starting database containers...").cyan());
-    docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
+    docker::start_postgres_default()?;
     docker::wait_for_postgres("localhost", ports::postgres_port(), 30)?;
     docker::start_redis()?;
     println!();
@@ -45,7 +45,7 @@ pub async fn reset() -> Result<()> {
         return Ok(());
     }
 
-    docker::reset_postgres("masday", "masdaypass", "masday_workflow")?;
+    docker::reset_postgres_default()?;
     docker::wait_for_postgres("localhost", ports::postgres_port(), 30)?;
 
     // Run migrations on fresh database

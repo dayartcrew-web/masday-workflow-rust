@@ -58,7 +58,7 @@ impl DoctorReport {
 }
 
 /// Run the doctor command
-pub fn run(json: bool) -> Result<()> {
+pub async fn run(json: bool) -> Result<()> {
     let mut report = DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
         build_origin: build_origin::BUILD_ORIGIN,
@@ -73,6 +73,9 @@ pub fn run(json: bool) -> Result<()> {
     check_config(&mut report);
     check_masday_home(&mut report);
     check_path(&mut report);
+    check_postgres_container(&mut report);
+    check_postgres_connectivity(&mut report).await;
+    check_credential_consistency(&mut report);
     check_api_connectivity(&mut report);
     check_mcp_binary(&mut report);
     check_embedding(&mut report);
@@ -183,6 +186,171 @@ fn check_path(report: &mut DoctorReport) {
             Some("Add: export PATH=\"$PATH:$HOME/.masday/bin\"".into())
         },
     });
+}
+
+fn check_postgres_container(report: &mut DoctorReport) {
+    let config = match MasdayConfig::load_or_err() {
+        Ok(c) if c.mode == "local" => c,
+        _ => {
+            report.checks.push(CheckResult {
+                name: "PostgreSQL".into(),
+                status: CheckStatus::Skip,
+                message: "Not in local mode".into(),
+                detail: None,
+            });
+            return;
+        }
+    };
+
+    // If database_url is explicitly set, skip Docker check
+    if config.database_url.is_some() {
+        report.checks.push(CheckResult {
+            name: "PostgreSQL".into(),
+            status: CheckStatus::Ok,
+            message: "Custom database_url configured".into(),
+            detail: config.database_url.as_ref().map(|u| redact_url(u)),
+        });
+        return;
+    }
+
+    if !crate::docker::is_docker_available() {
+        report.checks.push(CheckResult {
+            name: "PostgreSQL (Docker)".into(),
+            status: CheckStatus::Warn,
+            message: "Docker not available".into(),
+            detail: Some("Install Docker to use managed PostgreSQL".into()),
+        });
+        return;
+    }
+
+    if crate::docker::is_container_running("masday-postgres") {
+        report.checks.push(CheckResult {
+            name: "PostgreSQL (Docker)".into(),
+            status: CheckStatus::Ok,
+            message: "Container running".into(),
+            detail: None,
+        });
+    } else {
+        report.checks.push(CheckResult {
+            name: "PostgreSQL (Docker)".into(),
+            status: CheckStatus::Fail,
+            message: "Container not running".into(),
+            detail: Some("Run 'masday db start'".into()),
+        });
+    }
+}
+
+async fn check_postgres_connectivity(report: &mut DoctorReport) {
+    let config = match MasdayConfig::load_or_err() {
+        Ok(c) if c.mode == "local" => c,
+        _ => return, // Already handled in check_postgres_container
+    };
+
+    let db_url = config
+        .database_url
+        .clone()
+        .unwrap_or_else(crate::docker::default_database_url);
+
+    std::env::set_var("DATABASE_URL", &db_url);
+
+    match masday_db::pool::init_pool_with_retry(2).await {
+        Ok(pool) => match masday_db::pool::health_check(&pool).await {
+            Ok(_) => {
+                let table_count = count_tables(&pool).await;
+                report.checks.push(CheckResult {
+                    name: "PostgreSQL (Connectivity)".into(),
+                    status: CheckStatus::Ok,
+                    message: format!("Connected ({} tables)", table_count),
+                    detail: None,
+                });
+
+                if table_count == 0 {
+                    report.checks.push(CheckResult {
+                        name: "PostgreSQL (Migrations)".into(),
+                        status: CheckStatus::Warn,
+                        message: "Database has 0 tables — migrations may not have run".into(),
+                        detail: Some("Run 'masday db reset' or 'masday quickstart'".into()),
+                    });
+                }
+            }
+            Err(e) => {
+                report.checks.push(CheckResult {
+                    name: "PostgreSQL (Connectivity)".into(),
+                    status: CheckStatus::Fail,
+                    message: format!("Health check failed: {}", e),
+                    detail: Some(format!("URL: {}", redact_url(&db_url))),
+                });
+            }
+        },
+        Err(e) => {
+            report.checks.push(CheckResult {
+                name: "PostgreSQL (Connectivity)".into(),
+                status: CheckStatus::Fail,
+                message: format!("Cannot connect: {}", e),
+                detail: Some(format!(
+                    "URL: {} — check credentials in config.toml",
+                    redact_url(&db_url)
+                )),
+            });
+        }
+    }
+}
+
+fn check_credential_consistency(report: &mut DoctorReport) {
+    let config = match MasdayConfig::load_or_err() {
+        Ok(c) if c.mode == "local" => c,
+        _ => return,
+    };
+
+    if let Some(ref db_url) = config.database_url {
+        // URL should contain user:password@host pattern
+        if let Some(scheme_end) = db_url.find("://") {
+            let rest = &db_url[scheme_end + 3..];
+            if !rest.contains('@') {
+                report.checks.push(CheckResult {
+                    name: "PostgreSQL (Credentials)".into(),
+                    status: CheckStatus::Warn,
+                    message: "database_url may be missing credentials".into(),
+                    detail: Some("Expected: postgresql://user:password@host:port/dbname".into()),
+                });
+            }
+        }
+    }
+}
+
+/// Count tables in the public schema
+async fn count_tables(pool: &masday_db::pool::DbPool) -> usize {
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+    match client
+        .query_one(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'",
+            &[],
+        )
+        .await
+    {
+        Ok(row) => row.get::<_, i64>(0) as usize,
+        Err(_) => 0,
+    }
+}
+
+/// Redact password from URL for safe display
+fn redact_url(url: &str) -> String {
+    if let Some(scheme_end) = url.find("://") {
+        let prefix = &url[..scheme_end];
+        let rest = &url[scheme_end + 3..];
+        if let Some(at_pos) = rest.find('@') {
+            let user_part = &rest[..at_pos];
+            let host_part = &rest[at_pos..];
+            if let Some(colon_pos) = user_part.find(':') {
+                let user = &user_part[..colon_pos];
+                return format!("{}://{}:***{}", prefix, user, host_part);
+            }
+        }
+    }
+    url.to_string()
 }
 
 fn check_api_connectivity(report: &mut DoctorReport) {

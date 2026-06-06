@@ -110,7 +110,8 @@ async fn run_local_mode(
         .prompt()?;
 
         if db_choice.starts_with("Start Docker") {
-            Some(start_docker_infrastructure().await?)
+            let (pg_user, pg_pass, pg_db) = ask_docker_credentials()?;
+            Some(start_docker_infrastructure(&pg_user, &pg_pass, &pg_db).await?)
         } else {
             ask_database_url().await?
         }
@@ -412,7 +413,7 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> R
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Start Docker containers + run migrations
-async fn start_docker_infrastructure() -> Result<String> {
+async fn start_docker_infrastructure(pg_user: &str, pg_pass: &str, pg_db: &str) -> Result<String> {
     println!("{}", style("Starting infrastructure...").cyan());
 
     // PostgreSQL
@@ -420,7 +421,7 @@ async fn start_docker_infrastructure() -> Result<String> {
         println!("  {} PostgreSQL already running", style("✓").green());
     } else {
         let pb = spinner("Starting PostgreSQL...");
-        docker::start_postgres("masday", "masdaypass", "masday_workflow")?;
+        docker::start_postgres(pg_user, pg_pass, pg_db)?;
         docker::wait_for_postgres(
             "localhost",
             masday_core::constants::ports::postgres_port(),
@@ -438,8 +439,14 @@ async fn start_docker_infrastructure() -> Result<String> {
         pb.finish_with_message(format!("  {} Redis ready", style("✓").green()));
     }
 
-    // Migrations
-    let db_url = docker::default_database_url();
+    // Migrations — build URL from the same credentials used for container
+    let db_url = format!(
+        "postgresql://{}:{}@localhost:{}/{}",
+        pg_user,
+        pg_pass,
+        masday_core::constants::ports::postgres_port(),
+        pg_db
+    );
     std::env::set_var("DATABASE_URL", &db_url);
 
     let pb = spinner("Running migrations...");
@@ -455,10 +462,48 @@ async fn start_docker_infrastructure() -> Result<String> {
     Ok(db_url)
 }
 
+/// Ask user for Docker container PostgreSQL credentials.
+/// Returns (user, password, db_name) — uses defaults if user skips.
+fn ask_docker_credentials() -> Result<(String, String, String)> {
+    let customize = inquire::Confirm::new("Customize PostgreSQL credentials?")
+        .with_default(false)
+        .with_help_message(&format!(
+            "Default: {}/*****/{}",
+            docker::DEFAULT_PG_USER,
+            docker::DEFAULT_PG_DB
+        ))
+        .prompt()?;
+
+    if !customize {
+        return Ok((docker::pg_user(), docker::pg_password(), docker::pg_db()));
+    }
+
+    let user = inquire::Text::new("PostgreSQL user:")
+        .with_default(docker::DEFAULT_PG_USER)
+        .prompt()?;
+
+    let password = inquire::Password::new("PostgreSQL password:")
+        .with_help_message("Leave empty for default")
+        .prompt()
+        .unwrap_or_else(|_| docker::DEFAULT_PG_PASSWORD.to_string());
+
+    let db_name = inquire::Text::new("Database name:")
+        .with_default(docker::DEFAULT_PG_DB)
+        .prompt()?;
+
+    Ok((user, password, db_name))
+}
+
 /// Ask for existing database URL ()
 async fn ask_database_url() -> Result<Option<String>> {
+    let default_url = format!(
+        "postgresql://{}:{}@localhost:5432/{}",
+        docker::DEFAULT_PG_USER,
+        docker::DEFAULT_PG_PASSWORD,
+        docker::DEFAULT_PG_DB
+    );
     let url = inquire::Text::new("Database URL:")
-        .with_default("postgresql://localhost:5432/masday_workflow")
+        .with_default(&default_url)
         .with_help_message("Full PostgreSQL connection URL")
         .prompt()?;
 
