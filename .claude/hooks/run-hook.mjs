@@ -5,18 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const hookModules = {
-  'pre-tool-use': './pre-tool-use.js',
-  'tdd-guard': './tdd-guard.js',
-  'tool-name-guard': './tool-name-guard.js',
-  'pre-build-skill': './pre-build-skill.js',
   'workflow-lock': './workflow-lock.js',
-  'post-tool-use': './post-tool-use.js',
-  'on-notification': './on-notification.js',
   'on-stop': './on-stop.js',
   'masday-mem-context': './masday-mem-context.js',
   'pre-task-complete': './pre-task-complete.js',
   'skill-wrap-guard': './skill-wrap-guard.js',
-  'pre-commit': './pre-commit.md',
 };
 
 async function readStdin() {

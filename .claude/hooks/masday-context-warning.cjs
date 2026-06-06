@@ -115,15 +115,13 @@ async function main() {
   }
   const pctDisplay = Math.round(pct * 100);
 
-  // BLOCK at 90%+ — user MUST compact or clear before continuing
+  // WARN at 90%+ — strong systemMessage (autoCompact handles actual compaction)
   if (pct >= BLOCK_THRESHOLD) {
     process.stdout.write(JSON.stringify({
-      continue: false,
-      reason:
-        `🔴 Context at ~${pctDisplay}% — too full to continue reliably.\n` +
-        `Options:\n` +
-        `  /compact  — summarize & free space (keeps session)\n` +
-        `  /clear    — fresh start, saves ~100K context tokens`,
+      continue: true,
+      systemMessage:
+        `🔴 CONTEXT FULL: ~${pctDisplay}% used. Auto-compact should trigger soon.\n` +
+        `If not, run /compact or /clear to free space.`,
     }));
     return;
   }

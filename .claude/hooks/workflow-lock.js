@@ -1,12 +1,30 @@
 /**
- * workflow-lock — Ensures Claude dispatches workflow orchestrator MCP tools
- * before making changes. Fires on Edit/Write/Bash/Agent to inject a reminder.
+ * workflow-lock — Only fires when an active workflow exists.
+ * Reminds to load workflow context before editing source files
+ * or dispatching masday agents.
  */
 
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
-const SRC_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs']);
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-export default function workflowLock(context) {
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
+const SRC_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.rs', '.py', '.go']);
+
+async function hasActiveWorkflow() {
+  try {
+    const statePath = join(process.cwd(), '.masday', 'state.json');
+    const raw = await readFile(statePath, 'utf8');
+    const state = JSON.parse(raw);
+    return !!state?.activeWorkflow;
+  } catch {
+    return false;
+  }
+}
+
+export default async function workflowLock(context) {
+  // Only fire when a workflow is active
+  if (!await hasActiveWorkflow()) return;
+
   const toolName = context.tool_name || '';
   const filePath = context.tool_input?.file_path || '';
   const command = context.tool_input?.command || '';
@@ -21,21 +39,14 @@ export default function workflowLock(context) {
     if (!SRC_EXTS.has(ext)) return;
 
     return {
-      systemMessage: '[workflow-lock] Editing source file. Ensure workflow context is loaded: call workflow_getActive and workflow_getCurrentTask before making changes.',
+      systemMessage: '[workflow-lock] Editing source file with active workflow. Ensure workflow_getActive + getCurrentTask called first.',
     };
   }
 
   // Agent dispatch — remind to validate execution
   if (toolName === 'Agent' && subagentType?.startsWith('masday-')) {
     return {
-      systemMessage: `[workflow-lock] Dispatching agent "${subagentType}". Ensure policy_validate_execution was called for the current task before dispatch.`,
-    };
-  }
-
-  // Bash build/test — remind to save progress
-  if (toolName === 'Bash' && /\b(pnpm\s+(build|test|tsc|lint|check))\b/.test(command)) {
-    return {
-      systemMessage: '[workflow-lock] Running build/test. Save progress with workflow_saveProgress after results are available.',
+      systemMessage: `[workflow-lock] Dispatching "${subagentType}". Call policy_validate_execution for current task first.`,
     };
   }
 }

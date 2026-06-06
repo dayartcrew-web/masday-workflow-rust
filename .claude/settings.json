@@ -28,22 +28,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs pre-tool-use",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs workflow-lock",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Agent",
+        "matcher": "Edit|Write|MultiEdit|Bash|Agent",
         "hooks": [
           {
             "type": "command",
@@ -68,18 +53,6 @@
           {
             "type": "command",
             "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs pre-task-complete",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs post-tool-use",
             "timeout": 10
           }
         ]
@@ -117,18 +90,6 @@
             "type": "command",
             "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/masday-post-compact.cjs",
             "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs on-notification",
-            "timeout": 10
           }
         ]
       }
