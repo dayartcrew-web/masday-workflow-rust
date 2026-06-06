@@ -1,12 +1,16 @@
-import WorkflowDetailPage from './workflow-detail-page'
+'use client';
 
-export function generateStaticParams() {
-  return []
-}
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { AppShell } from '@/components/app-shell';
+import { WorkflowDag } from '@/components/workflow-dag';
+import { DataTable } from '@/components/ui/data-table';
+import { useWorkflowStore } from '@/stores/workflow-store';
+import { useWebSocketStore } from '@/stores/websocket-store';
+import { ArrowLeft, Play, CheckCircle } from 'lucide-react';
+import type { Task } from '@/lib/types';
 
-export default function Page() {
-  return <WorkflowDetailPage />
-}
+export default function WorkflowDetailPage() {
   const params = useParams();
   const router = useRouter();
   const workflowId = params.id as string;
