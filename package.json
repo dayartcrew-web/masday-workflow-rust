@@ -30,5 +30,6 @@
     "ai-agents",
     "model-context-protocol"
   ],
+  "packageManager": "pnpm@11.5.0",
   "license": "MIT"
 }

@@ -202,10 +202,7 @@ pub async fn workflow_execute(
             }
             "PLAN" | "PAUSED" => {} // Direct transition to EXECUTE
             other => {
-                return Err(err(format!(
-                    "Cannot execute workflow in state {}",
-                    other
-                )));
+                return Err(err(format!("Cannot execute workflow in state {}", other)));
             }
         }
 
@@ -216,7 +213,10 @@ pub async fn workflow_execute(
         )
         .map_err(|e| err(e))?;
 
-        info!("Workflow {} transitioned to EXECUTE (from {})", id, current_status);
+        info!(
+            "Workflow {} transitioned to EXECUTE (from {})",
+            id, current_status
+        );
         (id.to_string(), "EXECUTE".to_string())
     }; // conn dropped
 

@@ -130,10 +130,6 @@ pub fn detect_active_platforms_from_home() -> Vec<Platform> {
         }
     }
 
-    if platforms.is_empty() {
-        platforms.push(Platform::ClaudeCode);
-    }
-
     platforms
 }
 
