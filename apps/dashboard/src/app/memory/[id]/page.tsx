@@ -5,6 +5,10 @@ import { AppShell } from '@/components/app-shell';
 import { useMemoryStore } from '@/stores/memory-store';
 import { ArrowLeft } from 'lucide-react';
 
+export function generateStaticParams() {
+  return []
+}
+
 export default function MemoryDetailPage() {
   const params = useParams();
   const router = useRouter();

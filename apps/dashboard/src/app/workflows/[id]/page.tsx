@@ -10,6 +10,10 @@ import { useWebSocketStore } from '@/stores/websocket-store';
 import { ArrowLeft, Play, CheckCircle } from 'lucide-react';
 import type { Task } from '@/lib/types';
 
+export function generateStaticParams() {
+  return []
+}
+
 export default function WorkflowDetailPage() {
   const params = useParams();
   const router = useRouter();
