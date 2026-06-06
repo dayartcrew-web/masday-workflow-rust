@@ -8,8 +8,8 @@
 use masday_db::pool::{create_pool, health_check, DbPool};
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Global PostgreSQL pool — lazily initialized on first use, not at startup.
@@ -172,7 +172,10 @@ pub async fn get_pool() -> Option<DbPool> {
     }
 
     // Background init: only spawn once
-    if PG_INIT_STARTED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+    if PG_INIT_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
         let db_url = database_url.clone();
         let pg_pool = PG_POOL.clone();
         tokio::spawn(async move {
@@ -185,14 +188,13 @@ pub async fn get_pool() -> Option<DbPool> {
             std::env::set_var("DATABASE_URL", &db_url);
 
             // Create pool with timeout
-            let pool = match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                async {
-                    let p = create_pool().ok()?;
-                    health_check(&p).await.ok()?;
-                    Some(p)
-                }
-            ).await {
+            let pool = match tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                let p = create_pool().ok()?;
+                health_check(&p).await.ok()?;
+                Some(p)
+            })
+            .await
+            {
                 Ok(Some(p)) => p,
                 Ok(None) => {
                     tracing::warn!("PostgreSQL: pool creation failed");
@@ -212,7 +214,8 @@ pub async fn get_pool() -> Option<DbPool> {
             let _ = tokio::time::timeout(
                 std::time::Duration::from_secs(30),
                 run_embedded_migrations(&pool),
-            ).await;
+            )
+            .await;
 
             // Store pool for reuse
             let mut pg = pg_pool.write().await;
