@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use super::install::{run as install_run, InstallArgs};
 
-const GITHUB_RELEASE_REPO: &str = "dayartcrew-web/masday-workflow-release";
+const GITHUB_RELEASE_REPO: &str = "dayartcrew-web/masday-workflow-rust";
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
 /// Arguments for the update command
