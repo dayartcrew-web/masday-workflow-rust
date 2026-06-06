@@ -158,11 +158,17 @@ else
   cat "${DIST_DIR}/checksums-sha256.txt"
 fi
 
-# --- Install script ---
-if [ -f "${ROOT_DIR}/scripts/install-masday.sh" ]; then
-  cp "${ROOT_DIR}/scripts/install-masday.sh" "${DIST_DIR}/install.sh"
-  ok "Install script copied"
+# --- Install script (MANDATORY) ---
+INSTALL_SRC="${ROOT_DIR}/scripts/install-masday.sh"
+if [ ! -f "$INSTALL_SRC" ]; then
+  err "install-masday.sh not found at ${INSTALL_SRC}"
+  err "Every release MUST include the multi-platform install script."
+  rm -rf "$DIST_DIR"
+  exit 1
 fi
+cp "$INSTALL_SRC" "${DIST_DIR}/install.sh"
+chmod +x "${DIST_DIR}/install.sh"
+ok "Install script copied (multi-platform: Linux/macOS/Windows × x86_64/aarch64)"
 
 # --- GitHub Release ---
 if [ "$DRY_RUN" = true ]; then
@@ -186,48 +192,51 @@ info "Creating GitHub Release ${TAG}..."
 # Generate release notes
 RELEASE_NOTES="## Masday ${TAG}
 
-Self-contained binaries for the Masday workflow orchestration platform.
-No source code required — just download and run.
+### Quick Install (one-liner)
 
-### Binaries
-
-| File | Description |
-|------|-------------|
-| \`masday-linux-x86_64\` | CLI installer (Linux) |
-| \`masday-windows-x86_64.exe\` | CLI installer (Windows) |
-| \`masday-mcp-linux-x86_64\` | MCP server (Linux) |
-| \`masday-mcp-windows-x86_64.exe\` | MCP server (Windows) |
-
-### Install CLI
 \`\`\`bash
-# One-line install (Linux/macOS)
 curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/install.sh | bash
-
-# Manual download
-# Linux
-curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-linux-x86_64
-chmod +x masday
-
-# Windows
-curl -fsSL -o masday.exe https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-windows-x86_64.exe
 \`\`\`
 
-### Setup MCP Server (stdio mode)
-\`\`\`bash
-# Linux — place in PATH or ~/.masday/bin/
-curl -fsSL -o ~/.masday/bin/masday-mcp https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-mcp-linux-x86_64
-chmod +x ~/.masday/bin/masday-mcp
+Auto-detects: **Linux** / **macOS** / **Windows** (Git Bash) × **x86_64** / **aarch64**
 
-# Windows — place in PATH or %USERPROFILE%\\.masday\\bin\\
-curl -fsSL -o masday-mcp.exe https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-mcp-windows-x86_64.exe
-\`\`\`
+### Post-Install
 
-Then run the CLI installer to configure MCP in your editor:
 \`\`\`bash
 masday install                          # Standalone mode (agents + skills only)
 masday install --local                  # Local mode (builds from source)
 masday install --remote <url> --api-key <key>  # Remote mode
 \`\`\`
+
+### Binaries
+
+| File | Platform | Description |
+|------|----------|-------------|
+| \`masday-linux-x86_64\` | Linux x86_64 | CLI installer |
+| \`masday-windows-x86_64.exe\` | Windows x86_64 | CLI installer |
+| \`masday-mcp-linux-x86_64\` | Linux x86_64 | MCP server (stdio) |
+| \`masday-mcp-windows-x86_64.exe\` | Windows x86_64 | MCP server (stdio) |
+
+### Manual Download
+
+\`\`\`bash
+# Linux
+curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-linux-x86_64 && chmod +x masday
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-windows-x86_64.exe -OutFile masday.exe
+
+# macOS (when available)
+curl -fsSL -o masday https://github.com/dayartcrew-web/masday-workflow-rust/releases/download/${TAG}/masday-macos-arm64 && chmod +x masday
+\`\`\`
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| \`MASDAY_VERSION\` | latest | Install specific version |
+| \`MASDAY_QUICKSTART\` | 0 | Auto-run quickstart after install |
+| \`MASDAY_FORCE\` | 0 | Force reinstall same version |
 
 ### What's Included
 
