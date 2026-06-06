@@ -843,41 +843,54 @@ fn check_embedding_health(config: &MasdayConfig, verbose: bool) -> ComponentHeal
     }
 }
 
-/// Count installed agents, skills, and hooks
+/// Count masday-owned agents, skills, and hooks.
+///
+/// Agents and skills are counted from embedded templates (source of truth).
+/// Hooks are counted from disk (installed artifacts in `~/.claude/hooks/`
+/// and `~/.masday/hooks/`), filtered to `masday-` prefixed files only.
 fn count_assets() -> Result<(usize, usize, usize)> {
+    // Agents: count masday/msd-prefixed from embedded templates
+    let agents = crate::installer::extract_agents()
+        .into_iter()
+        .filter(|(name, _)| name.starts_with("masday-") || name.starts_with("msd-"))
+        .count();
+
+    // Skills: count masday-prefixed from embedded templates
+    let skills = crate::installer::extract_skill_names()
+        .into_iter()
+        .filter(|name| name.starts_with("masday-") || name.starts_with("msd-"))
+        .count();
+
+    // Hooks: count masday-prefixed from disk (installed artifacts)
     let home = home::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let masday_home = home.join(".masday");
-    let claude_home = home.join(".claude");
-
-    // Count agents from all platforms
-    let mut agents_count = 0usize;
-    let mut skills_count = 0usize;
-    let mut hooks_count = 0usize;
-
-    // ~/.masday/ (primary)
-    count_dir_entries(&masday_home.join("agents"), &mut agents_count);
-    count_dir_entries(&masday_home.join("skills"), &mut skills_count);
-    count_dir_entries(&masday_home.join("hooks"), &mut hooks_count);
-
-    // ~/.claude/ (Claude Code platform)
-    count_dir_entries(&claude_home.join("agents"), &mut agents_count);
-    count_dir_entries(&claude_home.join("skills"), &mut skills_count);
-    count_dir_entries(&claude_home.join("hooks"), &mut hooks_count);
-
-    // Deduplicate — prefer the larger count (most recent sync)
-    let agents = agents_count;
-    let skills = skills_count;
-    let hooks = hooks_count;
+    let hooks = count_masday_entries(
+        &[
+            home.join(".masday").join("hooks"),
+            home.join(".claude").join("hooks"),
+        ],
+        &["masday-"],
+    );
 
     Ok((agents, skills, hooks))
 }
 
-fn count_dir_entries(dir: &std::path::Path, count: &mut usize) {
-    if dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            *count = (*count).max(entries.filter_map(|e| e.ok()).count());
+/// Count entries across multiple directories, filtering by allowed prefixes.
+/// Returns the total unique count (union across all directories).
+fn count_masday_entries(dirs: &[std::path::PathBuf], prefixes: &[&str]) -> usize {
+    let mut seen = std::collections::HashSet::new();
+    for dir in dirs {
+        if dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if prefixes.iter().any(|p| name.starts_with(p)) {
+                        seen.insert(name);
+                    }
+                }
+            }
         }
     }
+    seen.len()
 }
 
 /// Detect actually installed platforms
