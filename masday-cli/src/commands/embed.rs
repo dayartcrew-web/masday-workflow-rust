@@ -43,21 +43,21 @@ pub fn is_embedding_configured() -> bool {
 
 /// Known embedding models with metadata
 #[derive(Debug, Clone)]
-struct EmbeddingModel {
+pub struct EmbeddingModel {
     /// Model identifier
-    id: &'static str,
+    pub id: &'static str,
     /// Display name
-    name: &'static str,
-    /// Provider: ollama | openai
-    provider: &'static str,
+    pub name: &'static str,
+    /// Provider: local | ollama | openai
+    pub provider: &'static str,
     /// Vector dimensions
-    dimensions: usize,
+    pub dimensions: usize,
     /// Description
-    description: &'static str,
+    pub description: &'static str,
 }
 
 /// Available embedding models
-const AVAILABLE_MODELS: &[EmbeddingModel] = &[
+pub const AVAILABLE_MODELS: &[EmbeddingModel] = &[
     EmbeddingModel {
         id: "nomic-embed-text",
         name: "Nomic Embed Text",
@@ -99,6 +99,98 @@ const AVAILABLE_MODELS: &[EmbeddingModel] = &[
         provider: "openai",
         dimensions: 1536,
         description: "Legacy OpenAI embedding model",
+    },
+    // Local (fastembed) models
+    EmbeddingModel {
+        id: "all-MiniLM-L6-v2",
+        name: "MiniLM-L6-v2",
+        provider: "local",
+        dimensions: 384,
+        description: "Default, fast, lightweight",
+    },
+    EmbeddingModel {
+        id: "all-MiniLM-L6-v2-Q",
+        name: "MiniLM-L6-v2 (quantized)",
+        provider: "local",
+        dimensions: 384,
+        description: "Smaller size, 384 dims",
+    },
+    EmbeddingModel {
+        id: "bge-small-en-v1.5",
+        name: "BGE Small",
+        provider: "local",
+        dimensions: 384,
+        description: "Fast English model",
+    },
+    EmbeddingModel {
+        id: "bge-base-en-v1.5",
+        name: "BGE Base",
+        provider: "local",
+        dimensions: 768,
+        description: "Balanced quality, 768 dims",
+    },
+    EmbeddingModel {
+        id: "bge-large-en-v1.5",
+        name: "BGE Large",
+        provider: "local",
+        dimensions: 1024,
+        description: "High quality, 1024 dims",
+    },
+    EmbeddingModel {
+        id: "nomic-embed-text-v1.5",
+        name: "Nomic Embed v1.5",
+        provider: "local",
+        dimensions: 768,
+        description: "8K context length",
+    },
+    EmbeddingModel {
+        id: "mxbai-embed-large-v1",
+        name: "MixedBreed Large",
+        provider: "local",
+        dimensions: 1024,
+        description: "High quality English",
+    },
+    EmbeddingModel {
+        id: "multilingual-e5-small",
+        name: "E5 Small (multilingual)",
+        provider: "local",
+        dimensions: 384,
+        description: "Multilingual, lightweight",
+    },
+    EmbeddingModel {
+        id: "multilingual-e5-base",
+        name: "E5 Base (multilingual)",
+        provider: "local",
+        dimensions: 768,
+        description: "Multilingual, balanced",
+    },
+    EmbeddingModel {
+        id: "snowflake-arctic-embed-xs",
+        name: "Arctic XS",
+        provider: "local",
+        dimensions: 384,
+        description: "Lightweight Snowflake model",
+    },
+    EmbeddingModel {
+        id: "snowflake-arctic-embed-m",
+        name: "Arctic Medium",
+        provider: "local",
+        dimensions: 768,
+        description: "Balanced Snowflake model",
+    },
+    EmbeddingModel {
+        id: "BGEM3",
+        name: "BGE-M3",
+        provider: "local",
+        dimensions: 1024,
+        description: "100+ languages, 8K context",
+    },
+    EmbeddingModel {
+        id: "jina-embeddings-v2-base-code",
+        name: "Jina Code",
+        provider: "local",
+        dimensions: 768,
+        description: "Code-optimized embeddings",
     },
 ];
 
@@ -290,6 +382,7 @@ fn run_status() -> Result<()> {
 
     // Base URL (provider-specific)
     let base_url = match config.embedding_provider.as_deref() {
+        Some("local") => "ONNX Runtime (local)",
         Some("ollama") => "http://localhost:11434",
         Some("openai") => "https://api.openai.com/v1",
         Some("disabled") => "disabled",
@@ -344,9 +437,9 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
             .unwrap_or_else(|| "ollama".to_string())
     });
 
-    if !["ollama", "openai"].contains(&provider_id.as_str()) {
+    if !["ollama", "openai", "local"].contains(&provider_id.as_str()) {
         bail!(
-            "Invalid provider '{}'. Must be 'ollama' or 'openai'",
+            "Invalid provider '{}'. Must be 'ollama', 'openai', or 'local'",
             provider_id
         );
     }
@@ -466,6 +559,25 @@ fn run_download(provider: Option<String>, model: Option<String>, force: bool) ->
             );
             println!("  API key configured: {}", style("✓").green());
         }
+        "local" => {
+            // Local fastembed models download automatically on first use
+            // via fastembed::TextEmbedding::try_new()
+            create_cache_marker(&model_cache_path, &provider_id, &model_id, dimensions)?;
+
+            println!(
+                "{} Local model '{}' will download on first use via fastembed",
+                style("✓").green(),
+                style(&model_id).cyan()
+            );
+            println!(
+                "  {} Run 'masday mcp' or API server to trigger download and verify",
+                style("→").dim()
+            );
+            println!(
+                "  {} Models are cached in ~/.cache/huggingface/ or FASTEMBED_CACHE_DIR",
+                style("→").dim()
+            );
+        }
         _ => bail!("Unsupported provider: {}", provider_id),
     }
 
@@ -508,7 +620,7 @@ fn run_list() -> Result<()> {
     let config = MasdayConfig::load().unwrap_or_default();
 
     // Group by provider
-    for provider in &["ollama", "openai"] {
+    for provider in &["local", "ollama", "openai"] {
         let provider_models: Vec<_> = AVAILABLE_MODELS
             .iter()
             .filter(|m| m.provider == *provider)
@@ -580,6 +692,52 @@ fn run_test(text: &str) -> Result<()> {
     let start = Instant::now();
 
     match provider {
+        "local" => {
+            // Actually test local fastembed model
+            println!("  {} Loading model '{}'...", style("→").cyan(), style(model).cyan());
+            match test_local_embedding(model, text) {
+                Ok((latency, actual_dims)) => {
+                    println!(
+                        "{} Generated embedding in {}",
+                        style("✓").green(),
+                        style(format!("{:.2}s", latency.as_secs_f64())).green()
+                    );
+                    println!(
+                        "  {} dimensions: {} (expected: {})",
+                        style("→").dim(),
+                        style(actual_dims).cyan(),
+                        style(dimensions).cyan()
+                    );
+                    if actual_dims == dimensions {
+                        println!(
+                            "  {} Dimensions match — model ready",
+                            style("✓").green()
+                        );
+                    } else {
+                        println!(
+                            "  {} Dimension mismatch! Check config",
+                            style("⚠").yellow()
+                        );
+                    }
+                }
+                Err(e) => {
+                    println!(
+                        "{} Local embedding test failed: {}",
+                        style("✗").red(),
+                        e
+                    );
+                    println!(
+                        "  {} Model '{}' may need to be downloaded first",
+                        style("→").dim(),
+                        style(model).cyan()
+                    );
+                    println!(
+                        "  {} Run 'masday embed download' or start the MCP server to trigger download",
+                        style("→").dim()
+                    );
+                }
+            }
+        }
         "ollama" => {
             // Test via Ollama API
             let base_url = config
@@ -737,6 +895,38 @@ fn run_clear() -> Result<()> {
     Ok(())
 }
 
+/// Test local fastembed embedding — loads model and generates a vector.
+/// Returns (latency, actual_dimensions) on success.
+/// Spawns a dedicated thread to avoid tokio runtime nesting.
+fn test_local_embedding(model_id: &str, text: &str) -> Result<(std::time::Duration, usize)> {
+    use masday_service::embedding_service::EmbeddingConfig;
+
+    let model_id = model_id.to_string();
+    let text = text.to_string();
+
+    let start = Instant::now();
+    let result = std::thread::scope(|s| {
+        s.spawn(|| -> Result<Vec<f32>> {
+            let config = EmbeddingConfig {
+                provider: "local".to_string(),
+                model: model_id,
+                dimensions: 0,
+                base_url: String::new(),
+                api_key: None,
+            };
+            let embedding_service = masday_service::embedding_service::EmbeddingService::new(config);
+            let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+            let vec = rt.block_on(embedding_service.embed(&text))?;
+            Ok(vec)
+        })
+        .join()
+        .map_err(|_| anyhow::anyhow!("Embedding thread panicked"))?
+    })?;
+    let latency = start.elapsed();
+
+    Ok((latency, result.len()))
+}
+
 /// Interactive embedding configuration wizard
 fn run_settings() -> Result<()> {
     println!();
@@ -748,12 +938,13 @@ fn run_settings() -> Result<()> {
 
     // Step 1: Select provider
     println!("{} Select embedding provider:", style("?").yellow());
-    println!("  1. Ollama (local, free, offline-capable)");
-    println!("  2. OpenAI (cloud, requires API key)");
-    println!("  3. Disabled (no semantic search)");
+    println!("  1. Local (fastembed — offline, no external service)");
+    println!("  2. Ollama (local, free, requires Ollama)");
+    println!("  3. OpenAI (cloud, requires API key)");
+    println!("  4. Disabled (no semantic search)");
     println!();
 
-    print!("  Choice [1-3]: ");
+    print!("  Choice [1-4]: ");
     std::io::stdout().flush()?;
 
     let mut input = String::new();
@@ -761,11 +952,12 @@ fn run_settings() -> Result<()> {
     let choice = input.trim();
 
     let provider = match choice {
-        "1" => "ollama",
-        "2" => "openai",
-        "3" => "disabled",
+        "1" => "local",
+        "2" => "ollama",
+        "3" => "openai",
+        "4" => "disabled",
         _ => {
-            bail!("Invalid choice. Please enter 1, 2, or 3.");
+            bail!("Invalid choice. Please enter 1, 2, 3, or 4.");
         }
     };
 
@@ -922,6 +1114,13 @@ mod tests {
     #[test]
     fn test_available_models() {
         assert!(!AVAILABLE_MODELS.is_empty());
+
+        // Verify Local models
+        let local_models: Vec<_> = AVAILABLE_MODELS
+            .iter()
+            .filter(|m| m.provider == "local")
+            .collect();
+        assert!(!local_models.is_empty());
 
         // Verify Ollama models
         let ollama_models: Vec<_> = AVAILABLE_MODELS

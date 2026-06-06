@@ -149,7 +149,27 @@ enum Commands {
     Setup,
 
     /// One-command setup — db + migrate + install + ready
-    Quickstart,
+    Quickstart {
+        /// Setup mode: local | remote | standalone (skips interactive prompt)
+        #[arg(long)]
+        mode: Option<String>,
+
+        /// Non-interactive: use defaults for all prompts
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Database URL (local mode only, skips Docker prompt)
+        #[arg(long)]
+        database_url: Option<String>,
+
+        /// Embedding model ID (skips model selection)
+        #[arg(long)]
+        embedding: Option<String>,
+
+        /// Platform(s) to install (comma-separated: claude-code,gemini,vscode,opencode)
+        #[arg(long)]
+        platform: Option<String>,
+    },
 
     /// Start API server + dashboard
     Serve {
@@ -323,8 +343,21 @@ async fn main() -> anyhow::Result<()> {
         Commands::Setup => {
             masday_cli::commands::setup::run(&project_dir).await?;
         }
-        Commands::Quickstart => {
-            masday_cli::commands::quickstart::run(&project_dir).await?;
+        Commands::Quickstart {
+            mode,
+            yes,
+            database_url,
+            embedding,
+            platform,
+        } => {
+            let args = masday_cli::commands::quickstart::QuickstartArgs {
+                mode,
+                yes,
+                database_url,
+                embedding,
+                platform,
+            };
+            masday_cli::commands::quickstart::run(&project_dir, Some(args)).await?;
         }
         Commands::Serve { port } => {
             masday_cli::commands::serve::run(port).await?;

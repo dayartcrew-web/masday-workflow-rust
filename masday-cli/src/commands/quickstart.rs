@@ -7,12 +7,13 @@
 //! - Platform detection + MCP server registration
 //! - Agent/skill/hook sync
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
 // InstallArgs removed — quickstart uses sync functions directly
+use crate::commands::embed;
 use crate::config::MasdayConfig;
 use crate::docker;
 use crate::installer::{
@@ -21,8 +22,23 @@ use crate::installer::{
     sync_skills_to_global, sync_skills_to_project, McpConfig, Platform,
 };
 
-/// Run the quickstart wizard.
-pub async fn run(project_dir: &Path) -> Result<()> {
+/// Arguments for the quickstart command (supports non-interactive mode).
+#[derive(Debug, Default, Clone)]
+pub struct QuickstartArgs {
+    /// Setup mode: local | remote | standalone
+    pub mode: Option<String>,
+    /// Non-interactive: use defaults for all prompts
+    pub yes: bool,
+    /// Database URL (local mode only)
+    pub database_url: Option<String>,
+    /// Embedding model ID
+    pub embedding: Option<String>,
+    /// Platform(s) to install (comma-separated)
+    pub platform: Option<String>,
+}
+
+/// Run the quickstart wizard. Pass `None` for interactive mode, or `Some(args)` for CLI-driven mode.
+pub async fn run(project_dir: &Path, args: Option<QuickstartArgs>) -> Result<()> {
     println!();
     println!("{}", style("⚡ Masday Quickstart").cyan().bold());
     println!(
@@ -62,25 +78,63 @@ pub async fn run(project_dir: &Path) -> Result<()> {
     println!();
 
     // ── Step 2: Choose mode ───────────────────────────────────────────────
-    let mode_options = vec![
-        "Local — everything on this machine (Docker)",
-        "Remote — connect to existing API server",
-        "Standalone — agents & skills only (no DB, no API)",
-    ];
+    let is_non_interactive = args.as_ref().is_some_and(|a| a.yes || a.mode.is_some());
 
-    let mode_choice = inquire::Select::new("How will you run Masday?", mode_options)
-        .with_help_message("↑↓ to move, Enter to select")
-        .prompt()?;
-
-    println!();
-
-    match mode_choice {
-        s if s.starts_with("Local") => {
-            run_local_mode(project_dir, &detected_platforms, has_docker).await?
+    let mode_str = if let Some(ref a) = args {
+        if let Some(ref m) = a.mode {
+            m.clone()
+        } else if a.yes {
+            "local".to_string()
+        } else {
+            // Interactive — use inquire
+            let mode_options = vec![
+                "Local — everything on this machine (Docker)",
+                "Remote — connect to existing API server",
+                "Standalone — agents & skills only (no DB, no API)",
+            ];
+            let choice = inquire::Select::new("How will you run Masday?", mode_options)
+                .with_help_message("↑↓ to move, Enter to select")
+                .prompt()?;
+            println!();
+            if choice.starts_with("Local") {
+                "local".to_string()
+            } else if choice.starts_with("Remote") {
+                "remote".to_string()
+            } else {
+                "standalone".to_string()
+            }
         }
-        s if s.starts_with("Remote") => run_remote_mode(project_dir, &detected_platforms)?,
-        s if s.starts_with("Standalone") => run_standalone_mode(project_dir, &detected_platforms)?,
-        _ => bail!("Invalid selection"),
+    } else {
+        let mode_options = vec![
+            "Local — everything on this machine (Docker)",
+            "Remote — connect to existing API server",
+            "Standalone — agents & skills only (no DB, no API)",
+        ];
+        let choice = inquire::Select::new("How will you run Masday?", mode_options)
+            .with_help_message("↑↓ to move, Enter to select")
+            .prompt()?;
+        println!();
+        if choice.starts_with("Local") {
+            "local".to_string()
+        } else if choice.starts_with("Remote") {
+            "remote".to_string()
+        } else {
+            "standalone".to_string()
+        }
+    };
+
+    if is_non_interactive {
+        println!("  Mode: {}", style(&mode_str).cyan());
+        println!();
+    }
+
+    match mode_str.as_str() {
+        "local" => {
+            run_local_mode(project_dir, &detected_platforms, has_docker, args.as_ref()).await?
+        }
+        "remote" => run_remote_mode(project_dir, &detected_platforms, args.as_ref())?,
+        "standalone" => run_standalone_mode(project_dir, &detected_platforms, args.as_ref())?,
+        other => bail!("Invalid mode '{}'. Use: local, remote, standalone", other),
     }
 
     Ok(())
@@ -94,12 +148,32 @@ async fn run_local_mode(
     project_dir: &Path,
     detected_platforms: &[Platform],
     has_docker: bool,
+    args: Option<&QuickstartArgs>,
 ) -> Result<()> {
     println!("{}", style("── Local Mode ──").cyan().bold());
     println!();
 
+    let is_non_interactive = args.is_some_and(|a| a.yes);
+
     // ── DB Setup ──────────────────────────────────────────────────────────
-    let database_url = if has_docker {
+    let database_url = if let Some(url) = args.and_then(|a| a.database_url.as_ref()) {
+        // Explicit --database-url provided
+        println!("  Database URL: {}", style(url).cyan());
+        Some(url.clone())
+    } else if is_non_interactive {
+        // Non-interactive with no explicit URL — start Docker with defaults
+        if has_docker {
+            let (pg_user, pg_pass, pg_db) = (docker::pg_user(), docker::pg_password(), docker::pg_db());
+            println!("  {} Starting Docker PostgreSQL with defaults...", style("→").cyan());
+            Some(start_docker_infrastructure(&pg_user, &pg_pass, &pg_db).await?)
+        } else {
+            println!(
+                "{}",
+                style("  ⚠ Docker not found and no --database-url provided. Skipping DB setup.").yellow()
+            );
+            None
+        }
+    } else if has_docker {
         let db_choice = inquire::Select::new(
             "PostgreSQL setup:",
             vec![
@@ -124,10 +198,33 @@ async fn run_local_mode(
     };
 
     // ── Embedding (optional) ──────────────────────────────────────────────
-    let (embed_provider, embed_model, embed_dims) = ask_embedding_model()?;
+    let (embed_provider, embed_model, embed_dims) = if let Some(emb_id) =
+        args.and_then(|a| a.embedding.as_ref())
+    {
+        // Explicit --embedding provided
+        resolve_embedding_model(emb_id)?
+    } else if is_non_interactive {
+        // Default: all-MiniLM-L6-v2
+        println!("  Embedding: {} (default)", style("all-MiniLM-L6-v2").cyan());
+        (Some("local".into()), Some("all-MiniLM-L6-v2".into()), Some(384))
+    } else {
+        ask_embedding_model()?
+    };
 
     // ── Platforms ─────────────────────────────────────────────────────────
-    let platforms = ask_platforms(detected_platforms)?;
+    let platforms = if let Some(platform_str) = args.and_then(|a| a.platform.as_ref()) {
+        parse_platforms(platform_str)?
+    } else if is_non_interactive {
+        let plats = if detected_platforms.is_empty() {
+            vec![Platform::ClaudeCode]
+        } else {
+            detected_platforms.to_vec()
+        };
+        println!("  Platforms: {}", style(platform_names(&plats).join(", ")).cyan());
+        plats
+    } else {
+        ask_platforms(detected_platforms)?
+    };
 
     // ── Save config ───────────────────────────────────────────────────────
     let api_url = format!(
@@ -176,17 +273,23 @@ async fn run_local_mode(
 // REMOTE MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Result<()> {
+fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform], args: Option<&QuickstartArgs>) -> Result<()> {
     println!("{}", style("── Remote Mode ──").cyan().bold());
     println!();
 
-    // ── API Server URL ────────────────────────────────────────────────────
-    let api_url = inquire::Text::new("API server URL:")
-        .with_default("https://masday.example.com")
-        .with_help_message("HTTPS recommended. e.g. https://masday.yourcompany.com")
-        .prompt()?;
+    let is_non_interactive = args.is_some_and(|a| a.yes);
 
-    let api_url = api_url.trim_end_matches('/').to_string();
+    // ── API Server URL ────────────────────────────────────────────────────
+    let api_url = if is_non_interactive {
+        bail!("Remote mode requires --mode remote and environment setup. Use interactive mode or set API_URL env var.");
+    } else {
+        let url = inquire::Text::new("API server URL:")
+            .with_default("https://masday.example.com")
+            .with_help_message("HTTPS recommended. e.g. https://masday.yourcompany.com")
+            .prompt()?;
+        url.trim_end_matches('/').to_string()
+    };
+
     if !api_url.starts_with("http://") && !api_url.starts_with("https://") {
         bail!("URL must start with http:// or https://");
     }
@@ -247,7 +350,19 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
     };
 
     // ── Platforms ─────────────────────────────────────────────────────────
-    let platforms = ask_platforms(detected_platforms)?;
+    let platforms = if let Some(platform_str) = args.and_then(|a| a.platform.as_ref()) {
+        parse_platforms(platform_str)?
+    } else if is_non_interactive {
+        let plats = if detected_platforms.is_empty() {
+            vec![Platform::ClaudeCode]
+        } else {
+            detected_platforms.to_vec()
+        };
+        println!("  Platforms: {}", style(platform_names(&plats).join(", ")).cyan());
+        plats
+    } else {
+        ask_platforms(detected_platforms)?
+    };
 
     // ── Save config ───────────────────────────────────────────────────────
     let is_windows = cfg!(target_os = "windows");
@@ -320,11 +435,25 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Resul
 // STANDALONE MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform]) -> Result<()> {
+fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform], args: Option<&QuickstartArgs>) -> Result<()> {
     println!("{}", style("── Standalone Mode ──").cyan().bold());
     println!();
 
-    let platforms = ask_platforms(detected_platforms)?;
+    let is_non_interactive = args.is_some_and(|a| a.yes);
+
+    let platforms = if let Some(platform_str) = args.and_then(|a| a.platform.as_ref()) {
+        parse_platforms(platform_str)?
+    } else if is_non_interactive {
+        let plats = if detected_platforms.is_empty() {
+            vec![Platform::ClaudeCode]
+        } else {
+            detected_platforms.to_vec()
+        };
+        println!("  Platforms: {}", style(platform_names(&plats).join(", ")).cyan());
+        plats
+    } else {
+        ask_platforms(detected_platforms)?
+    };
 
     // ── Save config ─────────────────────────────────────────────────────
     // On Windows, local ONNX embeddings are not included.
@@ -530,40 +659,41 @@ async fn ask_database_url() -> Result<Option<String>> {
     Ok(Some(url))
 }
 
-/// Ask for embedding model preference ()
+/// Ask for embedding model preference — uses the same AVAILABLE_MODELS as `embed list`.
 fn ask_embedding_model() -> Result<(Option<String>, Option<String>, Option<usize>)> {
-    let embed_choice = inquire::Select::new(
-        "Embedding model:",
-        vec![
-            "all-MiniLM-L6-v2 (384 dims, fast, ~80MB)",
-            "bge-small-en-v1.5 (384 dims, balanced)",
-            "bge-base-en-v1.5 (768 dims, accurate)",
-            "Skip embeddings",
-        ],
-    )
-    .with_help_message("Local ONNX model — no external service needed")
-    .prompt()?;
+    use crate::commands::embed::{self, EmbeddingModel};
 
-    let result = match embed_choice {
-        s if s.starts_with("all-MiniLM") => (
-            Some("local".into()),
-            Some("all-MiniLM-L6-v2".into()),
-            Some(384),
-        ),
-        s if s.starts_with("bge-small") => (
-            Some("local".into()),
-            Some("bge-small-en-v1.5".into()),
-            Some(384),
-        ),
-        s if s.starts_with("bge-base") => (
-            Some("local".into()),
-            Some("bge-base-en-v1.5".into()),
-            Some(768),
-        ),
-        _ => (None, None, None),
-    };
+    // Collect local models from the canonical model list
+    let local_models: Vec<&EmbeddingModel> = embed::AVAILABLE_MODELS
+        .iter()
+        .filter(|m| m.provider == "local")
+        .collect();
 
-    Ok(result)
+    let mut choices: Vec<String> = local_models
+        .iter()
+        .map(|m| format!("{} ({} dims, {})", m.name, m.dimensions, m.description))
+        .collect();
+    choices.push("Skip embeddings".to_string());
+
+    let embed_choice = inquire::Select::new("Embedding model:", choices)
+        .with_help_message("Local ONNX model — no external service needed. ↑↓ to move, Enter to select")
+        .prompt()?;
+
+    if embed_choice == "Skip embeddings" {
+        return Ok((None, None, None));
+    }
+
+    // Match by model name prefix to find the right model
+    let selected = local_models
+        .iter()
+        .find(|m| embed_choice.starts_with(m.name))
+        .context("No matching local model found")?;
+
+    Ok((
+        Some("local".to_string()),
+        Some(selected.id.to_string()),
+        Some(selected.dimensions),
+    ))
 }
 
 /// Ask which platforms to install for
@@ -739,6 +869,67 @@ fn detect_active_platforms_from_home() -> Vec<Platform> {
 /// Get platform name strings
 fn platform_names(platforms: &[Platform]) -> Vec<String> {
     platforms.iter().map(|p| p.name().to_string()).collect()
+}
+
+/// Resolve an embedding model ID to (provider, model, dimensions).
+/// Used by non-interactive mode to look up model metadata.
+fn resolve_embedding_model(model_id: &str) -> Result<(Option<String>, Option<String>, Option<usize>)> {
+    if model_id == "skip" || model_id == "none" {
+        return Ok((None, None, None));
+    }
+
+    let model = embed::AVAILABLE_MODELS
+        .iter()
+        .find(|m| m.id == model_id)
+        .context(format!(
+            "Unknown embedding model '{}'. Run 'masday embed list' to see available models.",
+            model_id
+        ))?;
+
+    println!(
+        "  Embedding: {} ({} dims, {})",
+        style(model.id).cyan(),
+        style(model.dimensions).cyan(),
+        style(model.description).dim()
+    );
+
+    Ok((
+        Some(model.provider.to_string()),
+        Some(model.id.to_string()),
+        Some(model.dimensions),
+    ))
+}
+
+/// Parse comma-separated platform string (e.g. "claude-code,gemini") into Platform vec.
+fn parse_platforms(platform_str: &str) -> Result<Vec<Platform>> {
+    let all = all_platforms();
+    let mut platforms = Vec::new();
+
+    for name in platform_str.split(',') {
+        let name = name.trim();
+        let plat = all
+            .iter()
+            .find(|p| p.name() == name)
+            .context(format!(
+                "Unknown platform '{}'. Available: {}",
+                name,
+                all.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ")
+            ))?;
+        if !platforms.contains(plat) {
+            platforms.push(*plat);
+        }
+    }
+
+    if platforms.is_empty() {
+        bail!("At least one platform must be specified.");
+    }
+
+    println!(
+        "  Platforms: {}",
+        style(platform_names(&platforms).join(", ")).cyan()
+    );
+
+    Ok(platforms)
 }
 
 fn print_local_summary(config: &MasdayConfig) {

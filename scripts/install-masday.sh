@@ -3,7 +3,7 @@
 # Masday CLI Installer
 #
 # Downloads the masday binary from GitHub Releases and installs it.
-# Repo stays private — only the binary is downloaded.
+# Uses curl first (public repo), falls back to gh CLI if needed.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-rust/master/scripts/install-masday.sh | bash
@@ -143,26 +143,28 @@ download_binary() {
 
     info "Downloading masday ${version} for ${platform}..." >&2
 
-    # Method 1: gh CLI (authenticated — works for private repos)
+    # Method 1: curl (direct download — works for public repos)
+    info "URL: ${download_url}" >&2
+    if curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>/dev/null; then
+        echo "$tmp_file"
+        return
+    fi
+    warn "curl download failed, trying gh CLI..." >&2
+
+    # Method 2: gh CLI (authenticated — fallback for private repos or restricted networks)
     if command -v gh &>/dev/null; then
         info "Using gh CLI (authenticated)..." >&2
         if gh release download "$version" --repo "${REPO}" --pattern "${artifact}" --output "$tmp_file" -q 2>/dev/null; then
             echo "$tmp_file"
             return
         fi
-        warn "gh CLI download failed, falling back to curl..." >&2
+        warn "gh CLI download also failed" >&2
     fi
 
-    # Method 2: curl (public repos or token-authenticated)
-    info "URL: ${download_url}" >&2
-    if ! curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url"; then
-        rm -f "$tmp_file"
-        err "Failed to download from ${download_url}"
-        err "For private repos, install gh CLI and run: gh auth login"
-        exit 1
-    fi
-
-    echo "$tmp_file"
+    rm -f "$tmp_file"
+    err "Failed to download from ${download_url}"
+    err "For private repos, install gh CLI and run: gh auth login"
+    exit 1
 }
 
 # Verify checksum if available
@@ -337,8 +339,20 @@ main() {
 
     # Auto-execute quickstart
     if [ "${MASDAY_QUICKSTART:-0}" = "1" ]; then
-        info "Auto-running 'masday quickstart'..."
-        "${INSTALL_DIR}/${BINARY_NAME}" quickstart
+        info "Auto-running 'masday quickstart' (non-interactive)..."
+        # Build quickstart flags from env vars
+        QUICKSTART_FLAGS=""
+        [ -n "${MASDAY_MODE:-}" ] && QUICKSTART_FLAGS="$QUICKSTART_FLAGS --mode ${MASDAY_MODE}"
+        [ -n "${MASDAY_PLATFORM:-}" ] && QUICKSTART_FLAGS="$QUICKSTART_FLAGS --platform ${MASDAY_PLATFORM}"
+        [ -n "${MASDAY_EMBEDDING:-}" ] && QUICKSTART_FLAGS="$QUICKSTART_FLAGS --embedding ${MASDAY_EMBEDDING}"
+        [ -n "${MASDAY_DATABASE_URL:-}" ] && QUICKSTART_FLAGS="$QUICKSTART_FLAGS --database-url ${MASDAY_DATABASE_URL}"
+        # Default: standalone mode with --yes (no TTY needed)
+        if [ -z "$QUICKSTART_FLAGS" ]; then
+            QUICKSTART_FLAGS="--mode standalone --yes"
+        else
+            QUICKSTART_FLAGS="$QUICKSTART_FLAGS --yes"
+        fi
+        "${INSTALL_DIR}/${BINARY_NAME}" quickstart $QUICKSTART_FLAGS
     elif [ -t 0 ]; then
         # Interactive terminal — ask user
         echo ""
@@ -350,6 +364,8 @@ main() {
     else
         # Non-interactive (piped curl | bash)
         info "Run 'masday quickstart' to complete setup."
+        info "  Non-interactive: masday quickstart --mode standalone --yes"
+        info "  Local mode:      masday quickstart --mode local --yes"
     fi
     echo ""
 }

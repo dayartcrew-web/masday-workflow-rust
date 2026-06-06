@@ -125,9 +125,18 @@ impl EmbeddingConfig {
     pub fn model_enum(&self) -> fastembed::EmbeddingModel {
         match self.model.as_str() {
             "all-MiniLM-L6-v2" => fastembed::EmbeddingModel::AllMiniLML6V2,
+            "all-MiniLM-L6-v2-Q" => fastembed::EmbeddingModel::AllMiniLML6V2Q,
             "bge-small-en-v1.5" => fastembed::EmbeddingModel::BGESmallENV15,
             "bge-base-en-v1.5" => fastembed::EmbeddingModel::BGEBaseENV15,
+            "bge-large-en-v1.5" => fastembed::EmbeddingModel::BGELargeENV15,
             "nomic-embed-text-v1.5" => fastembed::EmbeddingModel::NomicEmbedTextV15,
+            "mxbai-embed-large-v1" => fastembed::EmbeddingModel::MxbaiEmbedLargeV1,
+            "multilingual-e5-small" => fastembed::EmbeddingModel::MultilingualE5Small,
+            "multilingual-e5-base" => fastembed::EmbeddingModel::MultilingualE5Base,
+            "snowflake-arctic-embed-xs" => fastembed::EmbeddingModel::SnowflakeArcticEmbedXS,
+            "snowflake-arctic-embed-m" => fastembed::EmbeddingModel::SnowflakeArcticEmbedM,
+            "BGEM3" => fastembed::EmbeddingModel::BGEM3,
+            "jina-embeddings-v2-base-code" => fastembed::EmbeddingModel::JinaEmbeddingsV2BaseCode,
             other => {
                 warn!(
                     "Unknown fastembed model '{}', falling back to all-MiniLM-L6-v2",

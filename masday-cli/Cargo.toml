@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 masday-core = { path = "../masday-core" }
 masday-db = { path = "../masday-db" }
+masday-service = { path = "../masday-service" }
 masday-api = { path = "../masday-api", default-features = false }
 masday-mcp = { path = "../masday-mcp" }
 clap = { version = "4.5", features = ["derive"] }
