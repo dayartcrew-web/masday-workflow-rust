@@ -2,6 +2,25 @@
 
 All notable changes to Masday CLI are documented here.
 
+## [v0.3.39] - 2026-06-06
+
+### Removed
+- `pre-tool-use.js` hook — redundant with `workflow-lock.js`
+- `tdd-guard.js` hook — redundant with `skill-step-guard.cjs`
+- `post-tool-use.js` hook — redundant with `skill-wrap-guard.js`
+- `tool-name-guard.js` hook — broken (reads wrong file, false positives on `use_masday`)
+- `on-notification.js` hook — empty no-op
+
+### Fixed
+- `masday-context-warning.cjs`: 90% threshold no longer blocks session (`continue:false` → `systemMessage`)
+- `workflow-lock.js`: only fires when `.masday/state.json` has an active workflow (was firing on every edit)
+- `skill-wrap-guard.js`: message shortened from 300+ chars to single-line reminder
+
+### Changed
+- `settings.json`: removed `PostToolUse` and `Notification` hook sections, merged `PreToolUse` matchers
+- `release.sh`: install.sh now **mandatory** (errors if missing instead of silent skip)
+- Release notes template: one-liner at top, environment variables table, PowerShell example
+
 ## [v0.3.38] - 2026-06-06
 
 ### Fixed
