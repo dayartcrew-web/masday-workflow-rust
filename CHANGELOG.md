@@ -2,6 +2,47 @@
 
 All notable changes to Masday CLI are documented here.
 
+## [v0.3.38] - 2026-06-06
+
+### Fixed
+- `masday status` now counts only masday-owned agents, skills, and hooks (was counting all third-party assets)
+- Agents counted from embedded templates filtered by `masday-`/`msd-` prefix (was 29 → 28)
+- Skills counted from embedded templates filtered by `masday-`/`msd-` prefix (was 91 → 38)
+- Hooks counted from disk filtered by `masday-` prefix (was 11 → 10)
+
+## [v0.3.37] - 2026-06-06
+
+### Fixed
+- accept `branch_key` in `completeParallelBranch` (schema/impl mismatch)
+- non-blocking PG sync — prevent MCP hang on `workflow_create`
+
+### Performance
+- speed up install script — gh CLI auth, shorter timeouts, non-fatal checksum
+
+## [v0.3.36] - 2026-06-06
+
+### Style
+- cargo fmt fix for pg.rs (CI format check)
+
+## [v0.3.33] - 2026-06-06
+
+### Fixed
+- update release repo to source repo (`dayartcrew-web/masday-workflow-rust`)
+- remove `--all-features` from CI to avoid ONNX Runtime hang
+- provide dummy static params for dynamic routes in dashboard
+- split dynamic route pages into server + client components
+- add `generateStaticParams` to dynamic routes for static export
+- rewrite CI workflow to match actual project structure
+- drop Node 20 from CI matrix (pnpm 11 requires Node >= 22.13)
+- resolve CI/CD pipeline failures across all 3 workflows
+- `workflow_execute` state validation + auto-transition + `skill_sync` global skip
+- install.sh add curl timeouts + progress visibility
+- changelog generation + install.sh version detection fallback
+- masday-cli tests updated for streamableHttp transport + health logic
+
+### Changed
+- bump version to 0.3.33
+
 ## [v0.3.32] - 2026-06-05
 
 ### Fixed
