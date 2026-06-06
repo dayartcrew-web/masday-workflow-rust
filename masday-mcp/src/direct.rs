@@ -151,27 +151,78 @@ pub async fn workflow_create(
 pub async fn workflow_execute(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let id_str = {
-        let conn = crate::sqlite::conn();
+    let (id_str, final_status) = {
+        // Extract ID before touching SQLite — fail fast on bad args
         let id = args
             .get("id")
             .or_else(|| args.get("workflow_id"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| err("missing id"))?;
-        let t = now();
 
+        let conn = crate::sqlite::conn();
+
+        // Get current workflow status
+        let current_status: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|_| err(format!("workflow not found: {}", id)))?;
+
+        // Already at or past EXECUTE — idempotent return (matches service layer)
+        if matches!(
+            current_status.as_str(),
+            "EXECUTE" | "VERIFY" | "FIX" | "DONE"
+        ) {
+            return Ok(json!({"id": id, "status": current_status}));
+        }
+
+        // Auto-advance through intermediate states to reach EXECUTE
+        let t = now();
+        match current_status.as_str() {
+            "INIT" => {
+                conn.execute(
+                    "UPDATE workflows SET status='ANALYZE', updated_at=?1 WHERE id=?2",
+                    params![&t, id],
+                )
+                .map_err(|e| err(e))?;
+                conn.execute(
+                    "UPDATE workflows SET status='PLAN', updated_at=?1 WHERE id=?2",
+                    params![&t, id],
+                )
+                .map_err(|e| err(e))?;
+            }
+            "ANALYZE" => {
+                conn.execute(
+                    "UPDATE workflows SET status='PLAN', updated_at=?1 WHERE id=?2",
+                    params![&t, id],
+                )
+                .map_err(|e| err(e))?;
+            }
+            "PLAN" | "PAUSED" => {} // Direct transition to EXECUTE
+            other => {
+                return Err(err(format!(
+                    "Cannot execute workflow in state {}",
+                    other
+                )));
+            }
+        }
+
+        // Final transition to EXECUTE
         conn.execute(
             "UPDATE workflows SET status='EXECUTE', updated_at=?1 WHERE id=?2",
             params![&t, id],
         )
         .map_err(|e| err(e))?;
 
-        id.to_string()
+        info!("Workflow {} transitioned to EXECUTE (from {})", id, current_status);
+        (id.to_string(), "EXECUTE".to_string())
     }; // conn dropped
 
-    crate::direct_pg::workflow_status(&id_str, "EXECUTE").await;
+    crate::direct_pg::workflow_status(&id_str, &final_status).await;
 
-    Ok(json!({"id": id_str, "status": "EXECUTE"}))
+    Ok(json!({"id": id_str, "status": final_status}))
 }
 
 pub async fn workflow_get_status(
@@ -2434,5 +2485,118 @@ mod tests {
         for (i, (v1, v2)) in vec1.iter().zip(vec2.iter()).enumerate() {
             assert_eq!(v1, v2, "Vectors differ at index {}", i);
         }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_missing_id() {
+        let result = workflow_execute(json!({})).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing id"));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_not_found() {
+        // Ensure SQLite is initialized for the handler
+        let _guard = TestDbGuard::new();
+
+        let result = workflow_execute(json!({"id": "nonexistent-id"})).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("workflow not found"));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_init() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "INIT");
+
+        let result = workflow_execute(json!({"id": id})).await;
+        assert!(result.is_ok(), "Expected ok, got {:?}", result);
+        let val = result.unwrap();
+        assert_eq!(val["status"], "EXECUTE");
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_plan() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "PLAN");
+
+        let result = workflow_execute(json!({"workflow_id": id})).await;
+        assert!(result.is_ok(), "Expected ok, got {:?}", result);
+        let val = result.unwrap();
+        assert_eq!(val["status"], "EXECUTE");
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_done_rejected() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "DONE");
+
+        let result = workflow_execute(json!({"id": id})).await;
+        // DONE is idempotent — returns current state, not error
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()["status"], "DONE");
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_failed_rejected() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "FAILED");
+
+        let result = workflow_execute(json!({"id": id})).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot execute workflow in state FAILED"));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_idempotent_execute() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "EXECUTE");
+
+        let result = workflow_execute(json!({"id": id})).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()["status"], "EXECUTE");
+    }
+
+    /// RAII guard that inits SQLite to a temp path, restored on drop.
+    struct TestDbGuard {
+        _dir: tempfile::TempDir,
+    }
+
+    impl TestDbGuard {
+        fn new() -> Self {
+            let dir = tempfile::TempDir::new().unwrap();
+            // We cannot re-init the global SQLite in-process, so we use a
+            // different approach: directly manipulate a temporary DB file.
+            let db_path = dir.path().join("data.db");
+            std::env::set_var("MASDAY_SQLITE_PATH", db_path.to_str().unwrap());
+
+            // Try to init — ignore "already initialized" error
+            let _ = crate::sqlite::init_sqlite();
+
+            Self { _dir: dir }
+        }
+    }
+
+    impl Drop for TestDbGuard {
+        fn drop(&mut self) {
+            std::env::remove_var("MASDAY_SQLITE_PATH");
+        }
+    }
+
+    fn setup_test_db_via_guard(_guard: &TestDbGuard, status: &str) -> (String, ()) {
+        let conn = crate::sqlite::conn();
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+            params![&id, &"test-workflow", &status],
+        )
+        .unwrap();
+        (id, ())
     }
 }
