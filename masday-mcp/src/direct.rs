@@ -632,6 +632,7 @@ pub async fn workflow_complete_parallel_branch(
     let conn = crate::sqlite::conn();
     let branch_id = args["branch_id"]
         .as_str()
+        .or_else(|| args["branch_key"].as_str())
         .ok_or_else(|| err("missing branch_id"))?;
     let output = args.get("output").cloned().unwrap_or(json!({})).to_string();
     let t = now();
