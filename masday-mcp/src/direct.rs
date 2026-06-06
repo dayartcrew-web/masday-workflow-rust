@@ -136,14 +136,17 @@ pub async fn workflow_create(
         )
     }; // conn dropped
 
-    crate::direct_pg::workflow_create(
-        &pg_info.0,
-        &pg_info.1,
-        pg_info.2.as_deref(),
-        pg_info.3.as_deref(),
-        &pg_info.4,
-    )
-    .await;
+    // Fire-and-forget PG sync — non-blocking
+    tokio::spawn(async move {
+        crate::direct_pg::workflow_create(
+            &pg_info.0,
+            &pg_info.1,
+            pg_info.2.as_deref(),
+            pg_info.3.as_deref(),
+            &pg_info.4,
+        )
+        .await;
+    });
 
     Ok(json!({"id": id, "name": name, "status": status}))
 }
@@ -220,7 +223,12 @@ pub async fn workflow_execute(
         (id.to_string(), "EXECUTE".to_string())
     }; // conn dropped
 
-    crate::direct_pg::workflow_status(&id_str, &final_status).await;
+    // Fire-and-forget PG sync — non-blocking
+    let pg_id = id_str.clone();
+    let pg_status = final_status.clone();
+    tokio::spawn(async move {
+        crate::direct_pg::workflow_status(&pg_id, &pg_status).await;
+    });
 
     Ok(json!({"id": id_str, "status": final_status}))
 }
@@ -858,7 +866,10 @@ pub async fn memory_store(args: Value) -> Result<Value, Box<dyn std::error::Erro
         (id, pg_args)
     }; // conn dropped
 
-    crate::direct_pg::memory_owned(pg_args).await;
+    // Fire-and-forget PG sync — non-blocking
+    tokio::spawn(async move {
+        crate::direct_pg::memory_owned(pg_args).await;
+    });
 
     Ok(json!({"id": id, "stored": true}))
 }
@@ -1631,7 +1642,9 @@ pub async fn policy_require_context_refresh(
 pub async fn policy_check_session_readiness(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"ready": true}))
+    // Include mode-aware DB readiness
+    let db_status = crate::pg::pool_status().await;
+    Ok(json!({"ready": true, "databases": db_status}))
 }
 
 // ============================================================================
@@ -1909,8 +1922,9 @@ pub async fn capability_scaffold_mcp_server(
 pub async fn capability_system_readiness(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // SQLite is always ready if we got this far
-    Ok(json!({"ready": true, "db": "sqlite", "pool_healthy": true}))
+    // Report dual-mode DB status based on config.toml mode
+    let db_status = crate::pg::pool_status().await;
+    Ok(json!({"ready": true, "databases": db_status}))
 }
 
 pub async fn capability_workflow_audit(
@@ -2318,14 +2332,17 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         }
         (pushed_workflows, errors)
     }; // conn dropped
-       // Sync to PostgreSQL (on-demand)
-    let pg_synced = crate::direct_pg::workflows_bulk(&pushed_workflows).await;
+       // Sync to PostgreSQL (fire-and-forget, non-blocking)
+    let wf_ids = pushed_workflows.clone();
+    tokio::spawn(async move {
+        crate::direct_pg::workflows_bulk(&wf_ids).await;
+    });
 
     Ok(json!({
         "pushed": true,
         "workflows_pushed": pushed_workflows,
         "count": pushed_workflows.len(),
-        "postgresql_synced": pg_synced,
+        "postgresql_synced": "async",
         "errors": errors
     }))
 }
