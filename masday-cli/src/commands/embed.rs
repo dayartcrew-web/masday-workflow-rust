@@ -694,48 +694,62 @@ fn run_test(text: &str) -> Result<()> {
     match provider {
         "local" => {
             // Actually test local fastembed model
-            println!("  {} Loading model '{}'...", style("→").cyan(), style(model).cyan());
-            match test_local_embedding(model, text) {
-                Ok((latency, actual_dims)) => {
-                    println!(
-                        "{} Generated embedding in {}",
-                        style("✓").green(),
-                        style(format!("{:.2}s", latency.as_secs_f64())).green()
-                    );
-                    println!(
-                        "  {} dimensions: {} (expected: {})",
-                        style("→").dim(),
-                        style(actual_dims).cyan(),
-                        style(dimensions).cyan()
-                    );
-                    if actual_dims == dimensions {
+            #[cfg(feature = "local-embeddings")]
+            {
+                println!("  {} Loading model '{}'...", style("→").cyan(), style(model).cyan());
+                match test_local_embedding(model, text) {
+                    Ok((latency, actual_dims)) => {
                         println!(
-                            "  {} Dimensions match — model ready",
-                            style("✓").green()
+                            "{} Generated embedding in {}",
+                            style("✓").green(),
+                            style(format!("{:.2}s", latency.as_secs_f64())).green()
                         );
-                    } else {
                         println!(
-                            "  {} Dimension mismatch! Check config",
-                            style("⚠").yellow()
+                            "  {} dimensions: {} (expected: {})",
+                            style("→").dim(),
+                            style(actual_dims).cyan(),
+                            style(dimensions).cyan()
+                        );
+                        if actual_dims == dimensions {
+                            println!(
+                                "  {} Dimensions match — model ready",
+                                style("✓").green()
+                            );
+                        } else {
+                            println!(
+                                "  {} Dimension mismatch! Check config",
+                                style("⚠").yellow()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        println!(
+                            "{} Local embedding test failed: {}",
+                            style("✗").red(),
+                            e
+                        );
+                        println!(
+                            "  {} Model '{}' may need to be downloaded first",
+                            style("→").dim(),
+                            style(model).cyan()
+                        );
+                        println!(
+                            "  {} Run 'masday embed download' or start the MCP server to trigger download",
+                            style("→").dim()
                         );
                     }
                 }
-                Err(e) => {
-                    println!(
-                        "{} Local embedding test failed: {}",
-                        style("✗").red(),
-                        e
-                    );
-                    println!(
-                        "  {} Model '{}' may need to be downloaded first",
-                        style("→").dim(),
-                        style(model).cyan()
-                    );
-                    println!(
-                        "  {} Run 'masday embed download' or start the MCP server to trigger download",
-                        style("→").dim()
-                    );
-                }
+            }
+            #[cfg(not(feature = "local-embeddings"))]
+            {
+                println!(
+                    "{} Local embeddings not available in this binary (compiled without ONNX Runtime)",
+                    style("⚠").yellow()
+                );
+                println!(
+                    "  {} Use 'masday embed settings' to switch to Ollama or OpenAI provider",
+                    style("→").dim()
+                );
             }
         }
         "ollama" => {
@@ -898,6 +912,7 @@ fn run_clear() -> Result<()> {
 /// Test local fastembed embedding — loads model and generates a vector.
 /// Returns (latency, actual_dimensions) on success.
 /// Spawns a dedicated thread to avoid tokio runtime nesting.
+#[cfg(feature = "local-embeddings")]
 fn test_local_embedding(model_id: &str, text: &str) -> Result<(std::time::Duration, usize)> {
     use masday_service::embedding_service::EmbeddingConfig;
 
