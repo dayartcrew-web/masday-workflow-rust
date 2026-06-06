@@ -269,7 +269,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_write_claude_code_config() {
+    fn test_write_claude_code_config_url_mode() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
         let config_path = project_dir.join(".mcp.json");
@@ -286,9 +286,32 @@ mod tests {
         let content = std::fs::read_to_string(&config_path).unwrap();
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
+        // URL mode → streamableHttp transport
+        assert!(json["mcpServers"]["masday"]["type"] == "streamableHttp");
+        assert!(json["mcpServers"]["masday"]["url"] == "http://localhost:30101/mcp");
+        assert!(json["mcpServers"]["masday"]["headers"]["Authorization"] == "Bearer ***");
+    }
+
+    #[test]
+    fn test_write_claude_code_config_stdio_mode() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+        let config_path = project_dir.join(".mcp.json");
+
+        let config = McpConfig {
+            mcp_binary_path: "/path/to/masday".into(),
+            api_url: String::new(),
+            api_key: String::new(),
+            database_url: None,
+        };
+
+        write_claude_code_config(&config_path, &config).unwrap();
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        let json: JsonValue = serde_json::from_str(&content).unwrap();
+
+        // No URL → stdio mode
         assert!(json["mcpServers"]["masday"]["type"] == "stdio");
-        assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:30101");
-        // Args must include "mcp" subcommand — single binary contains both CLI and MCP
         assert_eq!(
             json["mcpServers"]["masday"]["args"],
             serde_json::json!(["mcp"])
@@ -326,10 +349,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let settings_path = temp_dir.path().join("settings.json");
 
+        // Empty api_url → stdio mode
         let config = McpConfig {
             mcp_binary_path: "/home/user/.masday/bin/masday".into(),
-            api_url: "http://localhost:30101".to_string(),
-            api_key: "***".to_string(),
+            api_url: String::new(),
+            api_key: String::new(),
             database_url: None,
         };
 
@@ -364,10 +388,11 @@ mod tests {
         )
         .unwrap();
 
+        // Empty api_url → stdio mode with args
         let config = McpConfig {
             mcp_binary_path: "/home/user/.masday/bin/masday".into(),
-            api_url: "http://localhost:30101".to_string(),
-            api_key: "***".to_string(),
+            api_url: String::new(),
+            api_key: String::new(),
             database_url: None,
         };
 

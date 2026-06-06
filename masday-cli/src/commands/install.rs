@@ -833,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn test_standalone_install_no_mcp_config() {
+    fn test_standalone_install_creates_mcp_config() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
 
@@ -846,10 +846,10 @@ mod tests {
 
         run(args, project_dir).unwrap();
 
-        // Standalone mode should NOT create MCP config
+        // Standalone mode DOES create MCP config (stdio mode with local binary)
         assert!(
-            !project_dir.join(".mcp.json").exists(),
-            "Standalone mode should not create .mcp.json"
+            project_dir.join(".mcp.json").exists(),
+            "Standalone mode should create .mcp.json"
         );
     }
 }

@@ -78,7 +78,7 @@ pub fn sync_skills_to_project(
     Ok(reports)
 }
 
-pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<SyncReport>> {
+pub fn sync_skills_to_global(platforms: &[Platform], _force: bool) -> Result<Vec<SyncReport>> {
     // Masday skills are project-scoped — do not install to global.
     // Global skill dirs should only contain non-masday skills (bmad, etc).
     // This avoids duplicate skills when Claude Code loads both global + project.
@@ -86,7 +86,7 @@ pub fn sync_skills_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
     let mut reports = Vec::new();
 
     for platform in platforms {
-        let mut report = SyncReport {
+        let report = SyncReport {
             platform: platform.name().to_string(),
             copied: 0,
             skipped: skill_names.len(),

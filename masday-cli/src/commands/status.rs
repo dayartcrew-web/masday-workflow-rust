@@ -1226,6 +1226,7 @@ mod tests {
 
     #[test]
     fn test_health_report_overall_status_critical() {
+        // Critical = API down AND database down
         let report = HealthReport {
             masday_version: "0.1.0".to_string(),
             mode: "local".to_string(),
@@ -1238,8 +1239,8 @@ mod tests {
                 details: None,
             },
             database: ComponentHealth {
-                status: HealthStatus::Healthy,
-                message: "✓ connected".to_string(),
+                status: HealthStatus::Unhealthy, // DB also down → critical
+                message: "✗ unreachable".to_string(),
                 details: None,
             },
             redis: ComponentHealth {
