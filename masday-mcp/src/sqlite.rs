@@ -139,6 +139,15 @@ pub fn conn() -> std::sync::MutexGuard<'static, Connection> {
         .expect("SQLite connection lock poisoned")
 }
 
+/// Try to execute a simple query to verify database connectivity.
+///
+/// Returns Ok(()) if the connection is working, Err with description otherwise.
+pub fn try_connection() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let conn_guard = conn();
+    conn_guard.query_row("SELECT 1", [], |_| Ok(())).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Get the database file path.
 ///
 /// Priority:

@@ -181,46 +181,109 @@ pub async fn workflow_execute(
             return Ok(json!({"id": id, "status": current_status}));
         }
 
-        // Auto-advance through intermediate states to reach EXECUTE
         let t = now();
         match current_status.as_str() {
             "INIT" => {
+                // Only advance to ANALYZE, not all the way to EXECUTE
                 conn.execute(
                     "UPDATE workflows SET status='ANALYZE', updated_at=?1 WHERE id=?2",
                     params![&t, id],
                 )
                 .map_err(|e| err(e))?;
-                conn.execute(
-                    "UPDATE workflows SET status='PLAN', updated_at=?1 WHERE id=?2",
-                    params![&t, id],
-                )
-                .map_err(|e| err(e))?;
+
+                info!("Workflow {} transitioned to ANALYZE (from INIT)", id);
+                (id.to_string(), "ANALYZE".to_string())
             }
             "ANALYZE" => {
+                // Validate analysis artifacts exist before advancing to PLAN
+                // Check both context_documents and memories
+                let doc_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM context_documents WHERE workflow_id=?1",
+                        params![id],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+
+                let mem_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM memories WHERE workflow_id=?1",
+                        params![id],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+
+                if doc_count == 0 && mem_count == 0 {
+                    return Err(err(
+                        "Cannot advance to PLAN: no analysis artifacts found. Run analysis first."
+                    ));
+                }
+
                 conn.execute(
                     "UPDATE workflows SET status='PLAN', updated_at=?1 WHERE id=?2",
                     params![&t, id],
                 )
                 .map_err(|e| err(e))?;
+
+                info!("Workflow {} transitioned to PLAN (from ANALYZE)", id);
+                (id.to_string(), "PLAN".to_string())
             }
-            "PLAN" | "PAUSED" => {} // Direct transition to EXECUTE
+            "PLAN" => {
+                // Validate plan exists with tasks before advancing to EXECUTE
+                let plan_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM plans WHERE workflow_id=?1 AND status='ACTIVE'",
+                        params![id],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| err(e))?;
+
+                if plan_count == 0 {
+                    return Err(err(
+                        "Cannot advance to EXECUTE: no plan found. Create a plan first."
+                    ));
+                }
+
+                let task_count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1",
+                        params![id],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| err(e))?;
+
+                if task_count == 0 {
+                    return Err(err(
+                        "Cannot advance to EXECUTE: plan has no tasks. Add tasks to the plan first."
+                    ));
+                }
+
+                conn.execute(
+                    "UPDATE workflows SET status='EXECUTE', updated_at=?1 WHERE id=?2",
+                    params![&t, id],
+                )
+                .map_err(|e| err(e))?;
+
+                info!("Workflow {} transitioned to EXECUTE (from PLAN)", id);
+                (id.to_string(), "EXECUTE".to_string())
+            }
+            "PAUSED" => {
+                conn.execute(
+                    "UPDATE workflows SET status='EXECUTE', updated_at=?1 WHERE id=?2",
+                    params![&t, id],
+                )
+                .map_err(|e| err(e))?;
+
+                info!("Workflow {} transitioned to EXECUTE (from PAUSED)", id);
+                (id.to_string(), "EXECUTE".to_string())
+            }
             other => {
-                return Err(err(format!("Cannot execute workflow in state {}", other)));
+                return Err(err(format!(
+                    "Cannot execute workflow in state {}",
+                    other
+                )));
             }
         }
-
-        // Final transition to EXECUTE
-        conn.execute(
-            "UPDATE workflows SET status='EXECUTE', updated_at=?1 WHERE id=?2",
-            params![&t, id],
-        )
-        .map_err(|e| err(e))?;
-
-        info!(
-            "Workflow {} transitioned to EXECUTE (from {})",
-            id, current_status
-        );
-        (id.to_string(), "EXECUTE".to_string())
     }; // conn dropped
 
     // Fire-and-forget PG sync — non-blocking
@@ -391,7 +454,12 @@ pub async fn workflow_add_task(
     let deps = args.get("dependencies").map(|v| v.to_string());
     let t = now();
 
-    // Get or create default plan
+    // VALIDATION 1: Check plan_id is not empty (unless it's the default "default" string)
+    if plan_id.is_empty() {
+        return Err(err("plan_id cannot be empty"));
+    }
+
+    // VALIDATION 2: Check if plan exists
     let plan_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM plans WHERE id=?1",
@@ -399,11 +467,63 @@ pub async fn workflow_add_task(
             |r| r.get(0),
         )
         .map_err(err)?;
-    if plan_count == 0 {
+
+    // VALIDATION 3: If plan exists, verify it belongs to the workflow
+    if plan_count > 0 {
+        let plan_workflow_id: String = conn
+            .query_row(
+                "SELECT workflow_id FROM plans WHERE id=?1",
+                params![plan_id],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
+
+        if plan_workflow_id != workflow_id {
+            return Err(err(format!(
+                "Plan {} does not belong to workflow {}",
+                plan_id, workflow_id
+            )));
+        }
+    } else {
+        // VALIDATION 4: If plan doesn't exist, check workflow is in INIT state
+        // Only auto-create plan for new workflows in INIT state
+        let workflow_status: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![workflow_id],
+                |r| r.get(0),
+            )
+            .map_err(|_| err(format!("Workflow {} not found", workflow_id)))?;
+
+        if workflow_status != "INIT" {
+            return Err(err(format!(
+                "Cannot create plan for workflow in {} state. Only INIT state allows auto-plan creation.",
+                workflow_status
+            )));
+        }
+
+        // Auto-create plan for INIT workflows
         conn.execute(
             "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1,?2,1,'ACTIVE','Auto-created plan','{}','system',?3)",
             params![plan_id, workflow_id, &t],
         ).map_err(|e| err(e))?;
+    }
+
+    // VALIDATION 5: Check workflow state allows task creation
+    let workflow_status: String = conn
+        .query_row(
+            "SELECT status FROM workflows WHERE id=?1",
+            params![workflow_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| err(format!("Workflow {} not found", workflow_id)))?;
+
+    // Only allow task creation in INIT, PLAN, or EXECUTE states
+    if !matches!(workflow_status.as_str(), "INIT" | "PLAN" | "EXECUTE") {
+        return Err(err(format!(
+            "Cannot add tasks to workflow in {} state. Allowed states: INIT, PLAN, EXECUTE.",
+            workflow_status
+        )));
     }
 
     conn.execute(
@@ -2533,7 +2653,8 @@ mod tests {
         let result = workflow_execute(json!({"id": id})).await;
         assert!(result.is_ok(), "Expected ok, got {:?}", result);
         let val = result.unwrap();
-        assert_eq!(val["status"], "EXECUTE");
+        // New behavior: only advances one state at a time
+        assert_eq!(val["status"], "ANALYZE");
     }
 
     #[tokio::test]
@@ -2541,10 +2662,75 @@ mod tests {
         let guard = TestDbGuard::new();
         let (id, _) = setup_test_db_via_guard(&guard, "PLAN");
 
+        // Create a plan and tasks for the workflow (prerequisites for EXECUTE)
+        let conn = crate::sqlite::conn();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let t = now();
+
+        conn.execute(
+            "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1,?2,1,'ACTIVE','Test plan','{}','test',?3)",
+            params![&plan_id, &id, &t],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, workflow_id, plan_id, title, status, created_at, updated_at) VALUES (?1,?2,?3,'Test task','PENDING',?4,?4)",
+            params![&task_id, &id, &plan_id, &t],
+        ).unwrap();
+
         let result = workflow_execute(json!({"workflow_id": id})).await;
         assert!(result.is_ok(), "Expected ok, got {:?}", result);
         let val = result.unwrap();
         assert_eq!(val["status"], "EXECUTE");
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_plan_without_prerequisites() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "PLAN");
+
+        // Try to execute without plan or tasks - should fail
+        let result = workflow_execute(json!({"workflow_id": id})).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot advance to EXECUTE: no plan found"));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_analyze_without_prerequisites() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "ANALYZE");
+
+        // Try to execute without analysis artifacts - should fail
+        let result = workflow_execute(json!({"workflow_id": id})).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot advance to PLAN: no analysis artifacts found"));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execute_from_analyze_with_prerequisites() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "ANALYZE");
+
+        // Create analysis artifacts (use memory table instead of context_documents)
+        let conn = crate::sqlite::conn();
+        let mem_id = uuid::Uuid::new_v4().to_string();
+        let t = now();
+
+        conn.execute(
+            "INSERT INTO memories (id, workflow_id, memory_type, summary, content, importance_score, created_by_agent, tags, created_at, updated_at) VALUES (?1,?2,'research','Test analysis','Analysis content',0.7,'test','[]',?3,?3)",
+            params![&mem_id, &id, &t],
+        ).unwrap();
+
+        let result = workflow_execute(json!({"workflow_id": id})).await;
+        assert!(result.is_ok(), "Expected ok, got {:?}", result);
+        let val = result.unwrap();
+        assert_eq!(val["status"], "PLAN");
     }
 
     #[tokio::test]

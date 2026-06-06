@@ -2,6 +2,7 @@
 
 use crate::client;
 use crate::safe_path;
+use masday_core::validate_uuid;
 use percent_encoding::percent_encode;
 use percent_encoding::AsciiSet;
 use serde_json::Value;
@@ -34,6 +35,11 @@ pub async fn workflow_execute(
         .or_else(|| args.get("workflow_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing id or workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(&format!("/api/workflows/{}/execute", workflow_id), args).await
 }
 
@@ -46,6 +52,11 @@ pub async fn workflow_get_status(
         .or_else(|| args.get("workflow_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing id or workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_get(&format!("/api/workflows/{}/status", workflow_id)).await
 }
 
@@ -55,6 +66,11 @@ pub async fn workflow_get(args: Value) -> Result<Value, Box<dyn std::error::Erro
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_get(&safe_path!("/api/workflows/{}", workflow_id)).await
 }
 
@@ -96,6 +112,11 @@ pub async fn workflow_delete(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_delete(&safe_path!("/api/workflows/{}", workflow_id)).await
 }
 
@@ -107,6 +128,11 @@ pub async fn workflow_add_task(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(&format!("/api/workflows/{}/tasks", workflow_id), args).await
 }
 
@@ -118,6 +144,11 @@ pub async fn workflow_start_task(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(&format!("/api/workflows/{}/start-task", workflow_id), args).await
 }
 
@@ -129,6 +160,11 @@ pub async fn workflow_complete_task(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(
         &format!("/api/workflows/{}/complete-task", workflow_id),
         args,
@@ -144,6 +180,11 @@ pub async fn workflow_save_progress(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(
         &format!("/api/workflows/{}/save-progress", workflow_id),
         args,
@@ -159,6 +200,11 @@ pub async fn workflow_create_plan(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(&format!("/api/workflows/{}/plan", workflow_id), args).await
 }
 
@@ -170,6 +216,11 @@ pub async fn workflow_get_plan(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_get(&format!("/api/workflows/{}/plan", workflow_id)).await
 }
 
@@ -181,6 +232,11 @@ pub async fn workflow_list_tasks(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_get(&format!("/api/workflows/{}/tasks", workflow_id)).await
 }
 
@@ -206,6 +262,11 @@ pub async fn workflow_list_parallel_branches(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_get(&format!("/api/workflows/{}/parallel-branches", workflow_id)).await
 }
 
@@ -217,6 +278,11 @@ pub async fn workflow_mark_synthesis_ready(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(
         &format!("/api/workflows/{}/synthesis-ready", workflow_id),
         args,
@@ -232,6 +298,11 @@ pub async fn workflow_mark_verification_ready(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(
         &format!("/api/workflows/{}/verification-ready", workflow_id),
         args,
@@ -247,6 +318,11 @@ pub async fn workflow_set_execution_mode(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_post(
         &format!("/api/workflows/{}/execution-mode", workflow_id),
         args,
@@ -261,11 +337,32 @@ pub async fn workflow_resume_suggestion(
     client::api_post("/api/workflows/resume-suggestion", args).await
 }
 
-/// Ping workflow
+/// Ping workflow - returns actual system health check
 pub async fn workflow_ping(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(serde_json::json!({"status": "pong"}))
+    // Check if we can access SQLite
+    let sqlite_status = match crate::sqlite::try_connection() {
+        Ok(_) => "connected",
+        Err(e) => {
+            return Ok(serde_json::json!({
+                "status": "unhealthy",
+                "service": "masday-mcp",
+                "version": env!("CARGO_PKG_VERSION"),
+                "database": "disconnected",
+                "error": format!("SQLite connection failed: {}", e)
+            }));
+        }
+    };
+
+    Ok(serde_json::json!({
+        "status": "healthy",
+        "service": "masday-mcp",
+        "version": env!("CARGO_PKG_VERSION"),
+        "database": sqlite_status,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "mode": std::env::var("MASDAY_MODE").unwrap_or_else(|_| "stdio".to_string())
+    }))
 }
 
 /// Get current task
@@ -276,6 +373,11 @@ pub async fn workflow_get_current_task(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_get(&format!("/api/workflows/{}/current-task", workflow_id)).await
 }
 
@@ -286,10 +388,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_ping() {
+        // Initialize SQLite for this test (ignore if already initialized)
+        let _ = crate::sqlite::init_sqlite();
+
         let result = workflow_ping(json!({})).await;
         assert!(result.is_ok());
         let result_json = result.unwrap();
-        assert_eq!(result_json["status"], "pong");
+        // Check that we get a healthy response
+        assert_eq!(result_json["status"], "healthy");
+        assert_eq!(result_json["service"], "masday-mcp");
+        assert!(result_json.get("version").is_some());
+        assert!(result_json.get("timestamp").is_some());
+        assert!(result_json.get("database").is_some());
     }
 
     #[test]

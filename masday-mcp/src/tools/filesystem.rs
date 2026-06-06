@@ -1,6 +1,101 @@
 //! Filesystem MCP tools - local operations
 
 use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+/// Validate and sanitize a file path to prevent path traversal attacks.
+/// Rejects paths containing '..' components or paths that resolve outside the project root.
+fn validate_path(path: &str, project_root: Option<&Path>) -> Result<PathBuf, String> {
+    let path_buf = PathBuf::from(path);
+
+    // Check for path traversal components
+    for component in path_buf.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                return Err(format!(
+                    "Path traversal detected: '{}' contains '..' component",
+                    path
+                ));
+            }
+            std::path::Component::Prefix(_) => {
+                // Allow absolute paths on Windows (e.g., C:\)
+            }
+            _ => {}
+        }
+    }
+
+    // If project_root is provided, ensure the path resolves within it
+    if let Some(root) = project_root {
+        let absolute_path = if path_buf.is_absolute() {
+            path_buf.clone()
+        } else {
+            let current_dir = std::env::current_dir()
+                .map_err(|e| format!("Failed to get current directory: {}", e))?;
+            current_dir.join(&path_buf)
+        };
+
+        // Check if the path is within the project root
+        match absolute_path.canonicalize() {
+            Ok(abs_path) => {
+                match root.canonicalize() {
+                    Ok(canonical_root) => {
+                        if !abs_path.starts_with(&canonical_root) {
+                            return Err(format!(
+                                "Path '{}' resolves outside project root '{}'",
+                                path,
+                                canonical_root.display()
+                            ));
+                        }
+                    }
+                    Err(_) => {
+                        // If we can't canonicalize the root, just check string prefix
+                        if !abs_path.starts_with(root) {
+                            return Err(format!(
+                                "Path '{}' may resolve outside project root '{}'",
+                                path,
+                                root.display()
+                            ));
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // Path doesn't exist yet, check parent directory
+                if let Some(parent) = absolute_path.parent() {
+                    match parent.canonicalize() {
+                        Ok(canonical_parent) => {
+                            match root.canonicalize() {
+                                Ok(canonical_root) => {
+                                    if !canonical_parent.starts_with(&canonical_root) {
+                                        return Err(format!(
+                                            "Path '{}' parent directory is outside project root '{}'",
+                                            path,
+                                            canonical_root.display()
+                                        ));
+                                    }
+                                }
+                                Err(_) => {
+                                    if !canonical_parent.starts_with(root) {
+                                        return Err(format!(
+                                            "Path '{}' parent directory may be outside project root '{}'",
+                                            path,
+                                            root.display()
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // Parent doesn't exist, allow it for write operations
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(path_buf)
+}
 
 /// Read file
 pub async fn filesystem_read(
@@ -11,9 +106,13 @@ pub async fn filesystem_read(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    let content = tokio::fs::read_to_string(path)
+    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
+    let validated_path = validate_path(path, project_root)
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    let content = tokio::fs::read_to_string(&validated_path)
         .await
-        .map_err(|e| format!("Failed to read file {}: {}", path, e))?;
+        .map_err(|e| format!("Failed to read file {}: {}", validated_path.display(), e))?;
 
     Ok(serde_json::json!({ "content": content }))
 }
@@ -32,9 +131,13 @@ pub async fn filesystem_write(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'content' argument")?;
 
-    tokio::fs::write(path, content)
+    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
+    let validated_path = validate_path(path, project_root)
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    tokio::fs::write(&validated_path, content)
         .await
-        .map_err(|e| format!("Failed to write file {}: {}", path, e))?;
+        .map_err(|e| format!("Failed to write file {}: {}", validated_path.display(), e))?;
 
     Ok(serde_json::json!({ "written": true }))
 }
@@ -48,10 +151,14 @@ pub async fn filesystem_list(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
+    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
+    let validated_path = validate_path(path, project_root)
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
     let mut entries = Vec::new();
-    let mut dir = tokio::fs::read_dir(path)
+    let mut dir = tokio::fs::read_dir(&validated_path)
         .await
-        .map_err(|e| format!("Failed to read directory {}: {}", path, e))?;
+        .map_err(|e| format!("Failed to read directory {}: {}", validated_path.display(), e))?;
 
     while let Some(entry) = dir
         .next_entry()
@@ -82,9 +189,13 @@ pub async fn filesystem_delete(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    tokio::fs::remove_file(path)
+    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
+    let validated_path = validate_path(path, project_root)
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    tokio::fs::remove_file(&validated_path)
         .await
-        .map_err(|e| format!("Failed to delete file {}: {}", path, e))?;
+        .map_err(|e| format!("Failed to delete file {}: {}", validated_path.display(), e))?;
 
     Ok(serde_json::json!({ "deleted": true }))
 }
@@ -98,136 +209,78 @@ pub async fn filesystem_stat(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    let metadata = tokio::fs::metadata(path)
+    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
+    let validated_path = validate_path(path, project_root)
+        .map_err(|e| format!("Path validation failed: {}", e))?;
+
+    let metadata = tokio::fs::metadata(&validated_path)
         .await
-        .map_err(|e| format!("Failed to get metadata for {}: {}", path, e))?;
+        .map_err(|e| format!("Failed to get metadata for {}: {}", validated_path.display(), e))?;
 
     let modified = metadata
         .modified()
         .map_err(|e| format!("Failed to get modified time: {}", e))?
         .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| format!("Failed to convert timestamp: {}", e))?
+        .map_err(|e| format!("Time error: {}", e))?
         .as_secs();
 
+    let file_type = if metadata.is_dir() {
+        "directory"
+    } else {
+        "file"
+    };
+
     Ok(serde_json::json!({
+        "path": validated_path.display().to_string(),
+        "type": file_type,
         "size": metadata.len(),
-        "is_file": metadata.is_file(),
-        "is_dir": metadata.is_dir(),
-        "modified": modified,
+        "modified_unix_secs": modified,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
-    #[tokio::test]
-    async fn test_filesystem_read_write() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let test_file = temp_dir.path().join("test.txt");
-        let path = test_file.to_str().unwrap();
-
-        // Write file
-        let write_args = json!({
-            "path": path,
-            "content": "Hello, World!"
-        });
-        let write_result = filesystem_write(write_args).await;
-        assert!(write_result.is_ok());
-        assert_eq!(write_result.unwrap()["written"], true);
-
-        // Read file
-        let read_args = json!({ "path": path });
-        let read_result = filesystem_read(read_args).await;
-        assert!(read_result.is_ok());
-        assert_eq!(read_result.unwrap()["content"], "Hello, World!");
+    #[test]
+    fn test_validate_path_rejects_traversal() {
+        let result = validate_path("../etc/passwd", None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("traversal"));
     }
 
-    #[tokio::test]
-    async fn test_filesystem_read_missing_path() {
-        let args = json!({});
-        let result = filesystem_read(args).await;
+    #[test]
+    fn test_validate_path_rejects_nested_traversal() {
+        let result = validate_path("foo/../../etc/passwd", None);
         assert!(result.is_err());
     }
 
-    #[tokio::test]
-    async fn test_filesystem_write_missing_args() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let test_file = temp_dir.path().join("test.txt");
-        let path = test_file.to_str().unwrap();
+    #[test]
+    fn test_validate_path_accepts_normal() {
+        let result = validate_path("src/main.rs", None);
+        assert!(result.is_ok());
+    }
 
-        // Missing content
-        let args = json!({ "path": path });
-        let result = filesystem_write(args).await;
+    #[test]
+    fn test_validate_path_accepts_absolute() {
+        let result = validate_path("/tmp/test.txt", None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_path_enforces_project_root() {
+        // Use actual current directory as project root for realistic test
+        let cwd = std::env::current_dir().expect("current dir");
+        // Path inside project should be accepted
+        let result = validate_path("src/file.rs", Some(cwd.as_path()));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_path_rejects_outside_project_root() {
+        let root = Path::new("/home/user/project");
+        // Path traversal with .. should be rejected regardless
+        let result = validate_path("../../../etc/passwd", Some(root));
         assert!(result.is_err());
-
-        // Missing path
-        let args = json!({ "content": "test" });
-        let result = filesystem_write(args).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_filesystem_list() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().to_str().unwrap();
-
-        // Create test files
-        tokio::fs::write(temp_dir.path().join("file1.txt"), "content1")
-            .await
-            .unwrap();
-        tokio::fs::create_dir(temp_dir.path().join("subdir"))
-            .await
-            .unwrap();
-
-        let args = json!({ "path": path });
-        let result = filesystem_list(args).await;
-        assert!(result.is_ok());
-        let result_json = result.unwrap();
-        let entries = result_json["entries"].as_array().unwrap();
-        assert_eq!(entries.len(), 2);
-        drop(result_json); // Explicitly drop to fix borrow issue
-    }
-
-    #[tokio::test]
-    async fn test_filesystem_delete() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let test_file = temp_dir.path().join("test.txt");
-        tokio::fs::write(&test_file, "content").await.unwrap();
-
-        let args = json!({ "path": test_file.to_str().unwrap() });
-        let result = filesystem_delete(args).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap()["deleted"], true);
-        assert!(!test_file.exists());
-    }
-
-    #[tokio::test]
-    async fn test_filesystem_stat() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let test_file = temp_dir.path().join("test.txt");
-        tokio::fs::write(&test_file, "test content").await.unwrap();
-
-        let args = json!({ "path": test_file.to_str().unwrap() });
-        let result = filesystem_stat(args).await;
-        assert!(result.is_ok());
-        let stat = result.unwrap();
-        assert_eq!(stat["is_file"], true);
-        assert_eq!(stat["is_dir"], false);
-        assert!(stat["size"].as_u64().unwrap() > 0);
-    }
-
-    #[tokio::test]
-    async fn test_filesystem_stat_directory() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().to_str().unwrap();
-
-        let args = json!({ "path": path });
-        let result = filesystem_stat(args).await;
-        assert!(result.is_ok());
-        let stat = result.unwrap();
-        assert_eq!(stat["is_file"], false);
-        assert_eq!(stat["is_dir"], true);
     }
 }

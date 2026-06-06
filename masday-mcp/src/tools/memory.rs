@@ -1,6 +1,7 @@
 //! Memory MCP tools - HTTP client calls to API
 
 use crate::client;
+use masday_core::validate_uuid;
 use serde_json::Value;
 
 pub async fn memory_store(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -58,6 +59,11 @@ pub async fn memory_recall_by_task(
         .get("task_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing task_id".to_string())?;
+
+    if !validate_uuid(task_id) {
+        return Err(format!("Invalid task_id format: '{}'", task_id).into());
+    }
+
     client::api_get(&format!("/api/memories/by-task/{}", task_id)).await
 }
 
@@ -83,6 +89,11 @@ pub async fn memory_update(args: Value) -> Result<Value, Box<dyn std::error::Err
         .or_else(|| args.get("memory_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing id or memory_id".to_string())?;
+
+    if !validate_uuid(memory_id) {
+        return Err(format!("Invalid memory_id format: '{}'", memory_id).into());
+    }
+
     client::api_patch(&format!("/api/memories/{}", memory_id), args).await
 }
 
@@ -92,6 +103,11 @@ pub async fn memory_delete(args: Value) -> Result<Value, Box<dyn std::error::Err
         .or_else(|| args.get("memory_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing id or memory_id".to_string())?;
+
+    if !validate_uuid(memory_id) {
+        return Err(format!("Invalid memory_id format: '{}'", memory_id).into());
+    }
+
     client::api_delete(&format!("/api/memories/{}", memory_id)).await
 }
 
@@ -102,6 +118,11 @@ pub async fn memory_delete_by_workflow(
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    if !validate_uuid(workflow_id) {
+        return Err(format!("Invalid workflow_id format: '{}'", workflow_id).into());
+    }
+
     client::api_delete(&format!("/api/memories/workflow/{}", workflow_id)).await
 }
 

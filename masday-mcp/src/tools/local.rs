@@ -68,8 +68,8 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
 /// - "ollama": HTTP POST to Ollama API with nomic-embed-text model
 /// - "openai": HTTP POST to OpenAI API with text-embedding-3-small model
 ///
-/// Returns None on failure (doesn't crash), Some(Vec<f64>) on success.
-async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
+/// Returns Result with vector or error message.
+async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
     let provider = std::env::var("EMBEDDING_PROVIDER")
         .unwrap_or_else(|_| "mock".to_string())
         .to_lowercase();
@@ -79,7 +79,7 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
             // Use existing feature hashing vectorizer
             let vector = embedding::text_to_vector(text);
             // Convert f32 to f64 for API compatibility
-            Some(vector.into_iter().map(|v| v as f64).collect())
+            Ok(vector.into_iter().map(|v| v as f64).collect())
         }
         "ollama" => {
             // Call Ollama API
@@ -93,35 +93,31 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
                 "input": text
             });
 
-            match client.post(&url).json(&payload).send().await {
-                Ok(response) if response.status().is_success() => {
-                    if let Ok(result) = response.json::<serde_json::Value>().await {
-                        if let Some(embedding) = result.get("embedding").and_then(|v| v.as_array())
-                        {
-                            let vector: Vec<f64> =
-                                embedding.iter().filter_map(|v| v.as_f64()).collect();
-                            info!(
-                                "Generated Ollama embedding with {} dimensions",
-                                vector.len()
-                            );
-                            return Some(vector);
-                        }
-                    }
-                }
-                Ok(response) => {
-                    warn!("Ollama embedding request failed: {}", response.status());
-                }
-                Err(e) => {
-                    warn!("Ollama embedding request error: {}", e);
-                }
+            let response = client.post(&url).json(&payload).send().await
+                .map_err(|e| format!("Ollama embedding request failed: {}", e))?;
+
+            if !response.status().is_success() {
+                return Err(format!("Ollama embedding request failed: {}", response.status()));
             }
-            None
+
+            let result = response.json::<serde_json::Value>().await
+                .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+
+            result.get("embedding")
+                .and_then(|v| v.as_array())
+                .map(|embedding| {
+                    let vector: Vec<f64> = embedding.iter().filter_map(|v| v.as_f64()).collect();
+                    info!("Generated Ollama embedding with {} dimensions", vector.len());
+                    vector
+                })
+                .ok_or_else(|| "Invalid Ollama embedding response format".to_string())
         }
         "openai" => {
             // Call OpenAI API
             let base_url = std::env::var("OPENAI_BASE_URL")
                 .unwrap_or_else(|_| "https://api.openai.com".to_string());
-            let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+            let api_key = std::env::var("OPENAI_API_KEY")
+                .map_err(|_| "OPENAI_API_KEY not set".to_string())?;
             let url = format!("{}/v1/embeddings", base_url);
 
             let client = Client::new();
@@ -130,40 +126,27 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
                 "input": text
             });
 
-            match client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .json(&payload)
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    if let Ok(result) = response.json::<serde_json::Value>().await {
-                        if let Some(data) = result.get("data").and_then(|v| v.as_array()) {
-                            if let Some(embedding) = data
-                                .first()
-                                .and_then(|v| v.get("embedding"))
-                                .and_then(|v| v.as_array())
-                            {
-                                let vector: Vec<f64> =
-                                    embedding.iter().filter_map(|v| v.as_f64()).collect();
-                                info!(
-                                    "Generated OpenAI embedding with {} dimensions",
-                                    vector.len()
-                                );
-                                return Some(vector);
-                            }
-                        }
-                    }
-                }
-                Ok(response) => {
-                    warn!("OpenAI embedding request failed: {}", response.status());
-                }
-                Err(e) => {
-                    warn!("OpenAI embedding request error: {}", e);
-                }
+            let response = client.post(&url).header("Authorization", format!("Bearer {}", api_key)).json(&payload).send().await
+                .map_err(|e| format!("OpenAI embedding request failed: {}", e))?;
+
+            if !response.status().is_success() {
+                return Err(format!("OpenAI embedding request failed: {}", response.status()));
             }
-            None
+
+            let result = response.json::<serde_json::Value>().await
+                .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
+
+            result.get("data")
+                .and_then(|v| v.as_array())
+                .and_then(|data| data.first())
+                .and_then(|v| v.get("embedding"))
+                .and_then(|v| v.as_array())
+                .map(|embedding| {
+                    let vector: Vec<f64> = embedding.iter().filter_map(|v| v.as_f64()).collect();
+                    info!("Generated OpenAI embedding with {} dimensions", vector.len());
+                    vector
+                })
+                .ok_or_else(|| "Invalid OpenAI embedding response format".to_string())
         }
         _ => {
             warn!(
@@ -171,7 +154,7 @@ async fn generate_embedding(text: &str) -> Option<Vec<f64>> {
                 provider
             );
             let vector = embedding::text_to_vector(text);
-            Some(vector.into_iter().map(|v| v as f64).collect())
+            Ok(vector.into_iter().map(|v| v as f64).collect())
         }
     }
 }
@@ -392,15 +375,25 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                                 };
 
                                 if !embedding_text.trim().is_empty() {
-                                    if let Some(embedding) =
-                                        generate_embedding(&embedding_text).await
-                                    {
-                                        task_update["embedding"] = serde_json::json!(embedding);
-                                        info!(
-                                            "Generated embedding for task {}: {} dimensions",
-                                            task_id,
-                                            embedding.len()
-                                        );
+                                    match generate_embedding(&embedding_text).await {
+                                        Ok(embedding) => {
+                                            task_update["embedding"] = serde_json::json!(embedding);
+                                            info!(
+                                                "Generated embedding for task {}: {} dimensions",
+                                                task_id,
+                                                embedding.len()
+                                            );
+                                        }
+                                        Err(e) => {
+                                            // For critical operations, propagate the error
+                                            errors.push(serde_json::json!({
+                                                "workflow_id": workflow_id,
+                                                "task_id": task_id,
+                                                "error": format!("Failed to generate embedding: {}", e)
+                                            }));
+                                            // Continue without embedding to allow task to complete
+                                            // The error is logged in the errors array
+                                        }
                                     }
                                 }
 
@@ -657,42 +650,52 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_mock() {
+        // Ensure clean state before test
+        std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "mock");
         let text = "Hello world test";
         let embedding = generate_embedding(text).await;
 
-        assert!(embedding.is_some());
+        assert!(embedding.is_ok());
         let vector = embedding.unwrap();
         assert_eq!(vector.len(), 768); // Feature hashing produces 768-dim vectors
-                                       // Check that values are normalized (unit vector)
+        // Check that values are normalized (unit vector)
         let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
         let norm = norm_sq.sqrt();
         assert!((norm - 1.0).abs() < 0.01, "Vector should be normalized");
+        // Cleanup
+        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[tokio::test]
     async fn test_generate_embedding_empty_text() {
+        // Ensure clean state before test
+        std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "mock");
         let text = "";
         let embedding = generate_embedding(text).await;
 
-        assert!(embedding.is_some());
+        assert!(embedding.is_ok());
         let vector = embedding.unwrap();
         assert_eq!(vector.len(), 768);
         // Empty text produces zero vector
         let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
         assert_eq!(norm_sq, 0.0);
+        // Cleanup
+        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 
     #[tokio::test]
     async fn test_generate_embedding_deterministic() {
+        // Ensure clean state
+        std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "mock");
         let text = "deterministic test";
         let embedding1 = generate_embedding(text).await;
         let embedding2 = generate_embedding(text).await;
 
-        assert!(embedding1.is_some());
-        assert!(embedding2.is_some());
+        assert!(embedding1.is_ok());
+        assert!(embedding2.is_ok());
         let vec1 = embedding1.unwrap();
         let vec2 = embedding2.unwrap();
         assert_eq!(vec1.len(), vec2.len());
@@ -704,13 +707,32 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_unknown_provider_fallback() {
+        // Ensure clean state before test
+        std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "unknown_provider");
         let text = "fallback test";
         let embedding = generate_embedding(text).await;
 
         // Should fallback to mock
-        assert!(embedding.is_some());
+        assert!(embedding.is_ok());
         let vector = embedding.unwrap();
         assert_eq!(vector.len(), 768);
+        // Cleanup
+        std::env::remove_var("EMBEDDING_PROVIDER");
+    }
+
+    #[tokio::test]
+    async fn test_generate_embedding_openai_missing_key() {
+        // Ensure clean state before test
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::set_var("EMBEDDING_PROVIDER", "openai");
+        let text = "test";
+        let embedding = generate_embedding(text).await;
+
+        // Should fail with missing API key error
+        assert!(embedding.is_err());
+        assert!(embedding.unwrap_err().contains("OPENAI_API_KEY"));
+        // Cleanup
+        std::env::remove_var("EMBEDDING_PROVIDER");
     }
 }

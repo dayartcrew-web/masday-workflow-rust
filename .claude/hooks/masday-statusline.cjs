@@ -198,11 +198,11 @@ async function main() {
     }
   } catch {}
 
-  // Project folder name + dirty count
+  // Project folder name + dirty count (exclude build artifacts)
   try {
     const dirName = path.basename(PROJECT);
     const dirty = execSync(
-      `cd ${PROJECT} && git status --porcelain`,
+      `cd ${PROJECT} && git status --porcelain | grep -vE '(^|/)out/|^.. dist/|^.. build/|^.. .next/|^.. target/|^.. node_modules/'`,
       { encoding: "utf-8" }
     ).trim();
     parts.push(`${dirName}${dirty ? `(${dirty.split("\n").length})` : ""}`);

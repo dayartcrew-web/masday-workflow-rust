@@ -211,4 +211,21 @@ impl ContextDocumentRepo {
 
         Ok(Some(ContextDocument::from_row(&rows[0])))
     }
+
+    /// Count context documents for a workflow
+    pub async fn count_by_workflow(&self, workflow_id: &str) -> Result<i64> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let query = r#"SELECT COUNT(*) FROM "ContextDocument" WHERE "workflowId" = $1"#;
+        let row = client
+            .query_one(query, &[&workflow_id])
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to count context documents: {}", e)))?;
+
+        Ok(row.get::<_, i64>("count"))
+    }
 }

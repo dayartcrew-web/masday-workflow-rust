@@ -214,4 +214,38 @@ impl TaskRepo {
 
         Ok(TaskProgressLog::from_row(&row))
     }
+
+    /// Count tasks for a workflow
+    pub async fn count_by_workflow(&self, workflow_id: &str) -> Result<i64> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let query = r#"SELECT COUNT(*) FROM "Task" WHERE "workflowId" = $1"#;
+        let row = client
+            .query_one(query, &[&workflow_id])
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to count tasks: {}", e)))?;
+
+        Ok(row.get::<_, i64>("count"))
+    }
+
+    /// Count tasks with DONE status for a workflow
+    pub async fn count_done_by_workflow(&self, workflow_id: &str) -> Result<i64> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let query = r#"SELECT COUNT(*) FROM "Task" WHERE "workflowId" = $1 AND status = 'DONE'"#;
+        let row = client
+            .query_one(query, &[&workflow_id])
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to count done tasks: {}", e)))?;
+
+        Ok(row.get::<_, i64>("count"))
+    }
 }

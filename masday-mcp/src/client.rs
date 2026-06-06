@@ -95,7 +95,15 @@ pub async fn api_get(
         .header("Authorization", format!("Bearer {}", api_key()))
         .send()
         .await
-        .map_err(|e| format!("GET request failed: {}", e))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("API request timed out after 30s. The API server may be down or unreachable: {}", api_url())
+            } else if e.is_connect() {
+                format!("Cannot connect to API server at {}. Check if the server is running.", api_url())
+            } else {
+                format!("GET request failed: {}", e)
+            }
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -128,7 +136,15 @@ pub async fn api_post(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("POST request failed: {}", e))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("API request timed out after 30s. The API server may be down or unreachable: {}", api_url())
+            } else if e.is_connect() {
+                format!("Cannot connect to API server at {}. Check if the server is running.", api_url())
+            } else {
+                format!("POST request failed: {}", e)
+            }
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -161,7 +177,15 @@ pub async fn api_patch(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("PATCH request failed: {}", e))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("API request timed out after 30s. The API server may be down or unreachable: {}", api_url())
+            } else if e.is_connect() {
+                format!("Cannot connect to API server at {}. Check if the server is running.", api_url())
+            } else {
+                format!("PATCH request failed: {}", e)
+            }
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -192,7 +216,15 @@ pub async fn api_delete(
         .header("Authorization", format!("Bearer {}", api_key()))
         .send()
         .await
-        .map_err(|e| format!("DELETE request failed: {}", e))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("API request timed out after 30s. The API server may be down or unreachable: {}", api_url())
+            } else if e.is_connect() {
+                format!("Cannot connect to API server at {}. Check if the server is running.", api_url())
+            } else {
+                format!("DELETE request failed: {}", e)
+            }
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();

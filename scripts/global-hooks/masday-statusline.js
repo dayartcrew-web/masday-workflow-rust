@@ -244,10 +244,13 @@ async function main() {
       }
     } catch {}
 
-    // Project name + dirty count
+    // Project name + dirty count (exclude build artifacts and generated files)
     try {
-      const dirty = execSync(`git status --porcelain 2>/dev/null`, { encoding: "utf-8", cwd }).trim();
-      parts.push(`${dirName}${dirty ? `(${dirty.split("\n").length})` : ""}`);
+      const dirty = execSync(
+        `git status --porcelain 2>/dev/null | grep -vE '(^|/)out/|^.. dist/|^.. build/|^.. .next/|^.. target/|^.. node_modules/'`,
+        { encoding: "utf-8", cwd }
+      ).trim();
+      parts.push(`${dirName}${dirty ? `(${dirty.split("\\n").length})` : ""}`);
     } catch {
       parts.push(dirName);
     }

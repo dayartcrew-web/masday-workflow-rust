@@ -1,6 +1,7 @@
 //! Review MCP tools - HTTP client calls to API
 
 use crate::client;
+use masday_core::validate_uuid;
 use serde_json::Value;
 
 pub async fn review_submit(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -14,6 +15,11 @@ pub async fn review_get_latest(
         .get("task_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing task_id".to_string())?;
+
+    if !validate_uuid(task_id) {
+        return Err(format!("Invalid task_id format: '{}'", task_id).into());
+    }
+
     client::api_get(&format!("/api/reviews/task/{}", task_id)).await
 }
 
