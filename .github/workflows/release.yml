@@ -40,11 +40,6 @@ jobs:
             target: aarch64-apple-darwin
             artifact: masday-macos-aarch64
             ext: ''
-          # macOS Intel (build on macos-latest with x86_64 target via rosetta)
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: masday-macos-x86_64
-            ext: ''
           # Windows x86_64 (no ONNX, remote provider only)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -293,7 +288,6 @@ jobs:
           |----------|------|
           | Linux x86_64 | `masday-linux-x86_64` |
           | macOS Apple Silicon | `masday-macos-aarch64` |
-          | macOS Intel | `masday-macos-x86_64` |
           | Windows x86_64 | `masday-windows-x86_64.exe` |
 
           ### Quick start
