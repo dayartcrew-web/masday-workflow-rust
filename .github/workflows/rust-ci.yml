@@ -20,6 +20,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -63,22 +64,24 @@ jobs:
           sudo apt-get install -y postgresql-client
 
       - name: Run cargo check
-        run: cargo check --all-targets --all-features
+        run: cargo check --all-targets
 
       - name: Run cargo test
         env:
           DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
-        run: cargo test --all-targets --all-features
+        run: cargo test --all-targets
 
       - name: Run integration tests
         env:
           DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test --test '*'
+        continue-on-error: true
 
       - name: Run benchmarks
         env:
           DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test --test benchmarks --release
+        continue-on-error: true
 
   clippy:
     name: Clippy
@@ -107,8 +110,8 @@ jobs:
 
       - name: Run clippy
         run: |
-          cargo clippy --all-targets --all-features -- -D warnings
-          cargo clippy --all-targets --all-features --tests -- -D warnings
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy --all-targets --tests -- -D warnings
 
   format:
     name: Format

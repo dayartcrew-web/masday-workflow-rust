@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "node .claude/hooks/masday-statusline.cjs"
+    "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/masday-statusline.cjs"
   },
   "hooks": {
     "SessionStart": [
@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs masday-mem-context",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs masday-mem-context",
             "timeout": 15
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/masday-session-start.cjs",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/masday-session-start.cjs",
             "timeout": 10
           }
         ]
@@ -32,12 +32,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs pre-tool-use",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs pre-tool-use",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs workflow-lock",
             "timeout": 10
           }
         ]
@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs workflow-lock",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs workflow-lock",
             "timeout": 10
           }
         ]
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs skill-wrap-guard",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs skill-wrap-guard",
             "timeout": 10
           }
         ]
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs pre-task-complete",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs pre-task-complete",
             "timeout": 10
           }
         ]
@@ -79,7 +79,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs post-tool-use",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs post-tool-use",
             "timeout": 10
           }
         ]
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/masday-context-warning.cjs",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/masday-context-warning.cjs",
             "timeout": 5
           }
         ]
@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/masday-pre-compact.cjs",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/masday-pre-compact.cjs",
             "timeout": 10
           }
         ]
@@ -115,7 +115,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/masday-post-compact.cjs",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/masday-post-compact.cjs",
             "timeout": 5
           }
         ]
@@ -127,7 +127,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs on-notification",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs on-notification",
             "timeout": 10
           }
         ]
@@ -139,7 +139,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-hook.mjs on-stop",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs on-stop",
             "timeout": 30
           }
         ]
