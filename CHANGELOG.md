@@ -2,6 +2,41 @@
 
 All notable changes to Masday CLI are documented here.
 
+## [v0.3.32] - 2026-06-05
+
+### Fixed
+- tags column is TEXT[] not JSONB — send Vec<String>
+- PostgreSQL sync — use serde_json::Value for jsonb columns
+- track migration SQL file in git (was ignored by *.sql pattern)
+- use CARGO_MANIFEST_DIR for include_str! path
+- embed PostgreSQL migrations in binary
+
+## [v0.3.31] - 2026-06-05
+
+### Changed
+- PostgreSQL on-demand connect, not at startup
+
+## [v0.3.30] - 2026-06-05
+
+### Added
+- MCP local mode Phase 2 — tools sync to PostgreSQL on-demand
+
+## [v0.3.29] - 2026-06-05
+
+### Fixed
+- read database_url from config.toml in MCP pg.rs
+
+## [v0.3.28] - 2026-06-05
+
+### Added
+- MCP local mode — PostgreSQL + SQLite dual mode
+- enable Local mode in all builds (remove dev-mode feature gate)
+
+## [v0.3.27] - 2026-06-05
+
+### Added
+- auto-generate changelog in release body from commit history
+
 ## [v0.3.23] - 2026-06-05
 
 ### Security
