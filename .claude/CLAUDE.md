@@ -5,7 +5,7 @@
 ⚠️ **Read [docs/release-guide.md](docs/release-guide.md) before touching releases.**
 
 - Releases are published to **source repo** GitHub Releases: `dayartcrew-web/masday-workflow-rust/releases`
-- Built locally via `~/masday-workflow-release/release.sh`
+- Built locally via `scripts/release.sh` from project root
 - **Do NOT use CI workflows** — they are disabled
 - **Do NOT create releases with version 0.7x** — use 0.x.x format
 - Source repo: `dayartcrew-web/masday-workflow-rust` (private)

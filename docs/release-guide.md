@@ -4,98 +4,113 @@
 
 ## Release Process
 
-All releases are built **locally on VPS** and uploaded manually via `gh release`.
+All releases are built **locally on VPS** and uploaded via `gh release`.
 
 ### One command to release:
 
 ```bash
-cd ~/masday-workflow-release && bash release.sh v0.x.x
+bash scripts/release.sh v0.x.x
 ```
 
-This builds **Linux x86_64** and **Windows x86_64** binaries, generates checksums, and uploads to the public release repo.
+This builds **Linux x86_64** and **Windows x86_64** binaries for both `masday` (CLI) and `masday-mcp` (standalone MCP server), generates checksums, and uploads to GitHub Releases.
 
 ### Options
 
 ```bash
-bash release.sh v0.x.x --dry-run      # Build only, don't upload
-bash release.sh v0.x.x --linux-only   # Build Linux only (skip Windows cross-compile)
+bash scripts/release.sh v0.x.x --dry-run      # Build only, don't upload
+bash scripts/release.sh v0.x.x --linux-only   # Build Linux only (skip Windows cross-compile)
 ```
 
 ### Prerequisites
 
 - VPS has `gh` CLI authenticated (`gh auth status`)
 - VPS has `x86_64-w64-mingw32-gcc` for Windows cross-compile
-- Source repo: `~/masday-workflow-rust/` (must be up to date)
-- Release repo: `~/masday-workflow-release/`
+- Working directory is the project root (`masday-workflow-rust/`)
 
-## Repositories
+## Repository
 
 | Repo | Visibility | Purpose |
 |------|-----------|---------|
-| `dayartcrew-web/masday-workflow-rust` | **Private** | Source code |
-| `dayartcrew-web/masday-workflow-release` | **Public** | Binary releases + install.sh |
+| `dayartcrew-web/masday-workflow-rust` | **Private** | Source code + releases |
 
 ## What `release.sh` Does
 
 1. `cargo build -p masday-cli --release` (Linux, with ONNX embeddings)
 2. `cargo build -p masday-cli --release --target x86_64-pc-windows-gnu --no-default-features` (Windows, no ONNX)
-3. `strip` binaries
-4. Generate `checksums-sha256.txt`
-5. `gh release create` on `masday-workflow-release` repo
+3. `cargo build -p masday-mcp --release` (Linux standalone)
+4. `cargo build -p masday-mcp --release --target x86_64-pc-windows-gnu --no-default-features` (Windows standalone)
+5. `strip` all binaries
+6. Generate `checksums-sha256.txt`
+7. Copy `install-masday.sh` → `install.sh` (**mandatory** — errors if missing)
+8. `gh release create` on source repo
+
+## Release Artifacts
+
+| Binary | Linux | Windows | Size | Description |
+|--------|-------|---------|------|-------------|
+| **masday** (CLI) | `masday-linux-x86_64` | `masday-windows-x86_64.exe` | ~39MB / ~15MB | CLI + MCP server wrapper |
+| **masday-mcp** (standalone) | `masday-mcp-linux-x86_64` | `masday-mcp-windows-x86_64.exe` | ~3.3MB / ~2.9MB | Lightweight MCP server |
+| **install.sh** | — | — | ~8KB | Multi-platform installer |
+| **checksums-sha256.txt** | — | — | ~0.5KB | SHA-256 checksums |
 
 ## Binary Contents
 
-Single binary `masday` contains everything:
-- CLI commands: `quickstart`, `install`, `setup`, `serve`, `mcp`, `status`, `db`, `update`
+The `masday` binary contains everything:
+- CLI commands: `quickstart`, `install`, `setup`, `serve`, `mcp`, `status`, `db`, `update`, `embed`, `doctor`, `config`, `dev`
+- MCP server (`masday mcp`) — wraps `masday-mcp` crate
 - 28 agents (embedded)
 - 30+ skills (embedded)
-- 7 hooks (embedded)
-- MCP server (`masday mcp`)
+- 10 hooks (embedded)
+- 90 MCP tools across 20 domains
 
-**No separate `masday-mcp` binary needed.**
+The standalone `masday-mcp` binary is for lightweight PATH-only deployments.
+
+## Install.sh (Mandatory)
+
+Every release **MUST** include `install.sh`. The release script errors if `scripts/install-masday.sh` is missing.
+
+The install script auto-detects:
+- **OS:** Linux, macOS, Windows (Git Bash/MSYS2)
+- **Architecture:** x86_64, aarch64 (arm64)
+- **Existing install:** auto-updates if newer version available
+- **Checksum verification:** SHA-256 from `checksums-sha256.txt`
 
 ## Versioning
 
 Use **0.x.x** format. Do NOT use 0.7x or other schemes — those were from old CI workflow.
 
-```
-v0.1.0  Initial release
-v0.2.0  Quickstart wizard
-v0.3.0  Hooks rewrite
-v0.3.7  Previous
-v0.3.8  Hybrid semantic search (embedding + cosine similarity), CLI runtime fix
-v0.3.10 Remote DB status checks (Supabase), Windows build without ONNX, cargo fmt
-```
-
 ## CI Workflows — DISABLED
 
 The following workflows exist in `.github/workflows/` but are **disabled**:
 
-- `release.yml` — was auto-publishing to release repo with old binary format (separate `masday-mcp`)
+- `release.yml` — was auto-publishing with old binary format
 - `ci.yml` — unused
 - `rust-ci.yml` — unused
 
 **Do NOT re-enable these.** They conflict with manual `release.sh`.
 
-If you need to check:
-```bash
-cd ~/masday-workflow-rust && gh workflow list
-```
-
 ## User Install (One-liner)
 
 ```bash
-# Linux/macOS
-curl -fsSL https://raw.githubusercontent.com/dayartcrew-web/masday-workflow-release/main/install.sh | bash
+# Linux/macOS/Windows Git Bash
+curl -fsSL https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/install.sh | bash
 
 # Windows PowerShell
-Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-release/releases/latest/download/masday-windows-x86_64.exe" -OutFile "masday.exe"
+Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/releases/latest/download/masday-windows-x86_64.exe" -OutFile "masday.exe"
 .\masday.exe quickstart
 ```
 
+## Environment Variables for Install
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MASDAY_VERSION` | latest | Install specific version |
+| `MASDAY_QUICKSTART` | 0 | Auto-run quickstart after install |
+| `MASDAY_FORCE` | 0 | Force reinstall same version |
+
 ## Windows Notes
 
-- Built via mingw cross-compiler (`x86_64-pc-windows-gnu`)
+- Built via mingw cross-compiler (`x86_64-w64-mingw32-gcc`)
 - **No local ONNX embeddings** — `ort-sys` doesn't support cross-compile
 - Users must configure remote embedding provider (Ollama/OpenAI)
 - Binary auto-installs to `%USERPROFILE%\.masday\bin\` on first run
@@ -108,22 +123,5 @@ Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-releas
 ├── config.toml       # Configuration (ports, mode, api_url, etc.)
 ├── bin/
 │   └── masday        # CLI binary
-└── compact-state.json # Hook state (auto-created)
-```
-
-## Config Fields
-
-```toml
-mode = "local"                    # local | remote | standalone
-api_url = "http://localhost:30101"
-api_key = "***"
-database_url = "postgresql://..."
-embedding_provider = "local"       # local | ollama | openai
-embedding_model = "all-MiniLM-L6-v2"
-embedding_dimensions = 384
-api_port = 30101
-db_port = 54341
-redis_port = 63791
-dashboard_port = 30101
-platforms = ["claude-code"]
+└── data.db           # SQLite database (auto-created)
 ```

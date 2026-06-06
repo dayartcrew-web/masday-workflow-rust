@@ -67,7 +67,7 @@ masday install
 
 ## MCP Server Binary
 
-The `masday-mcp` binary provides the MCP server (20 tool domains, 96+ tools). It's distributed separately from the CLI.
+The `masday` binary includes the MCP server — run `masday mcp` to start. A standalone `masday-mcp` binary is also available for lightweight deployments.
 
 ### Download MCP Server
 
@@ -148,7 +148,7 @@ If `masday-api` is running, you can connect directly without the MCP binary. Req
 
 ## What `masday install` Does
 
-The `masday` binary is self-contained (~7.6MB). All templates are embedded at compile time — no source code, Node.js, or Rust toolchain needed (remote mode).
+The `masday` binary is self-contained (~39MB). All templates are embedded at compile time — no source code, Node.js, or Rust toolchain needed.
 
 `masday install` extracts and configures:
 
