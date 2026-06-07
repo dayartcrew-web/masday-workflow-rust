@@ -215,7 +215,7 @@ pub async fn workflow_execute(
 
                 if doc_count == 0 && mem_count == 0 {
                     return Err(err(
-                        "Cannot advance to PLAN: no analysis artifacts found. Run analysis first."
+                        "Cannot advance to PLAN: no analysis artifacts found. Run analysis first.",
                     ));
                 }
 
@@ -240,7 +240,7 @@ pub async fn workflow_execute(
 
                 if plan_count == 0 {
                     return Err(err(
-                        "Cannot advance to EXECUTE: no plan found. Create a plan first."
+                        "Cannot advance to EXECUTE: no plan found. Create a plan first.",
                     ));
                 }
 
@@ -278,10 +278,7 @@ pub async fn workflow_execute(
                 (id.to_string(), "EXECUTE".to_string())
             }
             other => {
-                return Err(err(format!(
-                    "Cannot execute workflow in state {}",
-                    other
-                )));
+                return Err(err(format!("Cannot execute workflow in state {}", other)));
             }
         }
     }; // conn dropped
@@ -2663,20 +2660,24 @@ mod tests {
         let (id, _) = setup_test_db_via_guard(&guard, "PLAN");
 
         // Create a plan and tasks for the workflow (prerequisites for EXECUTE)
-        let conn = crate::sqlite::conn();
-        let plan_id = uuid::Uuid::new_v4().to_string();
-        let task_id = uuid::Uuid::new_v4().to_string();
-        let t = now();
+        {
+            let conn = crate::sqlite::conn();
+            let plan_id = uuid::Uuid::new_v4().to_string();
+            let task_id = uuid::Uuid::new_v4().to_string();
+            let t = now();
 
-        conn.execute(
-            "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1,?2,1,'ACTIVE','Test plan','{}','test',?3)",
-            params![&plan_id, &id, &t],
-        ).unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1,?2,1,'ACTIVE','Test plan','{}','test',?3)",
+                params![&plan_id, &id, &t],
+            ).unwrap();
 
-        conn.execute(
-            "INSERT INTO tasks (id, workflow_id, plan_id, title, status, created_at, updated_at) VALUES (?1,?2,?3,'Test task','PENDING',?4,?4)",
-            params![&task_id, &id, &plan_id, &t],
-        ).unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, created_at, updated_at) VALUES (?1,?2,?3,'Test task','PENDING',?4,?4)",
+                params![&task_id, &id, &plan_id, &t],
+            ).unwrap();
+        } // conn dropped here, before await
+
+        drop(guard);
 
         let result = workflow_execute(json!({"workflow_id": id})).await;
         assert!(result.is_ok(), "Expected ok, got {:?}", result);
@@ -2718,14 +2719,18 @@ mod tests {
         let (id, _) = setup_test_db_via_guard(&guard, "ANALYZE");
 
         // Create analysis artifacts (use memory table instead of context_documents)
-        let conn = crate::sqlite::conn();
-        let mem_id = uuid::Uuid::new_v4().to_string();
-        let t = now();
+        {
+            let conn = crate::sqlite::conn();
+            let mem_id = uuid::Uuid::new_v4().to_string();
+            let t = now();
 
-        conn.execute(
-            "INSERT INTO memories (id, workflow_id, memory_type, summary, content, importance_score, created_by_agent, tags, created_at, updated_at) VALUES (?1,?2,'research','Test analysis','Analysis content',0.7,'test','[]',?3,?3)",
-            params![&mem_id, &id, &t],
-        ).unwrap();
+            conn.execute(
+                "INSERT INTO memories (id, workflow_id, memory_type, summary, content, importance_score, created_by_agent, tags, created_at, updated_at) VALUES (?1,?2,'research','Test analysis','Analysis content',0.7,'test','[]',?3,?3)",
+                params![&mem_id, &id, &t],
+            ).unwrap();
+        } // conn dropped here, before await
+
+        drop(guard);
 
         let result = workflow_execute(json!({"workflow_id": id})).await;
         assert!(result.is_ok(), "Expected ok, got {:?}", result);

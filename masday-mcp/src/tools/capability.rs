@@ -11,8 +11,13 @@ fn validate_name(name: &str) -> Result<(), String> {
     if name.len() > 100 {
         return Err("name must be 100 characters or less".into());
     }
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Err("name must contain only alphanumeric characters, hyphens, and underscores".into());
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(
+            "name must contain only alphanumeric characters, hyphens, and underscores".into(),
+        );
     }
     Ok(())
 }
@@ -92,14 +97,10 @@ pub async fn capability_create_agent(
         .ok_or_else(|| "Missing instructions field".to_string())?;
 
     // Run validations
-    validate_name(name)
-        .map_err(|e| format!("Invalid name: {}", e))?;
-    validate_role(role)
-        .map_err(|e| format!("Invalid role: {}", e))?;
-    validate_description(description)
-        .map_err(|e| format!("Invalid description: {}", e))?;
-    validate_instructions(instructions)
-        .map_err(|e| format!("Invalid instructions: {}", e))?;
+    validate_name(name).map_err(|e| format!("Invalid name: {}", e))?;
+    validate_role(role).map_err(|e| format!("Invalid role: {}", e))?;
+    validate_description(description).map_err(|e| format!("Invalid description: {}", e))?;
+    validate_instructions(instructions).map_err(|e| format!("Invalid instructions: {}", e))?;
 
     client::api_post("/api/capabilities/agent", args).await
 }
@@ -128,14 +129,10 @@ pub async fn capability_create_skill(
         .ok_or_else(|| "Missing steps field".to_string())?;
 
     // Run validations
-    validate_name(name)
-        .map_err(|e| format!("Invalid name: {}", e))?;
-    validate_description(description)
-        .map_err(|e| format!("Invalid description: {}", e))?;
-    validate_trigger(trigger)
-        .map_err(|e| format!("Invalid trigger: {}", e))?;
-    validate_steps(steps)
-        .map_err(|e| format!("Invalid steps: {}", e))?;
+    validate_name(name).map_err(|e| format!("Invalid name: {}", e))?;
+    validate_description(description).map_err(|e| format!("Invalid description: {}", e))?;
+    validate_trigger(trigger).map_err(|e| format!("Invalid trigger: {}", e))?;
+    validate_steps(steps).map_err(|e| format!("Invalid steps: {}", e))?;
 
     client::api_post("/api/capabilities/skill", args).await
 }

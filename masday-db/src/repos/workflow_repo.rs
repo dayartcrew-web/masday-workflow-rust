@@ -27,7 +27,8 @@ impl WorkflowRepo {
 
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now();
-        let metadata: serde_json::Value = workflow.metadata.clone().unwrap_or(serde_json::json!({}));
+        let metadata: serde_json::Value =
+            workflow.metadata.clone().unwrap_or(serde_json::json!({}));
 
         let query = r#"
             INSERT INTO workflows (

@@ -63,28 +63,26 @@ fn validate_path(path: &str, project_root: Option<&Path>) -> Result<PathBuf, Str
                 // Path doesn't exist yet, check parent directory
                 if let Some(parent) = absolute_path.parent() {
                     match parent.canonicalize() {
-                        Ok(canonical_parent) => {
-                            match root.canonicalize() {
-                                Ok(canonical_root) => {
-                                    if !canonical_parent.starts_with(&canonical_root) {
-                                        return Err(format!(
-                                            "Path '{}' parent directory is outside project root '{}'",
-                                            path,
-                                            canonical_root.display()
-                                        ));
-                                    }
+                        Ok(canonical_parent) => match root.canonicalize() {
+                            Ok(canonical_root) => {
+                                if !canonical_parent.starts_with(&canonical_root) {
+                                    return Err(format!(
+                                        "Path '{}' parent directory is outside project root '{}'",
+                                        path,
+                                        canonical_root.display()
+                                    ));
                                 }
-                                Err(_) => {
-                                    if !canonical_parent.starts_with(root) {
-                                        return Err(format!(
+                            }
+                            Err(_) => {
+                                if !canonical_parent.starts_with(root) {
+                                    return Err(format!(
                                             "Path '{}' parent directory may be outside project root '{}'",
                                             path,
                                             root.display()
                                         ));
-                                    }
                                 }
                             }
-                        }
+                        },
                         Err(_) => {
                             // Parent doesn't exist, allow it for write operations
                         }
@@ -106,9 +104,12 @@ pub async fn filesystem_read(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
-    let validated_path = validate_path(path, project_root)
-        .map_err(|e| format!("Path validation failed: {}", e))?;
+    let project_root = args
+        .get("project_root")
+        .and_then(|v| v.as_str())
+        .map(Path::new);
+    let validated_path =
+        validate_path(path, project_root).map_err(|e| format!("Path validation failed: {}", e))?;
 
     let content = tokio::fs::read_to_string(&validated_path)
         .await
@@ -131,9 +132,12 @@ pub async fn filesystem_write(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'content' argument")?;
 
-    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
-    let validated_path = validate_path(path, project_root)
-        .map_err(|e| format!("Path validation failed: {}", e))?;
+    let project_root = args
+        .get("project_root")
+        .and_then(|v| v.as_str())
+        .map(Path::new);
+    let validated_path =
+        validate_path(path, project_root).map_err(|e| format!("Path validation failed: {}", e))?;
 
     tokio::fs::write(&validated_path, content)
         .await
@@ -151,14 +155,21 @@ pub async fn filesystem_list(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
-    let validated_path = validate_path(path, project_root)
-        .map_err(|e| format!("Path validation failed: {}", e))?;
+    let project_root = args
+        .get("project_root")
+        .and_then(|v| v.as_str())
+        .map(Path::new);
+    let validated_path =
+        validate_path(path, project_root).map_err(|e| format!("Path validation failed: {}", e))?;
 
     let mut entries = Vec::new();
-    let mut dir = tokio::fs::read_dir(&validated_path)
-        .await
-        .map_err(|e| format!("Failed to read directory {}: {}", validated_path.display(), e))?;
+    let mut dir = tokio::fs::read_dir(&validated_path).await.map_err(|e| {
+        format!(
+            "Failed to read directory {}: {}",
+            validated_path.display(),
+            e
+        )
+    })?;
 
     while let Some(entry) = dir
         .next_entry()
@@ -189,9 +200,12 @@ pub async fn filesystem_delete(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
-    let validated_path = validate_path(path, project_root)
-        .map_err(|e| format!("Path validation failed: {}", e))?;
+    let project_root = args
+        .get("project_root")
+        .and_then(|v| v.as_str())
+        .map(Path::new);
+    let validated_path =
+        validate_path(path, project_root).map_err(|e| format!("Path validation failed: {}", e))?;
 
     tokio::fs::remove_file(&validated_path)
         .await
@@ -209,13 +223,20 @@ pub async fn filesystem_stat(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' argument")?;
 
-    let project_root = args.get("project_root").and_then(|v| v.as_str()).map(Path::new);
-    let validated_path = validate_path(path, project_root)
-        .map_err(|e| format!("Path validation failed: {}", e))?;
+    let project_root = args
+        .get("project_root")
+        .and_then(|v| v.as_str())
+        .map(Path::new);
+    let validated_path =
+        validate_path(path, project_root).map_err(|e| format!("Path validation failed: {}", e))?;
 
-    let metadata = tokio::fs::metadata(&validated_path)
-        .await
-        .map_err(|e| format!("Failed to get metadata for {}: {}", validated_path.display(), e))?;
+    let metadata = tokio::fs::metadata(&validated_path).await.map_err(|e| {
+        format!(
+            "Failed to get metadata for {}: {}",
+            validated_path.display(),
+            e
+        )
+    })?;
 
     let modified = metadata
         .modified()

@@ -402,7 +402,13 @@ mod tests {
     #[test]
     fn test_install_mode_case_insensitive() {
         assert_eq!("LOCAL".parse::<InstallMode>().unwrap(), InstallMode::Local);
-        assert_eq!("Remote".parse::<InstallMode>().unwrap(), InstallMode::Remote);
-        assert_eq!("STANDALONE".parse::<InstallMode>().unwrap(), InstallMode::Standalone);
+        assert_eq!(
+            "Remote".parse::<InstallMode>().unwrap(),
+            InstallMode::Remote
+        );
+        assert_eq!(
+            "STANDALONE".parse::<InstallMode>().unwrap(),
+            InstallMode::Standalone
+        );
     }
 }

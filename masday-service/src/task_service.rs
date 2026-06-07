@@ -85,7 +85,9 @@ impl TaskService {
         let service = Self::new(pool.clone());
 
         // Create metadata with dependencies if provided
-        let required_context = dependencies.as_ref().map(|deps| serde_json::json!({ "dependencies": deps }));
+        let required_context = dependencies
+            .as_ref()
+            .map(|deps| serde_json::json!({ "dependencies": deps }));
         let dependencies_json = dependencies.as_ref().map(|d| serde_json::json!(d));
 
         let new_task = NewTask {
@@ -654,8 +656,14 @@ mod tests {
 
         assert!(error_msg.contains("INIT"), "Error should mention INIT");
         assert!(error_msg.contains("PLAN"), "Error should mention PLAN");
-        assert!(error_msg.contains("EXECUTE"), "Error should mention EXECUTE");
-        assert!(error_msg.contains("VERIFY"), "Error should mention the invalid state");
+        assert!(
+            error_msg.contains("EXECUTE"),
+            "Error should mention EXECUTE"
+        );
+        assert!(
+            error_msg.contains("VERIFY"),
+            "Error should mention the invalid state"
+        );
     }
 
     #[test]

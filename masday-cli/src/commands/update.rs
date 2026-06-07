@@ -115,7 +115,10 @@ pub async fn fetch_latest_version_async() -> Result<String> {
         anyhow::bail!("GitHub API request failed: HTTP {}", response.status());
     }
 
-    let json: serde_json::Value = response.json().await.context("Failed to parse GitHub response")?;
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse GitHub response")?;
 
     let tag_name = json
         .get("tag_name")

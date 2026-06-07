@@ -162,9 +162,10 @@ fn find_newer_source(
         let path = entry.path();
 
         // Only check source files (.rs, .toml, .json for config)
-        if path.extension().map_or(false, |ext| {
-            matches!(ext.to_str(), Some("rs" | "toml" | "json"))
-        }) {
+        if path
+            .extension()
+            .is_some_and(|ext| matches!(ext.to_str(), Some("rs" | "toml" | "json")))
+        {
             // Skip the binary itself
             if path == binary_path {
                 continue;

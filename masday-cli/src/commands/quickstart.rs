@@ -190,10 +190,18 @@ async fn run_local_mode(
     )?;
 
     let database_url = match infra_resolution {
-        InfraResolution::Docker { user, password, db, redis_url: infra_redis_url } => {
-            Some(start_docker_infrastructure(&user, &password, &db, infra_redis_url.as_deref()).await?)
-        }
-        InfraResolution::ExistingUrl { database_url: url, redis_url: _infra_redis_url } => Some(url),
+        InfraResolution::Docker {
+            user,
+            password,
+            db,
+            redis_url: infra_redis_url,
+        } => Some(
+            start_docker_infrastructure(&user, &password, &db, infra_redis_url.as_deref()).await?,
+        ),
+        InfraResolution::ExistingUrl {
+            database_url: url,
+            redis_url: _infra_redis_url,
+        } => Some(url),
         InfraResolution::NoDatabase => {
             if !is_non_interactive {
                 // Ask for URL in interactive mode
@@ -244,7 +252,9 @@ async fn run_local_mode(
 
     // ── Save config ───────────────────────────────────────────────────────
     // Use custom api_port from args if provided
-    let api_port = args.and_then(|a| a.api_port).unwrap_or(masday_core::constants::ports::API_PORT);
+    let api_port = args
+        .and_then(|a| a.api_port)
+        .unwrap_or(masday_core::constants::ports::API_PORT);
     let api_url = format!("http://localhost:{}", api_port);
 
     // Get redis_url from args if provided
@@ -495,14 +505,22 @@ async fn run_server_mode(
     )?;
 
     let (database_url, redis_url) = match infra_resolution {
-        InfraResolution::Docker { user, password, db, redis_url: infra_redis_url } => {
+        InfraResolution::Docker {
+            user,
+            password,
+            db,
+            redis_url: infra_redis_url,
+        } => {
             // Start Docker containers
-            let db_url = start_docker_infrastructure(&user, &password, &db, infra_redis_url.as_deref()).await?;
+            let db_url =
+                start_docker_infrastructure(&user, &password, &db, infra_redis_url.as_deref())
+                    .await?;
             (Some(db_url), infra_redis_url)
         }
-        InfraResolution::ExistingUrl { database_url: url, redis_url: infra_redis_url } => {
-            (Some(url), infra_redis_url)
-        }
+        InfraResolution::ExistingUrl {
+            database_url: url,
+            redis_url: infra_redis_url,
+        } => (Some(url), infra_redis_url),
         InfraResolution::NoDatabase => {
             // Server mode requires database
             if !is_non_interactive {
@@ -518,12 +536,16 @@ async fn run_server_mode(
     if database_url.is_some() {
         println!("{}", style("Database migrations:").cyan());
         println!("  {} Database URL configured", style("✓").green());
-        println!("  {} Migrations will run automatically on API startup", style("→").cyan());
+        println!(
+            "  {} Migrations will run automatically on API startup",
+            style("→").cyan()
+        );
         println!();
     }
 
     // ── Step 3: Save config ───────────────────────────────────────────────────
-    let api_port = args.and_then(|a| a.api_port)
+    let api_port = args
+        .and_then(|a| a.api_port)
         .unwrap_or(masday_core::constants::ports::API_PORT);
     let api_url = format!("http://localhost:{}", api_port);
 
@@ -533,7 +555,10 @@ async fn run_server_mode(
         api_key: "***".to_string(),
         database_url: database_url.clone(),
         redis_url: redis_url.clone(),
-        embedding_provider: args.as_ref().and_then(|a| a.embedding.as_ref()).map(|_| "local".to_string()),
+        embedding_provider: args
+            .as_ref()
+            .and_then(|a| a.embedding.as_ref())
+            .map(|_| "local".to_string()),
         embedding_model: args.as_ref().and_then(|a| a.embedding.as_ref()).cloned(),
         embedding_dimensions: Some(384), // Default for all-MiniLM-L6-v2
         embedding_base_url: None,
@@ -552,12 +577,21 @@ async fn run_server_mode(
         println!("{}", style("API Server (dev mode):").cyan());
         println!("  {} To start the API server:", style("→").cyan());
         println!();
-        println!("    {}", style(format!("cd {}", project_dir.display())).dim());
+        println!(
+            "    {}",
+            style(format!("cd {}", project_dir.display())).dim()
+        );
         if let Some(ref db_url) = database_url {
-            println!("    {}", style(format!("export DATABASE_URL=\"{}\"", db_url)).dim());
+            println!(
+                "    {}",
+                style(format!("export DATABASE_URL=\"{}\"", db_url)).dim()
+            );
         }
         if let Some(ref redis_url) = redis_url {
-            println!("    {}", style(format!("export REDIS_URL=\"{}\"", redis_url)).dim());
+            println!(
+                "    {}",
+                style(format!("export REDIS_URL=\"{}\"", redis_url)).dim()
+            );
         }
         println!("    {}", style("cargo run -p masday-api").cyan());
         println!();
@@ -570,28 +604,61 @@ async fn run_server_mode(
         if compose_file.exists() {
             println!("  {} Starting Docker containers...", style("→").cyan());
             println!();
-            println!("    {}", style(format!("docker compose -f {} up -d", compose_file.display())).cyan());
+            println!(
+                "    {}",
+                style(format!(
+                    "docker compose -f {} up -d",
+                    compose_file.display()
+                ))
+                .cyan()
+            );
             println!();
             println!("  {} Or run manually:", style("→").cyan());
-            println!("    {}", style(format!("docker compose -f {} up -d", compose_file.display())).dim());
+            println!(
+                "    {}",
+                style(format!(
+                    "docker compose -f {} up -d",
+                    compose_file.display()
+                ))
+                .dim()
+            );
             println!();
         } else {
-            println!("  {} docker-compose.server.yml not found", style("⚠").yellow());
-            println!("  {} Expected location: {}", style("→").yellow(), compose_file.display());
+            println!(
+                "  {} docker-compose.server.yml not found",
+                style("⚠").yellow()
+            );
+            println!(
+                "  {} Expected location: {}",
+                style("→").yellow(),
+                compose_file.display()
+            );
             println!();
         }
     } else {
         // No Docker, no dev: print instructions to download binary
         println!("{}", style("API Server (production mode):").cyan());
-        println!("  {} Download the latest binary from GitHub Releases:", style("→").cyan());
-        println!("    {}", style("https://github.com/dayartcrew-web/masday-workflow-rust/releases").cyan());
+        println!(
+            "  {} Download the latest binary from GitHub Releases:",
+            style("→").cyan()
+        );
+        println!(
+            "    {}",
+            style("https://github.com/dayartcrew-web/masday-workflow-rust/releases").cyan()
+        );
         println!();
         println!("  {} Then run:", style("→").cyan());
         if let Some(ref db_url) = database_url {
-            println!("    {}", style(format!("DATABASE_URL=\"{}\"", db_url)).dim());
+            println!(
+                "    {}",
+                style(format!("DATABASE_URL=\"{}\"", db_url)).dim()
+            );
         }
         if let Some(ref redis_url) = redis_url {
-            println!("    {}", style(format!("REDIS_URL=\"{}\"", redis_url)).dim());
+            println!(
+                "    {}",
+                style(format!("REDIS_URL=\"{}\"", redis_url)).dim()
+            );
         }
         println!("    {}", style("masday serve").cyan());
         println!();
@@ -894,8 +961,8 @@ async fn start_docker_infrastructure(
                 std::env::set_var("REDIS_URL", url);
             }
         }
-    } else {
-        std::env::set_var("REDIS_URL", redis_url.unwrap());
+    } else if let Some(url) = redis_url {
+        std::env::set_var("REDIS_URL", url);
     }
 
     let pb = spinner("Running migrations...");
@@ -905,11 +972,15 @@ async fn start_docker_infrastructure(
     // Run migrations — skip if already applied (idempotent)
     if let Err(e) = masday_db::run_migrations(&pool).await {
         // Migrations may fail if already applied — that's ok
-        let err_msg = format!("{}", e);
+        let err_msg = e.to_string();
         if err_msg.contains("already exists") {
             pb.finish_with_message(format!("  {} Database up to date", style("✓").green()));
         } else {
-            pb.finish_with_message(format!("  {} Migration warning: {}", style("⚠").yellow(), err_msg));
+            pb.finish_with_message(format!(
+                "  {} Migration warning: {}",
+                style("⚠").yellow(),
+                err_msg
+            ));
         }
     } else {
         pb.finish_with_message(format!("  {} Database migrated", style("✓").green()));
@@ -1329,7 +1400,11 @@ fn print_remote_summary(config: &MasdayConfig) {
     println!();
 }
 
-fn print_server_summary(config: &MasdayConfig, database_url: Option<&str>, redis_url: Option<&str>) {
+fn print_server_summary(
+    config: &MasdayConfig,
+    database_url: Option<&str>,
+    redis_url: Option<&str>,
+) {
     println!();
     println!(
         "{}",
@@ -1360,7 +1435,10 @@ fn print_server_summary(config: &MasdayConfig, database_url: Option<&str>, redis
     println!();
 
     if config.embedding_model.is_some() {
-        println!("  Embedding: {}", style(config.embedding_model.as_ref().unwrap()).cyan());
+        println!(
+            "  Embedding: {}",
+            style(config.embedding_model.as_deref().unwrap_or("unknown")).cyan()
+        );
     }
     println!();
     println!(
@@ -1407,14 +1485,17 @@ mod tests {
     #[test]
     fn test_resolve_infra_explicit_database_url() {
         let result = resolve_infra(
-            true,  // has_docker
-            true,  // is_non_interactive
+            true, // has_docker
+            true, // is_non_interactive
             Some("postgresql://user:pass@localhost:5432/db".to_string()),
             None,
         );
         assert!(result.is_ok());
         match result.unwrap() {
-            InfraResolution::ExistingUrl { database_url, redis_url } => {
+            InfraResolution::ExistingUrl {
+                database_url,
+                redis_url,
+            } => {
                 assert_eq!(database_url, "postgresql://user:pass@localhost:5432/db");
                 assert!(redis_url.is_none());
             }
@@ -1425,14 +1506,17 @@ mod tests {
     #[test]
     fn test_resolve_infra_explicit_redis_url() {
         let result = resolve_infra(
-            true,  // has_docker
-            true,  // is_non_interactive
+            true, // has_docker
+            true, // is_non_interactive
             Some("postgresql://user:pass@localhost:5432/db".to_string()),
             Some("redis://localhost:6379".to_string()),
         );
         assert!(result.is_ok());
         match result.unwrap() {
-            InfraResolution::ExistingUrl { database_url, redis_url } => {
+            InfraResolution::ExistingUrl {
+                database_url,
+                redis_url,
+            } => {
                 assert_eq!(database_url, "postgresql://user:pass@localhost:5432/db");
                 assert_eq!(redis_url, Some("redis://localhost:6379".to_string()));
             }
@@ -1443,14 +1527,19 @@ mod tests {
     #[test]
     fn test_resolve_infra_docker_with_defaults() {
         let result = resolve_infra(
-            true,  // has_docker
-            true,  // is_non_interactive
-            None,  // no explicit database_url
-            None,  // no explicit redis_url
+            true, // has_docker
+            true, // is_non_interactive
+            None, // no explicit database_url
+            None, // no explicit redis_url
         );
         assert!(result.is_ok());
         match result.unwrap() {
-            InfraResolution::Docker { user, password, db, redis_url } => {
+            InfraResolution::Docker {
+                user,
+                password,
+                db,
+                redis_url,
+            } => {
                 assert_eq!(user, "masday");
                 assert_eq!(password, "masdaypass");
                 assert_eq!(db, "masday_workflow");
@@ -1463,14 +1552,19 @@ mod tests {
     #[test]
     fn test_resolve_infra_docker_with_explicit_redis() {
         let result = resolve_infra(
-            true,  // has_docker
-            true,  // is_non_interactive
-            None,  // no explicit database_url
+            true, // has_docker
+            true, // is_non_interactive
+            None, // no explicit database_url
             Some("redis://localhost:6379".to_string()),
         );
         assert!(result.is_ok());
         match result.unwrap() {
-            InfraResolution::Docker { user, password, db, redis_url } => {
+            InfraResolution::Docker {
+                user,
+                password,
+                db,
+                redis_url,
+            } => {
                 assert_eq!(user, "masday");
                 assert_eq!(password, "masdaypass");
                 assert_eq!(db, "masday_workflow");

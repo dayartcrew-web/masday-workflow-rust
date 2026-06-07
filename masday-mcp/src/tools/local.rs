@@ -93,21 +93,34 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
                 "input": text
             });
 
-            let response = client.post(&url).json(&payload).send().await
+            let response = client
+                .post(&url)
+                .json(&payload)
+                .send()
+                .await
                 .map_err(|e| format!("Ollama embedding request failed: {}", e))?;
 
             if !response.status().is_success() {
-                return Err(format!("Ollama embedding request failed: {}", response.status()));
+                return Err(format!(
+                    "Ollama embedding request failed: {}",
+                    response.status()
+                ));
             }
 
-            let result = response.json::<serde_json::Value>().await
+            let result = response
+                .json::<serde_json::Value>()
+                .await
                 .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
 
-            result.get("embedding")
+            result
+                .get("embedding")
                 .and_then(|v| v.as_array())
                 .map(|embedding| {
                     let vector: Vec<f64> = embedding.iter().filter_map(|v| v.as_f64()).collect();
-                    info!("Generated Ollama embedding with {} dimensions", vector.len());
+                    info!(
+                        "Generated Ollama embedding with {} dimensions",
+                        vector.len()
+                    );
                     vector
                 })
                 .ok_or_else(|| "Invalid Ollama embedding response format".to_string())
@@ -126,24 +139,38 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
                 "input": text
             });
 
-            let response = client.post(&url).header("Authorization", format!("Bearer {}", api_key)).json(&payload).send().await
+            let response = client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&payload)
+                .send()
+                .await
                 .map_err(|e| format!("OpenAI embedding request failed: {}", e))?;
 
             if !response.status().is_success() {
-                return Err(format!("OpenAI embedding request failed: {}", response.status()));
+                return Err(format!(
+                    "OpenAI embedding request failed: {}",
+                    response.status()
+                ));
             }
 
-            let result = response.json::<serde_json::Value>().await
+            let result = response
+                .json::<serde_json::Value>()
+                .await
                 .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
 
-            result.get("data")
+            result
+                .get("data")
                 .and_then(|v| v.as_array())
                 .and_then(|data| data.first())
                 .and_then(|v| v.get("embedding"))
                 .and_then(|v| v.as_array())
                 .map(|embedding| {
                     let vector: Vec<f64> = embedding.iter().filter_map(|v| v.as_f64()).collect();
-                    info!("Generated OpenAI embedding with {} dimensions", vector.len());
+                    info!(
+                        "Generated OpenAI embedding with {} dimensions",
+                        vector.len()
+                    );
                     vector
                 })
                 .ok_or_else(|| "Invalid OpenAI embedding response format".to_string())
@@ -659,7 +686,7 @@ mod tests {
         assert!(embedding.is_ok());
         let vector = embedding.unwrap();
         assert_eq!(vector.len(), 768); // Feature hashing produces 768-dim vectors
-        // Check that values are normalized (unit vector)
+                                       // Check that values are normalized (unit vector)
         let norm_sq: f64 = vector.iter().map(|&x| x * x).sum();
         let norm = norm_sq.sqrt();
         assert!((norm - 1.0).abs() < 0.01, "Vector should be normalized");

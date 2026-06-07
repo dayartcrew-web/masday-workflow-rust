@@ -217,7 +217,11 @@ pub fn reset_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
 /// Retries with 500ms interval until timeout.
 pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()> {
     // Resolve hostname to IP for socket address parsing (localhost → 127.0.0.1)
-    let ip = if host == "localhost" { "127.0.0.1" } else { host };
+    let ip = if host == "localhost" {
+        "127.0.0.1"
+    } else {
+        host
+    };
     let addr = format!("{}:{}", ip, port);
     let timeout = Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
@@ -284,10 +288,7 @@ pub fn default_redis_url() -> String {
 /// - Both provided → Skip Docker entirely, return provided URLs
 /// - One provided → Start only the missing component via Docker
 /// - Neither → Start both via Docker
-pub fn start_all_infra(
-    db_url: Option<&str>,
-    redis_url: Option<&str>,
-) -> Result<(String, String)> {
+pub fn start_all_infra(db_url: Option<&str>, redis_url: Option<&str>) -> Result<(String, String)> {
     let resolved_db_url = if let Some(url) = db_url {
         println!("  Using provided database URL");
         url.to_string()
@@ -369,11 +370,14 @@ mod tests {
         let redis_url = "redis://remotehost:6379";
 
         // Note: This test doesn't actually start Docker (returns provided URLs directly)
-        let (resolved_db, resolved_redis) = start_all_infra(Some(db_url), Some(redis_url))
-            .expect("start_all_infra should succeed");
+        let (resolved_db, resolved_redis) =
+            start_all_infra(Some(db_url), Some(redis_url)).expect("start_all_infra should succeed");
 
         assert_eq!(resolved_db, db_url, "Should return provided DB URL");
-        assert_eq!(resolved_redis, redis_url, "Should return provided Redis URL");
+        assert_eq!(
+            resolved_redis, redis_url,
+            "Should return provided Redis URL"
+        );
     }
 
     #[test]

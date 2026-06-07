@@ -80,9 +80,7 @@ pub async fn validate_transition_prerequisites(
             let plan = plan_repo
                 .get_active_for_workflow(workflow_id)
                 .await
-                .map_err(|e| {
-                    AppError::database(format!("Failed to check for plan: {}", e))
-                })?;
+                .map_err(|e| AppError::database(format!("Failed to check for plan: {}", e)))?;
 
             if plan.is_none() {
                 return Err(AppError::validation(
@@ -91,10 +89,7 @@ pub async fn validate_transition_prerequisites(
             }
 
             let task_repo = TaskRepo::new(pool.clone());
-            let task_count = task_repo
-                .count_by_workflow(workflow_id)
-                .await
-                .unwrap_or(0);
+            let task_count = task_repo.count_by_workflow(workflow_id).await.unwrap_or(0);
 
             if task_count == 0 {
                 return Err(AppError::validation(
@@ -594,7 +589,8 @@ mod tests {
         // This test validates that error messages are clear and actionable
         // The actual messages are in the validate_transition_prerequisites function
 
-        let error_no_artifacts = "Cannot advance to PLAN: no analysis artifacts found. Run analysis first.";
+        let error_no_artifacts =
+            "Cannot advance to PLAN: no analysis artifacts found. Run analysis first.";
         assert!(error_no_artifacts.contains("no analysis artifacts"));
         assert!(error_no_artifacts.contains("Run analysis first"));
 
@@ -602,7 +598,8 @@ mod tests {
         assert!(error_no_plan.contains("no plan found"));
         assert!(error_no_plan.contains("Create a plan"));
 
-        let error_no_tasks = "Cannot advance to EXECUTE: plan has no tasks. Add tasks to the plan first.";
+        let error_no_tasks =
+            "Cannot advance to EXECUTE: plan has no tasks. Add tasks to the plan first.";
         assert!(error_no_tasks.contains("plan has no tasks"));
         assert!(error_no_tasks.contains("Add tasks"));
 

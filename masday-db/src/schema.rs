@@ -165,10 +165,8 @@ impl Task {
             test_evidence: row.try_get("test_evidence").unwrap_or(None),
             metadata: row.try_get("metadata").unwrap_or(None),
             created_at: row.get::<_, DateTime<Utc>>("created_at"),
-            started_at: row
-                .get::<_, Option<DateTime<Utc>>>("started_at"),
-            completed_at: row
-                .get::<_, Option<DateTime<Utc>>>("completed_at"),
+            started_at: row.get::<_, Option<DateTime<Utc>>>("started_at"),
+            completed_at: row.get::<_, Option<DateTime<Utc>>>("completed_at"),
             updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
         }
     }
@@ -465,8 +463,7 @@ impl Memory {
             embedding: None,
             created_at: row.get::<_, DateTime<Utc>>("created_at"),
             updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
-            accessed_at: row
-                .get::<_, Option<DateTime<Utc>>>("accessed_at"),
+            accessed_at: row.get::<_, Option<DateTime<Utc>>>("accessed_at"),
             access_count: row.get("access_count"),
             version: row.get("version"),
         }
