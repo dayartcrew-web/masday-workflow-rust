@@ -33,6 +33,53 @@ bash scripts/release.sh v0.x.x --linux-only   # Build Linux only (skip Windows c
 |------|-----------|---------|
 | `dayartcrew-web/masday-workflow-rust` | **Private** | Source code + releases |
 
+## Git Hooks
+
+The project uses pre-commit and pre-push hooks for quality gates.
+
+### pre-commit hook (`.git/hooks/pre-commit`)
+
+Runs on every `git commit`. Fast checks only (~5-10s):
+
+| Stack | Checks |
+|-------|--------|
+| Rust | `cargo fmt --check`, `cargo clippy` |
+| TypeScript | `pnpm lint` |
+| Python | `ruff check` |
+| Go | `go vet` |
+| Docs | Dead link check, crate references |
+
+### pre-push hook (`.git/hooks/pre-push`)
+
+Runs on every `git push`. Quality gate (~1-2 min):
+
+| Stack | Checks |
+|-------|--------|
+| Rust | `cargo fmt --check`, `cargo clippy`, `cargo check`, `cargo test` |
+| TypeScript | `pnpm build`, `pnpm test` |
+| Python | `pytest` |
+| Go | `go vet`, `go test` |
+
+**Note:** Pre-push does NOT run `cargo build --release`. Release builds are only for actual releases via `release.sh`. The hook uses `cargo check` (fast, incremental) instead.
+
+### Skipping hooks
+
+```bash
+git commit --no-verify    # Skip pre-commit
+git push --no-verify      # Skip pre-push (use sparingly)
+```
+
+### Hook installation
+
+Hooks are installed via `masday install` or manually:
+
+```bash
+# From project root
+cp .agents/hooks/pre-commit .git/hooks/pre-commit
+cp .agents/hooks/pre-push .git/hooks/pre-push
+chmod +x .git/hooks/pre-commit .git/hooks/pre-push
+```
+
 ## What `release.sh` Does
 
 1. `cargo build -p masday-cli --release` (Linux, with ONNX embeddings)
@@ -79,15 +126,66 @@ The install script auto-detects:
 
 Use **0.x.x** format. Do NOT use 0.7x or other schemes — those were from old CI workflow.
 
-## CI Workflows — DISABLED
+## CI Workflows — STATUS
 
-The following workflows exist in `.github/workflows/` but are **disabled**:
+| Workflow | Status | Purpose |
+|----------|--------|---------|
+| `ci.yml` | ✅ Active | Dashboard lint + build on push/PR |
+| `release.yml` | ✅ Active | Cross-platform release on tag push |
+| `rust-ci.yml` | ❌ Disabled | Was old Rust CI |
 
-- `release.yml` — was auto-publishing with old binary format
-- `ci.yml` — unused
-- `rust-ci.yml` — unused
+## Release Flow: Tag → CI
 
-**Do NOT re-enable these.** They conflict with manual `release.sh`.
+**Recommended:** Push a tag, let CI build all platforms.
+
+```bash
+# 1. Update version in Cargo.toml files
+#    (or let CI auto-sync from tag)
+
+# 2. Commit and push
+git add -A
+git commit -m "release: v0.x.x"
+git push origin main
+
+# 3. Tag and push — triggers CI release
+git tag v0.x.x
+git push origin v0.x.x
+```
+
+CI will build:
+
+| Artifact | Platforms |
+|----------|-----------|
+| `masday` (CLI) | Linux x86_64, macOS aarch64, Windows x86_64 |
+| `masday-mcp` (standalone) | Linux x86_64, macOS aarch64, Windows x86_64 |
+| `install.sh` | Included in release |
+| `checksums-sha256.txt` | Auto-generated |
+
+### Manual dispatch (no tag needed)
+
+```bash
+gh workflow run release.yml -f version=v0.x.x
+```
+
+### VPS local release (fallback)
+
+Use `release.sh` if CI is down or for Linux + Windows only:
+
+```bash
+bash scripts/release.sh v0.x.x
+bash scripts/release.sh v0.x.x --linux-only
+```
+
+### CI vs VPS release
+
+| | CI (recommended) | VPS (`release.sh`) |
+|---|---|---|
+| Platforms | Linux + macOS + Windows | Linux + Windows |
+| macOS support | ✅ Native runner | ❌ No |
+| masday-mcp builds | ✅ All platforms | ✅ Linux + Windows |
+| Disk usage on VPS | None | 5-12G |
+| Speed | ~10-15 min | ~10 min |
+| Trigger | Tag push or manual | Manual |
 
 ## User Install (One-liner)
 
@@ -107,6 +205,23 @@ Invoke-WebRequest -Uri "https://github.com/dayartcrew-web/masday-workflow-rust/r
 | `MASDAY_VERSION` | latest | Install specific version |
 | `MASDAY_QUICKSTART` | 0 | Auto-run quickstart after install |
 | `MASDAY_FORCE` | 0 | Force reinstall same version |
+
+## Developer Setup
+
+```bash
+git clone https://github.com/dayartcrew-web/masday-workflow-rust
+cd masday-workflow-rust
+
+# Build
+cargo build --workspace
+
+# MCP config (dev mode — uses cargo run directly)
+# .mcp.json is already configured for dev:
+#   cargo run -p masday-mcp --bin masday-mcp
+
+# Quickstart
+cargo run -p masday-cli -- quickstart --dev
+```
 
 ## Windows Notes
 

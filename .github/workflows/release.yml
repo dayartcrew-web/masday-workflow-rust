@@ -1,9 +1,11 @@
-# Release masday CLI binary
+# Release masday CLI + MCP binaries
 #
-# Builds cross-platform release binaries (Linux + macOS + Windows)
-# and publishes to this repo's GitHub Releases.
+# Cross-platform release: Linux + macOS + Windows
+# Builds masday CLI and masday-mcp standalone, then publishes to GitHub Releases.
 #
-# Triggers on tag push (v*) or manual workflow_dispatch.
+# Triggers:
+#   - Tag push (v*)
+#   - Manual workflow_dispatch
 
 name: Release
 
@@ -30,21 +32,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ── masday CLI ──────────────────────────────────────
           # Linux x86_64 (with ONNX local embeddings)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            crate: masday-cli
             artifact: masday-linux-x86_64
             ext: ''
+            features: '--features local-embeddings'
           # macOS Apple Silicon (M1/M2/M3)
           - os: macos-latest
             target: aarch64-apple-darwin
+            crate: masday-cli
             artifact: masday-macos-aarch64
             ext: ''
+            features: '--no-default-features'
           # Windows x86_64 (no ONNX, remote provider only)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            crate: masday-cli
             artifact: masday-windows-x86_64
             ext: '.exe'
+            features: '--no-default-features'
+
+          # ── masday-mcp standalone ───────────────────────────
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            crate: masday-mcp
+            artifact: masday-mcp-linux-x86_64
+            ext: ''
+            features: ''
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            crate: masday-mcp
+            artifact: masday-mcp-macos-aarch64
+            ext: ''
+            features: '--no-default-features'
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            crate: masday-mcp
+            artifact: masday-mcp-windows-x86_64
+            ext: '.exe'
+            features: '--no-default-features'
 
     steps:
       - name: Checkout code
@@ -75,37 +104,27 @@ jobs:
             TAG="${TAG#v}"
           fi
           echo "Setting version to $TAG"
-          # Update all crate versions (compatible with both GNU and BSD sed)
           for toml in */Cargo.toml; do
             sed -i.bak "s/^version = \"[^\"]*\"/version = \"$TAG\"/" "$toml" && rm -f "${toml}.bak"
           done
-          # Update workspace dependencies
           sed -i.bak "s/version = \"[0-9.]\+\"/version = \"$TAG\"/g" Cargo.toml && rm -f Cargo.toml.bak
-          echo "Updated versions:"
-          grep '^version' */Cargo.toml
         shell: bash
 
       - name: Build release binary
         run: |
-          FEATURES=""
-          # ONNX/ort-sys only has prebuilts for Linux x86_64
-          # macOS and Windows builds skip local embeddings
-          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
-            FEATURES="--features local-embeddings"
-          else
-            FEATURES="--no-default-features"
-          fi
-          cargo build -p masday-cli --release --target ${{ matrix.target }} $FEATURES
+          cargo build -p ${{ matrix.crate }} --release --target ${{ matrix.target }} ${{ matrix.features }}
         shell: bash
 
       - name: Strip binary (Unix only)
         if: runner.os != 'Windows'
-        run: strip target/${{ matrix.target }}/release/masday${{ matrix.ext }}
+        run: strip target/${{ matrix.target }}/release/${{ matrix.crate == 'masday-cli' && 'masday' || 'masday-mcp' }}${{ matrix.ext }}
+        shell: bash
 
       - name: Rename binary
         shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/masday${{ matrix.ext }} ${{ matrix.artifact }}${{ matrix.ext }}
+          BINARY_NAME="${{ matrix.crate == 'masday-cli' && 'masday' || 'masday-mcp' }}"
+          cp target/${{ matrix.target }}/release/${BINARY_NAME}${{ matrix.ext }} ${{ matrix.artifact }}${{ matrix.ext }}
           chmod +x ${{ matrix.artifact }}${{ matrix.ext }} || true
 
       - name: Upload artifact
@@ -172,9 +191,6 @@ jobs:
             COMMITS=$(git log -30 --pretty=format:"%s")
           fi
           
-          echo "Commits found:"
-          echo "$COMMITS"
-          
           ADDED=""
           FIXED=""
           CHANGED=""
@@ -195,9 +211,7 @@ jobs:
               security:*|sec:*)
                 line=$(echo "$commit" | sed 's/^[^:]*://;s/^ *//')
                 SECURITY="${SECURITY}- ${line}\n" ;;
-              docs:*|doc:*)
-                # Skip docs-only commits from changelog body
-                ;;
+              docs:*|doc:*) ;;
               *)
                 case "$commit" in
                   *fix*|*bug*|*error*|*crash*)
@@ -213,27 +227,14 @@ jobs:
             esac
           done <<< "$COMMITS"
           
-          # Build changelog body
           BODY=""
-          if [ -n "$ADDED" ]; then
-            BODY="${BODY}### Added\n${ADDED}\n"
-          fi
-          if [ -n "$FIXED" ]; then
-            BODY="${BODY}### Fixed\n${FIXED}\n"
-          fi
-          if [ -n "$CHANGED" ]; then
-            BODY="${BODY}### Changed\n${CHANGED}\n"
-          fi
-          if [ -n "$SECURITY" ]; then
-            BODY="${BODY}### Security\n${SECURITY}\n"
-          fi
+          if [ -n "$ADDED" ]; then BODY="${BODY}### Added\n${ADDED}\n"; fi
+          if [ -n "$FIXED" ]; then BODY="${BODY}### Fixed\n${FIXED}\n"; fi
+          if [ -n "$CHANGED" ]; then BODY="${BODY}### Changed\n${CHANGED}\n"; fi
+          if [ -n "$SECURITY" ]; then BODY="${BODY}### Security\n${SECURITY}\n"; fi
           
-          # Write to file for multiline output
           echo -e "$BODY" > /tmp/changelog.md
-          echo "Generated changelog:"
-          cat /tmp/changelog.md
           
-          # Also update CHANGELOG.md in repo
           DATE=$(date +%Y-%m-%d)
           ENTRY="## [${VERSION}] - ${DATE}\n\n${BODY}"
           
@@ -267,7 +268,6 @@ jobs:
 
           TEMPLATE
           
-          # Append auto-generated changelog
           if [ -f /tmp/changelog.md ]; then
             cat /tmp/changelog.md >> /tmp/release_body.md
           else
@@ -284,16 +284,15 @@ jobs:
           ```
 
           ### Manual download
-          | Platform | File |
-          |----------|------|
-          | Linux x86_64 | `masday-linux-x86_64` |
-          | macOS Apple Silicon | `masday-macos-aarch64` |
-          | Windows x86_64 | `masday-windows-x86_64.exe` |
+          | Platform | CLI | MCP Server |
+          |----------|-----|------------|
+          | Linux x86_64 | `masday-linux-x86_64` | `masday-mcp-linux-x86_64` |
+          | macOS Apple Silicon | `masday-macos-aarch64` | `masday-mcp-macos-aarch64` |
+          | Windows x86_64 | `masday-windows-x86_64.exe` | `masday-mcp-windows-x86_64.exe` |
 
           ### Quick start
           ```
           masday quickstart                              # Interactive setup wizard
-          masday install                                 # Install into current project
           masday install --remote <url> --api-key <key>  # Remote mode
           masday status                                  # Check system health
           ```
@@ -301,11 +300,9 @@ jobs:
           ### Notes
           - **Linux**: Includes ONNX runtime for local embeddings
           - **macOS / Windows**: Uses remote embedding provider (Ollama or OpenAI)
+          - **masday-mcp**: Standalone MCP server for lightweight deployments
           - Config stored at `~/.masday/config.toml`
           FOOTER
-          
-          echo "=== Release body ==="
-          cat /tmp/release_body.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
