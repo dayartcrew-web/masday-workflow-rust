@@ -76,12 +76,12 @@ pub async fn run(json: bool) -> Result<()> {
     check_postgres_container(&mut report);
     check_postgres_connectivity(&mut report).await;
     check_credential_consistency(&mut report);
-    check_api_connectivity(&mut report);
+    check_api_connectivity(&mut report).await;
     check_mcp_binary(&mut report);
     check_embedding(&mut report);
     check_platforms(&mut report);
     check_disk_space(&mut report);
-    check_update_available(&mut report);
+    check_update_available(&mut report).await;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -353,7 +353,7 @@ fn redact_url(url: &str) -> String {
     url.to_string()
 }
 
-fn check_api_connectivity(report: &mut DoctorReport) {
+async fn check_api_connectivity(report: &mut DoctorReport) {
     let config = match MasdayConfig::load_or_err() {
         Ok(c) => c,
         Err(_) => {
@@ -369,11 +369,11 @@ fn check_api_connectivity(report: &mut DoctorReport) {
 
     let health_url = format!("{}/api/health", config.api_url.trim_end_matches('/'));
 
-    match reqwest::blocking::Client::builder()
+    match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
     {
-        Ok(client) => match client.get(&health_url).send() {
+        Ok(client) => match client.get(&health_url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 report.checks.push(CheckResult {
                     name: "API".into(),
@@ -567,9 +567,9 @@ fn check_disk_space(report: &mut DoctorReport) {
     }
 }
 
-fn check_update_available(report: &mut DoctorReport) {
-    // Reuse update module's version check
-    match crate::commands::update::fetch_latest_version() {
+async fn check_update_available(report: &mut DoctorReport) {
+    // Use async version to avoid nested runtime panic
+    match crate::commands::update::fetch_latest_version_async().await {
         Ok(latest) => {
             let current = env!("CARGO_PKG_VERSION");
             let current_clean = current.trim_start_matches('v');

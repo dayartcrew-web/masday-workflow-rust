@@ -93,6 +93,38 @@ pub fn fetch_latest_version() -> Result<String> {
     Ok(normalize_version(tag_name))
 }
 
+/// Fetch latest release version from GitHub API (async version for use inside async contexts)
+pub async fn fetch_latest_version_async() -> Result<String> {
+    let url = format!(
+        "{}/repos/{}/releases/latest",
+        GITHUB_API_BASE, GITHUB_RELEASE_REPO
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", "masday-cli")
+        .send()
+        .await
+        .with_context(|| format!("Failed to fetch release info from {}", url))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("GitHub API request failed: HTTP {}", response.status());
+    }
+
+    let json: serde_json::Value = response.json().await.context("Failed to parse GitHub response")?;
+
+    let tag_name = json
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Release response missing tag_name"))?;
+
+    Ok(normalize_version(tag_name))
+}
+
 /// Fetch specific release version from GitHub API
 fn fetch_specific_version(version: &str) -> Result<String> {
     let normalized = normalize_version(version);
