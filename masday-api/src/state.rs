@@ -1,9 +1,9 @@
 //! Shared application state
 
 use axum::extract::FromRef;
+use dashmap::DashMap;
 use masday_db::pool::DbPool;
 use masday_mcp::handler::McpHandler;
-use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -11,6 +11,12 @@ use tokio::sync::broadcast;
 #[derive(Clone)]
 pub struct McpSessionManager {
     sessions: Arc<DashMap<String, broadcast::Sender<String>>>,
+}
+
+impl Default for McpSessionManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl McpSessionManager {

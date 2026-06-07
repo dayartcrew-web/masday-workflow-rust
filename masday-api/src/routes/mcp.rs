@@ -77,7 +77,9 @@ pub async fn messages_handler(
 
     // Send response via SSE channel if there is one
     if let Some(json_response) = response {
-        state.mcp_sessions.send_to_session(&session_id, &json_response);
+        state
+            .mcp_sessions
+            .send_to_session(&session_id, &json_response);
     }
 
     StatusCode::ACCEPTED.into_response()

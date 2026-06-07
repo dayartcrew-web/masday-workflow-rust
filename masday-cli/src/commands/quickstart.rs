@@ -289,6 +289,7 @@ async fn run_local_mode(
         &api_url,
         "***",
         database_url.as_deref(),
+        "local",
     )?;
 
     // ── Summary ───────────────────────────────────────────────────────────
@@ -456,6 +457,7 @@ fn run_remote_mode(
         &api_url,
         &api_key,
         database_url.as_deref(),
+        "remote",
     )?;
 
     // ── Summary ───────────────────────────────────────────────────────────
@@ -755,7 +757,7 @@ fn run_standalone_mode(
     sync_templates(project_dir, &platforms)?;
 
     // ── Register MCP servers (stdio, no API) ──────────────────────────────
-    register_mcp_servers(project_dir, &platforms, "", "", None)?;
+    register_mcp_servers(project_dir, &platforms, "", "", None, "standalone")?;
 
     // ── Summary ───────────────────────────────────────────────────────────
     println!();
@@ -773,6 +775,7 @@ fn run_standalone_mode(
     );
     println!();
     println!("  Agents and skills installed.");
+    println!("  MCP Transport: {}", style("stdio").cyan());
     println!();
     println!("  For full MCP tools support, connect to an API server:");
     println!("    {}", style("masday quickstart").cyan());
@@ -1223,11 +1226,15 @@ fn register_mcp_servers(
     api_url: &str,
     api_key: &str,
     database_url: Option<&str>,
+    mode: &str,
 ) -> Result<()> {
     println!("{}", style("Registering MCP servers...").cyan());
 
     // Find the masday binary itself to use as MCP command
     let mcp_binary = std::env::current_exe().unwrap_or_else(|_| "masday".into());
+
+    // Determine transport mode: remote and server use HTTP/SSE, local and standalone use stdio
+    let use_http_transport = mode == "remote" || mode == "server";
 
     for platform in platforms {
         let config = McpConfig {
@@ -1235,6 +1242,7 @@ fn register_mcp_servers(
             api_url: api_url.to_string(),
             api_key: api_key.to_string(),
             database_url: database_url.map(|s| s.to_string()),
+            use_http_transport,
         };
 
         generate_mcp_config(platform, project_dir, &config)?;
@@ -1352,6 +1360,7 @@ fn print_local_summary(config: &MasdayConfig) {
     println!("  Database:  localhost:{}", config.db_port);
     println!("  Redis:     localhost:{}", config.redis_port);
     println!("  Platforms: {}", config.platforms.join(", "));
+    println!("  MCP Transport: {}", style("stdio").cyan());
     println!();
     println!("  Commands:");
     println!(
@@ -1388,6 +1397,7 @@ fn print_remote_summary(config: &MasdayConfig) {
     println!();
     println!("  Server:    {}", config.api_url);
     println!("  Platforms: {}", config.platforms.join(", "));
+    println!("  MCP Transport: {}", style("HTTP/SSE").cyan());
     println!();
     println!("  MCP servers registered — your AI platforms can use Masday tools.");
     println!();
@@ -1427,6 +1437,7 @@ fn print_server_summary(
     if let Some(redis_url) = redis_url {
         println!("  Redis:     {}", style(redis_url).cyan());
     }
+    println!("  MCP Transport: {}", style("HTTP/SSE").cyan());
     println!();
 
     println!("  Next steps:");

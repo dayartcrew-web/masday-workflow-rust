@@ -70,8 +70,9 @@ macro_rules! schema {
     () => { serde_json::json!({"type":"object","properties":{},"required":[]}) };
 }
 
-/// Build the complete tool registry with all MCP tools registered.
-fn build_registry() -> ToolRegistry {
+/// Build the complete tool registry with all MCP tools registered (HTTP proxy mode).
+/// Tools use client::api_* functions that call the API server over HTTP.
+pub fn build_registry() -> ToolRegistry {
     let mut r = ToolRegistry::new();
     register_use_masday_tools(&mut r);
     register_workflow_tools(&mut r);
@@ -863,7 +864,7 @@ pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn st
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    client::init(api_url.clone(), api_key)?;
+    client::init(api_url.clone(), api_key).map_err(|e| e.to_string())?;
     tracing::info!("MCP server (HTTP proxy) connected to {}", api_url);
 
     let registry = build_registry();

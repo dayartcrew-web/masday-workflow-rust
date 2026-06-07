@@ -8,6 +8,7 @@ pub struct McpConfig {
     pub api_url: String,
     pub api_key: String,
     pub database_url: Option<String>,
+    pub use_http_transport: bool,
 }
 
 pub fn generate_mcp_config(
@@ -36,7 +37,7 @@ pub fn generate_mcp_config(
     if let Some(global_path) = platform.global_mcp_config_path() {
         match platform {
             Platform::ClaudeCode => {
-                update_claude_global_settings(&global_path, config)?;
+                update_global_claude_config(&global_path, config)?;
             }
             Platform::GeminiCli => {
                 update_gemini_config(&global_path, config)?;
@@ -74,36 +75,56 @@ pub fn remove_mcp_config(platform: &Platform, project_dir: &Path) -> Result<()> 
 
 /// Build the masday MCP server JSON object (reused by all platforms)
 fn build_server_object(config: &McpConfig) -> JsonValue {
-    let mut env_map = serde_json::Map::new();
-    if !config.api_url.is_empty() {
-        env_map.insert(
-            "MASDAY_API_URL".to_string(),
-            JsonValue::String(config.api_url.clone()),
+    if config.use_http_transport {
+        // HTTP transport mode — use SSE type pointing to masday-api /mcp/sse
+        let mut server = serde_json::Map::new();
+        server.insert("type".to_string(), JsonValue::String("sse".to_string()));
+        server.insert(
+            "url".to_string(),
+            JsonValue::String(format!("{}/mcp/sse", config.api_url)),
         );
-    }
-    if !config.api_key.is_empty() {
-        env_map.insert(
-            "MASDAY_API_KEY".to_string(),
-            JsonValue::String(config.api_key.clone()),
+
+        // Include auth header if API key is set
+        if !config.api_key.is_empty() {
+            let mut headers = serde_json::Map::new();
+            headers.insert(
+                "Authorization".to_string(),
+                JsonValue::String(format!("Bearer {}", config.api_key)),
+            );
+            server.insert("headers".to_string(), JsonValue::Object(headers));
+        }
+
+        JsonValue::Object(server)
+    } else {
+        // Existing stdio transport (unchanged)
+        let mut env_map = serde_json::Map::new();
+        if !config.api_url.is_empty() {
+            env_map.insert(
+                "MASDAY_API_URL".to_string(),
+                JsonValue::String(config.api_url.clone()),
+            );
+        }
+        if !config.api_key.is_empty() {
+            env_map.insert(
+                "MASDAY_API_KEY".to_string(),
+                JsonValue::String(config.api_key.clone()),
+            );
+        }
+
+        let mut server = serde_json::Map::new();
+        server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
+        server.insert(
+            "command".to_string(),
+            JsonValue::String(config.mcp_binary_path.display().to_string()),
         );
+        server.insert(
+            "args".to_string(),
+            JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
+        );
+        server.insert("env".to_string(), JsonValue::Object(env_map));
+
+        JsonValue::Object(server)
     }
-
-    let mut server = serde_json::Map::new();
-
-    // MCP server always uses stdio transport — the masday-mcp binary runs as a
-    // subprocess. The masday API does not expose an MCP HTTP endpoint.
-    server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
-    server.insert(
-        "command".to_string(),
-        JsonValue::String(config.mcp_binary_path.display().to_string()),
-    );
-    server.insert(
-        "args".to_string(),
-        JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
-    );
-    server.insert("env".to_string(), JsonValue::Object(env_map));
-
-    JsonValue::Object(server)
 }
 
 // ─── Platform-specific writers ───────────────────────────────────────────
@@ -119,25 +140,15 @@ fn write_claude_code_config(path: &Path, config: &McpConfig) -> Result<()> {
     write_json_file(path, serde_json::Value::Object(root))
 }
 
-/// Update ~/.claude/settings.json → mcpServers.masday (global, Claude Code)
-fn update_claude_global_settings(path: &Path, config: &McpConfig) -> Result<()> {
-    if !path.exists() {
-        // Create minimal settings.json
-        let mut servers = serde_json::Map::new();
-        servers.insert("masday".to_string(), build_server_object(config));
-
-        let mut root = serde_json::Map::new();
-        root.insert("mcpServers".to_string(), JsonValue::Object(servers));
-
-        write_json_file(path, serde_json::Value::Object(root))?;
-        return Ok(());
-    }
-
-    // Read existing settings, merge masday server
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
-    let mut json =
-        serde_json::from_str::<JsonValue>(&content).unwrap_or_else(|_| serde_json::json!({}));
+/// Update ~/.claude.json with masday MCP server config (global, Claude Code)
+fn update_global_claude_config(path: &Path, config: &McpConfig) -> Result<()> {
+    let mut json = if path.exists() {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        serde_json::from_str::<JsonValue>(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
 
     let root_obj = json
         .as_object_mut()
@@ -254,6 +265,7 @@ mod tests {
             api_url: masday_core::constants::ports::api_base_url(),
             api_key: "***".to_string(),
             database_url: Some("postgresql://localhost/db".to_string()),
+            use_http_transport: false,
         };
 
         write_claude_code_config(&config_path, &config).unwrap();
@@ -279,6 +291,7 @@ mod tests {
             api_url: String::new(),
             api_key: String::new(),
             database_url: None,
+            use_http_transport: false,
         };
 
         write_claude_code_config(&config_path, &config).unwrap();
@@ -305,6 +318,7 @@ mod tests {
             api_url: String::new(),
             api_key: String::new(),
             database_url: None,
+            use_http_transport: false,
         };
 
         write_vscode_config(&config_path, &config).unwrap();
@@ -321,9 +335,9 @@ mod tests {
     }
 
     #[test]
-    fn test_update_claude_global_settings_creates_new() {
+    fn test_update_global_claude_config_creates_new() {
         let temp_dir = TempDir::new().unwrap();
-        let settings_path = temp_dir.path().join("settings.json");
+        let config_path = temp_dir.path().join(".claude.json");
 
         // Empty api_url → stdio mode
         let config = McpConfig {
@@ -331,11 +345,12 @@ mod tests {
             api_url: String::new(),
             api_key: String::new(),
             database_url: None,
+            use_http_transport: false,
         };
 
-        update_claude_global_settings(&settings_path, &config).unwrap();
+        update_global_claude_config(&config_path, &config).unwrap();
 
-        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let content = std::fs::read_to_string(&config_path).unwrap();
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
         assert!(json["mcpServers"]["masday"]["command"] == "/home/user/.masday/bin/masday");
@@ -347,11 +362,11 @@ mod tests {
     }
 
     #[test]
-    fn test_update_claude_global_settings_merges_existing() {
+    fn test_update_global_claude_config_merges_existing() {
         let temp_dir = TempDir::new().unwrap();
-        let settings_path = temp_dir.path().join("settings.json");
+        let config_path = temp_dir.path().join(".claude.json");
 
-        // Write existing settings with other servers
+        // Write existing config with other servers
         let existing = serde_json::json!({
             "env": {"FOO": "bar"},
             "mcpServers": {
@@ -359,7 +374,7 @@ mod tests {
             }
         });
         std::fs::write(
-            &settings_path,
+            &config_path,
             serde_json::to_string_pretty(&existing).unwrap(),
         )
         .unwrap();
@@ -370,11 +385,12 @@ mod tests {
             api_url: String::new(),
             api_key: String::new(),
             database_url: None,
+            use_http_transport: false,
         };
 
-        update_claude_global_settings(&settings_path, &config).unwrap();
+        update_global_claude_config(&config_path, &config).unwrap();
 
-        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let content = std::fs::read_to_string(&config_path).unwrap();
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
         // Existing server preserved
@@ -386,5 +402,45 @@ mod tests {
         );
         // Other settings preserved
         assert!(json["env"]["FOO"] == "bar");
+    }
+
+    #[test]
+    fn test_build_server_object_http_transport() {
+        let config = McpConfig {
+            mcp_binary_path: "/path/to/masday".into(),
+            api_url: "http://localhost:8090".to_string(),
+            api_key: "my-api-key".to_string(),
+            database_url: None,
+            use_http_transport: true,
+        };
+
+        let server = build_server_object(&config);
+
+        assert_eq!(server["type"], "sse");
+        assert_eq!(server["url"], "http://localhost:8090/mcp/sse");
+        assert_eq!(server["headers"]["Authorization"], "Bearer my-api-key");
+        // No stdio fields
+        assert!(server.get("command").is_none());
+        assert!(server.get("args").is_none());
+    }
+
+    #[test]
+    fn test_build_server_object_stdio_transport() {
+        let config = McpConfig {
+            mcp_binary_path: "/path/to/masday".into(),
+            api_url: "http://localhost:30101".to_string(),
+            api_key: "secret".to_string(),
+            database_url: None,
+            use_http_transport: false,
+        };
+
+        let server = build_server_object(&config);
+
+        assert_eq!(server["type"], "stdio");
+        assert_eq!(server["command"], "/path/to/masday");
+        assert_eq!(server["env"]["MASDAY_API_URL"], "http://localhost:30101");
+        // No SSE fields
+        assert!(server.get("url").is_none());
+        assert!(server.get("headers").is_none());
     }
 }

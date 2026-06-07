@@ -54,7 +54,10 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// Initialize the global HTTP client and API configuration
 /// Called once at startup from main.rs
-pub fn init(api_url: String, api_key: String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init(
+    api_url: String,
+    api_key: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;

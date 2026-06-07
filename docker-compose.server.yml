@@ -55,6 +55,11 @@ services:
       RUST_LOG: info
     ports:
       - "${API_PORT:-8090}:8090"
+    # MCP endpoints available:
+    #   SSE:           GET  /mcp/sse
+    #   Messages:      POST /mcp/messages?session_id=...
+    #   Streamable:    POST /mcp
+    # Test: curl -X POST http://localhost:8090/mcp -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8090/api/health || exit 1"]
       interval: 30s

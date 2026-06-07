@@ -1,0 +1,19 @@
+[Unit]
+Description=Masday Workflow Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=masday
+Group=masday
+WorkingDirectory=/opt/masday
+ExecStart=/usr/local/bin/masday serve
+Restart=on-failure
+RestartSec=5
+Environment=DATABASE_URL=postgresql://masday:masdaypass@localhost:5432/masday_workflow
+Environment=MASDAY_API_KEY=changeme
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
