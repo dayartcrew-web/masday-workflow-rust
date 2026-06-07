@@ -11,8 +11,10 @@ WorkingDirectory=/opt/masday
 ExecStart=/usr/local/bin/masday serve
 Restart=on-failure
 RestartSec=5
-Environment=DATABASE_URL=postgresql://masday:masdaypass@localhost:5432/masday_workflow
-Environment=MASDAY_API_KEY=changeme
+# Set these via environment file or override:
+# EnvironmentFile=/opt/masday/.env
+Environment=DATABASE_URL=postgresql://masday:CHANGE_ME@localhost:5432/masday_workflow
+Environment=MASDAY_API_KEY=CHANGE_ME
 Environment=RUST_LOG=info
 
 [Install]

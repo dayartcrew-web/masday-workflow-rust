@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-masday}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-masdaypass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-masday_workflow}
     ports:
       - "${DB_PORT:-5432}:5432"
@@ -49,7 +49,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-masday}:${POSTGRES_PASSWORD:-masdaypass}@postgres:5432/${POSTGRES_DB:-masday_workflow}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-masday}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-masday_workflow}
       REDIS_URL: redis://redis:6379
       API_PORT: "8090"
       RUST_LOG: info
