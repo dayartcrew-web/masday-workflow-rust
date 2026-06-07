@@ -193,7 +193,9 @@ pub fn reset_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
 /// Wait for PostgreSQL to accept TCP connections.
 /// Retries with 500ms interval until timeout.
 pub fn wait_for_postgres(host: &str, port: u16, timeout_secs: u64) -> Result<()> {
-    let addr = format!("{}:{}", host, port);
+    // Resolve hostname to IP for socket address parsing (localhost → 127.0.0.1)
+    let ip = if host == "localhost" { "127.0.0.1" } else { host };
+    let addr = format!("{}:{}", ip, port);
     let timeout = Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
 
