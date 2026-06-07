@@ -57,6 +57,11 @@ fn container_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a port is already in use (by any process or container)
+fn is_port_in_use(port: u16) -> bool {
+    std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
+}
+
 /// Start PostgreSQL container. Creates if not exists, starts if stopped.
 pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
     if !is_docker_available() {
@@ -66,6 +71,15 @@ pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
     if is_container_running(POSTGRES_CONTAINER) {
         println!(
             "  PostgreSQL already running on port {}",
+            ports::postgres_port()
+        );
+        return Ok(());
+    }
+
+    // Check if port is already in use by any container (e.g. docker compose)
+    if is_port_in_use(ports::postgres_port()) {
+        println!(
+            "  PostgreSQL already running on port {} (external container)",
             ports::postgres_port()
         );
         return Ok(());
@@ -112,6 +126,15 @@ pub fn start_postgres(user: &str, password: &str, db_name: &str) -> Result<()> {
 pub fn start_redis() -> Result<()> {
     if is_container_running(REDIS_CONTAINER) {
         println!("  Redis already running on port {}", ports::redis_port());
+        return Ok(());
+    }
+
+    // Check if port is already in use by any container (e.g. docker compose)
+    if is_port_in_use(ports::redis_port()) {
+        println!(
+            "  Redis already running on port {} (external container)",
+            ports::redis_port()
+        );
         return Ok(());
     }
 

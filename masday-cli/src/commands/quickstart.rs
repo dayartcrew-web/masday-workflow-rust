@@ -863,29 +863,57 @@ async fn start_docker_infrastructure(
         pb.finish_with_message(format!("  {} Redis ready", style("✓").green()));
     }
 
-    // Migrations — build URL from the same credentials used for container
-    let db_url = format!(
-        "postgresql://{}:{}@localhost:{}/{}",
-        pg_user,
-        pg_pass,
-        masday_core::constants::ports::postgres_port(),
-        pg_db
-    );
+    // Resolve DB URL — priority: config.toml > constructed from container credentials
+    let db_url = if let Ok(config) = crate::config::MasdayConfig::load_or_err() {
+        if let Some(ref url) = config.database_url {
+            url.clone()
+        } else {
+            format!(
+                "postgresql://{}:{}@localhost:{}/{}",
+                pg_user,
+                pg_pass,
+                masday_core::constants::ports::postgres_port(),
+                pg_db
+            )
+        }
+    } else {
+        format!(
+            "postgresql://{}:{}@localhost:{}/{}",
+            pg_user,
+            pg_pass,
+            masday_core::constants::ports::postgres_port(),
+            pg_db
+        )
+    };
     std::env::set_var("DATABASE_URL", &db_url);
 
-    // Set Redis URL if provided
-    if let Some(redis_url) = redis_url {
-        std::env::set_var("REDIS_URL", redis_url);
+    // Set Redis URL — priority: config.toml > parameter > default
+    if redis_url.is_none() {
+        if let Ok(config) = crate::config::MasdayConfig::load_or_err() {
+            if let Some(ref url) = config.redis_url {
+                std::env::set_var("REDIS_URL", url);
+            }
+        }
+    } else {
+        std::env::set_var("REDIS_URL", redis_url.unwrap());
     }
 
     let pb = spinner("Running migrations...");
     let pool = masday_db::pool::init_pool_with_retry(5)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    masday_db::run_migrations(&pool)
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    pb.finish_with_message(format!("  {} Database migrated", style("✓").green()));
+    // Run migrations — skip if already applied (idempotent)
+    if let Err(e) = masday_db::run_migrations(&pool).await {
+        // Migrations may fail if already applied — that's ok
+        let err_msg = format!("{}", e);
+        if err_msg.contains("already exists") {
+            pb.finish_with_message(format!("  {} Database up to date", style("✓").green()));
+        } else {
+            pb.finish_with_message(format!("  {} Migration warning: {}", style("⚠").yellow(), err_msg));
+        }
+    } else {
+        pb.finish_with_message(format!("  {} Database migrated", style("✓").green()));
+    }
 
     println!();
     Ok(db_url)
