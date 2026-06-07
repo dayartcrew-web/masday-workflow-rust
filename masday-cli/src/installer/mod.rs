@@ -17,7 +17,9 @@ mod templates;
 pub use agent_sync::{
     sync_agents_to_global, sync_agents_to_project, SyncReport as AgentSyncReport,
 };
-pub use build::{build_crates, find_api_binary, find_mcp_binary};
+pub use build::{
+    build_crates, find_api_binary, find_mcp_binary, find_or_download_binary, is_build_fresh,
+};
 pub use env_setup::{check_prerequisites, ensure_env_file, load_env, Prerequisites};
 pub use hook_setup::{
     install_global_hooks, install_project_hooks, register_hooks_in_settings,

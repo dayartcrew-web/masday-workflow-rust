@@ -696,7 +696,11 @@ fn run_test(text: &str) -> Result<()> {
             // Actually test local fastembed model
             #[cfg(feature = "local-embeddings")]
             {
-                println!("  {} Loading model '{}'...", style("→").cyan(), style(model).cyan());
+                println!(
+                    "  {} Loading model '{}'...",
+                    style("→").cyan(),
+                    style(model).cyan()
+                );
                 match test_local_embedding(model, text) {
                     Ok((latency, actual_dims)) => {
                         println!(
@@ -711,23 +715,13 @@ fn run_test(text: &str) -> Result<()> {
                             style(dimensions).cyan()
                         );
                         if actual_dims == dimensions {
-                            println!(
-                                "  {} Dimensions match — model ready",
-                                style("✓").green()
-                            );
+                            println!("  {} Dimensions match — model ready", style("✓").green());
                         } else {
-                            println!(
-                                "  {} Dimension mismatch! Check config",
-                                style("⚠").yellow()
-                            );
+                            println!("  {} Dimension mismatch! Check config", style("⚠").yellow());
                         }
                     }
                     Err(e) => {
-                        println!(
-                            "{} Local embedding test failed: {}",
-                            style("✗").red(),
-                            e
-                        );
+                        println!("{} Local embedding test failed: {}", style("✗").red(), e);
                         println!(
                             "  {} Model '{}' may need to be downloaded first",
                             style("→").dim(),
@@ -929,7 +923,8 @@ fn test_local_embedding(model_id: &str, text: &str) -> Result<(std::time::Durati
                 base_url: String::new(),
                 api_key: None,
             };
-            let embedding_service = masday_service::embedding_service::EmbeddingService::new(config);
+            let embedding_service =
+                masday_service::embedding_service::EmbeddingService::new(config);
             let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
             let vec = rt.block_on(embedding_service.embed(&text))?;
             Ok(vec)

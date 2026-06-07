@@ -150,9 +150,17 @@ enum Commands {
 
     /// One-command setup — db + migrate + install + ready
     Quickstart {
-        /// Setup mode: local | remote | standalone (skips interactive prompt)
+        /// Setup mode: local | remote | standalone | server (skips interactive prompt)
         #[arg(long)]
         mode: Option<String>,
+
+        /// Developer mode: build from source (implies cargo build unless --skip-build)
+        #[arg(long)]
+        dev: bool,
+
+        /// Skip cargo build step (only with --dev)
+        #[arg(long)]
+        skip_build: bool,
 
         /// Non-interactive: use defaults for all prompts
         #[arg(long, short = 'y')]
@@ -162,6 +170,10 @@ enum Commands {
         #[arg(long)]
         database_url: Option<String>,
 
+        /// Redis URL (local mode only, skips Docker Redis)
+        #[arg(long)]
+        redis_url: Option<String>,
+
         /// Embedding model ID (skips model selection)
         #[arg(long)]
         embedding: Option<String>,
@@ -169,6 +181,14 @@ enum Commands {
         /// Platform(s) to install (comma-separated: claude-code,gemini,vscode,opencode)
         #[arg(long)]
         platform: Option<String>,
+
+        /// API server port (local mode only, overrides default)
+        #[arg(long)]
+        api_port: Option<u16>,
+
+        /// Docker image tag (server mode only)
+        #[arg(long)]
+        image_tag: Option<String>,
     },
 
     /// Start API server + dashboard
@@ -211,7 +231,7 @@ enum Commands {
         action: DbAction,
     },
 
-    /// Install masday into the current project
+    /// Install masday into the current project (deprecated, use quickstart)
     Install {
         /// Install mode: local | remote | standalone
         #[arg(long)]
@@ -345,17 +365,27 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Quickstart {
             mode,
+            dev,
+            skip_build,
             yes,
             database_url,
+            redis_url,
             embedding,
             platform,
+            api_port,
+            image_tag,
         } => {
             let args = masday_cli::commands::quickstart::QuickstartArgs {
                 mode,
+                dev,
+                skip_build,
                 yes,
                 database_url,
+                redis_url,
                 embedding,
                 platform,
+                api_port,
+                image_tag,
             };
             masday_cli::commands::quickstart::run(&project_dir, Some(args)).await?;
         }

@@ -1,6 +1,6 @@
 [package]
 name = "masday-cli"
-version = "0.3.43"
+version = "0.3.44"
 edition = "2021"
 
 [[bin]]
@@ -27,6 +27,7 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 tempfile = "3"
 home = "0.5"
 toml = "0.8"
+walkdir = "2"
 rust-embed = { version = "8", features = ["mime-guess"] }
 axum = "0.8"
 inquire = "0.7"

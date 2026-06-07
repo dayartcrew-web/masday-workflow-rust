@@ -1,15 +1,44 @@
+# Node.js artifacts (for monorepo reference)
 node_modules
 **/node_modules
 .next
 dist
-.git
-.msd
-.masday
-*.log
-.env
-.env.local
-coverage
 .turbo
-screenshots
-docs/plans
+
+# Rust artifacts
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Local data and state
+.masday/
+.msd/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs and temp files
+*.log
 mcp-stderr.txt
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+
+# Git and CI/CD
+.git/
+.github/
+.gitignore
+
+# Documentation and coverage
+coverage/
+docs/plans
+screenshots/
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll

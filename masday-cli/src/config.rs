@@ -22,6 +22,8 @@ pub struct MasdayConfig {
     pub api_key: String,
     /// PostgreSQL connection URL (local mode only)
     pub database_url: Option<String>,
+    /// Redis connection URL (local mode only)
+    pub redis_url: Option<String>,
     /// Embedding provider: "local" | "ollama" | "openai"
     pub embedding_provider: Option<String>,
     /// Embedding model name
@@ -66,6 +68,7 @@ impl Default for MasdayConfig {
             api_url: ports::api_base_url(),
             api_key: "local-dev".to_string(),
             database_url: None,
+            redis_url: None,
             embedding_provider: None,
             embedding_model: None,
             embedding_dimensions: None,
@@ -151,6 +154,9 @@ impl MasdayConfig {
         if let Some(ref db_url) = self.database_url {
             std::env::set_var("DATABASE_URL", db_url);
         }
+        if let Some(ref redis_url) = self.redis_url {
+            std::env::set_var("REDIS_URL", redis_url);
+        }
         if let Some(ref provider) = self.embedding_provider {
             std::env::set_var("EMBEDDING_PROVIDER", provider);
         }
@@ -181,6 +187,9 @@ impl MasdayConfig {
         if let Some(ref url) = self.database_url {
             map.insert("DATABASE_URL".into(), url.clone());
         }
+        if let Some(ref url) = self.redis_url {
+            map.insert("REDIS_URL".into(), url.clone());
+        }
         map
     }
 }
@@ -204,6 +213,7 @@ mod tests {
             api_url: "https://masday.example.com".to_string(),
             api_key: "test-key-123".to_string(),
             database_url: None,
+            redis_url: None,
             embedding_provider: Some("local".to_string()),
             embedding_model: Some("all-MiniLM-L6-v2".to_string()),
             embedding_dimensions: Some(384),
@@ -240,6 +250,7 @@ mod tests {
             embedding_model: Some("test-model".to_string()),
             embedding_dimensions: Some(384),
             database_url: Some("postgresql://localhost/db".to_string()),
+            redis_url: Some("redis://localhost:6379".to_string()),
             ..MasdayConfig::default()
         };
 

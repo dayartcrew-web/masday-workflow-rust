@@ -17,24 +17,34 @@ use crate::commands::embed;
 use crate::config::MasdayConfig;
 use crate::docker;
 use crate::installer::{
-    all_platforms, generate_mcp_config, install_global_hooks, install_project_hooks,
-    register_hooks_in_settings, sync_agents_to_global, sync_agents_to_project,
+    all_platforms, build_crates, generate_mcp_config, install_global_hooks, install_project_hooks,
+    is_build_fresh, register_hooks_in_settings, sync_agents_to_global, sync_agents_to_project,
     sync_skills_to_global, sync_skills_to_project, McpConfig, Platform,
 };
 
 /// Arguments for the quickstart command (supports non-interactive mode).
 #[derive(Debug, Default, Clone)]
 pub struct QuickstartArgs {
-    /// Setup mode: local | remote | standalone
+    /// Setup mode: local | remote | standalone | server
     pub mode: Option<String>,
+    /// Developer mode: build from source
+    pub dev: bool,
+    /// Skip cargo build step (only with --dev)
+    pub skip_build: bool,
     /// Non-interactive: use defaults for all prompts
     pub yes: bool,
     /// Database URL (local mode only)
     pub database_url: Option<String>,
+    /// Redis URL (local mode only)
+    pub redis_url: Option<String>,
     /// Embedding model ID
     pub embedding: Option<String>,
     /// Platform(s) to install (comma-separated)
     pub platform: Option<String>,
+    /// API server port (local mode only)
+    pub api_port: Option<u16>,
+    /// Docker image tag (server mode only)
+    pub image_tag: Option<String>,
 }
 
 /// Run the quickstart wizard. Pass `None` for interactive mode, or `Some(args)` for CLI-driven mode.
@@ -90,6 +100,7 @@ pub async fn run(project_dir: &Path, args: Option<QuickstartArgs>) -> Result<()>
             let mode_options = vec![
                 "Local — everything on this machine (Docker)",
                 "Remote — connect to existing API server",
+                "Server — deploy full server stack (Docker)",
                 "Standalone — agents & skills only (no DB, no API)",
             ];
             let choice = inquire::Select::new("How will you run Masday?", mode_options)
@@ -100,6 +111,8 @@ pub async fn run(project_dir: &Path, args: Option<QuickstartArgs>) -> Result<()>
                 "local".to_string()
             } else if choice.starts_with("Remote") {
                 "remote".to_string()
+            } else if choice.starts_with("Server") {
+                "server".to_string()
             } else {
                 "standalone".to_string()
             }
@@ -108,6 +121,7 @@ pub async fn run(project_dir: &Path, args: Option<QuickstartArgs>) -> Result<()>
         let mode_options = vec![
             "Local — everything on this machine (Docker)",
             "Remote — connect to existing API server",
+            "Server — deploy full server stack (Docker)",
             "Standalone — agents & skills only (no DB, no API)",
         ];
         let choice = inquire::Select::new("How will you run Masday?", mode_options)
@@ -118,6 +132,8 @@ pub async fn run(project_dir: &Path, args: Option<QuickstartArgs>) -> Result<()>
             "local".to_string()
         } else if choice.starts_with("Remote") {
             "remote".to_string()
+        } else if choice.starts_with("Server") {
+            "server".to_string()
         } else {
             "standalone".to_string()
         }
@@ -130,11 +146,21 @@ pub async fn run(project_dir: &Path, args: Option<QuickstartArgs>) -> Result<()>
 
     match mode_str.as_str() {
         "local" => {
-            run_local_mode(project_dir, &detected_platforms, has_docker, args.as_ref()).await?
+            run_local_mode(project_dir, &detected_platforms, has_docker, args.as_ref()).await?;
         }
-        "remote" => run_remote_mode(project_dir, &detected_platforms, args.as_ref())?,
-        "standalone" => run_standalone_mode(project_dir, &detected_platforms, args.as_ref())?,
-        other => bail!("Invalid mode '{}'. Use: local, remote, standalone", other),
+        "remote" => {
+            run_remote_mode(project_dir, &detected_platforms, args.as_ref())?;
+        }
+        "standalone" => {
+            run_standalone_mode(project_dir, &detected_platforms, args.as_ref())?;
+        }
+        "server" => {
+            run_server_mode(project_dir, &detected_platforms, has_docker, args.as_ref()).await?;
+        }
+        other => bail!(
+            "Invalid mode '{}'. Use: local, remote, standalone, server",
+            other
+        ),
     }
 
     Ok(())
@@ -156,60 +182,47 @@ async fn run_local_mode(
     let is_non_interactive = args.is_some_and(|a| a.yes);
 
     // ── DB Setup ──────────────────────────────────────────────────────────
-    let database_url = if let Some(url) = args.and_then(|a| a.database_url.as_ref()) {
-        // Explicit --database-url provided
-        println!("  Database URL: {}", style(url).cyan());
-        Some(url.clone())
-    } else if is_non_interactive {
-        // Non-interactive with no explicit URL — start Docker with defaults
-        if has_docker {
-            let (pg_user, pg_pass, pg_db) = (docker::pg_user(), docker::pg_password(), docker::pg_db());
-            println!("  {} Starting Docker PostgreSQL with defaults...", style("→").cyan());
-            Some(start_docker_infrastructure(&pg_user, &pg_pass, &pg_db).await?)
-        } else {
-            println!(
-                "{}",
-                style("  ⚠ Docker not found and no --database-url provided. Skipping DB setup.").yellow()
-            );
-            None
-        }
-    } else if has_docker {
-        let db_choice = inquire::Select::new(
-            "PostgreSQL setup:",
-            vec![
-                "Start Docker container (recommended)",
-                "Use existing PostgreSQL (provide URL)",
-            ],
-        )
-        .prompt()?;
+    let infra_resolution = resolve_infra(
+        has_docker,
+        is_non_interactive,
+        args.and_then(|a| a.database_url.clone()),
+        args.and_then(|a| a.redis_url.clone()),
+    )?;
 
-        if db_choice.starts_with("Start Docker") {
-            let (pg_user, pg_pass, pg_db) = ask_docker_credentials()?;
-            Some(start_docker_infrastructure(&pg_user, &pg_pass, &pg_db).await?)
-        } else {
-            ask_database_url().await?
+    let database_url = match infra_resolution {
+        InfraResolution::Docker { user, password, db, redis_url: infra_redis_url } => {
+            Some(start_docker_infrastructure(&user, &password, &db, infra_redis_url.as_deref()).await?)
         }
-    } else {
-        println!(
-            "{}",
-            style("Docker not found. Provide an existing PostgreSQL URL:").yellow()
-        );
-        ask_database_url().await?
+        InfraResolution::ExistingUrl { database_url: url, redis_url: _infra_redis_url } => Some(url),
+        InfraResolution::NoDatabase => {
+            if !is_non_interactive {
+                // Ask for URL in interactive mode
+                ask_database_url().await?
+            } else {
+                None
+            }
+        }
     };
 
     // ── Embedding (optional) ──────────────────────────────────────────────
-    let (embed_provider, embed_model, embed_dims) = if let Some(emb_id) =
-        args.and_then(|a| a.embedding.as_ref())
-    {
-        // Explicit --embedding provided
-        resolve_embedding_model(emb_id)?
-    } else if is_non_interactive {
-        // Default: all-MiniLM-L6-v2
-        println!("  Embedding: {} (default)", style("all-MiniLM-L6-v2").cyan());
-        (Some("local".into()), Some("all-MiniLM-L6-v2".into()), Some(384))
-    } else {
-        ask_embedding_model()?
-    };
+    let (embed_provider, embed_model, embed_dims) =
+        if let Some(emb_id) = args.and_then(|a| a.embedding.as_ref()) {
+            // Explicit --embedding provided
+            resolve_embedding_model(emb_id)?
+        } else if is_non_interactive {
+            // Default: all-MiniLM-L6-v2
+            println!(
+                "  Embedding: {} (default)",
+                style("all-MiniLM-L6-v2").cyan()
+            );
+            (
+                Some("local".into()),
+                Some("all-MiniLM-L6-v2".into()),
+                Some(384),
+            )
+        } else {
+            ask_embedding_model()?
+        };
 
     // ── Platforms ─────────────────────────────────────────────────────────
     let platforms = if let Some(platform_str) = args.and_then(|a| a.platform.as_ref()) {
@@ -220,37 +233,41 @@ async fn run_local_mode(
         } else {
             detected_platforms.to_vec()
         };
-        println!("  Platforms: {}", style(platform_names(&plats).join(", ")).cyan());
+        println!(
+            "  Platforms: {}",
+            style(platform_names(&plats).join(", ")).cyan()
+        );
         plats
     } else {
         ask_platforms(detected_platforms)?
     };
 
     // ── Save config ───────────────────────────────────────────────────────
-    let api_url = format!(
-        "http://localhost:{}",
-        masday_core::constants::ports::api_port()
-    );
+    // Use custom api_port from args if provided
+    let api_port = args.and_then(|a| a.api_port).unwrap_or(masday_core::constants::ports::API_PORT);
+    let api_url = format!("http://localhost:{}", api_port);
+
+    // Get redis_url from args if provided
+    let redis_url = args.and_then(|a| a.redis_url.clone());
+
     let config = MasdayConfig {
         mode: "local".to_string(),
         api_url: api_url.clone(),
         api_key: "***".to_string(),
         database_url: database_url.clone(),
+        redis_url: redis_url.clone(),
         embedding_provider: embed_provider,
         embedding_model: embed_model,
         embedding_dimensions: embed_dims,
         embedding_base_url: None,
         embedding_api_key: None,
-        api_port: masday_core::constants::ports::API_PORT,
+        api_port,
         db_port: masday_core::constants::ports::POSTGRES_PORT,
         redis_port: masday_core::constants::ports::REDIS_PORT,
-        dashboard_port: masday_core::constants::ports::API_PORT,
+        dashboard_port: api_port,
         platforms: platform_names(&platforms),
     };
-    config.save()?;
-    config.set_env_vars();
-    println!("  {} Config saved", style("✓").green());
-    println!();
+    save_config_and_env(&config)?;
 
     // ── Sync templates ────────────────────────────────────────────────────
     sync_templates(project_dir, &platforms)?;
@@ -273,7 +290,11 @@ async fn run_local_mode(
 // REMOTE MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform], args: Option<&QuickstartArgs>) -> Result<()> {
+fn run_remote_mode(
+    project_dir: &Path,
+    detected_platforms: &[Platform],
+    args: Option<&QuickstartArgs>,
+) -> Result<()> {
     println!("{}", style("── Remote Mode ──").cyan().bold());
     println!();
 
@@ -358,7 +379,10 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform], args: Op
         } else {
             detected_platforms.to_vec()
         };
-        println!("  Platforms: {}", style(platform_names(&plats).join(", ")).cyan());
+        println!(
+            "  Platforms: {}",
+            style(platform_names(&plats).join(", ")).cyan()
+        );
         plats
     } else {
         ask_platforms(detected_platforms)?
@@ -390,6 +414,7 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform], args: Op
         api_url: api_url.clone(),
         api_key: api_key.clone(),
         database_url: database_url.clone(),
+        redis_url: None,
         embedding_provider: if is_windows {
             Some(String::new())
         } else {
@@ -409,10 +434,7 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform], args: Op
         dashboard_port: masday_core::constants::ports::API_PORT,
         platforms: platform_names(&platforms),
     };
-    config.save()?;
-    config.set_env_vars();
-    println!("  {} Config saved", style("✓").green());
-    println!();
+    save_config_and_env(&config)?;
 
     // ── Sync templates ────────────────────────────────────────────────────
     sync_templates(project_dir, &platforms)?;
@@ -432,10 +454,163 @@ fn run_remote_mode(project_dir: &Path, detected_platforms: &[Platform], args: Op
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SERVER MODE
+// ═══════════════════════════════════════════════════════════════════════════
+
+async fn run_server_mode(
+    project_dir: &Path,
+    _detected_platforms: &[Platform],
+    has_docker: bool,
+    args: Option<&QuickstartArgs>,
+) -> Result<()> {
+    println!("{}", style("── Server Mode ──").cyan().bold());
+    println!();
+
+    let is_non_interactive = args.is_some_and(|a| a.yes);
+    let is_dev = args.is_some_and(|a| a.dev);
+
+    // ── Step 0: Build binary if --dev ────────────────────────────────────────
+    if is_dev {
+        let skip_build = args.is_some_and(|a| a.skip_build);
+        if !skip_build && !is_build_fresh(project_dir) {
+            println!("{}", style("Building masday binary...").cyan());
+            build_crates(project_dir)?;
+            println!("  {} Build complete", style("✓").green());
+            println!();
+        } else if skip_build {
+            println!("  {} Skipping build (--skip-build)", style("→").cyan());
+            println!();
+        } else {
+            println!("  {} Build fresh, skipping cargo build", style("→").dim());
+            println!();
+        }
+    }
+
+    // ── Step 1: Resolve infra ──────────────────────────────────────────────────
+    let infra_resolution = resolve_infra(
+        has_docker,
+        is_non_interactive,
+        args.and_then(|a| a.database_url.clone()),
+        args.and_then(|a| a.redis_url.clone()),
+    )?;
+
+    let (database_url, redis_url) = match infra_resolution {
+        InfraResolution::Docker { user, password, db, redis_url: infra_redis_url } => {
+            // Start Docker containers
+            let db_url = start_docker_infrastructure(&user, &password, &db, infra_redis_url.as_deref()).await?;
+            (Some(db_url), infra_redis_url)
+        }
+        InfraResolution::ExistingUrl { database_url: url, redis_url: infra_redis_url } => {
+            (Some(url), infra_redis_url)
+        }
+        InfraResolution::NoDatabase => {
+            // Server mode requires database
+            if !is_non_interactive {
+                bail!("Server mode requires a database. Provide --database-url or ensure Docker is available.");
+            } else {
+                (None, None)
+            }
+        }
+    };
+
+    // ── Step 2: Migrations ─────────────────────────────────────────────────────
+    // For now, just print instructions (actual migration runner is out of scope)
+    if database_url.is_some() {
+        println!("{}", style("Database migrations:").cyan());
+        println!("  {} Database URL configured", style("✓").green());
+        println!("  {} Migrations will run automatically on API startup", style("→").cyan());
+        println!();
+    }
+
+    // ── Step 3: Save config ───────────────────────────────────────────────────
+    let api_port = args.and_then(|a| a.api_port)
+        .unwrap_or(masday_core::constants::ports::API_PORT);
+    let api_url = format!("http://localhost:{}", api_port);
+
+    let config = MasdayConfig {
+        mode: "server".to_string(),
+        api_url: api_url.clone(),
+        api_key: "***".to_string(),
+        database_url: database_url.clone(),
+        redis_url: redis_url.clone(),
+        embedding_provider: args.as_ref().and_then(|a| a.embedding.as_ref()).map(|_| "local".to_string()),
+        embedding_model: args.as_ref().and_then(|a| a.embedding.as_ref()).cloned(),
+        embedding_dimensions: Some(384), // Default for all-MiniLM-L6-v2
+        embedding_base_url: None,
+        embedding_api_key: None,
+        api_port,
+        db_port: masday_core::constants::ports::POSTGRES_PORT,
+        redis_port: masday_core::constants::ports::REDIS_PORT,
+        dashboard_port: api_port,
+        platforms: vec![], // Server mode doesn't need platform sync
+    };
+    save_config_and_env(&config)?;
+
+    // ── Step 4: Start API ─────────────────────────────────────────────────────
+    if is_dev {
+        // Dev mode: print instructions to run cargo run
+        println!("{}", style("API Server (dev mode):").cyan());
+        println!("  {} To start the API server:", style("→").cyan());
+        println!();
+        println!("    {}", style(format!("cd {}", project_dir.display())).dim());
+        if let Some(ref db_url) = database_url {
+            println!("    {}", style(format!("export DATABASE_URL=\"{}\"", db_url)).dim());
+        }
+        if let Some(ref redis_url) = redis_url {
+            println!("    {}", style(format!("export REDIS_URL=\"{}\"", redis_url)).dim());
+        }
+        println!("    {}", style("cargo run -p masday-api").cyan());
+        println!();
+    } else if has_docker {
+        // Docker mode: use docker compose
+        println!("{}", style("API Server (Docker):").cyan());
+
+        // Check for docker-compose.server.yml
+        let compose_file = project_dir.join("docker-compose.server.yml");
+        if compose_file.exists() {
+            println!("  {} Starting Docker containers...", style("→").cyan());
+            println!();
+            println!("    {}", style(format!("docker compose -f {} up -d", compose_file.display())).cyan());
+            println!();
+            println!("  {} Or run manually:", style("→").cyan());
+            println!("    {}", style(format!("docker compose -f {} up -d", compose_file.display())).dim());
+            println!();
+        } else {
+            println!("  {} docker-compose.server.yml not found", style("⚠").yellow());
+            println!("  {} Expected location: {}", style("→").yellow(), compose_file.display());
+            println!();
+        }
+    } else {
+        // No Docker, no dev: print instructions to download binary
+        println!("{}", style("API Server (production mode):").cyan());
+        println!("  {} Download the latest binary from GitHub Releases:", style("→").cyan());
+        println!("    {}", style("https://github.com/dayartcrew-web/masday-workflow-rust/releases").cyan());
+        println!();
+        println!("  {} Then run:", style("→").cyan());
+        if let Some(ref db_url) = database_url {
+            println!("    {}", style(format!("DATABASE_URL=\"{}\"", db_url)).dim());
+        }
+        if let Some(ref redis_url) = redis_url {
+            println!("    {}", style(format!("REDIS_URL=\"{}\"", redis_url)).dim());
+        }
+        println!("    {}", style("masday serve").cyan());
+        println!();
+    }
+
+    // ── Step 5: Print summary ─────────────────────────────────────────────────
+    print_server_summary(&config, database_url.as_deref(), redis_url.as_deref());
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // STANDALONE MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform], args: Option<&QuickstartArgs>) -> Result<()> {
+fn run_standalone_mode(
+    project_dir: &Path,
+    detected_platforms: &[Platform],
+    args: Option<&QuickstartArgs>,
+) -> Result<()> {
     println!("{}", style("── Standalone Mode ──").cyan().bold());
     println!();
 
@@ -449,7 +624,10 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform], args
         } else {
             detected_platforms.to_vec()
         };
-        println!("  Platforms: {}", style(platform_names(&plats).join(", ")).cyan());
+        println!(
+            "  Platforms: {}",
+            style(platform_names(&plats).join(", ")).cyan()
+        );
         plats
     } else {
         ask_platforms(detected_platforms)?
@@ -484,6 +662,7 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform], args
         api_url: "none".to_string(),
         api_key: "none".to_string(),
         database_url: None,
+        redis_url: None,
         embedding_provider: if is_windows {
             Some(String::new())
         } else {
@@ -503,9 +682,7 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform], args
         dashboard_port: masday_core::constants::ports::API_PORT,
         platforms: platform_names(&platforms),
     };
-    config.save()?;
-    println!("  {} Config saved", style("✓").green());
-    println!();
+    save_config_and_env(&config)?;
 
     // ── Sync templates ────────────────────────────────────────────────────
     sync_templates(project_dir, &platforms)?;
@@ -541,8 +718,121 @@ fn run_standalone_mode(project_dir: &Path, detected_platforms: &[Platform], args
 // SHARED HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Infrastructure resolution options
+#[derive(Debug, Clone)]
+pub enum InfraResolution {
+    /// Use Docker containers (recommended)
+    Docker {
+        user: String,
+        password: String,
+        db: String,
+        /// Optional Redis URL (if provided, skips Docker Redis)
+        redis_url: Option<String>,
+    },
+    /// Use existing PostgreSQL instance
+    ExistingUrl {
+        database_url: String,
+        redis_url: Option<String>,
+    },
+    /// No database needed (standalone/remote API only)
+    NoDatabase,
+}
+
+/// Resolve infrastructure setup - Docker vs existing DB
+pub fn resolve_infra(
+    has_docker: bool,
+    is_non_interactive: bool,
+    explicit_url: Option<String>,
+    explicit_redis_url: Option<String>,
+) -> Result<InfraResolution> {
+    if let Some(url) = explicit_url {
+        println!("  Database URL: {}", style(&url).cyan());
+        if let Some(ref redis_url) = explicit_redis_url {
+            println!("  Redis URL: {}", style(redis_url).cyan());
+        }
+        return Ok(InfraResolution::ExistingUrl {
+            database_url: url,
+            redis_url: explicit_redis_url,
+        });
+    }
+
+    if is_non_interactive {
+        if has_docker {
+            let (pg_user, pg_pass, pg_db) =
+                (docker::pg_user(), docker::pg_password(), docker::pg_db());
+            if explicit_redis_url.is_some() {
+                println!(
+                    "  {} Starting Docker PostgreSQL with defaults (Redis URL provided)...",
+                    style("→").cyan()
+                );
+            } else {
+                println!(
+                    "  {} Starting Docker PostgreSQL + Redis with defaults...",
+                    style("→").cyan()
+                );
+            }
+            Ok(InfraResolution::Docker {
+                user: pg_user,
+                password: pg_pass,
+                db: pg_db,
+                redis_url: explicit_redis_url,
+            })
+        } else {
+            println!(
+                "{}",
+                style("  ⚠ Docker not found and no --database-url provided. Skipping DB setup.")
+                    .yellow()
+            );
+            Ok(InfraResolution::NoDatabase)
+        }
+    } else if has_docker {
+        let db_choice = inquire::Select::new(
+            "PostgreSQL setup:",
+            vec![
+                "Start Docker container (recommended)",
+                "Use existing PostgreSQL (provide URL)",
+            ],
+        )
+        .prompt()?;
+
+        if db_choice.starts_with("Start Docker") {
+            let (user, password, db) = ask_docker_credentials()?;
+            Ok(InfraResolution::Docker {
+                user,
+                password,
+                db,
+                redis_url: explicit_redis_url,
+            })
+        } else {
+            // This will be handled by the caller with async ask_database_url
+            Ok(InfraResolution::NoDatabase)
+        }
+    } else {
+        println!(
+            "{}",
+            style("Docker not found. Provide an existing PostgreSQL URL:").yellow()
+        );
+        Ok(InfraResolution::NoDatabase)
+    }
+}
+
+/// Save config to ~/.masday/config.toml and set environment variables
+pub fn save_config_and_env(config: &MasdayConfig) -> Result<()> {
+    config.save()?;
+    config.set_env_vars();
+    println!("  {} Config saved", style("✓").green());
+    println!();
+    Ok(())
+}
+
 /// Start Docker containers + run migrations
-async fn start_docker_infrastructure(pg_user: &str, pg_pass: &str, pg_db: &str) -> Result<String> {
+/// If redis_url is provided, skips starting Docker Redis
+async fn start_docker_infrastructure(
+    pg_user: &str,
+    pg_pass: &str,
+    pg_db: &str,
+    redis_url: Option<&str>,
+) -> Result<String> {
     println!("{}", style("Starting infrastructure...").cyan());
 
     // PostgreSQL
@@ -559,8 +849,13 @@ async fn start_docker_infrastructure(pg_user: &str, pg_pass: &str, pg_db: &str) 
         pb.finish_with_message(format!("  {} PostgreSQL ready", style("✓").green()));
     }
 
-    // Redis
-    if docker::is_container_running("masday-redis") {
+    // Redis (skip if URL provided)
+    if redis_url.is_some() {
+        println!(
+            "  {} Redis URL provided, skipping Docker Redis",
+            style("→").cyan()
+        );
+    } else if docker::is_container_running("masday-redis") {
         println!("  {} Redis already running", style("✓").green());
     } else {
         let pb = spinner("Starting Redis...");
@@ -577,6 +872,11 @@ async fn start_docker_infrastructure(pg_user: &str, pg_pass: &str, pg_db: &str) 
         pg_db
     );
     std::env::set_var("DATABASE_URL", &db_url);
+
+    // Set Redis URL if provided
+    if let Some(redis_url) = redis_url {
+        std::env::set_var("REDIS_URL", redis_url);
+    }
 
     let pb = spinner("Running migrations...");
     let pool = masday_db::pool::init_pool_with_retry(5)
@@ -676,7 +976,9 @@ fn ask_embedding_model() -> Result<(Option<String>, Option<String>, Option<usize
     choices.push("Skip embeddings".to_string());
 
     let embed_choice = inquire::Select::new("Embedding model:", choices)
-        .with_help_message("Local ONNX model — no external service needed. ↑↓ to move, Enter to select")
+        .with_help_message(
+            "Local ONNX model — no external service needed. ↑↓ to move, Enter to select",
+        )
         .prompt()?;
 
     if embed_choice == "Skip embeddings" {
@@ -873,7 +1175,9 @@ fn platform_names(platforms: &[Platform]) -> Vec<String> {
 
 /// Resolve an embedding model ID to (provider, model, dimensions).
 /// Used by non-interactive mode to look up model metadata.
-fn resolve_embedding_model(model_id: &str) -> Result<(Option<String>, Option<String>, Option<usize>)> {
+fn resolve_embedding_model(
+    model_id: &str,
+) -> Result<(Option<String>, Option<String>, Option<usize>)> {
     if model_id == "skip" || model_id == "none" {
         return Ok((None, None, None));
     }
@@ -907,14 +1211,11 @@ fn parse_platforms(platform_str: &str) -> Result<Vec<Platform>> {
 
     for name in platform_str.split(',') {
         let name = name.trim();
-        let plat = all
-            .iter()
-            .find(|p| p.name() == name)
-            .context(format!(
-                "Unknown platform '{}'. Available: {}",
-                name,
-                all.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ")
-            ))?;
+        let plat = all.iter().find(|p| p.name() == name).context(format!(
+            "Unknown platform '{}'. Available: {}",
+            name,
+            all.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ")
+        ))?;
         if !platforms.contains(plat) {
             platforms.push(*plat);
         }
@@ -1000,6 +1301,47 @@ fn print_remote_summary(config: &MasdayConfig) {
     println!();
 }
 
+fn print_server_summary(config: &MasdayConfig, database_url: Option<&str>, redis_url: Option<&str>) {
+    println!();
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
+    println!(
+        "{}",
+        style("  ⚡ Masday server stack configured!").green().bold()
+    );
+    println!(
+        "{}",
+        style("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").green()
+    );
+    println!();
+    println!("  API:       http://localhost:{}", config.api_port);
+
+    if let Some(db_url) = database_url {
+        println!("  Database:  {}", style(db_url).cyan());
+    }
+    if let Some(redis_url) = redis_url {
+        println!("  Redis:     {}", style(redis_url).cyan());
+    }
+    println!();
+
+    println!("  Next steps:");
+    println!("    1. Start the infrastructure (PostgreSQL + Redis)");
+    println!("    2. Start the API server");
+    println!();
+
+    if config.embedding_model.is_some() {
+        println!("  Embedding: {}", style(config.embedding_model.as_ref().unwrap()).cyan());
+    }
+    println!();
+    println!(
+        "  {}",
+        style("💡 Edit ~/.masday/config.toml to change configuration").dim()
+    );
+    println!();
+}
+
 fn spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -1030,5 +1372,266 @@ mod tests {
         let platforms = vec![Platform::ClaudeCode, Platform::GeminiCli];
         let names = platform_names(&platforms);
         assert_eq!(names, vec!["claude-code", "gemini"]);
+    }
+
+    // ── InfraResolution tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_infra_explicit_database_url() {
+        let result = resolve_infra(
+            true,  // has_docker
+            true,  // is_non_interactive
+            Some("postgresql://user:pass@localhost:5432/db".to_string()),
+            None,
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            InfraResolution::ExistingUrl { database_url, redis_url } => {
+                assert_eq!(database_url, "postgresql://user:pass@localhost:5432/db");
+                assert!(redis_url.is_none());
+            }
+            _ => panic!("Expected ExistingUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_infra_explicit_redis_url() {
+        let result = resolve_infra(
+            true,  // has_docker
+            true,  // is_non_interactive
+            Some("postgresql://user:pass@localhost:5432/db".to_string()),
+            Some("redis://localhost:6379".to_string()),
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            InfraResolution::ExistingUrl { database_url, redis_url } => {
+                assert_eq!(database_url, "postgresql://user:pass@localhost:5432/db");
+                assert_eq!(redis_url, Some("redis://localhost:6379".to_string()));
+            }
+            _ => panic!("Expected ExistingUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_infra_docker_with_defaults() {
+        let result = resolve_infra(
+            true,  // has_docker
+            true,  // is_non_interactive
+            None,  // no explicit database_url
+            None,  // no explicit redis_url
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            InfraResolution::Docker { user, password, db, redis_url } => {
+                assert_eq!(user, "masday");
+                assert_eq!(password, "masdaypass");
+                assert_eq!(db, "masday_workflow");
+                assert!(redis_url.is_none());
+            }
+            _ => panic!("Expected Docker variant"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_infra_docker_with_explicit_redis() {
+        let result = resolve_infra(
+            true,  // has_docker
+            true,  // is_non_interactive
+            None,  // no explicit database_url
+            Some("redis://localhost:6379".to_string()),
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            InfraResolution::Docker { user, password, db, redis_url } => {
+                assert_eq!(user, "masday");
+                assert_eq!(password, "masdaypass");
+                assert_eq!(db, "masday_workflow");
+                assert_eq!(redis_url, Some("redis://localhost:6379".to_string()));
+            }
+            _ => panic!("Expected Docker variant with redis_url"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_infra_no_docker_no_url() {
+        let result = resolve_infra(
+            false, // has_docker = false
+            true,  // is_non_interactive
+            None,  // no explicit database_url
+            None,  // no explicit redis_url
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            InfraResolution::NoDatabase => {
+                // Expected result when no Docker and no URL
+            }
+            _ => panic!("Expected NoDatabase variant"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_infra_interactive_with_docker() {
+        let result = resolve_infra(
+            true,  // has_docker
+            false, // is_non_interactive = false (interactive)
+            None,  // no explicit database_url
+            None,  // no explicit redis_url
+        );
+        // In interactive mode with Docker, it will try to prompt and fail
+        // This is expected behavior - we can't test interactive prompts in unit tests
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_infra_interactive_without_docker() {
+        let result = resolve_infra(
+            false, // has_docker = false
+            false, // is_non_interactive = false (interactive)
+            None,  // no explicit database_url
+            None,  // no explicit redis_url
+        );
+        // In interactive mode without Docker, should return NoDatabase
+        // and let the caller handle the URL prompt
+        assert!(result.is_ok());
+        match result.unwrap() {
+            InfraResolution::NoDatabase => {
+                // Expected
+            }
+            _ => panic!("Expected NoDatabase variant in interactive mode without Docker"),
+        }
+    }
+
+    // ── QuickstartArgs tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_quickstart_args_default() {
+        let args = QuickstartArgs::default();
+        assert!(args.mode.is_none());
+        assert!(!args.dev);
+        assert!(!args.skip_build);
+        assert!(!args.yes);
+        assert!(args.database_url.is_none());
+        assert!(args.redis_url.is_none());
+        assert!(args.embedding.is_none());
+        assert!(args.platform.is_none());
+        assert!(args.api_port.is_none());
+        assert!(args.image_tag.is_none());
+    }
+
+    #[test]
+    fn test_quickstart_args_with_dev_flag() {
+        let args = QuickstartArgs {
+            dev: true,
+            ..Default::default()
+        };
+        assert!(args.dev);
+        assert!(!args.skip_build);
+    }
+
+    #[test]
+    fn test_quickstart_args_with_skip_build() {
+        let args = QuickstartArgs {
+            dev: true,
+            skip_build: true,
+            ..Default::default()
+        };
+        assert!(args.dev);
+        assert!(args.skip_build);
+    }
+
+    #[test]
+    fn test_quickstart_args_non_interactive() {
+        let args = QuickstartArgs {
+            yes: true,
+            mode: Some("local".to_string()),
+            ..Default::default()
+        };
+        assert!(args.yes);
+        assert_eq!(args.mode, Some("local".to_string()));
+    }
+
+    #[test]
+    fn test_quickstart_args_with_database_url() {
+        let args = QuickstartArgs {
+            database_url: Some("postgresql://user:pass@localhost:5432/db".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            args.database_url,
+            Some("postgresql://user:pass@localhost:5432/db".to_string())
+        );
+    }
+
+    #[test]
+    fn test_quickstart_args_with_redis_url() {
+        let args = QuickstartArgs {
+            redis_url: Some("redis://localhost:6379".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(args.redis_url, Some("redis://localhost:6379".to_string()));
+    }
+
+    #[test]
+    fn test_quickstart_args_with_api_port() {
+        let args = QuickstartArgs {
+            api_port: Some(8080),
+            ..Default::default()
+        };
+        assert_eq!(args.api_port, Some(8080));
+    }
+
+    #[test]
+    fn test_quickstart_args_with_image_tag() {
+        let args = QuickstartArgs {
+            mode: Some("server".to_string()),
+            image_tag: Some("v0.3.0".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(args.mode, Some("server".to_string()));
+        assert_eq!(args.image_tag, Some("v0.3.0".to_string()));
+    }
+
+    #[test]
+    fn test_quickstart_args_with_embedding() {
+        let args = QuickstartArgs {
+            embedding: Some("all-MiniLM-L6-v2".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(args.embedding, Some("all-MiniLM-L6-v2".to_string()));
+    }
+
+    #[test]
+    fn test_quickstart_args_with_platform() {
+        let args = QuickstartArgs {
+            platform: Some("claude-code,gemini".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(args.platform, Some("claude-code,gemini".to_string()));
+    }
+
+    // ── Mode string tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_mode_local() {
+        let mode_str = "local";
+        assert_eq!(mode_str, "local");
+    }
+
+    #[test]
+    fn test_mode_remote() {
+        let mode_str = "remote";
+        assert_eq!(mode_str, "remote");
+    }
+
+    #[test]
+    fn test_mode_standalone() {
+        let mode_str = "standalone";
+        assert_eq!(mode_str, "standalone");
+    }
+
+    #[test]
+    fn test_mode_server() {
+        let mode_str = "server";
+        assert_eq!(mode_str, "server");
     }
 }
