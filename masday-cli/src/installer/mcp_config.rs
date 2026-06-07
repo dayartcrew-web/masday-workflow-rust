@@ -99,11 +99,11 @@ fn build_server_object(config: &McpConfig) -> JsonValue {
 
     if is_url_mode {
         // Local/Remote mode: connect to running API server
-        // Use streamableHttp (or sse) transport with URL endpoint
-        let mcp_url = format!("{}/mcp", api_url.trim_end_matches('/'));
+        // Use SSE transport (broadly supported by all Claude Code versions)
+        let mcp_url = format!("{}/mcp/sse", api_url.trim_end_matches('/'));
         server.insert(
             "type".to_string(),
-            JsonValue::String("streamableHttp".to_string()),
+            JsonValue::String("sse".to_string()),
         );
         server.insert("url".to_string(), JsonValue::String(mcp_url));
         if !config.api_key.is_empty() {
@@ -286,9 +286,9 @@ mod tests {
         let content = std::fs::read_to_string(&config_path).unwrap();
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
-        // URL mode → streamableHttp transport
-        assert!(json["mcpServers"]["masday"]["type"] == "streamableHttp");
-        assert!(json["mcpServers"]["masday"]["url"] == "http://localhost:30101/mcp");
+        // URL mode → SSE transport
+        assert!(json["mcpServers"]["masday"]["type"] == "sse");
+        assert!(json["mcpServers"]["masday"]["url"] == "http://localhost:30101/mcp/sse");
         assert!(json["mcpServers"]["masday"]["headers"]["Authorization"] == "Bearer ***");
     }
 
