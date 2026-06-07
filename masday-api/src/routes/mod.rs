@@ -7,6 +7,7 @@ pub mod episodic_memory;
 pub mod graph;
 pub mod health;
 pub mod llm_provider_configs;
+pub mod mcp;
 pub mod memory;
 pub mod plan;
 pub mod policy;

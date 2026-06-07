@@ -5,18 +5,24 @@
 //! - `masday-mcp-stdio` — standalone, direct PostgreSQL access
 
 pub mod client;
+#[cfg(feature = "sqlite")]
 pub mod direct;
+#[cfg(feature = "sqlite")]
 pub mod direct_pg;
 pub mod embedding;
+pub mod handler;
 pub mod mode;
 pub mod pg;
 pub mod registry;
+#[cfg(feature = "sqlite")]
 pub mod sqlite;
+#[cfg(feature = "sqlite")]
 pub mod sqlite_schema;
 pub mod tools;
 pub mod transport;
 
 // Re-export key types for public API
+pub use handler::McpHandler;
 pub use registry::{ToolDefinition, ToolRegistry};
 pub use transport::JsonRpcServer;
 
@@ -253,6 +259,7 @@ fn register_workflow_tools(r: &mut ToolRegistry) {
         schema!("workflow_id"),
         w::workflow_resume_suggestion
     );
+    #[cfg(feature = "sqlite")]
     reg!(
         r,
         "workflow_ping",
@@ -868,6 +875,7 @@ pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn st
 
 /// Run the MCP stdio server in standalone mode.
 /// Connects directly to PostgreSQL via DATABASE_URL. No masday-api needed.
+#[cfg(feature = "sqlite")]
 pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -886,6 +894,7 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
 /// Run the MCP stdio server in local mode.
 /// Uses PostgreSQL (primary) + SQLite (cache) + Ollama (embed).
 /// Falls back to SQLite-only if PostgreSQL is unavailable.
+#[cfg(feature = "sqlite")]
 pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -922,6 +931,7 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
 // ── Standalone Registry (direct DB calls) ──────────────────────────────────
 
 /// Build the stdio registry: DB-dependent tools use `direct::*`, local tools unchanged.
+#[cfg(feature = "sqlite")]
 fn build_stdio_registry() -> ToolRegistry {
     let mut r = ToolRegistry::new();
     register_use_masday_tools(&mut r);
@@ -949,6 +959,7 @@ fn build_stdio_registry() -> ToolRegistry {
 
 // ── Stdio register functions (use direct::* instead of tools::*) ────────────
 
+#[cfg(feature = "sqlite")]
 fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1114,6 +1125,7 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_memory_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1204,6 +1216,7 @@ fn register_memory_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_review_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1229,6 +1242,7 @@ fn register_review_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_session_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1254,6 +1268,7 @@ fn register_session_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_context_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1294,6 +1309,7 @@ fn register_context_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_policy_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1340,6 +1356,7 @@ fn register_policy_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_reminder_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1369,6 +1386,7 @@ fn register_reminder_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_graph_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1387,6 +1405,7 @@ fn register_graph_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_capability_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     reg!(
@@ -1461,6 +1480,7 @@ fn register_capability_tools_stdio(r: &mut ToolRegistry) {
     );
 }
 
+#[cfg(feature = "sqlite")]
 fn register_local_tools_stdio(r: &mut ToolRegistry) {
     use crate::direct as d;
     use crate::tools::local as l;

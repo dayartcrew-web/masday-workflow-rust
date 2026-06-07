@@ -338,6 +338,7 @@ pub async fn workflow_resume_suggestion(
 }
 
 /// Ping workflow - returns actual system health check
+#[cfg(feature = "sqlite")]
 pub async fn workflow_ping(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -387,6 +388,7 @@ mod tests {
     use serde_json::json;
 
     #[tokio::test]
+    #[cfg(feature = "sqlite")]
     async fn test_workflow_ping() {
         // Initialize SQLite for this test (ignore if already initialized)
         let _ = crate::sqlite::init_sqlite();

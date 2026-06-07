@@ -33,6 +33,15 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::episodic_memory_routes())
         .merge(routes::context_document_routes())
         .merge(routes::llm_provider_config_routes())
+        .with_state(state.clone());
+
+    let mcp_routes = Router::new()
+        .route("/mcp/sse", axum::routing::get(routes::mcp::sse_handler))
+        .route(
+            "/mcp/messages",
+            axum::routing::post(routes::mcp::messages_handler),
+        )
+        .route("/mcp", axum::routing::post(routes::mcp::streamable_handler))
         .with_state(state);
 
     // Permissive CORS for local development (Next.js dashboard on :3000)
@@ -43,6 +52,7 @@ pub fn build_router(state: AppState) -> Router {
 
     Router::new()
         .nest("/api", api_routes)
+        .merge(mcp_routes)
         // Middleware order (outermost first):
         // 1. CORS — handle preflight before anything else
         // 2. Tracing — structured HTTP logging via tower-http
@@ -62,7 +72,10 @@ pub async fn run(
     pool: masday_db::pool::DbPool,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState::new(pool);
+    // Create a minimal registry - the serve command handles proper tool initialization
+    let registry = masday_mcp::registry::ToolRegistry::new();
+    let mcp_handler = masday_mcp::handler::McpHandler::new(registry);
+    let state = AppState::new(pool, mcp_handler);
     let app = build_router(state);
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("masday-api listening on {}", addr);
