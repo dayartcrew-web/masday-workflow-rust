@@ -1,7 +1,7 @@
 //! Plan repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "Plan"
-//! Column names are camelCase: "workflowId", "createdByAgent", etc.
+//! Table names are snake_case: "plans"
+//! Column names are snake_case: "workflow_id", "created_by_agent", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewPlan, Plan};
@@ -28,8 +28,8 @@ impl PlanRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "Plan" (
-                id, "workflowId", version, status, summary, content, "createdByAgent", "createdAt"
+            INSERT INTO plans (
+                id, workflow_id, version, status, summary, content, created_by_agent, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
@@ -63,7 +63,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Plan" WHERE "workflowId" = $1 ORDER BY version DESC LIMIT 1"#;
+        let query = r#"SELECT * FROM plans WHERE workflow_id = $1 ORDER BY version DESC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -84,7 +84,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Plan" WHERE id = $1"#;
+        let query = r#"SELECT * FROM plans WHERE id = $1"#;
         let rows = client
             .query(query, &[&id])
             .await
@@ -105,7 +105,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"UPDATE "Plan" SET status = $1 WHERE id = $2 RETURNING *"#;
+        let query = r#"UPDATE plans SET status = $1 WHERE id = $2 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &id])
             .await
@@ -122,7 +122,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT COUNT(*) FROM "Plan" WHERE "workflowId" = $1"#;
+        let query = r#"SELECT COUNT(*) FROM plans WHERE workflow_id = $1"#;
         let row = client
             .query_one(query, &[&workflow_id])
             .await
@@ -139,7 +139,7 @@ impl PlanRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Plan" WHERE "workflowId" = $1 AND status = 'ACTIVE' ORDER BY version DESC LIMIT 1"#;
+        let query = r#"SELECT * FROM plans WHERE workflow_id = $1 AND status = 'ACTIVE' ORDER BY version DESC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await

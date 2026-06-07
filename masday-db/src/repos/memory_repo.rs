@@ -1,7 +1,7 @@
 //! Memory repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "Memory"
-//! Column names are camelCase: "memoryType", "importanceScore", "createdByAgent", etc.
+//! Table names are snake_case: "memories"
+//! Column names are snake_case: "memory_type", "importance_score", "created_by_agent", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{Memory, NewMemory};
@@ -30,10 +30,10 @@ impl MemoryRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "Memory" (
-                id, "workflowId", "taskId", "memoryType", summary, content,
-                "importanceScore", "createdByAgent", tags, source,
-                embedding, "createdAt", "updatedAt", "accessedAt", "accessCount", version
+            INSERT INTO memories (
+                id, workflow_id, task_id, memory_type, summary, content,
+                importance_score, created_by_agent, tags, source,
+                embedding, created_at, updated_at, accessed_at, access_count, version
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING *
@@ -77,9 +77,9 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        // Update accessedAt and accessCount
+        // Update accessed_at and access_count
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-        let update_query = r#"UPDATE "Memory" SET "accessedAt" = $1, "accessCount" = COALESCE("accessCount", 0) + 1 WHERE id = $2"#;
+        let update_query = r#"UPDATE memories SET accessed_at = $1, access_count = COALESCE(access_count, 0) + 1 WHERE id = $2"#;
         client
             .execute(update_query, &[&now, &id])
             .await
@@ -87,7 +87,7 @@ impl MemoryRepo {
                 AppError::Database(format!("Failed to update memory access stats: {}", e))
             })?;
 
-        let query = r#"SELECT * FROM "Memory" WHERE id = $1"#;
+        let query = r#"SELECT * FROM memories WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -104,7 +104,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Memory" ORDER BY "createdAt" DESC LIMIT $1"#;
+        let query = r#"SELECT * FROM memories ORDER BY created_at DESC LIMIT $1"#;
         let rows = client
             .query(query, &[&limit])
             .await
@@ -121,7 +121,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Memory" WHERE "taskId" = $1 ORDER BY "createdAt" DESC"#;
+        let query = r#"SELECT * FROM memories WHERE task_id = $1 ORDER BY created_at DESC"#;
         let rows = client
             .query(query, &[&task_id])
             .await
@@ -140,7 +140,7 @@ impl MemoryRepo {
 
         let capped = limit.min(1000); // hard cap to prevent unbounded queries
         let query =
-            r#"SELECT * FROM "Memory" WHERE "workflowId" = $1 ORDER BY "createdAt" DESC LIMIT $2"#;
+            r#"SELECT * FROM memories WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT $2"#;
         let rows = client
             .query(query, &[&workflow_id, &capped])
             .await
@@ -160,7 +160,7 @@ impl MemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            r#"SELECT * FROM "Memory" WHERE "memoryType" = $1 ORDER BY "createdAt" DESC LIMIT $2"#;
+            r#"SELECT * FROM memories WHERE memory_type = $1 ORDER BY created_at DESC LIMIT $2"#;
         let rows = client
             .query(query, &[&memory_type, &limit])
             .await
@@ -180,9 +180,9 @@ impl MemoryRepo {
         let search_pattern = format!("%{}%", query);
 
         let sql = r#"
-            SELECT * FROM "Memory"
+            SELECT * FROM memories
             WHERE summary ILIKE $1 OR content ILIKE $1
-            ORDER BY "importanceScore" DESC, "createdAt" DESC
+            ORDER BY importance_score DESC, created_at DESC
             LIMIT $2
         "#;
 
@@ -206,7 +206,7 @@ impl MemoryRepo {
 
         // Build dynamic UPDATE query
         let mut set_clauses = vec![
-            r#""updatedAt" = $2"#.to_string(),
+            r#"updated_at = $2"#.to_string(),
             r#"version = COALESCE(version, 0) + 1"#.to_string(),
         ];
         let mut param_count = 2;
@@ -225,7 +225,7 @@ impl MemoryRepo {
         }
         if let Some(importance_score) = updates.get("importance_score").and_then(|v| v.as_f64()) {
             param_count += 1;
-            set_clauses.push(format!(r#""importanceScore" = ${}"#, param_count));
+            set_clauses.push(format!(r#"importance_score = ${}"#, param_count));
             params.push(Box::new(importance_score));
         }
         if let Some(tags) = updates.get("tags") {
@@ -235,7 +235,7 @@ impl MemoryRepo {
         }
 
         let sql = format!(
-            r#"UPDATE "Memory" SET {} WHERE id = $1 RETURNING *"#,
+            r#"UPDATE memories SET {} WHERE id = $1 RETURNING *"#,
             set_clauses.join(", ")
         );
 
@@ -260,7 +260,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"DELETE FROM "Memory" WHERE id = $1"#;
+        let query = r#"DELETE FROM memories WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await
@@ -277,7 +277,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let total_query = r#"SELECT COUNT(*) as count FROM "Memory""#;
+        let total_query = r#"SELECT COUNT(*) as count FROM memories"#;
         let total_row = client
             .query_one(total_query, &[])
             .await
@@ -285,7 +285,7 @@ impl MemoryRepo {
         let total_count: i64 = total_row.get("count");
 
         let type_query =
-            r#"SELECT "memoryType", COUNT(*) as count FROM "Memory" GROUP BY "memoryType""#;
+            r#"SELECT memory_type, COUNT(*) as count FROM memories GROUP BY memory_type"#;
         let type_rows = client
             .query(type_query, &[])
             .await
@@ -324,10 +324,10 @@ impl MemoryRepo {
         let pgvec = embedding.map(Vector::from);
 
         let query = r#"
-            INSERT INTO "Memory" (
-                id, "workflowId", "taskId", "memoryType", summary, content,
-                "importanceScore", "createdByAgent", tags, source,
-                embedding, "createdAt", "updatedAt", "accessedAt", "accessCount", version
+            INSERT INTO memories (
+                id, workflow_id, task_id, memory_type, summary, content,
+                importance_score, created_by_agent, tags, source,
+                embedding, created_at, updated_at, accessed_at, access_count, version
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING *
@@ -385,7 +385,7 @@ impl MemoryRepo {
         let sql = r#"
             SELECT *,
                    1 - (embedding <=> $1::vector) as similarity
-            FROM "Memory"
+            FROM memories
             WHERE embedding IS NOT NULL
             ORDER BY embedding <=> $1::vector
             LIMIT $2
@@ -419,7 +419,7 @@ impl MemoryRepo {
         let pgvec = Vector::from(embedding);
         let rows = client
             .execute(
-                r#"UPDATE "Memory" SET embedding = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                r#"UPDATE memories SET embedding = $1, updated_at = NOW() WHERE id = $2"#,
                 &[&pgvec, &id],
             )
             .await

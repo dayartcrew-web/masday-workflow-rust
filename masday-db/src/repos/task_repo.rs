@@ -1,7 +1,7 @@
 //! Task repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "Task", "TaskProgressLog"
-//! Column names are camelCase: "workflowId", "ownerAgent", etc.
+//! Table names are snake_case: "tasks", "task_progress_logs"
+//! Column names are snake_case: "workflow_id", "owner_agent", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewTask, NewTaskProgressLog, Task, TaskProgressLog};
@@ -28,13 +28,15 @@ impl TaskRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "Task" (
-                id, "workflowId", "planId", title, status, priority,
-                "ownerAgent", "acceptanceCriteria", "requiredContext",
-                "verificationSteps", "contextFingerprint", "progressPercent",
-                "requiresTdd", "testEvidence", "createdAt", "updatedAt"
+            INSERT INTO tasks (
+                id, workflow_id, plan_id, title, status, priority,
+                owner_agent, skill, description, dependencies,
+                acceptance_criteria, required_context, verification_steps,
+                context_fingerprint, progress_percent, requires_tdd,
+                input, result, test_evidence, metadata, created_at,
+                started_at, completed_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             RETURNING *
         "#;
 
@@ -49,14 +51,22 @@ impl TaskRepo {
                     &task.status,
                     &task.priority,
                     &task.owner_agent,
+                    &task.skill,
+                    &task.description,
+                    &task.dependencies,
                     &task.acceptance_criteria,
                     &task.required_context,
                     &task.verification_steps,
                     &task.context_fingerprint,
                     &task.progress_percent,
                     &task.requires_tdd,
+                    &task.input,
+                    &task.result,
                     &task.test_evidence,
+                    &task.metadata,
                     &now,
+                    &None::<chrono::NaiveDateTime>,
+                    &None::<chrono::NaiveDateTime>,
                     &now,
                 ],
             )
@@ -74,7 +84,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Task" WHERE id = $1"#;
+        let query = r#"SELECT * FROM tasks WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -91,7 +101,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Task" WHERE "workflowId" = $1 ORDER BY "createdAt" ASC"#;
+        let query = r#"SELECT * FROM tasks WHERE workflow_id = $1 ORDER BY created_at ASC"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -109,7 +119,7 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // First try to find a RUNNING task
-        let query = r#"SELECT * FROM "Task" WHERE "workflowId" = $1 AND status = 'RUNNING' ORDER BY "createdAt" ASC LIMIT 1"#;
+        let query = r#"SELECT * FROM tasks WHERE workflow_id = $1 AND status = 'RUNNING' ORDER BY created_at ASC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -120,7 +130,7 @@ impl TaskRepo {
         }
 
         // If no RUNNING task, get first PENDING task
-        let query = r#"SELECT * FROM "Task" WHERE "workflowId" = $1 AND status = 'PENDING' ORDER BY "createdAt" ASC LIMIT 1"#;
+        let query = r#"SELECT * FROM tasks WHERE workflow_id = $1 AND status = 'PENDING' ORDER BY created_at ASC LIMIT 1"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -142,7 +152,7 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-        let query = r#"UPDATE "Task" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
+        let query = r#"UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
             .await
@@ -161,8 +171,8 @@ impl TaskRepo {
 
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
         let query = r#"
-            UPDATE "Task"
-            SET status = 'DONE', "testEvidence" = $1, "progressPercent" = 100, "updatedAt" = $2
+            UPDATE tasks
+            SET status = 'DONE', test_evidence = $1, progress_percent = 100, updated_at = $2
             WHERE id = $3
             RETURNING *
         "#;
@@ -186,9 +196,9 @@ impl TaskRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "TaskProgressLog" (
-                id, "workflowId", "taskId", "agentName", "statusBefore",
-                "statusAfter", "progressNote", evidence, "createdAt"
+            INSERT INTO task_progress_logs (
+                id, workflow_id, task_id, agent_name, status_before,
+                status_after, progress_note, evidence, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
@@ -223,7 +233,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT COUNT(*) FROM "Task" WHERE "workflowId" = $1"#;
+        let query = r#"SELECT COUNT(*) FROM tasks WHERE workflow_id = $1"#;
         let row = client
             .query_one(query, &[&workflow_id])
             .await
@@ -240,7 +250,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT COUNT(*) FROM "Task" WHERE "workflowId" = $1 AND status = 'DONE'"#;
+        let query = r#"SELECT COUNT(*) FROM tasks WHERE workflow_id = $1 AND status = 'DONE'"#;
         let row = client
             .query_one(query, &[&workflow_id])
             .await

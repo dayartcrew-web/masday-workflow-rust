@@ -1,7 +1,7 @@
 //! Knowledge graph repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "GraphNode", "GraphEdge"
-//! Column names are camelCase: "nodeType", "createdAt", etc.
+//! Table names are snake_case: "graph_nodes", "graph_edges"
+//! Column names are snake_case: "node_type", "created_at", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{GraphEdge, GraphNode, NewGraphEdge, NewGraphNode};
@@ -32,7 +32,7 @@ impl GraphRepo {
         let props_value: Option<serde_json::Value> = node.properties.clone();
 
         let query = r#"
-            INSERT INTO "GraphNode" (id, "nodeType", name, properties, "createdAt")
+            INSERT INTO graph_nodes (id, node_type, name, properties, created_at)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
         "#;
@@ -61,7 +61,7 @@ impl GraphRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "GraphEdge" (id, "sourceNodeId", "targetNodeId", "relationType", weight, bidirectional, "createdAt")
+            INSERT INTO graph_edges (id, source_node_id, target_node_id, relation_type, weight, bidirectional, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
         "#;
@@ -93,7 +93,7 @@ impl GraphRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "GraphNode" WHERE id = $1"#;
+        let query = r#"SELECT * FROM graph_nodes WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -118,9 +118,9 @@ impl GraphRepo {
         let search_pattern = format!("%{}%", name_pattern);
 
         let query = r#"
-            SELECT * FROM "GraphNode"
-            WHERE ($1 = '' OR "nodeType" = $1) AND name ILIKE $2
-            ORDER BY "createdAt" DESC
+            SELECT * FROM graph_nodes
+            WHERE ($1 = '' OR node_type = $1) AND name ILIKE $2
+            ORDER BY created_at DESC
             LIMIT $3
         "#;
 
@@ -146,9 +146,9 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "GraphNode"
-            WHERE "nodeType" = $1 AND id != $2
-            ORDER BY "createdAt" DESC
+            SELECT * FROM graph_nodes
+            WHERE node_type = $1 AND id != $2
+            ORDER BY created_at DESC
             LIMIT 10
         "#;
 
@@ -201,9 +201,9 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "GraphEdge"
-            WHERE "sourceNodeId" = $1 OR "targetNodeId" = $1
-            ORDER BY "createdAt" DESC
+            SELECT * FROM graph_edges
+            WHERE source_node_id = $1 OR target_node_id = $1
+            ORDER BY created_at DESC
         "#;
 
         let rows = client
@@ -224,14 +224,14 @@ impl GraphRepo {
 
         // First delete all edges connected to this node
         let edge_query =
-            r#"DELETE FROM "GraphEdge" WHERE "sourceNodeId" = $1 OR "targetNodeId" = $1"#;
+            r#"DELETE FROM graph_edges WHERE source_node_id = $1 OR target_node_id = $1"#;
         client
             .execute(edge_query, &[&id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to delete node edges: {}", e)))?;
 
         // Then delete the node
-        let query = r#"DELETE FROM "GraphNode" WHERE id = $1"#;
+        let query = r#"DELETE FROM graph_nodes WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await
@@ -248,7 +248,7 @@ impl GraphRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"DELETE FROM "GraphEdge" WHERE id = $1"#;
+        let query = r#"DELETE FROM graph_edges WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await

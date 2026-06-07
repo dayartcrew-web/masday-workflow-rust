@@ -1,7 +1,7 @@
 //! Retrieval log repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "RetrievalLog"
-//! Column names are camelCase: "workflowId", "taskId", "agentName", etc.
+//! Table names are snake_case: "retrieval_logs"
+//! Column names are snake_case: "workflow_id", "task_id", "agent_name", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewRetrievalLog, RetrievalLog};
@@ -28,8 +28,8 @@ impl RetrievalLogRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "RetrievalLog" (
-                id, "workflowId", "taskId", "agentName", query, source, results, "createdAt"
+            INSERT INTO retrieval_logs (
+                id, workflow_id, task_id, agent_name, query, source, results, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
@@ -63,7 +63,7 @@ impl RetrievalLogRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "RetrievalLog" WHERE id = $1"#;
+        let query = r#"SELECT * FROM retrieval_logs WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -81,9 +81,9 @@ impl RetrievalLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "RetrievalLog"
-            WHERE "workflowId" = $1
-            ORDER BY "createdAt" DESC
+            SELECT * FROM retrieval_logs
+            WHERE workflow_id = $1
+            ORDER BY created_at DESC
         "#;
         let rows = client
             .query(query, &[&workflow_id])
@@ -102,9 +102,9 @@ impl RetrievalLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "RetrievalLog"
-            WHERE "taskId" = $1
-            ORDER BY "createdAt" DESC
+            SELECT * FROM retrieval_logs
+            WHERE task_id = $1
+            ORDER BY created_at DESC
         "#;
         let rows = client.query(query, &[&task_id]).await.map_err(|e| {
             AppError::Database(format!("Failed to list task retrieval logs: {}", e))
@@ -122,7 +122,7 @@ impl RetrievalLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let capped = limit.unwrap_or(100).min(1000);
-        let query = r#"SELECT * FROM "RetrievalLog" ORDER BY "createdAt" DESC LIMIT $1"#;
+        let query = r#"SELECT * FROM retrieval_logs ORDER BY created_at DESC LIMIT $1"#;
         let rows = client
             .query(query, &[&capped])
             .await
@@ -140,7 +140,7 @@ impl RetrievalLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "RetrievalLog" WHERE id = $1"#, &[&id])
+            .execute(r#"DELETE FROM retrieval_logs WHERE id = $1"#, &[&id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to delete retrieval log: {}", e)))?;
 

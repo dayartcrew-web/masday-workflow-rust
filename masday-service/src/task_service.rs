@@ -85,7 +85,8 @@ impl TaskService {
         let service = Self::new(pool.clone());
 
         // Create metadata with dependencies if provided
-        let required_context = dependencies.map(|deps| serde_json::json!({ "dependencies": deps }));
+        let required_context = dependencies.as_ref().map(|deps| serde_json::json!({ "dependencies": deps }));
+        let dependencies_json = dependencies.as_ref().map(|d| serde_json::json!(d));
 
         let new_task = NewTask {
             workflow_id,
@@ -94,13 +95,19 @@ impl TaskService {
             status: "PENDING".to_string(),
             priority: None,
             owner_agent: agent,
+            skill: None,
+            description: None,
+            dependencies: dependencies_json,
             acceptance_criteria: None,
             required_context,
             verification_steps: None,
             context_fingerprint: None,
             progress_percent: Some(0),
             requires_tdd: None,
+            input: None,
+            result: None,
             test_evidence: None,
+            metadata: None,
         };
 
         let task = service.repo.create(&new_task).await?;

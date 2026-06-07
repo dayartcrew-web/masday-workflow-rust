@@ -1,8 +1,8 @@
 //! Workflow reminder repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "WorkflowReminder"
-//! Column names are camelCase: "workflowId", "taskId", etc.
-//! NOTE: The "type" column is lowercase (not camelCase) in the actual DB schema.
+//! Table names are snake_case: "workflow_reminders"
+//! Column names are snake_case: "workflow_id", "task_id", etc.
+//! NOTE: The "reminder_type" column is used (not "type").
 
 use crate::pool::DbPool;
 use crate::schema::{NewWorkflowReminder, WorkflowReminder};
@@ -25,9 +25,9 @@ impl ReminderRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "WorkflowReminder"
+            SELECT * FROM workflow_reminders
             WHERE COALESCE(acknowledged, false) = false
-            ORDER BY severity DESC, "createdAt" ASC
+            ORDER BY severity DESC, created_at ASC
         "#;
 
         let rows = client
@@ -46,7 +46,7 @@ impl ReminderRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"UPDATE "WorkflowReminder" SET acknowledged = true WHERE id = $1"#;
+        let query = r#"UPDATE workflow_reminders SET acknowledged = true WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await
@@ -64,7 +64,7 @@ impl ReminderRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            r#"SELECT * FROM "WorkflowReminder" WHERE "workflowId" = $1 ORDER BY "createdAt" DESC"#;
+            r#"SELECT * FROM workflow_reminders WHERE workflow_id = $1 ORDER BY created_at DESC"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -85,8 +85,8 @@ impl ReminderRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "WorkflowReminder" (
-                id, "workflowId", "taskId", type, severity, message, acknowledged, "createdAt"
+            INSERT INTO workflow_reminders (
+                id, workflow_id, task_id, reminder_type, severity, message, acknowledged, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
@@ -121,9 +121,9 @@ impl ReminderRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "WorkflowReminder"
+            SELECT * FROM workflow_reminders
             WHERE severity = $1 AND COALESCE(acknowledged, false) = false
-            ORDER BY "createdAt" ASC
+            ORDER BY created_at ASC
         "#;
 
         let rows = client.query(query, &[&severity]).await.map_err(|e| {
@@ -141,7 +141,7 @@ impl ReminderRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"DELETE FROM "WorkflowReminder" WHERE id = $1"#;
+        let query = r#"DELETE FROM workflow_reminders WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await

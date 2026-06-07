@@ -1,7 +1,7 @@
 //! Review decision repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "ReviewDecision"
-//! Column names are camelCase: "workflowId", "reviewerAgent", "testsVerified", etc.
+//! Table names are snake_case: "review_decisions"
+//! Column names are snake_case: "workflow_id", "reviewer_agent", "tests_verified", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewReviewDecision, ReviewDecision};
@@ -28,9 +28,9 @@ impl ReviewRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "ReviewDecision" (
-                id, "workflowId", "taskId", "reviewerAgent", decision, notes,
-                gaps, "testsVerified", "testSummary", "createdAt"
+            INSERT INTO review_decisions (
+                id, workflow_id, task_id, reviewer_agent, decision, notes,
+                gaps, tests_verified, test_summary, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
@@ -66,7 +66,7 @@ impl ReviewRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "ReviewDecision" WHERE "taskId" = $1 ORDER BY "createdAt" DESC LIMIT 1"#;
+        let query = r#"SELECT * FROM review_decisions WHERE task_id = $1 ORDER BY created_at DESC LIMIT 1"#;
         let rows = client
             .query(query, &[&task_id])
             .await
@@ -88,7 +88,7 @@ impl ReviewRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            r#"SELECT * FROM "ReviewDecision" WHERE "taskId" = $1 ORDER BY "createdAt" ASC"#;
+            r#"SELECT * FROM review_decisions WHERE task_id = $1 ORDER BY created_at ASC"#;
         let rows = client
             .query(query, &[&task_id])
             .await

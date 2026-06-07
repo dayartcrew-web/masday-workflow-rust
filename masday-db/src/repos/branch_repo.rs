@@ -1,7 +1,7 @@
 //! Parallel branch repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "ParallelBranch"
-//! Column names are camelCase: "workflowId", "taskId", "branchKey", etc.
+//! Table names are snake_case: "parallel_branches"
+//! Column names are snake_case: "workflow_id", "task_id", "branch_key", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewParallelBranch, ParallelBranch};
@@ -33,8 +33,8 @@ impl BranchRepo {
             let id = uuid::Uuid::new_v4().to_string();
 
             let query = r#"
-                INSERT INTO "ParallelBranch" (
-                    id, "workflowId", "taskId", "branchKey", role, status, input, output, "createdAt", "updatedAt"
+                INSERT INTO parallel_branches (
+                    id, workflow_id, task_id, branch_key, role, status, input, output, created_at, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *
@@ -79,8 +79,8 @@ impl BranchRepo {
 
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
         let query = r#"
-            UPDATE "ParallelBranch"
-            SET status = 'DONE', output = $1, "updatedAt" = $2
+            UPDATE parallel_branches
+            SET status = 'DONE', output = $1, updated_at = $2
             WHERE id = $3
             RETURNING *
         "#;
@@ -102,7 +102,7 @@ impl BranchRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query =
-            r#"SELECT * FROM "ParallelBranch" WHERE "workflowId" = $1 ORDER BY "createdAt" ASC"#;
+            r#"SELECT * FROM parallel_branches WHERE workflow_id = $1 ORDER BY created_at ASC"#;
         let rows = client
             .query(query, &[&workflow_id])
             .await
@@ -119,7 +119,7 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "ParallelBranch" WHERE id = $1"#;
+        let query = r#"SELECT * FROM parallel_branches WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -137,7 +137,7 @@ impl BranchRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
-        let query = r#"UPDATE "ParallelBranch" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
+        let query = r#"UPDATE parallel_branches SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
             .await

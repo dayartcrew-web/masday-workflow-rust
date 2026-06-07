@@ -386,7 +386,7 @@ async fn create_parallel_branches(
         .iter()
         .map(|key| masday_db::schema::NewParallelBranch {
             workflow_id: workflow_id.to_string(),
-            task_id: String::new(),
+            task_id: None,
             branch_key: key.clone(),
             role: "worker".to_string(),
             status: "PENDING".to_string(),

@@ -1,7 +1,7 @@
 //! Episodic memory repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "EpisodicMemory"
-//! Column names are camelCase: "sessionId", "sequenceOrder", etc.
+//! Table names are snake_case: "episodic_memories"
+//! Column names are snake_case: "session_id", "sequence_order", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{EpisodicMemory, NewEpisodicMemory};
@@ -28,8 +28,8 @@ impl EpisodicMemoryRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "EpisodicMemory" (
-                id, "sessionId", role, content, "sequenceOrder", "createdAt"
+            INSERT INTO episodic_memories (
+                id, session_id, role, content, sequence_order, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
@@ -61,7 +61,7 @@ impl EpisodicMemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "EpisodicMemory" WHERE id = $1"#;
+        let query = r#"SELECT * FROM episodic_memories WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -79,9 +79,9 @@ impl EpisodicMemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "EpisodicMemory"
-            WHERE "sessionId" = $1
-            ORDER BY "sequenceOrder" ASC, "createdAt" ASC
+            SELECT * FROM episodic_memories
+            WHERE session_id = $1
+            ORDER BY sequence_order ASC, created_at ASC
         "#;
         let rows = client
             .query(query, &[&session_id])
@@ -100,7 +100,7 @@ impl EpisodicMemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let capped = limit.unwrap_or(100).min(1000);
-        let query = r#"SELECT * FROM "EpisodicMemory" ORDER BY "createdAt" DESC LIMIT $1"#;
+        let query = r#"SELECT * FROM episodic_memories ORDER BY created_at DESC LIMIT $1"#;
         let rows = client.query(query, &[&capped]).await.map_err(|e| {
             AppError::Database(format!("Failed to list all episodic memories: {}", e))
         })?;
@@ -117,7 +117,7 @@ impl EpisodicMemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "EpisodicMemory" WHERE id = $1"#, &[&id])
+            .execute(r#"DELETE FROM episodic_memories WHERE id = $1"#, &[&id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to delete episodic memory: {}", e)))?;
 
@@ -134,7 +134,7 @@ impl EpisodicMemoryRepo {
 
         let result = client
             .execute(
-                r#"DELETE FROM "EpisodicMemory" WHERE "sessionId" = $1"#,
+                r#"DELETE FROM episodic_memories WHERE session_id = $1"#,
                 &[&session_id],
             )
             .await

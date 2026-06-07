@@ -1,7 +1,7 @@
 //! Token usage repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "TokenUsage"
-//! Column names are camelCase: "promptTokens", "completionTokens", "totalTokens", etc.
+//! Table names are snake_case: "token_usage"
+//! Column names are snake_case: "prompt_tokens", "completion_tokens", "total_tokens", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewTokenUsage, TokenUsage};
@@ -28,9 +28,9 @@ impl TokenUsageRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "TokenUsage" (
-                id, source, route, model, "promptTokens", "completionTokens",
-                "totalTokens", "latencyMs", metadata, "createdAt"
+            INSERT INTO token_usage (
+                id, source, route, model, prompt_tokens, completion_tokens,
+                total_tokens, latency_ms, metadata, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
@@ -66,7 +66,7 @@ impl TokenUsageRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "TokenUsage" WHERE id = $1"#;
+        let query = r#"SELECT * FROM token_usage WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -89,9 +89,9 @@ impl TokenUsageRepo {
 
         let capped = limit.unwrap_or(100).min(1000);
         let query = r#"
-            SELECT * FROM "TokenUsage"
+            SELECT * FROM token_usage
             WHERE source = $1
-            ORDER BY "createdAt" DESC
+            ORDER BY created_at DESC
             LIMIT $2
         "#;
         let rows = client
@@ -113,7 +113,7 @@ impl TokenUsageRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let capped = limit.unwrap_or(100).min(1000);
-        let query = r#"SELECT * FROM "TokenUsage" ORDER BY "createdAt" DESC LIMIT $1"#;
+        let query = r#"SELECT * FROM token_usage ORDER BY created_at DESC LIMIT $1"#;
         let rows = client
             .query(query, &[&capped])
             .await
@@ -131,7 +131,7 @@ impl TokenUsageRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "TokenUsage" WHERE id = $1"#, &[&id])
+            .execute(r#"DELETE FROM token_usage WHERE id = $1"#, &[&id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to delete token usage: {}", e)))?;
 
@@ -149,11 +149,11 @@ impl TokenUsageRepo {
         let query = r#"
             SELECT
                 COUNT(*) as count,
-                COALESCE(SUM("totalTokens"), 0) as total_tokens,
-                COALESCE(SUM("promptTokens"), 0) as prompt_tokens,
-                COALESCE(SUM("completionTokens"), 0) as completion_tokens,
-                COALESCE(AVG("latencyMs"), 0) as avg_latency_ms
-            FROM "TokenUsage"
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+                COALESCE(AVG(latency_ms), 0) as avg_latency_ms
+            FROM token_usage
             WHERE source = $1
         "#;
         let row = client

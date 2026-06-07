@@ -189,7 +189,7 @@ impl WorkflowService {
         info!("Creating workflow: {}", name);
 
         let repo = WorkflowRepo::new(pool.clone());
-        let metadata = if let Some(desc) = description {
+        let metadata = if let Some(ref desc) = description {
             serde_json::json!({ "description": desc })
         } else {
             serde_json::Value::Null
@@ -197,8 +197,10 @@ impl WorkflowService {
 
         let new_workflow = NewWorkflow {
             name,
+            description: description.clone(),
             status: "INIT".to_string(),
             project_path,
+            trace_id: None,
             current_plan_id: None,
             current_task_id: None,
             metadata: if metadata.is_null() {

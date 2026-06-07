@@ -1,7 +1,7 @@
 //! Session state repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "SessionState"
-//! Column names are camelCase: "sessionKey", "workflowId", "contextFingerprint", etc.
+//! Table names are snake_case: "session_states"
+//! Column names are snake_case: "session_key", "workflow_id", "context_fingerprint", etc.
 
 use crate::pool::DbPool;
 use crate::schema::SessionState;
@@ -25,7 +25,7 @@ impl SessionRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "SessionState" WHERE "sessionKey" = $1"#;
+        let query = r#"SELECT * FROM session_states WHERE session_key = $1"#;
         let rows = client
             .query(query, &[&session_key])
             .await
@@ -53,7 +53,7 @@ impl SessionRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         // First check if session exists
-        let existing_query = r#"SELECT * FROM "SessionState" WHERE "sessionKey" = $1"#;
+        let existing_query = r#"SELECT * FROM session_states WHERE session_key = $1"#;
         let existing_rows = client
             .query(existing_query, &[&session_key])
             .await
@@ -64,12 +64,12 @@ impl SessionRepo {
             let id = uuid::Uuid::new_v4().to_string();
 
             let query = r#"
-                INSERT INTO "SessionState" (
-                    id, "sessionKey", "workflowId", "planId", "taskId",
-                    "workflowLoaded", "planLoaded", "taskLoaded", "contextLoaded",
-                    "reviewApproved", "contextFingerprint", "executionMode",
-                    "activeBranchIds", "synthesisReady", "verificationReady",
-                    "lastCommand", metadata, "createdAt", "updatedAt"
+                INSERT INTO session_states (
+                    id, session_key, workflow_id, plan_id, task_id,
+                    workflow_loaded, plan_loaded, task_loaded, context_loaded,
+                    review_approved, context_fingerprint, execution_mode,
+                    active_branch_ids, synthesis_ready, verification_ready,
+                    last_command, metadata, created_at, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 RETURNING *
@@ -109,27 +109,27 @@ impl SessionRepo {
         }
 
         // Update existing session - build dynamic UPDATE
-        // Map JSON snake_case keys to DB camelCase column names
-        let mut set_clauses = vec![r#""updatedAt" = $2"#.to_string()];
+        // Map JSON snake_case keys to DB snake_case column names
+        let mut set_clauses = vec![r#"updated_at = $2"#.to_string()];
         let mut param_count = 2;
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
             vec![Box::new(session_key.to_string()), Box::new(now)];
 
         let column_map: std::collections::HashMap<&str, &str> = [
-            ("workflow_id", "\"workflowId\""),
-            ("plan_id", "\"planId\""),
-            ("task_id", "\"taskId\""),
-            ("workflow_loaded", "\"workflowLoaded\""),
-            ("plan_loaded", "\"planLoaded\""),
-            ("task_loaded", "\"taskLoaded\""),
-            ("context_loaded", "\"contextLoaded\""),
-            ("review_approved", "\"reviewApproved\""),
-            ("context_fingerprint", "\"contextFingerprint\""),
-            ("execution_mode", "\"executionMode\""),
-            ("active_branch_ids", "\"activeBranchIds\""),
-            ("synthesis_ready", "\"synthesisReady\""),
-            ("verification_ready", "\"verificationReady\""),
-            ("last_command", "\"lastCommand\""),
+            ("workflow_id", "workflow_id"),
+            ("plan_id", "plan_id"),
+            ("task_id", "task_id"),
+            ("workflow_loaded", "workflow_loaded"),
+            ("plan_loaded", "plan_loaded"),
+            ("task_loaded", "task_loaded"),
+            ("context_loaded", "context_loaded"),
+            ("review_approved", "review_approved"),
+            ("context_fingerprint", "context_fingerprint"),
+            ("execution_mode", "execution_mode"),
+            ("active_branch_ids", "active_branch_ids"),
+            ("synthesis_ready", "synthesis_ready"),
+            ("verification_ready", "verification_ready"),
+            ("last_command", "last_command"),
             ("metadata", "metadata"),
         ]
         .iter()
@@ -145,7 +145,7 @@ impl SessionRepo {
         }
 
         let sql = format!(
-            r#"UPDATE "SessionState" SET {} WHERE "sessionKey" = $1 RETURNING *"#,
+            r#"UPDATE session_states SET {} WHERE session_key = $1 RETURNING *"#,
             set_clauses.join(", ")
         );
 

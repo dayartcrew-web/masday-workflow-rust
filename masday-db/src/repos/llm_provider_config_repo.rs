@@ -1,7 +1,7 @@
 //! LLM provider configuration repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "LlmProviderConfig"
-//! Column names are camelCase: "providerName", "baseUrl", "apiKeyEnvVar", etc.
+//! Table names are snake_case: "llm_provider_configs"
+//! Column names are snake_case: "provider_name", "base_url", "api_key_env_var", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{LlmProviderConfig, NewLlmProviderConfig};
@@ -28,9 +28,9 @@ impl LlmProviderConfigRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "LlmProviderConfig" (
-                id, "providerName", "baseUrl", "apiKeyEnvVar", models,
-                "isDefault", priority, "createdAt", "updatedAt"
+            INSERT INTO llm_provider_configs (
+                id, provider_name, base_url, api_key_env_var, models,
+                is_default, priority, created_at, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
@@ -67,7 +67,7 @@ impl LlmProviderConfigRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "LlmProviderConfig" WHERE id = $1"#;
+        let query = r#"SELECT * FROM llm_provider_configs WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -85,8 +85,8 @@ impl LlmProviderConfigRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "LlmProviderConfig"
-            WHERE "isDefault" = true
+            SELECT * FROM llm_provider_configs
+            WHERE is_default = true
             ORDER BY priority DESC
             LIMIT 1
         "#;
@@ -109,7 +109,7 @@ impl LlmProviderConfigRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "LlmProviderConfig" ORDER BY priority DESC, "createdAt" ASC"#;
+        let query = r#"SELECT * FROM llm_provider_configs ORDER BY priority DESC, created_at ASC"#;
         let rows = client.query(query, &[]).await.map_err(|e| {
             AppError::Database(format!("Failed to list LLM provider configs: {}", e))
         })?;
@@ -128,24 +128,24 @@ impl LlmProviderConfigRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         // Build dynamic UPDATE query
-        let mut set_clauses = vec![r#""updatedAt" = $2"#.to_string()];
+        let mut set_clauses = vec![r#"updated_at = $2"#.to_string()];
         let mut param_count = 2;
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
             vec![Box::new(id.to_string()), Box::new(now)];
 
         if let Some(provider_name) = updates.get("provider_name").and_then(|v| v.as_str()) {
             param_count += 1;
-            set_clauses.push(format!(r#""providerName" = ${}"#, param_count));
+            set_clauses.push(format!(r#"provider_name = ${}"#, param_count));
             params.push(Box::new(provider_name.to_string()));
         }
         if let Some(base_url) = updates.get("base_url").and_then(|v| v.as_str()) {
             param_count += 1;
-            set_clauses.push(format!(r#""baseUrl" = ${}"#, param_count));
+            set_clauses.push(format!(r#"base_url = ${}"#, param_count));
             params.push(Box::new(base_url.to_string()));
         }
         if let Some(api_key_env_var) = updates.get("api_key_env_var").and_then(|v| v.as_str()) {
             param_count += 1;
-            set_clauses.push(format!(r#""apiKeyEnvVar" = ${}"#, param_count));
+            set_clauses.push(format!(r#"api_key_env_var = ${}"#, param_count));
             params.push(Box::new(api_key_env_var.to_string()));
         }
         if let Some(models) = updates.get("models") {
@@ -155,7 +155,7 @@ impl LlmProviderConfigRepo {
         }
         if let Some(is_default) = updates.get("is_default").and_then(|v| v.as_bool()) {
             param_count += 1;
-            set_clauses.push(format!(r#""isDefault" = ${}"#, param_count));
+            set_clauses.push(format!(r#"is_default = ${}"#, param_count));
             params.push(Box::new(is_default));
         }
         if let Some(priority) = updates.get("priority").and_then(|v| v.as_i64()) {
@@ -165,7 +165,7 @@ impl LlmProviderConfigRepo {
         }
 
         let sql = format!(
-            r#"UPDATE "LlmProviderConfig" SET {} WHERE id = $1 RETURNING *"#,
+            r#"UPDATE llm_provider_configs SET {} WHERE id = $1 RETURNING *"#,
             set_clauses.join(", ")
         );
 
@@ -191,7 +191,7 @@ impl LlmProviderConfigRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "LlmProviderConfig" WHERE id = $1"#, &[&id])
+            .execute(r#"DELETE FROM llm_provider_configs WHERE id = $1"#, &[&id])
             .await
             .map_err(|e| {
                 AppError::Database(format!("Failed to delete LLM provider config: {}", e))
@@ -210,15 +210,15 @@ impl LlmProviderConfigRepo {
 
         // First, unset all defaults
         client
-            .execute(r#"UPDATE "LlmProviderConfig" SET "isDefault" = false"#, &[])
+            .execute(r#"UPDATE llm_provider_configs SET is_default = false"#, &[])
             .await
             .map_err(|e| AppError::Database(format!("Failed to unset default providers: {}", e)))?;
 
         // Then set the new default
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
         let query = r#"
-            UPDATE "LlmProviderConfig"
-            SET "isDefault" = true, "updatedAt" = $2
+            UPDATE llm_provider_configs
+            SET is_default = true, updated_at = $2
             WHERE id = $1
             RETURNING *
         "#;

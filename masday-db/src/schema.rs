@@ -4,7 +4,7 @@
 //! Field names match the TypeScript Drizzle schema in packages/db/src/schema.ts
 //! (snake_case in Rust, camelCase in TypeScript).
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use pgvector::Vector;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -20,8 +20,10 @@ use sqlx::FromRow;
 pub struct Workflow {
     pub id: String,
     pub name: String,
+    pub description: Option<String>,
     pub status: String,
     pub project_path: Option<String>,
+    pub trace_id: Option<String>,
     pub current_plan_id: Option<String>,
     pub current_task_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
@@ -30,18 +32,20 @@ pub struct Workflow {
 }
 
 impl Workflow {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         Workflow {
             id: row.get("id"),
             name: row.get("name"),
+            description: row.get("description"),
             status: row.get("status"),
-            project_path: row.get("projectPath"),
-            current_plan_id: row.get("currentPlanId"),
-            current_task_id: row.get("currentTaskId"),
+            project_path: row.get("project_path"),
+            trace_id: row.get("trace_id"),
+            current_plan_id: row.get("current_plan_id"),
+            current_task_id: row.get("current_task_id"),
             metadata: row.try_get("metadata").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
         }
     }
 }
@@ -50,8 +54,10 @@ impl Workflow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewWorkflow {
     pub name: String,
+    pub description: Option<String>,
     pub status: String,
     pub project_path: Option<String>,
+    pub trace_id: Option<String>,
     pub current_plan_id: Option<String>,
     pub current_task_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
@@ -73,17 +79,17 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         Plan {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
+            workflow_id: row.get("workflow_id"),
             version: row.get("version"),
             status: row.get("status"),
             summary: row.get("summary"),
             content: row.get("content"),
-            created_by_agent: row.get("createdByAgent"),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_by_agent: row.get("created_by_agent"),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -115,37 +121,55 @@ pub struct Task {
     pub status: String,
     pub priority: Option<String>,
     pub owner_agent: Option<String>,
+    pub skill: Option<String>,
+    pub description: Option<String>,
+    pub dependencies: Option<serde_json::Value>,
     pub acceptance_criteria: Option<serde_json::Value>,
     pub required_context: Option<serde_json::Value>,
     pub verification_steps: Option<serde_json::Value>,
     pub context_fingerprint: Option<String>,
     pub progress_percent: Option<i32>,
     pub requires_tdd: Option<bool>,
+    pub input: Option<serde_json::Value>,
+    pub result: Option<serde_json::Value>,
     pub test_evidence: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl Task {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         Task {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            plan_id: row.get("planId"),
+            workflow_id: row.get("workflow_id"),
+            plan_id: row.get("plan_id"),
             title: row.get("title"),
             status: row.get("status"),
             priority: row.get("priority"),
-            owner_agent: row.get("ownerAgent"),
-            acceptance_criteria: row.try_get("acceptanceCriteria").unwrap_or(None),
-            required_context: row.try_get("requiredContext").unwrap_or(None),
-            verification_steps: row.try_get("verificationSteps").unwrap_or(None),
-            context_fingerprint: row.get("contextFingerprint"),
-            progress_percent: row.get("progressPercent"),
-            requires_tdd: row.get("requiresTdd"),
-            test_evidence: row.try_get("testEvidence").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            owner_agent: row.get("owner_agent"),
+            skill: row.get("skill"),
+            description: row.get("description"),
+            dependencies: row.try_get("dependencies").unwrap_or(None),
+            acceptance_criteria: row.try_get("acceptance_criteria").unwrap_or(None),
+            required_context: row.try_get("required_context").unwrap_or(None),
+            verification_steps: row.try_get("verification_steps").unwrap_or(None),
+            context_fingerprint: row.get("context_fingerprint"),
+            progress_percent: row.get("progress_percent"),
+            requires_tdd: row.get("requires_tdd"),
+            input: row.try_get("input").unwrap_or(None),
+            result: row.try_get("result").unwrap_or(None),
+            test_evidence: row.try_get("test_evidence").unwrap_or(None),
+            metadata: row.try_get("metadata").unwrap_or(None),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
+            started_at: row
+                .get::<_, Option<DateTime<Utc>>>("started_at"),
+            completed_at: row
+                .get::<_, Option<DateTime<Utc>>>("completed_at"),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
         }
     }
 }
@@ -159,13 +183,19 @@ pub struct NewTask {
     pub status: String,
     pub priority: Option<String>,
     pub owner_agent: Option<String>,
+    pub skill: Option<String>,
+    pub description: Option<String>,
+    pub dependencies: Option<serde_json::Value>,
     pub acceptance_criteria: Option<serde_json::Value>,
     pub required_context: Option<serde_json::Value>,
     pub verification_steps: Option<serde_json::Value>,
     pub context_fingerprint: Option<String>,
     pub progress_percent: Option<i32>,
     pub requires_tdd: Option<bool>,
+    pub input: Option<serde_json::Value>,
+    pub result: Option<serde_json::Value>,
     pub test_evidence: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// TaskProgressLog table model
@@ -185,18 +215,18 @@ pub struct TaskProgressLog {
 }
 
 impl TaskProgressLog {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         TaskProgressLog {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            task_id: row.get("taskId"),
-            agent_name: row.get("agentName"),
-            status_before: row.get("statusBefore"),
-            status_after: row.get("statusAfter"),
-            progress_note: row.get("progressNote"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            agent_name: row.get("agent_name"),
+            status_before: row.get("status_before"),
+            status_after: row.get("status_after"),
+            progress_note: row.get("progress_note"),
             evidence: row.try_get("evidence").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -235,19 +265,19 @@ pub struct ReviewDecision {
 }
 
 impl ReviewDecision {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         ReviewDecision {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            task_id: row.get("taskId"),
-            reviewer_agent: row.get("reviewerAgent"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            reviewer_agent: row.get("reviewer_agent"),
             decision: row.get("decision"),
             notes: row.get("notes"),
             gaps: row.try_get("gaps").unwrap_or(None),
-            tests_verified: row.get("testsVerified"),
-            test_summary: row.try_get("testSummary").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            tests_verified: row.get("tests_verified"),
+            test_summary: row.try_get("test_summary").unwrap_or(None),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -292,28 +322,28 @@ pub struct SessionState {
 }
 
 impl SessionState {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         SessionState {
             id: row.get("id"),
-            session_key: row.get("sessionKey"),
-            workflow_id: row.get("workflowId"),
-            plan_id: row.get("planId"),
-            task_id: row.get("taskId"),
-            workflow_loaded: row.get("workflowLoaded"),
-            plan_loaded: row.get("planLoaded"),
-            task_loaded: row.get("taskLoaded"),
-            context_loaded: row.get("contextLoaded"),
-            review_approved: row.get("reviewApproved"),
-            context_fingerprint: row.get("contextFingerprint"),
-            execution_mode: row.get("executionMode"),
-            active_branch_ids: row.try_get("activeBranchIds").unwrap_or(None),
-            synthesis_ready: row.get("synthesisReady"),
-            verification_ready: row.get("verificationReady"),
-            last_command: row.get("lastCommand"),
+            session_key: row.get("session_key"),
+            workflow_id: row.get("workflow_id"),
+            plan_id: row.get("plan_id"),
+            task_id: row.get("task_id"),
+            workflow_loaded: row.get("workflow_loaded"),
+            plan_loaded: row.get("plan_loaded"),
+            task_loaded: row.get("task_loaded"),
+            context_loaded: row.get("context_loaded"),
+            review_approved: row.get("review_approved"),
+            context_fingerprint: row.get("context_fingerprint"),
+            execution_mode: row.get("execution_mode"),
+            active_branch_ids: row.try_get("active_branch_ids").unwrap_or(None),
+            synthesis_ready: row.get("synthesis_ready"),
+            verification_ready: row.get("verification_ready"),
+            last_command: row.get("last_command"),
             metadata: row.try_get("metadata").unwrap_or(None),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -350,7 +380,7 @@ pub struct NewSessionState {
 pub struct ParallelBranch {
     pub id: String,
     pub workflow_id: String,
-    pub task_id: String,
+    pub task_id: Option<String>,
     pub branch_key: String,
     pub role: String,
     pub status: String,
@@ -361,19 +391,19 @@ pub struct ParallelBranch {
 }
 
 impl ParallelBranch {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         ParallelBranch {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            task_id: row.get("taskId"),
-            branch_key: row.get("branchKey"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            branch_key: row.get("branch_key"),
             role: row.get("role"),
             status: row.get("status"),
             input: row.get("input"),
             output: row.try_get("output").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
         }
     }
 }
@@ -382,7 +412,7 @@ impl ParallelBranch {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewParallelBranch {
     pub workflow_id: String,
-    pub task_id: String,
+    pub task_id: Option<String>,
     pub branch_key: String,
     pub role: String,
     pub status: String,
@@ -419,26 +449,25 @@ pub struct Memory {
 }
 
 impl Memory {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         Memory {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            task_id: row.get("taskId"),
-            memory_type: row.get("memoryType"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            memory_type: row.get("memory_type"),
             summary: row.get("summary"),
             content: row.get("content"),
-            importance_score: row.get("importanceScore"),
-            created_by_agent: row.get("createdByAgent"),
+            importance_score: row.get("importance_score"),
+            created_by_agent: row.get("created_by_agent"),
             tags: row.try_get("tags").unwrap_or(None),
             source: row.try_get("source").unwrap_or(None),
             embedding: None,
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
             accessed_at: row
-                .get::<_, Option<NaiveDateTime>>("accessedAt")
-                .map(|t| t.and_utc()),
-            access_count: row.get("accessCount"),
+                .get::<_, Option<DateTime<Utc>>>("accessed_at"),
+            access_count: row.get("access_count"),
             version: row.get("version"),
         }
     }
@@ -480,20 +509,20 @@ pub struct ContextDocument {
 }
 
 impl ContextDocument {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         ContextDocument {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            source_type: row.get("sourceType"),
-            source_ref: row.get("sourceRef"),
+            workflow_id: row.get("workflow_id"),
+            source_type: row.get("source_type"),
+            source_ref: row.get("source_ref"),
             title: row.get("title"),
             content: row.get("content"),
             metadata: row.try_get("metadata").unwrap_or(None),
             fingerprint: row.get("fingerprint"),
             embedding: None,
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
         }
     }
 }
@@ -529,14 +558,14 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    /// Map from DB row with PascalCase/camelCase column names
+    /// Map from DB row with snake_case column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         GraphNode {
             id: row.get("id"),
-            node_type: row.get("nodeType"),
+            node_type: row.get("node_type"),
             name: row.get("name"),
             properties: row.try_get("properties").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -564,16 +593,16 @@ pub struct GraphEdge {
 }
 
 impl GraphEdge {
-    /// Map from DB row with PascalCase/camelCase column names
+    /// Map from DB row with snake_case column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         GraphEdge {
             id: row.get("id"),
-            source_node_id: row.get("sourceNodeId"),
-            target_node_id: row.get("targetNodeId"),
-            relation_type: row.get("relationType"),
+            source_node_id: row.get("source_node_id"),
+            target_node_id: row.get("target_node_id"),
+            relation_type: row.get("relation_type"),
             weight: row.get("weight"),
             bidirectional: row.get("bidirectional"),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -606,15 +635,15 @@ pub struct EpisodicMemory {
 }
 
 impl EpisodicMemory {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         EpisodicMemory {
             id: row.get("id"),
-            session_id: row.get("sessionId"),
+            session_id: row.get("session_id"),
             role: row.get("role"),
             content: row.get("content"),
-            sequence_order: row.get("sequenceOrder"),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            sequence_order: row.get("sequence_order"),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -649,18 +678,18 @@ pub struct LlmProviderConfig {
 }
 
 impl LlmProviderConfig {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         LlmProviderConfig {
             id: row.get("id"),
-            provider_name: row.get("providerName"),
-            base_url: row.get("baseUrl"),
-            api_key_env_var: row.get("apiKeyEnvVar"),
+            provider_name: row.get("provider_name"),
+            base_url: row.get("base_url"),
+            api_key_env_var: row.get("api_key_env_var"),
             models: row.get("models"),
-            is_default: row.get("isDefault"),
+            is_default: row.get("is_default"),
             priority: row.get("priority"),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
-            updated_at: row.get::<_, NaiveDateTime>("updatedAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
+            updated_at: row.get::<_, DateTime<Utc>>("updated_at"),
         }
     }
 }
@@ -694,19 +723,19 @@ pub struct TokenUsage {
 }
 
 impl TokenUsage {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         TokenUsage {
             id: row.get("id"),
             source: row.get("source"),
             route: row.get("route"),
             model: row.get("model"),
-            prompt_tokens: row.get("promptTokens"),
-            completion_tokens: row.get("completionTokens"),
-            total_tokens: row.get("totalTokens"),
-            latency_ms: row.get("latencyMs"),
+            prompt_tokens: row.get("prompt_tokens"),
+            completion_tokens: row.get("completion_tokens"),
+            total_tokens: row.get("total_tokens"),
+            latency_ms: row.get("latency_ms"),
             metadata: row.try_get("metadata").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -744,17 +773,17 @@ pub struct RetrievalLog {
 }
 
 impl RetrievalLog {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         RetrievalLog {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            task_id: row.get("taskId"),
-            agent_name: row.get("agentName"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            agent_name: row.get("agent_name"),
             query: row.get("query"),
             source: row.get("source"),
             results: row.try_get("results").unwrap_or(None),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -787,18 +816,18 @@ pub struct WorkflowReminder {
 }
 
 impl WorkflowReminder {
-    /// Map from DB row with PascalCase table / camelCase column names
+    /// Map from DB row with snake_case table/column names
     pub fn from_row(row: &tokio_postgres::Row) -> Self {
         WorkflowReminder {
             id: row.get("id"),
-            workflow_id: row.get("workflowId"),
-            task_id: row.get("taskId"),
-            // DB column is "type" (lowercase), not "reminderType"
-            reminder_type: row.get("type"),
+            workflow_id: row.get("workflow_id"),
+            task_id: row.get("task_id"),
+            // DB column is "reminder_type"
+            reminder_type: row.get("reminder_type"),
             severity: row.get("severity"),
             message: row.get("message"),
             acknowledged: row.get("acknowledged"),
-            created_at: row.get::<_, NaiveDateTime>("createdAt").and_utc(),
+            created_at: row.get::<_, DateTime<Utc>>("created_at"),
         }
     }
 }
@@ -827,8 +856,10 @@ mod tests {
         let workflow = Workflow {
             id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
             name: "Test Workflow".to_string(),
+            description: Some("Test description".to_string()),
             status: "ACTIVE".to_string(),
             project_path: Some("/path/to/project".to_string()),
+            trace_id: None,
             current_plan_id: None,
             current_task_id: None,
             metadata: Some(serde_json::json!({"key": "value"})),
@@ -853,14 +884,22 @@ mod tests {
             status: "PENDING".to_string(),
             priority: Some("HIGH".to_string()),
             owner_agent: Some("masday-executor".to_string()),
-            acceptance_criteria: Some(serde_json::json!([" criterion1"])),
+            skill: Some("backend".to_string()),
+            description: Some("Implement the feature".to_string()),
+            dependencies: Some(serde_json::json!(["task1"])),
+            acceptance_criteria: Some(serde_json::json!(["criterion1"])),
             required_context: Some(serde_json::json!(["context1"])),
             verification_steps: Some(serde_json::json!(["step1"])),
             context_fingerprint: Some("abc123".to_string()),
             progress_percent: Some(50),
             requires_tdd: Some(true),
+            input: Some(serde_json::json!({"param": "value"})),
+            result: None,
             test_evidence: Some(serde_json::json!({"test": "pass"})),
+            metadata: None,
             created_at: Utc::now(),
+            started_at: None,
+            completed_at: None,
             updated_at: Utc::now(),
         };
 
@@ -899,8 +938,10 @@ mod tests {
     fn test_new_workflow_insertable() {
         let new_workflow = NewWorkflow {
             name: "New Workflow".to_string(),
+            description: None,
             status: "INIT".to_string(),
             project_path: Some("/new/path".to_string()),
+            trace_id: None,
             current_plan_id: None,
             current_task_id: None,
             metadata: None,
@@ -984,8 +1025,10 @@ mod tests {
         let _ = Workflow {
             id: String::new(),
             name: String::new(),
+            description: None,
             status: String::new(),
             project_path: None,
+            trace_id: None,
             current_plan_id: None,
             current_task_id: None,
             metadata: None,
@@ -1013,14 +1056,22 @@ mod tests {
             status: String::new(),
             priority: None,
             owner_agent: None,
+            skill: None,
+            description: None,
+            dependencies: None,
             acceptance_criteria: None,
             required_context: None,
             verification_steps: None,
             context_fingerprint: None,
             progress_percent: None,
             requires_tdd: None,
+            input: None,
+            result: None,
             test_evidence: None,
+            metadata: None,
             created_at: Utc::now(),
+            started_at: None,
+            completed_at: None,
             updated_at: Utc::now(),
         };
 
@@ -1076,7 +1127,7 @@ mod tests {
         let _ = ParallelBranch {
             id: String::new(),
             workflow_id: String::new(),
-            task_id: String::new(),
+            task_id: None,
             branch_key: String::new(),
             role: String::new(),
             status: String::new(),

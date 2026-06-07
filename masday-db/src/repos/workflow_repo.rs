@@ -1,7 +1,7 @@
 //! Workflow repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "Workflow"
-//! Column names are camelCase: "projectPath", "currentPlanId", etc.
+//! Table names are snake_case: "workflows"
+//! Column names are snake_case: "project_path", "current_plan_id", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewWorkflow, Workflow};
@@ -26,14 +26,15 @@ impl WorkflowRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now = chrono::Utc::now();
+        let metadata: serde_json::Value = workflow.metadata.clone().unwrap_or(serde_json::json!({}));
 
         let query = r#"
-            INSERT INTO "Workflow" (
-                id, name, status, "projectPath", "currentPlanId",
-                "currentTaskId", metadata, "createdAt", "updatedAt"
+            INSERT INTO workflows (
+                id, name, description, status, project_path, trace_id,
+                current_plan_id, current_task_id, metadata, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
         "#;
 
@@ -43,11 +44,13 @@ impl WorkflowRepo {
                 &[
                     &id,
                     &workflow.name,
+                    &workflow.description,
                     &workflow.status,
                     &workflow.project_path,
+                    &workflow.trace_id,
                     &workflow.current_plan_id,
                     &workflow.current_task_id,
-                    &workflow.metadata,
+                    &metadata,
                     &now,
                     &now,
                 ],
@@ -66,7 +69,7 @@ impl WorkflowRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "Workflow" WHERE id = $1"#;
+        let query = r#"SELECT * FROM workflows WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -89,13 +92,13 @@ impl WorkflowRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let rows = if let Some(pp) = project_path {
-            let query = r#"SELECT * FROM "Workflow" WHERE "projectPath" = $1 ORDER BY "createdAt" DESC LIMIT $2 OFFSET $3"#;
+            let query = r#"SELECT * FROM workflows WHERE project_path = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"#;
             client
                 .query(query, &[&pp, &limit, &offset])
                 .await
                 .map_err(|e| AppError::Database(format!("Failed to list workflows: {}", e)))?
         } else {
-            let query = r#"SELECT * FROM "Workflow" ORDER BY "createdAt" DESC LIMIT $1 OFFSET $2"#;
+            let query = r#"SELECT * FROM workflows ORDER BY created_at DESC LIMIT $1 OFFSET $2"#;
             client
                 .query(query, &[&limit, &offset])
                 .await
@@ -114,13 +117,13 @@ impl WorkflowRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let rows = if let Some(pp) = project_path {
-            let query = r#"SELECT * FROM "Workflow" WHERE status NOT IN ('DONE', 'FAILED') AND "projectPath" = $1 ORDER BY "createdAt" DESC"#;
+            let query = r#"SELECT * FROM workflows WHERE status NOT IN ('DONE', 'FAILED') AND project_path = $1 ORDER BY created_at DESC"#;
             client
                 .query(query, &[&pp])
                 .await
                 .map_err(|e| AppError::Database(format!("Failed to get active workflows: {}", e)))?
         } else {
-            let query = r#"SELECT * FROM "Workflow" WHERE status NOT IN ('DONE', 'FAILED') ORDER BY "createdAt" DESC"#;
+            let query = r#"SELECT * FROM workflows WHERE status NOT IN ('DONE', 'FAILED') ORDER BY created_at DESC"#;
             client
                 .query(query, &[])
                 .await
@@ -140,7 +143,7 @@ impl WorkflowRepo {
 
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
         let query =
-            r#"UPDATE "Workflow" SET status = $1, "updatedAt" = $2 WHERE id = $3 RETURNING *"#;
+            r#"UPDATE workflows SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
             .await
@@ -160,7 +163,7 @@ impl WorkflowRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         // Build dynamic UPDATE query based on provided fields
-        let mut set_clauses = vec![r#""updatedAt" = $2"#.to_string()];
+        let mut set_clauses = vec![r#"updated_at = $2"#.to_string()];
         let mut param_count = 2;
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
             vec![Box::new(id.to_string()), Box::new(now)];
@@ -177,17 +180,17 @@ impl WorkflowRepo {
         }
         if let Some(project_path) = updates.get("project_path").and_then(|v| v.as_str()) {
             param_count += 1;
-            set_clauses.push(format!(r#""projectPath" = ${}"#, param_count));
+            set_clauses.push(format!(r#"project_path = ${}"#, param_count));
             params.push(Box::new(project_path.to_string()));
         }
         if let Some(current_plan_id) = updates.get("current_plan_id").and_then(|v| v.as_str()) {
             param_count += 1;
-            set_clauses.push(format!(r#""currentPlanId" = ${}"#, param_count));
+            set_clauses.push(format!(r#"current_plan_id = ${}"#, param_count));
             params.push(Box::new(current_plan_id.to_string()));
         }
         if let Some(current_task_id) = updates.get("current_task_id").and_then(|v| v.as_str()) {
             param_count += 1;
-            set_clauses.push(format!(r#""currentTaskId" = ${}"#, param_count));
+            set_clauses.push(format!(r#"current_task_id = ${}"#, param_count));
             params.push(Box::new(current_task_id.to_string()));
         }
         if let Some(metadata) = updates.get("metadata") {
@@ -197,7 +200,7 @@ impl WorkflowRepo {
         }
 
         let query = format!(
-            r#"UPDATE "Workflow" SET {} WHERE id = $1 RETURNING *"#,
+            r#"UPDATE workflows SET {} WHERE id = $1 RETURNING *"#,
             set_clauses.join(", ")
         );
 
@@ -223,7 +226,7 @@ impl WorkflowRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"DELETE FROM "Workflow" WHERE id = $1"#;
+        let query = r#"DELETE FROM workflows WHERE id = $1"#;
         let rows_affected = client
             .execute(query, &[&id])
             .await

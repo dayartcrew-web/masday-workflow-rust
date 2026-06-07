@@ -1,7 +1,7 @@
 //! Task progress log repository
 //!
-//! Table names are PascalCase (created by Drizzle/TypeScript): "TaskProgressLog"
-//! Column names are camelCase: "workflowId", "taskId", "agentName", etc.
+//! Table names are snake_case: "task_progress_logs"
+//! Column names are snake_case: "workflow_id", "task_id", "agent_name", etc.
 
 use crate::pool::DbPool;
 use crate::schema::{NewTaskProgressLog, TaskProgressLog};
@@ -28,9 +28,9 @@ impl ProgressLogRepo {
         let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
 
         let query = r#"
-            INSERT INTO "TaskProgressLog" (
-                id, "workflowId", "taskId", "agentName", "statusBefore",
-                "statusAfter", "progressNote", evidence, "createdAt"
+            INSERT INTO task_progress_logs (
+                id, workflow_id, task_id, agent_name, status_before,
+                status_after, progress_note, evidence, created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
@@ -65,7 +65,7 @@ impl ProgressLogRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query = r#"SELECT * FROM "TaskProgressLog" WHERE id = $1"#;
+        let query = r#"SELECT * FROM task_progress_logs WHERE id = $1"#;
         let row = client
             .query_one(query, &[&id])
             .await
@@ -83,9 +83,9 @@ impl ProgressLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "TaskProgressLog"
-            WHERE "workflowId" = $1
-            ORDER BY "createdAt" DESC
+            SELECT * FROM task_progress_logs
+            WHERE workflow_id = $1
+            ORDER BY created_at DESC
         "#;
         let rows = client
             .query(query, &[&workflow_id])
@@ -104,9 +104,9 @@ impl ProgressLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let query = r#"
-            SELECT * FROM "TaskProgressLog"
-            WHERE "taskId" = $1
-            ORDER BY "createdAt" DESC
+            SELECT * FROM task_progress_logs
+            WHERE task_id = $1
+            ORDER BY created_at DESC
         "#;
         let rows = client
             .query(query, &[&task_id])
@@ -125,7 +125,7 @@ impl ProgressLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let capped = limit.unwrap_or(100).min(1000);
-        let query = r#"SELECT * FROM "TaskProgressLog" ORDER BY "createdAt" DESC LIMIT $1"#;
+        let query = r#"SELECT * FROM task_progress_logs ORDER BY created_at DESC LIMIT $1"#;
         let rows = client
             .query(query, &[&capped])
             .await
@@ -143,7 +143,7 @@ impl ProgressLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let result = client
-            .execute(r#"DELETE FROM "TaskProgressLog" WHERE id = $1"#, &[&id])
+            .execute(r#"DELETE FROM task_progress_logs WHERE id = $1"#, &[&id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to delete progress log: {}", e)))?;
 
