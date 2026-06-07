@@ -90,43 +90,18 @@ fn build_server_object(config: &McpConfig) -> JsonValue {
 
     let mut server = serde_json::Map::new();
 
-    // Determine MCP transport type based on config mode
-    // If api_url is set and points to a URL, use SSE/HTTP transport
-    // Otherwise use stdio (binary runs locally as subprocess)
-    let api_url = config.api_url.as_str();
-    let is_url_mode =
-        !api_url.is_empty() && (api_url.starts_with("http://") || api_url.starts_with("https://"));
-
-    if is_url_mode {
-        // Local/Remote mode: connect to running API server
-        // Use SSE transport (broadly supported by all Claude Code versions)
-        let mcp_url = format!("{}/mcp/sse", api_url.trim_end_matches('/'));
-        server.insert(
-            "type".to_string(),
-            JsonValue::String("sse".to_string()),
-        );
-        server.insert("url".to_string(), JsonValue::String(mcp_url));
-        if !config.api_key.is_empty() {
-            let mut headers = serde_json::Map::new();
-            headers.insert(
-                "Authorization".to_string(),
-                JsonValue::String(format!("Bearer {}", config.api_key)),
-            );
-            server.insert("headers".to_string(), JsonValue::Object(headers));
-        }
-    } else {
-        // Stdio mode: binary runs as subprocess
-        server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
-        server.insert(
-            "command".to_string(),
-            JsonValue::String(config.mcp_binary_path.display().to_string()),
-        );
-        server.insert(
-            "args".to_string(),
-            JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
-        );
-        server.insert("env".to_string(), JsonValue::Object(env_map));
-    }
+    // MCP server always uses stdio transport — the masday-mcp binary runs as a
+    // subprocess. The masday API does not expose an MCP HTTP endpoint.
+    server.insert("type".to_string(), JsonValue::String("stdio".to_string()));
+    server.insert(
+        "command".to_string(),
+        JsonValue::String(config.mcp_binary_path.display().to_string()),
+    );
+    server.insert(
+        "args".to_string(),
+        JsonValue::Array(vec![JsonValue::String("mcp".to_string())]),
+    );
+    server.insert("env".to_string(), JsonValue::Object(env_map));
 
     JsonValue::Object(server)
 }
@@ -286,10 +261,11 @@ mod tests {
         let content = std::fs::read_to_string(&config_path).unwrap();
         let json: JsonValue = serde_json::from_str(&content).unwrap();
 
-        // URL mode → SSE transport
-        assert!(json["mcpServers"]["masday"]["type"] == "sse");
-        assert!(json["mcpServers"]["masday"]["url"] == "http://localhost:30101/mcp/sse");
-        assert!(json["mcpServers"]["masday"]["headers"]["Authorization"] == "Bearer ***");
+        // Even with URL mode, MCP always uses stdio (masday-mcp binary)
+        assert!(json["mcpServers"]["masday"]["type"] == "stdio");
+        assert!(json["mcpServers"]["masday"]["command"] == "/path/to/masday");
+        // API URL passed via env
+        assert!(json["mcpServers"]["masday"]["env"]["MASDAY_API_URL"] == "http://localhost:30101");
     }
 
     #[test]
