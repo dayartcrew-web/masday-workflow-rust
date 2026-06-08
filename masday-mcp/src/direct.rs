@@ -466,6 +466,7 @@ pub async fn workflow_add_task(
         .map_err(err)?;
 
     // VALIDATION 3: If plan exists, verify it belongs to the workflow
+    let mut resolved_plan_id = plan_id.to_string();
     if plan_count > 0 {
         let plan_workflow_id: String = conn
             .query_row(
@@ -476,10 +477,23 @@ pub async fn workflow_add_task(
             .map_err(err)?;
 
         if plan_workflow_id != workflow_id {
-            return Err(err(format!(
-                "Plan {} does not belong to workflow {}",
-                plan_id, workflow_id
-            )));
+            // Default plan belongs to another workflow — look up this workflow's active plan instead
+            let active_plan: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM plans WHERE workflow_id=?1 AND status='ACTIVE' ORDER BY version DESC LIMIT 1",
+                    params![workflow_id],
+                    |r| r.get(0),
+                )
+                .ok();
+            match active_plan {
+                Some(pid) => resolved_plan_id = pid,
+                None => {
+                    return Err(err(format!(
+                        "Plan {} does not belong to workflow {} and no ACTIVE plan found for this workflow",
+                        plan_id, workflow_id
+                    )));
+                }
+            }
         }
     } else {
         // VALIDATION 4: If plan doesn't exist, check workflow is in INIT state
@@ -525,7 +539,7 @@ pub async fn workflow_add_task(
 
     conn.execute(
         "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,?7,?8)",
-        params![id, workflow_id, plan_id, title, owner_agent, deps, &t, &t],
+        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, &t, &t],
     ).map_err(|e| err(e))?;
 
     Ok(json!({"id": id, "title": title, "status": "PENDING"}))
@@ -2452,14 +2466,25 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
     }; // conn dropped
        // Sync to PostgreSQL (fire-and-forget, non-blocking)
     let wf_ids = pushed_workflows.clone();
-    tokio::spawn(async move {
-        crate::direct_pg::workflows_bulk(&wf_ids).await;
-    });
+    let pg_result = tokio::spawn(async move {
+        let wf_ok = crate::direct_pg::workflows_bulk(&wf_ids).await;
+        let (mem_synced, mem_skipped, mem_errors) = crate::direct_pg::memories_bulk_push().await;
+        (wf_ok, mem_synced, mem_skipped, mem_errors)
+    })
+    .await;
+
+    let (mem_synced, mem_skipped, mem_errors) = match pg_result {
+        Ok((_, synced, skipped, errors)) => (synced, skipped, errors),
+        Err(e) => (0, 0, vec![format!("PG spawn error: {}", e)]),
+    };
 
     Ok(json!({
         "pushed": true,
         "workflows_pushed": pushed_workflows,
         "count": pushed_workflows.len(),
+        "memories_synced": mem_synced,
+        "memories_skipped": mem_skipped,
+        "memory_errors": mem_errors,
         "postgresql_synced": "async",
         "errors": errors
     }))
@@ -2554,6 +2579,18 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
     tokio::fs::write(&workflow_file, state_json)
         .await
         .map_err(err)?;
+
+    // Pull memories from PostgreSQL → SQLite (complement to local_push)
+    let (mem_pulled, mem_skipped, mem_errors) = crate::direct_pg::memories_bulk_pull().await;
+
+    // Add pull stats to the state response
+    let mut state = state;
+    state.as_object_mut().map(|s| {
+        s.insert("memories_pulled".into(), json!(mem_pulled));
+        s.insert("memories_skipped".into(), json!(mem_skipped));
+        s.insert("memory_pull_errors".into(), json!(mem_errors));
+        s
+    });
 
     Ok(state)
 }
@@ -2656,8 +2693,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_execute_from_plan() {
-        let guard = TestDbGuard::new();
-        let (id, _) = setup_test_db_via_guard(&guard, "PLAN");
+        let _guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&_guard, "PLAN");
 
         // Create a plan and tasks for the workflow (prerequisites for EXECUTE)
         {
@@ -2676,8 +2713,6 @@ mod tests {
                 params![&task_id, &id, &plan_id, &t],
             ).unwrap();
         } // conn dropped here, before await
-
-        drop(guard);
 
         let result = workflow_execute(json!({"workflow_id": id})).await;
         assert!(result.is_ok(), "Expected ok, got {:?}", result);
@@ -2715,8 +2750,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_execute_from_analyze_with_prerequisites() {
-        let guard = TestDbGuard::new();
-        let (id, _) = setup_test_db_via_guard(&guard, "ANALYZE");
+        let _guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&_guard, "ANALYZE");
 
         // Create analysis artifacts (use memory table instead of context_documents)
         {
@@ -2729,8 +2764,6 @@ mod tests {
                 params![&mem_id, &id, &t],
             ).unwrap();
         } // conn dropped here, before await
-
-        drop(guard);
 
         let result = workflow_execute(json!({"workflow_id": id})).await;
         assert!(result.is_ok(), "Expected ok, got {:?}", result);
@@ -2772,29 +2805,30 @@ mod tests {
         assert_eq!(result.unwrap()["status"], "EXECUTE");
     }
 
-    /// RAII guard that inits SQLite to a temp path, restored on drop.
+    /// RAII guard that ensures SQLite is initialized exactly once.
+    ///
+    /// Uses a `Once` to guarantee single initialization even under parallel
+    /// test execution. All tests share the same connection (UUIDs prevent data
+    /// collisions). The `TempDir` keeps the database file alive for the
+    /// lifetime of the process.
     struct TestDbGuard {
         _dir: tempfile::TempDir,
     }
 
+    static TEST_ONCE: std::sync::Once = std::sync::Once::new();
+
     impl TestDbGuard {
         fn new() -> Self {
             let dir = tempfile::TempDir::new().unwrap();
-            // We cannot re-init the global SQLite in-process, so we use a
-            // different approach: directly manipulate a temporary DB file.
             let db_path = dir.path().join("data.db");
-            std::env::set_var("MASDAY_SQLITE_PATH", db_path.to_str().unwrap());
 
-            // Try to init — ignore "already initialized" error
-            let _ = crate::sqlite::init_sqlite();
+            TEST_ONCE.call_once(|| {
+                std::env::set_var("MASDAY_SQLITE_PATH", db_path.to_str().unwrap());
+                crate::sqlite::init_sqlite()
+                    .expect("SQLite init must succeed on first call");
+            });
 
             Self { _dir: dir }
-        }
-    }
-
-    impl Drop for TestDbGuard {
-        fn drop(&mut self) {
-            std::env::remove_var("MASDAY_SQLITE_PATH");
         }
     }
 

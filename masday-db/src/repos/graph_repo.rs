@@ -26,7 +26,7 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         // Serialize properties to serde_json::Value for jsonb column
         let props_value: Option<serde_json::Value> = node.properties.clone();
@@ -58,7 +58,7 @@ impl GraphRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO graph_edges (id, source_node_id, target_node_id, relation_type, weight, bidirectional, created_at)

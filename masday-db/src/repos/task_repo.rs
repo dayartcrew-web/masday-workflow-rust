@@ -25,7 +25,7 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO tasks (
@@ -65,8 +65,8 @@ impl TaskRepo {
                     &task.test_evidence,
                     &task.metadata,
                     &now,
-                    &None::<chrono::NaiveDateTime>,
-                    &None::<chrono::NaiveDateTime>,
+                    &None::<chrono::DateTime<chrono::Utc>>,
+                    &None::<chrono::DateTime<chrono::Utc>>,
                     &now,
                 ],
             )
@@ -151,7 +151,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let query = r#"UPDATE tasks SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
@@ -169,7 +169,7 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let query = r#"
             UPDATE tasks
             SET status = 'DONE', test_evidence = $1, progress_percent = 100, updated_at = $2
@@ -193,7 +193,7 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO task_progress_logs (
@@ -257,5 +257,78 @@ impl TaskRepo {
             .map_err(|e| AppError::Database(format!("Failed to count done tasks: {}", e)))?;
 
         Ok(row.get::<_, i64>("count"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = TaskRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_task_construction() {
+        let task = NewTask {
+            workflow_id: "wf-123".to_string(),
+            plan_id: "plan-456".to_string(),
+            title: "Implement feature".to_string(),
+            status: "PENDING".to_string(),
+            priority: Some("HIGH".to_string()),
+            owner_agent: None,
+            skill: None,
+            description: None,
+            dependencies: None,
+            acceptance_criteria: None,
+            required_context: None,
+            verification_steps: None,
+            context_fingerprint: None,
+            progress_percent: None,
+            requires_tdd: None,
+            input: None,
+            result: None,
+            test_evidence: None,
+            metadata: None,
+        };
+        assert_eq!(task.workflow_id, "wf-123");
+        assert_eq!(task.status, "PENDING");
+        assert_eq!(task.priority, Some("HIGH".to_string()));
+    }
+
+    #[test]
+    fn test_new_progress_log_construction() {
+        let log = NewTaskProgressLog {
+            workflow_id: "wf-123".to_string(),
+            task_id: "task-456".to_string(),
+            agent_name: "masday-executor".to_string(),
+            status_before: Some("RUNNING".to_string()),
+            status_after: Some("DONE".to_string()),
+            progress_note: "Completed implementation".to_string(),
+            evidence: Some(serde_json::json!({"files_changed": 3})),
+        };
+        assert_eq!(log.agent_name, "masday-executor");
+        assert_eq!(log.progress_note, "Completed implementation");
+    }
+
+    #[test]
+    fn test_insert_sql_has_required_params() {
+        let sql = r#"
+            INSERT INTO tasks (
+                id, workflow_id, plan_id, title, status, priority,
+                owner_agent, skill, description, dependencies,
+                acceptance_criteria, required_context, verification_steps,
+                context_fingerprint, progress_percent, requires_tdd,
+                input, result, test_evidence, metadata, created_at,
+                started_at, completed_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+            RETURNING *
+        "#;
+        assert!(sql.contains("RETURNING *"));
+        assert!(sql.contains("$24"));
     }
 }

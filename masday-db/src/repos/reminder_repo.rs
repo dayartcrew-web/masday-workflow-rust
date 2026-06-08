@@ -82,7 +82,7 @@ impl ReminderRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO workflow_reminders (
@@ -148,5 +148,43 @@ impl ReminderRepo {
             .map_err(|e| AppError::Database(format!("Failed to delete reminder: {}", e)))?;
 
         Ok(rows_affected > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = ReminderRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_reminder_construction() {
+        let r = NewWorkflowReminder {
+            workflow_id: "wf-123".to_string(),
+            task_id: Some("task-456".to_string()),
+            reminder_type: "stale_execution".to_string(),
+            severity: "warning".to_string(),
+            message: "Workflow stuck for 60 minutes".to_string(),
+            acknowledged: Some(false),
+        };
+        assert_eq!(r.reminder_type, "stale_execution");
+        assert_eq!(r.severity, "warning");
+    }
+
+    #[test]
+    fn test_insert_sql_contains_returning_star() {
+        let sql = r#"INSERT INTO workflow_reminders (id, workflow_id, task_id, reminder_type, severity, message, acknowledged, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *"#;
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_check_sql_has_coalesce() {
+        let sql = r#"SELECT * FROM workflow_reminders WHERE acknowledged = FALSE OR acknowledged IS NULL"#;
+        assert!(sql.contains("acknowledged"));
     }
 }

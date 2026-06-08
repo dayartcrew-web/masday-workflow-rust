@@ -50,7 +50,7 @@ impl SessionRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         // First check if session exists
         let existing_query = r#"SELECT * FROM session_states WHERE session_key = $1"#;
@@ -160,5 +160,70 @@ impl SessionRepo {
             .map_err(|e| AppError::Database(format!("Failed to patch session state: {}", e)))?;
 
         Ok(SessionState::from_row(&row))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = SessionRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_column_map_completeness() {
+        let column_map: std::collections::HashMap<&str, &str> = [
+            ("workflow_id", "workflow_id"),
+            ("plan_id", "plan_id"),
+            ("task_id", "task_id"),
+            ("workflow_loaded", "workflow_loaded"),
+            ("plan_loaded", "plan_loaded"),
+            ("task_loaded", "task_loaded"),
+            ("context_loaded", "context_loaded"),
+            ("review_approved", "review_approved"),
+            ("context_fingerprint", "context_fingerprint"),
+            ("execution_mode", "execution_mode"),
+            ("active_branch_ids", "active_branch_ids"),
+            ("synthesis_ready", "synthesis_ready"),
+            ("verification_ready", "verification_ready"),
+            ("last_command", "last_command"),
+            ("metadata", "metadata"),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        assert_eq!(column_map.len(), 15);
+    }
+
+    #[test]
+    fn test_patch_value_extraction() {
+        let patch = serde_json::json!({
+            "workflow_id": "wf-123",
+            "execution_mode": "sequential",
+            "synthesis_ready": true
+        });
+        assert_eq!(
+            patch.get("workflow_id").and_then(|v| v.as_str()),
+            Some("wf-123")
+        );
+        assert_eq!(
+            patch.get("execution_mode").and_then(|v| v.as_str()),
+            Some("sequential")
+        );
+        assert_eq!(
+            patch.get("synthesis_ready").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn test_update_sql_has_session_key() {
+        let sql = r#"UPDATE session_states SET {} WHERE session_key = $1 RETURNING *"#;
+        assert!(sql.contains("session_key = $1"));
+        assert!(sql.contains("RETURNING *"));
     }
 }

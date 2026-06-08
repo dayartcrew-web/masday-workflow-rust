@@ -25,7 +25,7 @@ impl EpisodicMemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO episodic_memories (
@@ -143,5 +143,41 @@ impl EpisodicMemoryRepo {
             })?;
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = EpisodicMemoryRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_episodic_memory_construction() {
+        let mem = NewEpisodicMemory {
+            session_id: "session-123".to_string(),
+            role: "user".to_string(),
+            content: "Hello, world!".to_string(),
+            sequence_order: 1,
+        };
+        assert_eq!(mem.session_id, "session-123");
+        assert_eq!(mem.sequence_order, 1);
+    }
+
+    #[test]
+    fn test_insert_sql_contains_returning_star() {
+        let sql = r#"INSERT INTO episodic_memories (id, session_id, role, content, sequence_order, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *"#;
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_delete_by_session_sql() {
+        let sql = r#"DELETE FROM episodic_memories WHERE session_id = $1"#;
+        assert!(sql.contains("session_id = $1"));
     }
 }

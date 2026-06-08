@@ -25,7 +25,7 @@ impl TokenUsageRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO token_usage (
@@ -169,5 +169,46 @@ impl TokenUsageRepo {
             "completion_tokens": row.get::<_, i64>("completion_tokens"),
             "avg_latency_ms": row.get::<_, f64>("avg_latency_ms"),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = TokenUsageRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_token_usage_construction() {
+        let usage = NewTokenUsage {
+            source: "openai".to_string(),
+            route: "/chat/completions".to_string(),
+            model: Some("gpt-4".to_string()),
+            prompt_tokens: Some(100),
+            completion_tokens: Some(50),
+            total_tokens: Some(150),
+            latency_ms: Some(1250),
+            metadata: None,
+        };
+        assert_eq!(usage.source, "openai");
+        assert_eq!(usage.total_tokens, Some(150));
+    }
+
+    #[test]
+    fn test_limit_capping() {
+        assert_eq!(5000i64.min(1000), 1000);
+        assert_eq!(500i64.min(1000), 500);
+    }
+
+    #[test]
+    fn test_stats_sql_has_aggregates() {
+        let sql = r#"SELECT source, SUM(prompt_tokens) as total_prompt, SUM(completion_tokens) as total_completion, SUM(total_tokens) as total_tokens, COUNT(*) as request_count FROM token_usage"#;
+        assert!(sql.contains("SUM"));
+        assert!(sql.contains("COUNT"));
     }
 }

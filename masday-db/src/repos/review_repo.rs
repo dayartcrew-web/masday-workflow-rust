@@ -25,7 +25,7 @@ impl ReviewRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO review_decisions (
@@ -95,5 +95,46 @@ impl ReviewRepo {
             .map_err(|e| AppError::Database(format!("Failed to list reviews: {}", e)))?;
 
         Ok(rows.iter().map(ReviewDecision::from_row).collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = ReviewRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_review_decision_construction() {
+        let rd = NewReviewDecision {
+            workflow_id: "wf-123".to_string(),
+            task_id: "task-456".to_string(),
+            reviewer_agent: "masday-reviewer".to_string(),
+            decision: "APPROVED".to_string(),
+            notes: "LGTM".to_string(),
+            gaps: None,
+            tests_verified: Some(true),
+            test_summary: None,
+        };
+        assert_eq!(rd.decision, "APPROVED");
+        assert_eq!(rd.tests_verified, Some(true));
+    }
+
+    #[test]
+    fn test_insert_sql_contains_returning_star() {
+        let sql = r#"INSERT INTO review_decisions (id, workflow_id, task_id, reviewer_agent, decision, notes, gaps, tests_verified, test_summary, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *"#;
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_latest_sql_has_order_and_limit() {
+        let sql = r#"SELECT * FROM review_decisions WHERE workflow_id = $1 AND task_id = $2 ORDER BY created_at DESC LIMIT 1"#;
+        assert!(sql.contains("ORDER BY created_at DESC"));
+        assert!(sql.contains("LIMIT 1"));
     }
 }

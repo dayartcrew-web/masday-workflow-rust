@@ -53,7 +53,8 @@ static API_KEY: OnceLock<String> = OnceLock::new();
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// Initialize the global HTTP client and API configuration
-/// Called once at startup from main.rs
+/// Called once at startup from main.rs. Safe to call multiple times
+/// (subsequent calls are no-ops).
 pub fn init(
     api_url: String,
     api_key: String,
@@ -62,11 +63,9 @@ pub fn init(
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    HTTP_CLIENT
-        .set(client)
-        .expect("HTTP client already initialized");
-    API_URL.set(api_url).expect("API URL already set");
-    API_KEY.set(api_key).expect("API key already set");
+    let _ = HTTP_CLIENT.set(client);
+    let _ = API_URL.set(api_url);
+    let _ = API_KEY.set(api_key);
 
     Ok(())
 }

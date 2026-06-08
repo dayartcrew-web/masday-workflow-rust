@@ -6,6 +6,27 @@
 //! 3. Modify local state
 //! 4. Push back via local_push
 //! 5. Verify roundtrip consistency
+//!
+//! ## Running these tests
+//!
+//! These tests require live infrastructure:
+//! - PostgreSQL on port 54341 (with DATABASE_URL set)
+//! - masday-api server on port 30101
+//! - `MASDAY_API_KEY` environment variable set
+//!
+//! ```sh
+//! # Start infrastructure
+//! docker compose up -d
+//!
+//! # Start API server
+//! DATABASE_URL="postgresql://masday:masday_dev_password@localhost:54341/masday_workflow" \
+//!   cargo run -p masday-api &
+//!
+//! # Run the ignored tests
+//! DATABASE_URL="postgresql://masday:masday_dev_password@localhost:54341/masday_workflow" \
+//! MASDAY_API_KEY="your-api-key" \
+//!   cargo test -p masday-mcp --test e2e_local_sync_push -- --ignored --nocapture
+//! ```
 
 use masday_mcp::tools::local;
 use reqwest::Client;
@@ -49,6 +70,7 @@ async fn add_test_task(
     api_url: &str,
     api_key: &str,
     workflow_id: &str,
+    plan_id: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = Client::new();
     let url = format!("{}/api/workflows/{}/tasks", api_url, workflow_id);
@@ -59,7 +81,7 @@ async fn add_test_task(
         .json(&json!({
             "name": "test-task",
             "agent": "masday-backend",
-            "skill": "masday-e2e"
+            "plan_id": plan_id
         }))
         .send()
         .await?;
@@ -75,6 +97,39 @@ async fn add_test_task(
         .ok_or("Missing task ID in response")?;
 
     Ok(task_id.to_string())
+}
+
+/// Helper: Create a plan for a workflow via API
+async fn create_test_plan(
+    api_url: &str,
+    api_key: &str,
+    workflow_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let client = Client::new();
+    let url = format!("{}/api/workflows/{}/plan", api_url, workflow_id);
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&json!({
+            "phases": [{"name": "setup"}, {"name": "execute"}]
+        }))
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to create plan: {} - {}", status, error_text).into());
+    }
+
+    let result: Value = response.json().await?;
+    let plan_id = result
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing plan ID in response")?;
+
+    Ok(plan_id.to_string())
 }
 
 /// Helper: Start task (set to RUNNING) via API
@@ -253,15 +308,22 @@ async fn test_e2e_local_sync_push_roundtrip() {
         .expect("Failed to create workflow");
     println!("Created workflow: {}", workflow_id);
 
-    // Step 2: Add task
-    println!("Step 2: Adding test task...");
-    let task_id = add_test_task(&api_url, &api_key, &workflow_id)
+    // Step 2: Create plan
+    println!("Step 2: Creating plan...");
+    let plan_id = create_test_plan(&api_url, &api_key, &workflow_id)
+        .await
+        .expect("Failed to create plan");
+    println!("Created plan: {}", plan_id);
+
+    // Step 3: Add task
+    println!("Step 3: Adding test task...");
+    let task_id = add_test_task(&api_url, &api_key, &workflow_id, &plan_id)
         .await
         .expect("Failed to add task");
     println!("Created task: {}", task_id);
 
-    // Step 3: Start task (set to RUNNING status - required before completing)
-    println!("Step 3: Starting task (set to RUNNING)...");
+    // Step 4: Start task (set to RUNNING status - required before completing)
+    println!("Step 4: Starting task (set to RUNNING)...");
     start_task(&api_url, &api_key, &workflow_id, &task_id)
         .await
         .expect("Failed to start task");
@@ -270,8 +332,8 @@ async fn test_e2e_local_sync_push_roundtrip() {
     // Small delay to ensure DB consistency
     sleep(Duration::from_millis(100)).await;
 
-    // Step 4: Test local_sync (PostgreSQL → local file)
-    println!("Step 4: Testing local_sync...");
+    // Step 5: Test local_sync (PostgreSQL → local file)
+    println!("Step 5: Testing local_sync...");
     let sync_args = json!({
         "cwd": cwd,
         "workflow_id": &workflow_id
@@ -310,10 +372,10 @@ async fn test_e2e_local_sync_push_roundtrip() {
         "Task ID mismatch in local state"
     );
 
-    println!("Step 4: local_sync verified ✓");
+    println!("Step 5: local_sync verified ✓");
 
-    // Step 5: Modify state file (simulating local changes)
-    println!("Step 5: Modifying local state...");
+    // Step 6: Modify state file (simulating local changes)
+    println!("Step 6: Modifying local state...");
     let mut modified_state = local_state.clone();
 
     // Change task status
@@ -337,10 +399,10 @@ async fn test_e2e_local_sync_push_roundtrip() {
     write_local_state_file(cwd, &workflow_id, &modified_state)
         .await
         .expect("Failed to write modified state file");
-    println!("Step 5: Local state modified ✓");
+    println!("Step 6: Local state modified ✓");
 
-    // Step 6: Test local_push (local file → PostgreSQL)
-    println!("Step 6: Testing local_push...");
+    // Step 7: Test local_push (local file → PostgreSQL)
+    println!("Step 7: Testing local_push...");
     let push_args = json!({
         "cwd": cwd,
         "workflow_id": &workflow_id
@@ -369,13 +431,13 @@ async fn test_e2e_local_sync_push_roundtrip() {
         "Pushed workflow ID mismatch"
     );
 
-    println!("Step 6: local_push verified ✓");
+    println!("Step 7: local_push verified ✓");
 
     // Small delay to ensure DB consistency
     sleep(Duration::from_millis(100)).await;
 
-    // Step 7: Verify roundtrip - compare API data with local modifications
-    println!("Step 7: Verifying roundtrip...");
+    // Step 8: Verify roundtrip - compare API data with local modifications
+    println!("Step 8: Verifying roundtrip...");
 
     let api_workflow = get_workflow_from_api(&api_url, &api_key, &workflow_id)
         .await
@@ -402,10 +464,10 @@ async fn test_e2e_local_sync_push_roundtrip() {
         "Task result mismatch after push (stored in test_evidence field)"
     );
 
-    println!("Step 7: Roundtrip verified ✓");
+    println!("Step 8: Roundtrip verified ✓");
 
-    // Step 8: Cleanup
-    println!("Step 8: Cleaning up...");
+    // Step 9: Cleanup
+    println!("Step 9: Cleaning up...");
 
     // Delete workflow from API
     delete_workflow(&api_url, &api_key, &workflow_id)
@@ -425,7 +487,7 @@ async fn test_e2e_local_sync_push_roundtrip() {
         .expect("Failed to delete state file");
     println!("Local state file deleted");
 
-    println!("Step 8: Cleanup complete ✓");
+    println!("Step 9: Cleanup complete ✓");
     println!("\n✅ E2E test PASSED: local_sync → local_push → verify roundtrip");
 }
 

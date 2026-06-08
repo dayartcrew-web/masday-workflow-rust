@@ -5,7 +5,7 @@
 //! All PG sync is non-blocking — if PostgreSQL is slow/unavailable,
 //! tool calls return immediately from SQLite.
 
-use masday_db::pool::{create_pool, health_check, DbPool};
+use masday_db::pool::{create_pool, DbPool};
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -187,22 +187,17 @@ pub async fn get_pool() -> Option<DbPool> {
             // Set env var for masday-db::pool::create_pool()
             std::env::set_var("DATABASE_URL", &db_url);
 
-            // Create pool with timeout
-            let pool = match tokio::time::timeout(std::time::Duration::from_secs(10), async {
-                let p = create_pool().ok()?;
-                health_check(&p).await.ok()?;
-                Some(p)
-            })
-            .await
-            {
-                Ok(Some(p)) => p,
-                Ok(None) => {
-                    tracing::warn!("PostgreSQL: pool creation failed");
-                    PG_INIT_STARTED.store(false, Ordering::SeqCst);
-                    return;
+            // Create pool (lazy — no connection until first query).
+            // Skip health_check: the pool is lazy and will connect on first use.
+            // If PG is down, individual tool calls will return errors gracefully.
+            let pool = match create_pool() {
+                Ok(p) => {
+                    tracing::info!("PostgreSQL: pool created successfully");
+                    p
                 }
-                Err(_) => {
-                    tracing::warn!("PostgreSQL: pool creation timed out (10s)");
+                Err(e) => {
+                    tracing::error!("PostgreSQL: create_pool failed: {}", e);
+                    eprintln!("[masday] PG create_pool failed: {}", e);
                     PG_INIT_STARTED.store(false, Ordering::SeqCst);
                     return;
                 }

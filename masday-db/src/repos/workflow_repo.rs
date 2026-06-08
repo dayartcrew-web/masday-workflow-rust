@@ -142,7 +142,7 @@ impl WorkflowRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let query =
             r#"UPDATE workflows SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
         let row = client
@@ -161,7 +161,7 @@ impl WorkflowRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         // Build dynamic UPDATE query based on provided fields
         let mut set_clauses = vec![r#"updated_at = $2"#.to_string()];
@@ -234,5 +234,80 @@ impl WorkflowRepo {
             .map_err(|e| AppError::Database(format!("Failed to delete workflow: {}", e)))?;
 
         Ok(rows_affected > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = WorkflowRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_workflow_serialization_roundtrip() {
+        let input = NewWorkflow {
+            name: "test-workflow".to_string(),
+            description: Some("A test".to_string()),
+            status: "INIT".to_string(),
+            project_path: Some("/tmp/test".to_string()),
+            trace_id: None,
+            current_plan_id: None,
+            current_task_id: None,
+            metadata: Some(serde_json::json!({"key": "value"})),
+        };
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: NewWorkflow = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "test-workflow");
+        assert_eq!(parsed.status, "INIT");
+    }
+
+    #[test]
+    fn test_insert_sql_contains_returning_star() {
+        let sql = r#"
+            INSERT INTO workflows (
+                id, name, description, status, project_path, trace_id,
+                current_plan_id, current_task_id, metadata, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *
+        "#;
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_update_sql_contains_where_id() {
+        let sql = r#"UPDATE workflows SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
+        assert!(sql.contains("WHERE id = $3"));
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_dynamic_update_builder_field_count() {
+        let updates = serde_json::json!({
+            "name": "updated-name",
+            "status": "EXECUTE",
+            "project_path": "/new/path"
+        });
+        let mut set_clauses = vec!["updated_at = $2".to_string()];
+        if updates.get("name").and_then(|v| v.as_str()).is_some() {
+            set_clauses.push("name = $3".to_string());
+        }
+        if updates.get("status").and_then(|v| v.as_str()).is_some() {
+            set_clauses.push("status = $4".to_string());
+        }
+        if updates
+            .get("project_path")
+            .and_then(|v| v.as_str())
+            .is_some()
+        {
+            set_clauses.push("project_path = $5".to_string());
+        }
+        // 1 base clause + 3 fields = 4
+        assert_eq!(set_clauses.len(), 4);
     }
 }

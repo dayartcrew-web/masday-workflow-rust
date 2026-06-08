@@ -18,7 +18,7 @@ impl MemoryRepo {
         Self { pool }
     }
 
-    /// Store a new memory
+    /// Store a new memory (without embedding)
     pub async fn store(&self, memory: &NewMemory) -> Result<Memory> {
         let client = self
             .pool
@@ -27,19 +27,18 @@ impl MemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
+        // Omit embedding column entirely to avoid pgvector type serialization issues
         let query = r#"
             INSERT INTO memories (
                 id, workflow_id, task_id, memory_type, summary, content,
                 importance_score, created_by_agent, tags, source,
-                embedding, created_at, updated_at, accessed_at, access_count, version
+                created_at, updated_at, accessed_at, access_count, version
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING *
         "#;
-
-        let embedding_pg: Option<Vector> = memory.embedding.clone();
 
         let row = client
             .query_one(
@@ -55,10 +54,9 @@ impl MemoryRepo {
                     &memory.created_by_agent,
                     &memory.tags,
                     &memory.source,
-                    &embedding_pg,
                     &now,
                     &now,
-                    &Option::<chrono::NaiveDateTime>::None,
+                    &Option::<chrono::DateTime<chrono::Utc>>::None,
                     &0i32,
                     &1i32,
                 ],
@@ -78,7 +76,7 @@ impl MemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         // Update accessed_at and access_count
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let update_query = r#"UPDATE memories SET accessed_at = $1, access_count = COALESCE(access_count, 0) + 1 WHERE id = $2"#;
         client
             .execute(update_query, &[&now, &id])
@@ -202,7 +200,7 @@ impl MemoryRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         // Build dynamic UPDATE query
         let mut set_clauses = vec![
@@ -294,7 +292,7 @@ impl MemoryRepo {
         let by_type = type_rows
             .iter()
             .map(|row| {
-                let memory_type: String = row.get("memoryType");
+                let memory_type: String = row.get("memory_type");
                 let count: i64 = row.get("count");
                 (memory_type, count)
             })
@@ -319,7 +317,7 @@ impl MemoryRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let pgvec = embedding.map(Vector::from);
 
@@ -434,4 +432,66 @@ impl MemoryRepo {
 pub struct MemoryStats {
     pub total_count: i64,
     pub by_type: std::collections::HashMap<String, i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = MemoryRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_memory_serialization_roundtrip() {
+        let input = NewMemory {
+            workflow_id: Some("wf-123".to_string()),
+            task_id: None,
+            memory_type: "preference".to_string(),
+            summary: "User prefers dark mode".to_string(),
+            content: "Set in settings".to_string(),
+            importance_score: Some(0.8),
+            created_by_agent: "masday-orchestrator".to_string(),
+            tags: Some(vec!["ui".to_string()]),
+            source: Some("user_feedback".to_string()),
+            embedding: None,
+        };
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: NewMemory = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.memory_type, "preference");
+        assert_eq!(parsed.summary, "User prefers dark mode");
+        assert_eq!(parsed.importance_score, Some(0.8));
+        // embedding is #[serde(skip)] so it won't round-trip
+        assert!(parsed.tags.is_some());
+    }
+
+    #[test]
+    fn test_memory_stats_construction() {
+        let mut by_type = std::collections::HashMap::new();
+        by_type.insert("preference".to_string(), 5);
+        by_type.insert("experience".to_string(), 12);
+        let stats = MemoryStats {
+            total_count: 17,
+            by_type,
+        };
+        assert_eq!(stats.total_count, 17);
+        assert_eq!(stats.by_type.len(), 2);
+    }
+
+    #[test]
+    fn test_search_pattern_construction() {
+        let query = "dark mode";
+        let pattern = format!("%{}%", query);
+        assert_eq!(pattern, "%dark mode%");
+    }
+
+    #[test]
+    fn test_limit_capping() {
+        assert_eq!(2000i64.min(1000), 1000);
+        assert_eq!(500i64.min(1000), 500);
+        assert_eq!(1000i64.min(1000), 1000);
+    }
 }

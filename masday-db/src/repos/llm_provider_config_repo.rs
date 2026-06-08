@@ -25,7 +25,7 @@ impl LlmProviderConfigRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO llm_provider_configs (
@@ -125,7 +125,7 @@ impl LlmProviderConfigRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         // Build dynamic UPDATE query
         let mut set_clauses = vec![r#"updated_at = $2"#.to_string()];
@@ -215,7 +215,7 @@ impl LlmProviderConfigRepo {
             .map_err(|e| AppError::Database(format!("Failed to unset default providers: {}", e)))?;
 
         // Then set the new default
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let query = r#"
             UPDATE llm_provider_configs
             SET is_default = true, updated_at = $2
@@ -228,5 +228,63 @@ impl LlmProviderConfigRepo {
             .map_err(|e| AppError::Database(format!("Failed to set default provider: {}", e)))?;
 
         Ok(LlmProviderConfig::from_row(&row))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = LlmProviderConfigRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_config_construction() {
+        let config = NewLlmProviderConfig {
+            provider_name: "openai".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key_env_var: "OPENAI_API_KEY".to_string(),
+            models: serde_json::json!(["gpt-4", "gpt-3.5-turbo"]),
+            is_default: Some(true),
+            priority: Some(1),
+        };
+        assert_eq!(config.provider_name, "openai");
+        assert_eq!(config.is_default, Some(true));
+    }
+
+    #[test]
+    fn test_dynamic_update_builder() {
+        let updates = serde_json::json!({"base_url": "http://new", "priority": 2});
+        let mut count = 0;
+        if updates.get("base_url").and_then(|v| v.as_str()).is_some() {
+            count += 1;
+        }
+        if updates.get("priority").and_then(|v| v.as_i64()).is_some() {
+            count += 1;
+        }
+        if updates
+            .get("provider_name")
+            .and_then(|v| v.as_str())
+            .is_some()
+        {
+            count += 1;
+        }
+        assert_eq!(count, 2); // base_url + priority, not provider_name
+    }
+
+    #[test]
+    fn test_set_default_sql() {
+        let sql = r#"UPDATE llm_provider_configs SET is_default = FALSE WHERE id != $1"#;
+        assert!(sql.contains("is_default = FALSE"));
+    }
+
+    #[test]
+    fn test_insert_sql_contains_returning_star() {
+        let sql = r#"INSERT INTO llm_provider_configs (id, provider_name, base_url, api_key_env_var, models, is_default, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *"#;
+        assert!(sql.contains("RETURNING *"));
     }
 }

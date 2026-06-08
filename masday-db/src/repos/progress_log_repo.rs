@@ -25,7 +25,7 @@ impl ProgressLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO task_progress_logs (
@@ -148,5 +148,37 @@ impl ProgressLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to delete progress log: {}", e)))?;
 
         Ok(result > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = ProgressLogRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_progress_log_construction() {
+        let log = NewTaskProgressLog {
+            workflow_id: "wf-123".to_string(),
+            task_id: "task-456".to_string(),
+            agent_name: "masday-executor".to_string(),
+            status_before: Some("RUNNING".to_string()),
+            status_after: Some("DONE".to_string()),
+            progress_note: "Completed".to_string(),
+            evidence: None,
+        };
+        assert_eq!(log.agent_name, "masday-executor");
+    }
+
+    #[test]
+    fn test_limit_capping() {
+        assert_eq!(5000i64.min(1000), 1000);
+        assert_eq!(500i64.min(1000), 500);
     }
 }

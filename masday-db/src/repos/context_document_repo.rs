@@ -26,7 +26,7 @@ impl ContextDocumentRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO context_documents (
@@ -227,5 +227,39 @@ impl ContextDocumentRepo {
             .map_err(|e| AppError::Database(format!("Failed to count context documents: {}", e)))?;
 
         Ok(row.get::<_, i64>("count"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = ContextDocumentRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_context_document_construction() {
+        let doc = NewContextDocument {
+            workflow_id: Some("wf-123".to_string()),
+            source_type: "file".to_string(),
+            source_ref: Some("src/main.rs".to_string()),
+            title: Some("Main entry".to_string()),
+            content: "fn main() {}".to_string(),
+            metadata: None,
+            fingerprint: Some("abc123".to_string()),
+            embedding: None,
+        };
+        assert_eq!(doc.source_type, "file");
+        assert_eq!(doc.fingerprint, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_limit_capping() {
+        assert_eq!(5000i64.min(1000), 1000);
+        assert_eq!(500i64.min(1000), 500);
     }
 }

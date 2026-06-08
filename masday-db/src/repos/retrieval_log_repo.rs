@@ -25,7 +25,7 @@ impl RetrievalLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         let query = r#"
             INSERT INTO retrieval_logs (
@@ -145,5 +145,36 @@ impl RetrievalLogRepo {
             .map_err(|e| AppError::Database(format!("Failed to delete retrieval log: {}", e)))?;
 
         Ok(result > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = RetrievalLogRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_retrieval_log_construction() {
+        let log = NewRetrievalLog {
+            workflow_id: Some("wf-123".to_string()),
+            task_id: None,
+            agent_name: "masday-researcher".to_string(),
+            query: "search query".to_string(),
+            source: "semantic".to_string(),
+            results: Some(serde_json::json!([{"id": "doc-1"}])),
+        };
+        assert_eq!(log.source, "semantic");
+    }
+
+    #[test]
+    fn test_limit_capping() {
+        assert_eq!(5000i64.min(1000), 1000);
+        assert_eq!(500i64.min(1000), 500);
     }
 }

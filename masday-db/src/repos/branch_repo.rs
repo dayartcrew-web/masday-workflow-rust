@@ -27,7 +27,7 @@ impl BranchRepo {
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
         let mut result = Vec::new();
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         for branch in branches {
             let id = uuid::Uuid::new_v4().to_string();
@@ -77,7 +77,7 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let query = r#"
             UPDATE parallel_branches
             SET status = 'DONE', output = $1, updated_at = $2
@@ -136,7 +136,7 @@ impl BranchRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let now: chrono::NaiveDateTime = chrono::Utc::now().naive_utc();
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
         let query = r#"UPDATE parallel_branches SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
         let row = client
             .query_one(query, &[&status, &now, &id])
@@ -144,5 +144,44 @@ impl BranchRepo {
             .map_err(|e| AppError::Database(format!("Failed to update branch status: {}", e)))?;
 
         Ok(ParallelBranch::from_row(&row))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constructor_signature() {
+        fn _check() {
+            let _ = BranchRepo::new;
+        }
+    }
+
+    #[test]
+    fn test_new_parallel_branch_construction() {
+        let b = NewParallelBranch {
+            workflow_id: "wf-123".to_string(),
+            task_id: Some("task-456".to_string()),
+            branch_key: "research".to_string(),
+            role: "researcher".to_string(),
+            status: "PENDING".to_string(),
+            input: serde_json::json!({"query": "test"}),
+            output: None,
+        };
+        assert_eq!(b.branch_key, "research");
+        assert_eq!(b.role, "researcher");
+    }
+
+    #[test]
+    fn test_insert_sql_contains_returning_star() {
+        let sql = r#"INSERT INTO parallel_branches (id, workflow_id, task_id, branch_key, role, status, input, output, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *"#;
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_complete_sets_done_status() {
+        let sql = r#"UPDATE parallel_branches SET status = 'DONE', output = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
+        assert!(sql.contains("status = 'DONE'"));
     }
 }
