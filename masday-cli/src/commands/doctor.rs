@@ -58,7 +58,7 @@ impl DoctorReport {
 }
 
 /// Run the doctor command
-pub async fn run(json: bool) -> Result<()> {
+pub async fn run(json: bool, fix: bool) -> Result<()> {
     let mut report = DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
         build_origin: build_origin::BUILD_ORIGIN,
@@ -82,6 +82,22 @@ pub async fn run(json: bool) -> Result<()> {
     check_platforms(&mut report);
     check_disk_space(&mut report);
     check_update_available(&mut report).await;
+    check_sqlite_database(&mut report);
+    check_redis_connectivity(&mut report).await;
+    check_stale_workflows(&mut report).await;
+    check_mcp_config(&mut report);
+
+    // Apply fixes if requested
+    if fix {
+        let fixes_applied = apply_fixes(&report).await?;
+        if !fixes_applied.is_empty() {
+            println!();
+            println!("{}", style("Fixes applied:").cyan().bold());
+            for fix in &fixes_applied {
+                println!("  {}", style(fix).green());
+            }
+        }
+    }
 
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -681,4 +697,509 @@ fn print_report(report: &DoctorReport) {
         style(skip).dim()
     );
     println!();
+}
+
+// ── Additional checks ───────────────────────────────────────────────────────────
+
+fn check_sqlite_database(report: &mut DoctorReport) {
+    let config = match MasdayConfig::load_or_err() {
+        Ok(c) => c,
+        Err(_) => {
+            report.checks.push(CheckResult {
+                name: "SQLite Database".into(),
+                status: CheckStatus::Skip,
+                message: "No config to check".into(),
+                detail: None,
+            });
+            return;
+        }
+    };
+
+    if config.mode != "local" && config.mode != "standalone" {
+        report.checks.push(CheckResult {
+            name: "SQLite Database".into(),
+            status: CheckStatus::Skip,
+            message: "Not in local/standalone mode".into(),
+            detail: None,
+        });
+        return;
+    }
+
+    let home = MasdayConfig::masday_home();
+    let db_path = home.join("data.db");
+
+    if !db_path.exists() {
+        report.checks.push(CheckResult {
+            name: "SQLite Database".into(),
+            status: CheckStatus::Fail,
+            message: "Database file not found".into(),
+            detail: Some(format!("Expected: {}", db_path.display())),
+        });
+        return;
+    }
+
+    match rusqlite::Connection::open(&db_path) {
+        Ok(conn) => {
+            let table_count: Result<usize, _> = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                    [],
+                    |row| row.get(0),
+                );
+
+            match table_count {
+                Ok(count) => {
+                    if count >= 16 {
+                        report.checks.push(CheckResult {
+                            name: "SQLite Database".into(),
+                            status: CheckStatus::Ok,
+                            message: format!("OK ({} tables)", count),
+                            detail: Some(db_path.display().to_string()),
+                        });
+                    } else {
+                        report.checks.push(CheckResult {
+                            name: "SQLite Database".into(),
+                            status: CheckStatus::Warn,
+                            message: format!("Incomplete schema ({} tables, expected 16+)", count),
+                            detail: Some(db_path.display().to_string()),
+                        });
+                    }
+                }
+                Err(e) => {
+                    report.checks.push(CheckResult {
+                        name: "SQLite Database".into(),
+                        status: CheckStatus::Fail,
+                        message: format!("Query failed: {}", e),
+                        detail: Some(db_path.display().to_string()),
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            report.checks.push(CheckResult {
+                name: "SQLite Database".into(),
+                status: CheckStatus::Fail,
+                message: format!("Cannot open: {}", e),
+                detail: Some(db_path.display().to_string()),
+            });
+        }
+    }
+}
+
+async fn check_redis_connectivity(report: &mut DoctorReport) {
+    let config = match MasdayConfig::load_or_err() {
+        Ok(c) => c,
+        Err(_) => {
+            report.checks.push(CheckResult {
+                name: "Redis".into(),
+                status: CheckStatus::Skip,
+                message: "No config to check".into(),
+                detail: None,
+            });
+            return;
+        }
+    };
+
+    if config.mode != "local" {
+        report.checks.push(CheckResult {
+            name: "Redis".into(),
+            status: CheckStatus::Skip,
+            message: "Not in local mode".into(),
+            detail: None,
+        });
+        return;
+    }
+
+    if let Some(ref redis_url) = config.redis_url {
+        match redis::Client::open(redis_url.as_str()) {
+            Ok(client) => {
+                match client.get_multiplexed_async_connection().await {
+                    Ok(mut conn) => {
+                        match redis::cmd("PING").query_async::<String>(&mut conn).await {
+                            Ok(_) => {
+                                report.checks.push(CheckResult {
+                                    name: "Redis".into(),
+                                    status: CheckStatus::Ok,
+                                    message: "Connected".into(),
+                                    detail: None,
+                                });
+                            }
+                            Err(e) => {
+                                report.checks.push(CheckResult {
+                                    name: "Redis".into(),
+                                    status: CheckStatus::Fail,
+                                    message: format!("Ping failed: {}", e),
+                                    detail: Some(redis_url.clone()),
+                                });
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        report.checks.push(CheckResult {
+                            name: "Redis".into(),
+                            status: CheckStatus::Fail,
+                            message: format!("Cannot connect: {}", e),
+                            detail: Some(redis_url.clone()),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                report.checks.push(CheckResult {
+                    name: "Redis".into(),
+                    status: CheckStatus::Fail,
+                    message: format!("Invalid URL: {}", e),
+                    detail: Some(redis_url.clone()),
+                });
+            }
+        }
+    } else {
+        let port = 63791;
+        if is_port_open(port) {
+            report.checks.push(CheckResult {
+                name: "Redis".into(),
+                status: CheckStatus::Ok,
+                message: format!("Port {} open", port),
+                detail: None,
+            });
+        } else {
+            report.checks.push(CheckResult {
+                name: "Redis".into(),
+                status: CheckStatus::Skip,
+                message: "Port not open (Redis not configured)".into(),
+                detail: None,
+            });
+        }
+    }
+}
+
+async fn check_stale_workflows(report: &mut DoctorReport) {
+    let config = match MasdayConfig::load_or_err() {
+        Ok(c) => c,
+        Err(_) => {
+            report.checks.push(CheckResult {
+                name: "Stale Workflows".into(),
+                status: CheckStatus::Skip,
+                message: "No config to check".into(),
+                detail: None,
+            });
+            return;
+        }
+    };
+
+    if config.mode != "local" && config.mode != "standalone" {
+        report.checks.push(CheckResult {
+            name: "Stale Workflows".into(),
+            status: CheckStatus::Skip,
+            message: "Not in local/standalone mode".into(),
+            detail: None,
+        });
+        return;
+    }
+
+    let home = MasdayConfig::masday_home();
+    let db_path = home.join("data.db");
+
+    if !db_path.exists() {
+        report.checks.push(CheckResult {
+            name: "Stale Workflows".into(),
+            status: CheckStatus::Skip,
+            message: "Database not found".into(),
+            detail: None,
+        });
+        return;
+    }
+
+    match rusqlite::Connection::open(&db_path) {
+        Ok(conn) => {
+            let stale_count: Result<i64, _> = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM workflows
+                     WHERE status IN ('RUNNING', 'EXECUTE')
+                     AND datetime(updated_at) < datetime('now', '-30 minutes')",
+                    [],
+                    |row| row.get(0),
+                );
+
+            match stale_count {
+                Ok(0) => {
+                    report.checks.push(CheckResult {
+                        name: "Stale Workflows".into(),
+                        status: CheckStatus::Ok,
+                        message: "No stuck workflows".into(),
+                        detail: None,
+                    });
+                }
+                Ok(count) => {
+                    report.checks.push(CheckResult {
+                        name: "Stale Workflows".into(),
+                        status: CheckStatus::Warn,
+                        message: format!("{} workflows stuck", count),
+                        detail: Some("Use --fix to reset them to PAUSED".into()),
+                    });
+                }
+                Err(_) => {
+                    report.checks.push(CheckResult {
+                        name: "Stale Workflows".into(),
+                        status: CheckStatus::Skip,
+                        message: "Could not check".into(),
+                        detail: None,
+                    });
+                }
+            }
+        }
+        Err(_) => {
+            report.checks.push(CheckResult {
+                name: "Stale Workflows".into(),
+                status: CheckStatus::Skip,
+                message: "Cannot open database".into(),
+                detail: None,
+            });
+        }
+    }
+}
+
+fn check_mcp_config(report: &mut DoctorReport) {
+    let home = match home::home_dir() {
+        Some(h) => h,
+        None => {
+            report.checks.push(CheckResult {
+                name: "MCP Config".into(),
+                status: CheckStatus::Skip,
+                message: "Cannot determine home directory".into(),
+                detail: None,
+            });
+            return;
+        }
+    };
+
+    let global_mcp = home.join(".claude").join(".mcp.json");
+    let project_mcp = std::env::current_dir()
+        .ok()
+        .map(|p| p.join(".mcp.json"));
+
+    let (config_path, is_global) = if project_mcp.as_ref().map(|p| p.exists()).unwrap_or(false) {
+        (project_mcp.unwrap(), false)
+    } else if global_mcp.exists() {
+        (global_mcp, true)
+    } else {
+        report.checks.push(CheckResult {
+            name: "MCP Config".into(),
+            status: CheckStatus::Warn,
+            message: "No MCP config found".into(),
+            detail: Some("Expected .mcp.json or ~/.claude/.mcp.json".into()),
+        });
+        return;
+    };
+
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => {
+                    let has_masday = json
+                        .get("mcpServers")
+                        .and_then(|s| s.as_object())
+                        .and_then(|s| s.get("masday"))
+                        .is_some();
+
+                    if has_masday {
+                        let binary_path = json
+                            .get("mcpServers")
+                            .and_then(|s| s.get("masday"))
+                            .and_then(|m| m.get("command"))
+                            .and_then(|c| c.as_str());
+
+                        if let Some(path) = binary_path {
+                            if std::path::Path::new(path).exists() {
+                                report.checks.push(CheckResult {
+                                    name: "MCP Config".into(),
+                                    status: CheckStatus::Ok,
+                                    message: "Valid config found".into(),
+                                    detail: Some(if is_global {
+                                        "~/.claude/.mcp.json".into()
+                                    } else {
+                                        ".mcp.json".into()
+                                    }),
+                                });
+                            } else {
+                                report.checks.push(CheckResult {
+                                    name: "MCP Config".into(),
+                                    status: CheckStatus::Warn,
+                                    message: "Binary path invalid".into(),
+                                    detail: Some(format!("Path not found: {}", path)),
+                                });
+                            }
+                        } else {
+                            report.checks.push(CheckResult {
+                                name: "MCP Config".into(),
+                                status: CheckStatus::Warn,
+                                message: "Missing command field".into(),
+                                detail: Some(config_path.display().to_string()),
+                            });
+                        }
+                    } else {
+                        report.checks.push(CheckResult {
+                            name: "MCP Config".into(),
+                            status: CheckStatus::Warn,
+                            message: "Masday server not configured".into(),
+                            detail: Some(config_path.display().to_string()),
+                        });
+                    }
+                }
+                Err(e) => {
+                    report.checks.push(CheckResult {
+                        name: "MCP Config".into(),
+                        status: CheckStatus::Fail,
+                        message: format!("Invalid JSON: {}", e),
+                        detail: Some(config_path.display().to_string()),
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            report.checks.push(CheckResult {
+                name: "MCP Config".into(),
+                status: CheckStatus::Fail,
+                message: format!("Cannot read: {}", e),
+                detail: Some(config_path.display().to_string()),
+            });
+        }
+    }
+}
+
+async fn apply_fixes(report: &DoctorReport) -> Result<Vec<String>> {
+    let mut fixes = Vec::new();
+
+    for check in &report.checks {
+        if check.name == "Home Dir" && check.status == CheckStatus::Fail {
+            if let Err(e) = create_masday_directory() {
+                eprintln!("Failed to create ~/.masday/: {}", e);
+            } else {
+                fixes.push("Created ~/.masday/ directory structure".into());
+            }
+        }
+    }
+
+    for check in &report.checks {
+        if check.name == "SQLite Database" && check.status == CheckStatus::Fail {
+            if let Err(e) = create_sqlite_database().await {
+                eprintln!("Failed to create SQLite database: {}", e);
+            } else {
+                fixes.push("Created ~/.masday/data.db with schema".into());
+            }
+        }
+    }
+
+    for check in &report.checks {
+        if check.name == "MCP Config" && check.status == CheckStatus::Warn
+            && check.message.contains("Binary path invalid")
+        {
+            if let Err(e) = fix_mcp_config_binary_path() {
+                eprintln!("Failed to fix MCP config: {}", e);
+            } else {
+                fixes.push("Updated MCP config binary path".into());
+            }
+        }
+    }
+
+    for check in &report.checks {
+        if check.name == "Stale Workflows" && check.status == CheckStatus::Warn {
+            if let Err(e) = reset_stale_workflows().await {
+                eprintln!("Failed to reset stale workflows: {}", e);
+            } else {
+                fixes.push("Reset stale workflows to PAUSED".into());
+            }
+        }
+    }
+
+    Ok(fixes)
+}
+
+fn create_masday_directory() -> Result<()> {
+    let home = MasdayConfig::masday_home();
+    std::fs::create_dir_all(&home)?;
+    std::fs::create_dir_all(home.join("bin"))?;
+    std::fs::create_dir_all(home.join("context"))?;
+    std::fs::create_dir_all(home.join("state"))?;
+    std::fs::create_dir_all(home.join("research"))?;
+    std::fs::create_dir_all(home.join("notes"))?;
+    std::fs::create_dir_all(home.join("plans"))?;
+    Ok(())
+}
+
+async fn create_sqlite_database() -> Result<()> {
+    let home = MasdayConfig::masday_home();
+    let db_path = home.join("data.db");
+
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let conn = rusqlite::Connection::open(&db_path)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    conn.execute_batch(masday_mcp::sqlite_schema::SCHEMA)?;
+
+    eprintln!("Created SQLite database at {}", db_path.display());
+    Ok(())
+}
+
+fn fix_mcp_config_binary_path() -> Result<()> {
+    let home = home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
+    let global_mcp = home.join(".claude").join(".mcp.json");
+
+    let masday_home = MasdayConfig::masday_home();
+    let binary_name = if cfg!(windows) { "masday-mcp.exe" } else { "masday-mcp" };
+    let correct_path = masday_home.join("bin").join(binary_name);
+
+    if !global_mcp.exists() {
+        anyhow::bail!("Global MCP config not found at {}", global_mcp.display());
+    }
+
+    let content = std::fs::read_to_string(&global_mcp)?;
+    let mut json: serde_json::Value = serde_json::from_str(&content)?;
+
+    if let Some(mcp_servers) = json.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+        if let Some(masday) = mcp_servers.get_mut("masday").and_then(|m| m.as_object_mut()) {
+            masday.insert("command".into(), serde_json::json!(correct_path.display().to_string()));
+            masday.insert("args".into(), serde_json::json!(["stdio"]));
+
+            let updated = serde_json::to_string_pretty(&json)?;
+            std::fs::write(&global_mcp, updated)?;
+            eprintln!("Updated MCP config with path: {}", correct_path.display());
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!("Masday server not found in MCP config");
+}
+
+async fn reset_stale_workflows() -> Result<()> {
+    let home = MasdayConfig::masday_home();
+    let db_path = home.join("data.db");
+
+    if !db_path.exists() {
+        anyhow::bail!("Database not found at {}", db_path.display());
+    }
+
+    let conn = rusqlite::Connection::open(&db_path)?;
+
+    let updated = conn.execute(
+        "UPDATE workflows
+         SET status = 'PAUSED', updated_at = datetime('now')
+         WHERE status IN ('RUNNING', 'EXECUTE')
+         AND datetime(updated_at) < datetime('now', '-30 minutes')",
+        [],
+    )?;
+
+    if updated > 0 {
+        eprintln!("Reset {} stale workflows to PAUSED", updated);
+    }
+
+    Ok(())
+}
+
+fn is_port_open(port: u16) -> bool {
+    use std::net::{TcpStream, SocketAddr};
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(100)).is_ok()
 }

@@ -2585,12 +2585,11 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     // Add pull stats to the state response
     let mut state = state;
-    state.as_object_mut().map(|s| {
+    if let Some(s) = state.as_object_mut() {
         s.insert("memories_pulled".into(), json!(mem_pulled));
         s.insert("memories_skipped".into(), json!(mem_skipped));
         s.insert("memory_pull_errors".into(), json!(mem_errors));
-        s
-    });
+    }
 
     Ok(state)
 }

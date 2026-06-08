@@ -244,6 +244,228 @@ pub async fn memory(data: &MemoryData<'_>) {
     .await;
 }
 
+// ─── Bulk Memory Sync ────────────────────────────────────────────────
+
+/// Bulk push memories from SQLite to PostgreSQL.
+/// Only pushes memories that don't exist in PostgreSQL (by id).
+/// Limited to MAX_BATCH_PER_PUSH per call to avoid timeouts.
+/// Returns count of synced memories.
+const MAX_BATCH_PER_PUSH: usize = 200;
+
+pub async fn memories_bulk_push() -> (usize, usize, Vec<String>) {
+    // Pool should already be initialized at startup in run_local()
+    let pool = match crate::pg::get_pool().await {
+        Some(p) => p,
+        None => return (0, 0, vec!["No PostgreSQL pool".into()]),
+    };
+
+    // Read all memories from SQLite, limit to batch size
+    let all_memories = read_sqlite_memories();
+    let remaining = if all_memories.len() > MAX_BATCH_PER_PUSH {
+        tracing::info!(
+            "Pushing {}/{} memories this batch (remaining will sync next call)",
+            MAX_BATCH_PER_PUSH,
+            all_memories.len()
+        );
+        all_memories.len() - MAX_BATCH_PER_PUSH
+    } else {
+        0
+    };
+    let memories: Vec<_> = all_memories.into_iter().take(MAX_BATCH_PER_PUSH).collect();
+
+    if memories.is_empty() {
+        return (0, 0, vec![]);
+    }
+
+    // Get existing memory IDs from PostgreSQL to skip
+    let existing_ids = {
+        let client = match pool.get().await {
+            Ok(c) => c,
+            Err(e) => return (0, memories.len(), vec![format!("PG client error: {}", e)]),
+        };
+        let rows = client.query("SELECT id FROM memories", &[]).await.unwrap_or_default();
+        rows.iter()
+            .filter_map(|r| {
+                let id: Result<String, _> = r.try_get(0);
+                id.ok()
+            })
+            .collect::<std::collections::HashSet<_>>()
+    };
+
+    let mut synced = 0usize;
+    let mut skipped = 0usize;
+    let mut errors = Vec::new();
+
+    if let Ok(client) = pool.get().await {
+        for (
+            id,
+            workflow_id,
+            task_id,
+            memory_type,
+            summary,
+            content,
+            importance,
+            created_by,
+            tags,
+        ) in &memories
+        {
+            // Skip if already exists in PostgreSQL
+            if existing_ids.contains(id) {
+                skipped += 1;
+                continue;
+            }
+
+            let tags_list: Vec<String> =
+                serde_json::from_str::<Vec<String>>(tags).unwrap_or_default();
+            let q = r#"
+                INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content,
+                                      importance_score, created_by_agent, tags, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    summary = EXCLUDED.summary, content = EXCLUDED.content,
+                    importance_score = EXCLUDED.importance_score, updated_at = NOW()
+            "#;
+            match client
+                .execute(
+                    q,
+                    &[
+                        id,
+                        workflow_id,
+                        task_id,
+                        memory_type,
+                        summary,
+                        content,
+                        importance,
+                        created_by,
+                        &tags_list,
+                    ],
+                )
+                .await
+            {
+                Ok(_) => synced += 1,
+                Err(e) => {
+                    errors.push(format!("{}: {}", id, e));
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        "Bulk pushed {}/{} memories to PostgreSQL ({} skipped, {} remaining for next sync)",
+        synced,
+        memories.len(),
+        skipped,
+        remaining
+    );
+    (synced, skipped, errors)
+}
+
+/// Bulk pull memories from PostgreSQL into SQLite.
+/// Only inserts memories that don't exist in SQLite (by id).
+/// Returns count of pulled memories.
+pub async fn memories_bulk_pull() -> (usize, usize, Vec<String>) {
+    // Pool should already be initialized at startup in run_local()
+    let pool = match crate::pg::get_pool().await {
+        Some(p) => p,
+        None => return (0, 0, vec!["No PostgreSQL pool".into()]),
+    };
+
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(e) => return (0, 0, vec![format!("PG client error: {}", e)]),
+    };
+
+    // Read all memories from PostgreSQL
+    let rows = match client
+        .query(
+            "SELECT id, workflow_id, task_id, memory_type, summary, content,
+                    importance_score, created_by_agent, tags
+             FROM memories ORDER BY created_at",
+            &[],
+        )
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return (0, 0, vec![format!("PG query error: {}", e)]),
+    };
+
+    if rows.is_empty() {
+        return (0, 0, vec![]);
+    }
+
+    // Get existing memory IDs from SQLite
+    let sqlite_ids: std::collections::HashSet<String> = {
+        let conn = crate::sqlite::conn();
+        let mut stmt = conn.prepare("SELECT id FROM memories").unwrap();
+        let ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        ids.into_iter().collect()
+    };
+
+    let conn = crate::sqlite::conn();
+    let mut pulled = 0usize;
+    let mut skipped = 0usize;
+    let mut errors = Vec::new();
+
+    for row in &rows {
+        let id: String = match row.try_get(0) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if id.is_empty() {
+            continue;
+        }
+
+        // Skip if already exists in SQLite
+        if sqlite_ids.contains(&id) {
+            skipped += 1;
+            continue;
+        }
+
+        let workflow_id: Option<String> = row.try_get(1).ok().flatten();
+        let task_id: Option<String> = row.try_get(2).ok().flatten();
+        let memory_type: String = row.try_get(3).unwrap_or_else(|_| "fact".into());
+        let summary: String = row.try_get(4).unwrap_or_default();
+        let content: String = row.try_get(5).unwrap_or_default();
+        let importance: f64 = row.try_get(6).unwrap_or(0.5);
+        let created_by: String = row.try_get(7).unwrap_or_else(|_| "system".into());
+        let tags_json: String = match row.try_get::<_, Option<Vec<String>>>(8) {
+            Ok(Some(v)) => serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()),
+            _ => "[]".into(),
+        };
+
+        let now_str = pg_now();
+
+        let result = if workflow_id.is_none() && task_id.is_none() {
+            conn.execute(
+                "INSERT OR IGNORE INTO memories (id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, created_at, updated_at) VALUES (?1, NULL, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                rusqlite::params![id, memory_type, summary, content, importance, created_by, tags_json, now_str],
+            )
+        } else {
+            conn.execute(
+                "INSERT OR IGNORE INTO memories (id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+                rusqlite::params![id, workflow_id, task_id, memory_type, summary, content, importance, created_by, tags_json, now_str],
+            )
+        };
+
+        match result {
+            Ok(_) => pulled += 1,
+            Err(e) => errors.push(format!("{}: {}", id, e)),
+        }
+    }
+
+    tracing::info!(
+        "Bulk pulled {}/{} memories from PostgreSQL ({} skipped, already exist)",
+        pulled,
+        rows.len(),
+        skipped
+    );
+    (pulled, skipped, errors)
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 #[allow(clippy::type_complexity)]
@@ -271,4 +493,58 @@ fn read_sqlite_workflows(workflow_ids: &[String]) -> Vec<WorkflowRow> {
         }
     }
     results
+}
+
+/// Read all memories from SQLite synchronously.
+#[allow(clippy::type_complexity)]
+type MemoryRow = (
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    f64,
+    String,
+    String,
+);
+
+fn read_sqlite_memories() -> Vec<MemoryRow> {
+    let conn = crate::sqlite::conn();
+    let mut results = Vec::new();
+    let mut stmt = match conn.prepare(
+        "SELECT id, workflow_id, task_id, memory_type, summary, content,
+                importance_score, created_by_agent, COALESCE(tags,'[]')
+         FROM memories ORDER BY created_at",
+    ) {
+        Ok(s) => s,
+        Err(_) => return results,
+    };
+
+    let rows = match stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, f64>(6)?,
+            row.get::<_, String>(7)?,
+            row.get::<_, String>(8)?,
+        ))
+    }) {
+        Ok(r) => r,
+        Err(_) => return results,
+    };
+
+    for data in rows.flatten() {
+        results.push(data);
+    }
+    results
+}
+
+/// Get current timestamp string.
+fn pg_now() -> String {
+    chrono::Utc::now().to_rfc3339()
 }
