@@ -154,7 +154,7 @@ download_binary() {
     # Method 2: gh CLI (authenticated — fallback for private repos or restricted networks)
     if command -v gh &>/dev/null; then
         info "Using gh CLI (authenticated)..." >&2
-        if gh release download "$version" --repo "${REPO}" --pattern "${artifact}" --output "$tmp_file" -q 2>/dev/null; then
+        if gh release download "$version" --repo "${REPO}" --pattern "${artifact}" --output "$tmp_file" --clobber 2>/dev/null; then
             echo "$tmp_file"
             return
         fi

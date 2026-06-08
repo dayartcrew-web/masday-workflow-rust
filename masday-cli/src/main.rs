@@ -217,6 +217,10 @@ enum Commands {
         /// Output as JSON (for scripting)
         #[arg(long = "json")]
         json: bool,
+
+        /// Automatically fix common issues
+        #[arg(long = "fix")]
+        fix: bool,
     },
 
     /// View and manage configuration
@@ -398,8 +402,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Status { json, verbose } => {
             masday_cli::commands::status::run(json, verbose).await?;
         }
-        Commands::Doctor { json } => {
-            masday_cli::commands::doctor::run(json).await?;
+        Commands::Doctor { json, fix } => {
+            masday_cli::commands::doctor::run(json, fix).await?;
         }
         Commands::Config { action } => {
             masday_cli::commands::config::run(action).await?;

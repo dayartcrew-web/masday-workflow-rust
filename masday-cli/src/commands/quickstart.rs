@@ -282,6 +282,9 @@ async fn run_local_mode(
     // ── Sync templates ────────────────────────────────────────────────────
     sync_templates(project_dir, &platforms)?;
 
+    // ── Initialize SQLite database for MCP stdio mode ─────────────────────
+    init_sqlite_database()?;
+
     // ── Register MCP servers ──────────────────────────────────────────────
     register_mcp_servers(
         project_dir,
@@ -450,6 +453,9 @@ fn run_remote_mode(
     // ── Sync templates ────────────────────────────────────────────────────
     sync_templates(project_dir, &platforms)?;
 
+    // ── Initialize SQLite database for MCP stdio mode ─────────────────────
+    init_sqlite_database()?;
+
     // ── Register MCP servers ──────────────────────────────────────────────
     register_mcp_servers(
         project_dir,
@@ -573,7 +579,10 @@ async fn run_server_mode(
     };
     save_config_and_env(&config)?;
 
-    // ── Step 4: Start API ─────────────────────────────────────────────────────
+    // ── Step 4: Initialize SQLite for MCP stdio mode ───────────────────────
+    init_sqlite_database()?;
+
+    // ── Step 5: Start API ─────────────────────────────────────────────────────
     if is_dev {
         // Dev mode: print instructions to run cargo run
         println!("{}", style("API Server (dev mode):").cyan());
@@ -756,6 +765,9 @@ fn run_standalone_mode(
     // ── Sync templates ────────────────────────────────────────────────────
     sync_templates(project_dir, &platforms)?;
 
+    // ── Initialize SQLite database for MCP stdio mode ─────────────────────
+    init_sqlite_database()?;
+
     // ── Register MCP servers (stdio, no API) ──────────────────────────────
     register_mcp_servers(project_dir, &platforms, "", "", None, "standalone")?;
 
@@ -775,6 +787,7 @@ fn run_standalone_mode(
     );
     println!();
     println!("  Agents and skills installed.");
+    println!("  SQLite Database: ~/.masday/data.db");
     println!("  MCP Transport: {}", style("stdio").cyan());
     println!();
     println!("  For full MCP tools support, connect to an API server:");
@@ -1357,8 +1370,9 @@ fn print_local_summary(config: &MasdayConfig) {
     println!();
     println!("  Dashboard: http://localhost:{}", config.api_port);
     println!("  API:       http://localhost:{}/api", config.api_port);
-    println!("  Database:  localhost:{}", config.db_port);
+    println!("  PostgreSQL:  localhost:{}", config.db_port);
     println!("  Redis:     localhost:{}", config.redis_port);
+    println!("  SQLite:    ~/.masday/data.db (MCP stdio mode)");
     println!("  Platforms: {}", config.platforms.join(", "));
     println!("  MCP Transport: {}", style("stdio").cyan());
     println!();
@@ -1396,6 +1410,7 @@ fn print_remote_summary(config: &MasdayConfig) {
     );
     println!();
     println!("  Server:    {}", config.api_url);
+    println!("  SQLite:    ~/.masday/data.db (MCP stdio mode)");
     println!("  Platforms: {}", config.platforms.join(", "));
     println!("  MCP Transport: {}", style("HTTP/SSE").cyan());
     println!();
@@ -1432,11 +1447,12 @@ fn print_server_summary(
     println!("  API:       http://localhost:{}", config.api_port);
 
     if let Some(db_url) = database_url {
-        println!("  Database:  {}", style(db_url).cyan());
+        println!("  PostgreSQL:  {}", style(db_url).cyan());
     }
     if let Some(redis_url) = redis_url {
         println!("  Redis:     {}", style(redis_url).cyan());
     }
+    println!("  SQLite:    ~/.masday/data.db (MCP stdio mode)");
     println!("  MCP Transport: {}", style("HTTP/SSE").cyan());
     println!();
 
@@ -1469,6 +1485,54 @@ fn spinner(message: &str) -> ProgressBar {
     pb.set_message(message.to_string());
     pb.enable_steady_tick(std::time::Duration::from_millis(80));
     pb
+}
+
+/// Initialize SQLite database at ~/.masday/data.db for MCP stdio mode.
+///
+/// This function is called by all quickstart modes (local, remote, standalone, server)
+/// to ensure the SQLite database is properly initialized with all required tables.
+/// The database is used by the MCP server in stdio transport mode.
+fn init_sqlite_database() -> Result<()> {
+    println!("{}", style("Initializing SQLite database...").cyan());
+
+    // Call the MCP crate's SQLite initialization
+    // This creates ~/.masday/data.db and runs the full schema
+    match masday_mcp::sqlite::init_sqlite() {
+        Ok(()) => {
+            println!(
+                "  {} SQLite database ready at ~/.masday/data.db",
+                style("✓").green()
+            );
+            println!(
+                "  {} 16 tables created (workflows, tasks, memories, etc.)",
+                style("→").cyan()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            // Check if it's just "already initialized" error
+            let err_msg = e.to_string();
+            if err_msg.contains("already initialized") {
+                println!(
+                    "  {} SQLite database already exists",
+                    style("✓").green()
+                );
+                Ok(())
+            } else {
+                // Real error - report but don't fail (PostgreSQL mode might not need SQLite)
+                println!(
+                    "  {} SQLite initialization skipped: {}",
+                    style("⚠").yellow(),
+                    err_msg
+                );
+                println!(
+                    "  {} This is OK if you're using PostgreSQL mode",
+                    style("→").dim()
+                );
+                Ok(())
+            }
+        }
+    }
 }
 
 #[cfg(test)]

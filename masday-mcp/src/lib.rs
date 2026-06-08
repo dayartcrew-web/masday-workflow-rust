@@ -22,8 +22,8 @@ pub mod tools;
 pub mod transport;
 
 // Re-export key types for public API
-pub use handler::McpHandler;
-pub use registry::{ToolDefinition, ToolRegistry};
+pub use handler::{JsonRequest, McpHandler};
+pub use registry::{ToolDefinition, ToolHandler, ToolRegistry};
 pub use transport::JsonRpcServer;
 
 /// Register a single tool (definition + handler) into the registry.
@@ -905,11 +905,15 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
     tracing::info!("SQLite initialized");
 
-    // PostgreSQL is on-demand — no connection at startup.
-    // pg::get_pool() will connect lazily when a tool needs to store/sync.
+    // PostgreSQL: eagerly init pool at startup (not lazy) so it's ready for sync.
     let pg_ready = pg::is_configured();
     if pg_ready {
-        tracing::info!("PostgreSQL configured — will connect on-demand (store/sync)");
+        tracing::info!("PostgreSQL configured — initializing pool...");
+        // Wait up to 5s for pool to be ready before accepting tool calls
+        match pg::get_pool_wait(std::time::Duration::from_secs(5)).await {
+            Some(_) => tracing::info!("PostgreSQL pool ready"),
+            None => tracing::warn!("PostgreSQL pool not ready after 5s — will retry on first use"),
+        }
     } else {
         tracing::info!("No PostgreSQL configured — SQLite-only mode");
     }

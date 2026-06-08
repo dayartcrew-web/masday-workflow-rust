@@ -395,4 +395,166 @@ mod tests {
         assert!(resp.error.is_some());
         assert_eq!(resp.error.unwrap().code, ERROR_METHOD_NOT_FOUND);
     }
+
+    // --- New protocol tests ---
+
+    #[tokio::test]
+    async fn test_handle_initialize_response_structure() {
+        let handler = McpHandler::new(test_registry());
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "initialize".to_string(),
+            params: None,
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        let result = resp.result.unwrap();
+        assert_eq!(result["protocolVersion"], "2024-11-05");
+        assert!(result["capabilities"]["tools"].is_object());
+        assert_eq!(result["serverInfo"]["name"], "masday-mcp");
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_missing_params() {
+        let handler = McpHandler::new(test_registry());
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: None,
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_missing_tool_name() {
+        let handler = McpHandler::new(test_registry());
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: Some(serde_json::json!({"arguments": {}})),
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_unknown_tool() {
+        let handler = McpHandler::new(test_registry());
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: Some(serde_json::json!({"name": "nonexistent_tool"})),
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        assert!(resp.error.is_none());
+        let result = resp.result.unwrap();
+        assert_eq!(result["isError"], true);
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_no_arguments_defaults_to_empty() {
+        let handler = McpHandler::new(test_registry());
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: Some(serde_json::json!({"name": "test_tool"})),
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        let result = resp.result.unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("no msg"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_raw_json_invalid_json() {
+        let handler = McpHandler::new(test_registry());
+        let result = handler.handle_raw_json("{not valid json}").await.unwrap();
+        assert!(result.contains(&ERROR_INVALID_REQUEST.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_tool_returns_error() {
+        let mut registry = ToolRegistry::new();
+        registry.register(
+            ToolDefinition {
+                name: "error_tool".to_string(),
+                description: "Always fails".to_string(),
+                input_schema: serde_json::json!({}),
+            },
+            Box::new(|_args: Value| Box::pin(async move { Err::<Value, _>("Tool failed".into()) })),
+        );
+        let handler = McpHandler::new(registry);
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: Some(serde_json::json!({"name": "error_tool"})),
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        assert!(resp.error.is_none());
+        let result = resp.result.unwrap();
+        assert_eq!(result["isError"], true);
+    }
+
+    #[tokio::test]
+    async fn test_handle_ping_with_null_id() {
+        let handler = McpHandler::new(test_registry());
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: None,
+            method: "ping".to_string(),
+            params: None,
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        assert!(resp.id.is_none());
+        assert!(resp.result.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_list_multiple_tools() {
+        let mut registry = ToolRegistry::new();
+        registry.register(
+            ToolDefinition {
+                name: "beta_tool".to_string(),
+                description: "Beta".to_string(),
+                input_schema: serde_json::json!({}),
+            },
+            Box::new(|_args: Value| Box::pin(async move { Ok(serde_json::json!({})) })),
+        );
+        registry.register(
+            ToolDefinition {
+                name: "alpha_tool".to_string(),
+                description: "Alpha".to_string(),
+                input_schema: serde_json::json!({}),
+            },
+            Box::new(|_args: Value| Box::pin(async move { Ok(serde_json::json!({})) })),
+        );
+        let handler = McpHandler::new(registry);
+        let req = JsonRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(serde_json::json!(1)),
+            method: "tools/list".to_string(),
+            params: None,
+        };
+        let resp = handler.handle_request(req).await.unwrap();
+        let result = resp.result.unwrap();
+        let tools = result["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        // list_tools sorts alphabetically
+        assert_eq!(tools[0]["name"], "alpha_tool");
+        assert_eq!(tools[1]["name"], "beta_tool");
+    }
+
+    #[tokio::test]
+    async fn test_handle_raw_json_notification_returns_none() {
+        let handler = McpHandler::new(test_registry());
+        let json = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+        let result = handler.handle_raw_json(json).await;
+        assert!(result.is_none());
+    }
 }
