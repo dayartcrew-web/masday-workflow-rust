@@ -2357,7 +2357,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "masday-api"
-version = "0.3.50"
+version = "0.3.51"
 dependencies = [
  "axum",
  "chrono",
@@ -2381,7 +2381,7 @@ dependencies = [
 
 [[package]]
 name = "masday-cli"
-version = "0.3.50"
+version = "0.3.51"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2445,7 +2445,7 @@ dependencies = [
 
 [[package]]
 name = "masday-mcp"
-version = "0.3.50"
+version = "0.3.51"
 dependencies = [
  "chrono",
  "home",
@@ -2467,7 +2467,7 @@ dependencies = [
 
 [[package]]
 name = "masday-service"
-version = "0.3.50"
+version = "0.3.51"
 dependencies = [
  "chrono",
  "fastembed",
