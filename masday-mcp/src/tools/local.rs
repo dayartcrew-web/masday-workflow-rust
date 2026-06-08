@@ -14,8 +14,8 @@ pub async fn local_init(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     let masday_dir = std::path::Path::new(cwd).join(".masday");
 
-    // Create main directory
-    tokio::fs::create_dir(&masday_dir)
+    // Create main directory (idempotent — ok if already exists)
+    tokio::fs::create_dir_all(&masday_dir)
         .await
         .map_err(|e| format!("Failed to create .masday directory: {}", e))?;
 
