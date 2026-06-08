@@ -447,6 +447,7 @@ impl WorkflowService {
 }
 
 /// Auto-store an experience memory (best-effort, logs errors but doesn't fail the transition).
+#[allow(clippy::too_many_arguments)]
 pub async fn auto_store_memory(
     pool: &DbPool,
     workflow_id: &str,
@@ -464,7 +465,9 @@ pub async fn auto_store_memory(
     if let Ok(existing) = repo.recall_by_workflow(workflow_id, 100).await {
         if existing.iter().any(|m| {
             m.created_by_agent == "system" && m.summary == summary
-                && m.tags.as_ref().map_or(false, |t| t.contains(&"auto".to_string()))
+                && m.tags
+                    .as_ref()
+                    .is_some_and(|t| t.contains(&"auto".to_string()))
         }) {
             debug!("Skipping auto-store: duplicate memory for workflow {}", workflow_id);
             return;

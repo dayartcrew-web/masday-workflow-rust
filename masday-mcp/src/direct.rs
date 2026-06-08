@@ -98,6 +98,7 @@ fn collect_rows(rows: impl Iterator<Item = Result<Value, rusqlite::Error>>) -> V
 
 /// Auto-store a memory in SQLite (best-effort, logs errors but doesn't fail).
 /// Takes a &Connection to avoid deadlocking on the global Mutex.
+#[allow(clippy::too_many_arguments)]
 fn auto_store_memory_sqlite(
     conn: &rusqlite::Connection,
     workflow_id: &str,
