@@ -29,6 +29,8 @@ home = "0.5"
 toml = "0.8"
 walkdir = "2"
 rust-embed = { version = "8", features = ["mime-guess"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+rusqlite = "0.32"
 axum = "0.8"
 inquire = "0.7"
 zip = "2"
