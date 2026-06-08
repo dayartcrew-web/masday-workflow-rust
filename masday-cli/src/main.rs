@@ -351,6 +351,9 @@ enum DbAction {
     /// Stop all containers
     Stop,
 
+    /// Run pending database migrations
+    Migrate,
+
     /// Delete data and recreate containers
     Reset,
 }
@@ -411,6 +414,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Db { action } => match action {
             DbAction::Start => masday_cli::commands::db::start()?,
             DbAction::Stop => masday_cli::commands::db::stop()?,
+            DbAction::Migrate => masday_cli::commands::db::migrate().await?,
             DbAction::Reset => masday_cli::commands::db::reset().await?,
         },
         Commands::Install {

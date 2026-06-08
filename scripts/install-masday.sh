@@ -25,12 +25,59 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
+DIM='\033[0;2m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 info()  { echo -e "${CYAN}$*${NC}"; }
 ok()    { echo -e "${GREEN}✓ $*${NC}"; }
 warn()  { echo -e "${YELLOW}⚠ $*${NC}"; }
 err()   { echo -e "${RED}✗ $*${NC}" >&2; }
+
+# ─── Progress spinner ────────────────────────────────────────────────────────
+# Works in any terminal (no external deps). Silently skipped if no TTY.
+_SPINNER_PID=""
+_SPINNER_MSG=""
+
+_start_spinner() {
+    _SPINNER_MSG="${1:-Loading...}"
+    # Only spin if stdout is a terminal
+    if [ ! -t 1 ]; then
+        echo -e "${DIM}  ${_SPINNER_MSG}${NC}"
+        return
+    fi
+    local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    _spin() {
+        local i=0
+        tput civis 2>/dev/null || true  # hide cursor
+        while true; do
+            local frame="${frames:$((i % ${#frames})):1}"
+            printf "\r  ${CYAN}%s${NC} %s" "$frame" "$_SPINNER_MSG"
+            i=$((i + 1))
+            sleep 0.08
+        done
+    }
+    _spin &
+    _SPINNER_PID=$!
+}
+
+_stop_spinner() {
+    local result="${1:-ok}"  # ok | fail | warn
+    local msg="${2:-$_SPINNER_MSG}"
+
+    if [ -n "$_SPINNER_PID" ]; then
+        kill "$_SPINNER_PID" 2>/dev/null || true
+        wait "$_SPINNER_PID" 2>/dev/null || true
+        _SPINNER_PID=""
+        tput cnorm 2>/dev/null || true  # restore cursor
+    fi
+
+    case "$result" in
+        ok)   printf "\r  %s %s\n" "${GREEN}✓${NC}" "$msg" ;;
+        fail) printf "\r  %s %s\n" "${RED}✗${NC}" "$msg" ;;
+        warn) printf "\r  %s %s\n" "${YELLOW}⚠${NC}" "$msg" ;;
+    esac
+}
 
 # Detect OS and architecture
 detect_platform() {
@@ -130,7 +177,7 @@ get_latest_version() {
     echo ""
 }
 
-# Download binary from GitHub Releases
+# Download binary from GitHub Releases with progress
 download_binary() {
     local version="$1"
     local platform="$2"
@@ -141,24 +188,40 @@ download_binary() {
     local tmp_file
     tmp_file="$(mktemp)"
 
-    info "Downloading masday ${version} for ${platform}..." >&2
+    info "Downloading masday ${version} for ${platform}..."
 
     # Method 1: curl (direct download — works for public repos)
-    info "URL: ${download_url}" >&2
-    if curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>/dev/null; then
-        echo "$tmp_file"
-        return
-    fi
-    warn "curl download failed, trying gh CLI..." >&2
-
-    # Method 2: gh CLI (authenticated — fallback for private repos or restricted networks)
-    if command -v gh &>/dev/null; then
-        info "Using gh CLI (authenticated)..." >&2
-        if gh release download "$version" --repo "${REPO}" --pattern "${artifact}" --output "$tmp_file" --clobber 2>/dev/null; then
+    if [ -t 1 ]; then
+        # TTY: show curl's own progress bar
+        if curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>&1; then
             echo "$tmp_file"
             return
         fi
-        warn "gh CLI download also failed" >&2
+    else
+        # No TTY (piped): use our spinner
+        _start_spinner "Downloading ${artifact}..."
+        if curl -fSL -s --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>/dev/null; then
+            local size
+            size=$(du -h "$tmp_file" 2>/dev/null | cut -f1 || echo "???")
+            _stop_spinner ok "Downloaded ${artifact} (${size})"
+            echo "$tmp_file"
+            return
+        fi
+        _stop_spinner fail "Download failed"
+    fi
+    warn "curl download failed, trying gh CLI..."
+
+    # Method 2: gh CLI (authenticated — fallback for private repos or restricted networks)
+    if command -v gh &>/dev/null; then
+        _start_spinner "Downloading via gh CLI..."
+        if gh release download "$version" --repo "${REPO}" --pattern "${artifact}" --output "$tmp_file" --clobber 2>/dev/null; then
+            local size
+            size=$(du -h "$tmp_file" 2>/dev/null | cut -f1 || echo "???")
+            _stop_spinner ok "Downloaded ${artifact} via gh (${size})"
+            echo "$tmp_file"
+            return
+        fi
+        _stop_spinner fail "gh CLI download failed"
     fi
 
     rm -f "$tmp_file"
@@ -176,7 +239,7 @@ verify_checksum() {
 
     actual_hash="$(sha256sum "$binary_file" | awk '{print $1}')"
 
-    info "Verifying checksum..." >&2
+    _start_spinner "Verifying checksum..."
     if checksums="$(curl -fSL --connect-timeout 5 --max-time 15 "$checksum_url" 2>/dev/null)"; then
         local platform
         platform="$(detect_platform)"
@@ -186,27 +249,28 @@ verify_checksum() {
         expected="$(echo "$checksums" | grep "${artifact}" | awk '{print $1}')"
 
         if [ -n "$expected" ] && [ "$actual_hash" = "$expected" ]; then
-            ok "Checksum verified"
+            _stop_spinner ok "Checksum verified"
         else
-            err "Checksum mismatch. Expected: ${expected:-missing}, Got: ${actual_hash}"
+            _stop_spinner fail "Checksum mismatch. Expected: ${expected:-missing}, Got: ${actual_hash}"
             rm -f "$binary_file"
             exit 1
         fi
     else
-        warn "Checksum file not available — skipping verification (binary hash: ${actual_hash:0:16}...)"
+        _stop_spinner warn "Checksum file not available — skipped (hash: ${actual_hash:0:16}...)"
     fi
 }
 
 # Main installation
 main() {
     echo ""
-    echo -e "${CYAN}=== Masday CLI Installer ===${NC}"
+    echo -e "${CYAN}${BOLD}=== Masday CLI Installer ===${NC}"
     echo ""
 
     # Detect platform
+    _start_spinner "Detecting platform..."
     local platform
     platform="$(detect_platform)"
-    info "Platform: ${platform}"
+    _stop_spinner ok "Platform: ${platform}"
 
     # Set binary name for Windows
     if [[ "$platform" == windows-* ]]; then
@@ -218,15 +282,17 @@ main() {
     # Resolve version
     local version="${MASDAY_VERSION:-}"
     if [ -z "$version" ]; then
-        info "Resolving latest version..."
+        _start_spinner "Resolving latest version..."
         version="$(get_latest_version)"
         if [ -z "$version" ]; then
-            err "Could not determine latest version. Set MASDAY_VERSION env var."
-            err "Example: MASDAY_VERSION=v0.1.0 bash install.sh"
+            _stop_spinner fail "Could not determine latest version"
+            err "Set MASDAY_VERSION env var. Example: MASDAY_VERSION=v0.1.0 bash install.sh"
             exit 1
         fi
+        _stop_spinner ok "Version: ${version}"
+    else
+        ok "Version: ${version} (pinned)"
     fi
-    ok "Version: ${version}"
 
     # Check for existing installation
     if [ -x "${INSTALL_DIR}/${BINARY_NAME}" ]; then
@@ -245,7 +311,6 @@ main() {
                 fi
                 info "MASDAY_FORCE=1 — reinstalling same version..."
             else
-                # Different version — auto-update
                 info "Updating masday ${existing_version} → ${new_ver}..."
             fi
         fi
@@ -259,11 +324,11 @@ main() {
     verify_checksum "$binary_file" "$version"
 
     # Install
+    _start_spinner "Installing to ${INSTALL_DIR}..."
     mkdir -p "$INSTALL_DIR"
     chmod +x "$binary_file"
     mv "$binary_file" "${INSTALL_DIR}/${BINARY_NAME}"
-
-    ok "Installed to ${INSTALL_DIR}/${BINARY_NAME}"
+    _stop_spinner ok "Installed to ${INSTALL_DIR}/${BINARY_NAME}"
 
     # MCP server runs as subcommand: 'masday mcp' — no separate binary needed
     ok "MCP server available via 'masday mcp' subcommand"
