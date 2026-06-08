@@ -2,7 +2,7 @@
 
 use axum::routing::{get, post};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json, Router,
 };
 use serde_json::Value;
@@ -10,9 +10,17 @@ use serde_json::Value;
 use crate::middleware::error_handler::ApiError;
 use crate::AppState;
 
+#[derive(serde::Deserialize)]
+struct LatestReviewQuery {
+    #[allow(dead_code)]
+    workflow_id: Option<String>,
+    task_id: Option<String>,
+}
+
 pub fn review_routes() -> Router<AppState> {
     Router::new()
         .route("/reviews", post(submit_review))
+        .route("/reviews/latest", get(get_latest_review))
         .route("/reviews/task/{task_id}", get(get_review_by_task))
 }
 
@@ -66,4 +74,31 @@ async fn get_review_by_task(
 ) -> Json<Value> {
     let approved = masday_service::ReviewService::is_approved(&state.pool, &task_id).await;
     Json(serde_json::json!({"task_id": task_id, "approved": approved}))
+}
+
+/// GET /reviews/latest?workflow_id=X&task_id=Y — get latest review decision
+async fn get_latest_review(
+    State(state): State<AppState>,
+    Query(params): Query<LatestReviewQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let task_id = params
+        .task_id
+        .as_deref()
+        .unwrap_or("");
+
+    if task_id.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "review": null,
+            "message": "task_id query parameter is required"
+        })));
+    }
+
+    let repo = masday_db::repos::ReviewRepo::new(state.pool.clone());
+    match repo.get_latest(task_id).await? {
+        Some(review) => Ok(Json(serde_json::json!(review))),
+        None => Ok(Json(serde_json::json!({
+            "review": null,
+            "task_id": task_id
+        }))),
+    }
 }

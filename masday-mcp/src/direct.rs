@@ -5,7 +5,7 @@
 
 use rusqlite::params;
 use serde_json::{json, Value};
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 
 /// Load the capability registry from `.claude/registry.json`.
 /// Returns the parsed JSON object, or an empty registry on failure.
@@ -166,12 +166,312 @@ fn auto_store_context_document_sqlite(
 }
 
 // ============================================================================
+// System Readiness Checks
+// ============================================================================
+
+/// Check SQLite connectivity — runs SELECT 1.
+fn check_sqlite() -> Value {
+    let start = std::time::Instant::now();
+    let conn = crate::sqlite::conn();
+    match conn.execute_batch("SELECT 1") {
+        Ok(_) => json!({
+            "name": "sqlite_connectivity",
+            "ready": true,
+            "message": "SELECT 1 OK",
+            "criticality": "critical",
+            "duration_ms": start.elapsed().as_millis() as u64
+        }),
+        Err(e) => json!({
+            "name": "sqlite_connectivity",
+            "ready": false,
+            "message": format!("SELECT 1 failed: {e}"),
+            "criticality": "critical",
+            "duration_ms": start.elapsed().as_millis() as u64
+        }),
+    }
+}
+
+/// Check SQLite integrity — runs PRAGMA quick_check(10).
+fn check_sqlite_integrity() -> Value {
+    let start = std::time::Instant::now();
+    let conn = crate::sqlite::conn();
+    match conn.query_row("PRAGMA quick_check(10)", [], |row| row.get::<_, String>(0)) {
+        Ok(result) if result == "ok" => json!({
+            "name": "sqlite_integrity",
+            "ready": true,
+            "message": "PRAGMA quick_check: ok",
+            "criticality": "critical",
+            "duration_ms": start.elapsed().as_millis() as u64
+        }),
+        Ok(result) => json!({
+            "name": "sqlite_integrity",
+            "ready": false,
+            "message": format!("Integrity issue: {result}"),
+            "criticality": "critical",
+            "duration_ms": start.elapsed().as_millis() as u64
+        }),
+        Err(e) => json!({
+            "name": "sqlite_integrity",
+            "ready": false,
+            "message": format!("PRAGMA quick_check failed: {e}"),
+            "criticality": "critical",
+            "duration_ms": start.elapsed().as_millis() as u64
+        }),
+    }
+}
+
+/// Check SQLite schema completeness — counts tables in sqlite_master.
+fn check_sqlite_schema() -> Value {
+    let start = std::time::Instant::now();
+    let conn = crate::sqlite::conn();
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let expected = 16i64;
+    let ready = table_count >= expected;
+    json!({
+        "name": "sqlite_schema",
+        "ready": ready,
+        "message": format!("{table_count} tables found (expected {expected}+)"),
+        "criticality": "advisory",
+        "duration_ms": start.elapsed().as_millis() as u64
+    })
+}
+
+/// Check PG pool status — mode-aware, skip in standalone.
+async fn check_pg_pool() -> Value {
+    let start = std::time::Instant::now();
+    let mode = crate::pg::read_mode();
+    if mode == "standalone" {
+        return json!({
+            "name": "pg_pool",
+            "ready": true,
+            "message": "not configured (standalone mode)",
+            "criticality": "advisory",
+            "duration_ms": start.elapsed().as_millis() as u64
+        });
+    }
+
+    let status = crate::pg::pool_status().await;
+    let pg_ready = status["postgresql"]["ready"].as_bool().unwrap_or(false);
+    let configured = status["postgresql"]["configured"].as_bool().unwrap_or(false);
+    let msg = if !configured {
+        "not configured".to_string()
+    } else if pg_ready {
+        "pool connected".to_string()
+    } else {
+        "pool not ready (sync may be delayed)".to_string()
+    };
+
+    json!({
+        "name": "pg_pool",
+        "ready": !configured || pg_ready,
+        "message": msg,
+        "criticality": "advisory",
+        "duration_ms": start.elapsed().as_millis() as u64
+    })
+}
+
+/// Check disk usage under ~/.masday/ — advisory, warns if >500MB.
+fn check_disk_space() -> Value {
+    let start = std::time::Instant::now();
+    let home = match home::home_dir() {
+        Some(h) => h,
+        None => return json!({
+            "name": "disk_space",
+            "ready": true,
+            "message": "cannot determine home directory",
+            "criticality": "advisory",
+            "duration_ms": 0
+        }),
+    };
+    let masday_dir = home.join(".masday");
+    if !masday_dir.exists() {
+        return json!({
+            "name": "disk_space",
+            "ready": true,
+            "message": "~/.masday/ not found (fresh install)",
+            "criticality": "advisory",
+            "duration_ms": start.elapsed().as_millis() as u64
+        });
+    }
+
+    let size_bytes: u64 = std::fs::read_dir(&masday_dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| e.metadata().ok().map(|m| m.len()))
+                .sum()
+        })
+        .unwrap_or(0);
+
+    let size_mb = size_bytes as f64 / 1024.0 / 1024.0;
+    let threshold_mb = 500.0;
+    let ready = size_mb < threshold_mb;
+
+    json!({
+        "name": "disk_space",
+        "ready": ready,
+        "message": format!("~{:.1} MB in ~/.masday/{}", size_mb, if !ready { " (exceeds threshold)" } else { "" }),
+        "criticality": "advisory",
+        "duration_ms": start.elapsed().as_millis() as u64
+    })
+}
+
+/// Check API health endpoint if api_url is configured — advisory only.
+async fn check_api_health() -> Value {
+    let start = std::time::Instant::now();
+    let mode = crate::pg::read_mode();
+    if mode == "standalone" {
+        return json!({
+            "name": "api_health",
+            "ready": true,
+            "message": "not checked (standalone mode)",
+            "criticality": "advisory",
+            "duration_ms": 0
+        });
+    }
+
+    let api_url = match crate::pg::read_api_url() {
+        Some(u) => u,
+        None => return json!({
+            "name": "api_health",
+            "ready": true,
+            "message": "api_url not configured",
+            "criticality": "advisory",
+            "duration_ms": 0
+        }),
+    };
+
+    let health_url = format!("{}/api/health", api_url.trim_end_matches('/'));
+    match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        Ok(client) => match client.get(&health_url).send().await {
+            Ok(resp) if resp.status().is_success() => json!({
+                "name": "api_health",
+                "ready": true,
+                "message": format!("API healthy ({})", api_url),
+                "criticality": "advisory",
+                "duration_ms": start.elapsed().as_millis() as u64
+            }),
+            Ok(resp) => json!({
+                "name": "api_health",
+                "ready": false,
+                "message": format!("API returned HTTP {}", resp.status()),
+                "criticality": "advisory",
+                "duration_ms": start.elapsed().as_millis() as u64
+            }),
+            Err(e) => json!({
+                "name": "api_health",
+                "ready": false,
+                "message": format!("API unreachable: {e}"),
+                "criticality": "advisory",
+                "duration_ms": start.elapsed().as_millis() as u64
+            }),
+        },
+        Err(e) => json!({
+            "name": "api_health",
+            "ready": false,
+            "message": format!("HTTP client error: {e}"),
+            "criticality": "advisory",
+            "duration_ms": start.elapsed().as_millis() as u64
+        }),
+    }
+}
+
+/// Run all system readiness checks and return aggregated result.
+///
+/// Returns JSON:
+/// ```json
+/// {
+///   "ready": bool,
+///   "mode": "standalone" | "local" | "remote",
+///   "checks": [{ "name": str, "ready": bool, "message": str, "criticality": str, "duration_ms": int }],
+///   "warnings": [str],
+///   "errors": [str],
+///   "total_duration_ms": int
+/// }
+/// ```
+pub async fn system_readiness_check() -> Value {
+    let start = std::time::Instant::now();
+    let mode = crate::pg::read_mode();
+
+    // Run all checks — sync ones first, then async
+    let sqlite = check_sqlite();
+    let sqlite_integrity = check_sqlite_integrity();
+    let sqlite_schema = check_sqlite_schema();
+    let disk = check_disk_space();
+    let pg = check_pg_pool().await;
+    let api = check_api_health().await;
+
+    let checks = vec![sqlite, sqlite_integrity, sqlite_schema, pg, disk, api];
+
+    let mut warnings: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    let mut all_critical_ready = true;
+
+    for check in &checks {
+        let ready = check["ready"].as_bool().unwrap_or(false);
+        let criticality = check["criticality"].as_str().unwrap_or("advisory");
+        let message = check["message"].as_str().unwrap_or("unknown");
+
+        if !ready {
+            if criticality == "critical" {
+                all_critical_ready = false;
+                errors.push(message.to_string());
+                error!("Readiness CRITICAL: {} — {}", check["name"], message);
+            } else {
+                warnings.push(message.to_string());
+                warn!("Readiness advisory: {} — {}", check["name"], message);
+            }
+        } else {
+            info!("Readiness OK: {} — {}", check["name"], message);
+        }
+    }
+
+    json!({
+        "ready": all_critical_ready,
+        "mode": mode,
+        "checks": checks,
+        "warnings": warnings,
+        "errors": errors,
+        "total_duration_ms": start.elapsed().as_millis() as u64
+    })
+}
+
+/// Run lightweight readiness check for lifecycle gating.
+/// Only runs critical checks (SQLite), skips advisory ones.
+async fn readiness_gate() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let sqlite = check_sqlite();
+    if !sqlite["ready"].as_bool().unwrap_or(false) {
+        return Err(err(format!("SQLite not ready: {}", sqlite["message"])));
+    }
+
+    let integrity = check_sqlite_integrity();
+    if !integrity["ready"].as_bool().unwrap_or(false) {
+        return Err(err(format!("SQLite integrity: {}", integrity["message"])));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
 // Workflow Tools (22)
 // ============================================================================
 
 pub async fn workflow_create(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    // Gate: system readiness check (SQLite connectivity + integrity)
+    readiness_gate().await?;
+
     let (id, name, status, pg_info) = {
         let conn = crate::sqlite::conn();
         let id = new_id();
@@ -653,6 +953,9 @@ pub async fn workflow_add_task(
 pub async fn workflow_start_task(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    // Gate 1: system readiness check (SQLite connectivity + integrity)
+    readiness_gate().await?;
+
     let conn = crate::sqlite::conn();
     let wf_id = args["workflow_id"]
         .as_str()
@@ -660,10 +963,70 @@ pub async fn workflow_start_task(
     let task_id = args["task_id"]
         .as_str()
         .ok_or_else(|| err("missing task_id"))?;
-    let t = now();
 
-    conn.execute("UPDATE tasks SET status='RUNNING', started_at=?1, updated_at=?2 WHERE id=?3 AND workflow_id=?4",
-        params![&t, &t, task_id, wf_id]).map_err(|e| err(e))?;
+    // Gate 2: validate task is in a startable state
+    let task_status: String = conn
+        .query_row(
+            "SELECT status FROM tasks WHERE id=?1 AND workflow_id=?2",
+            params![task_id, wf_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| err(format!("Task not found: {e}")))?;
+
+    if task_status != "PENDING" {
+        return Err(err(format!(
+            "Task {task_id} is {task_status}, cannot start (must be PENDING)"
+        )));
+    }
+
+    // Gate 3: validate workflow is in EXECUTE state
+    let wf_status: String = conn
+        .query_row(
+            "SELECT status FROM workflows WHERE id=?1",
+            params![wf_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| err(e))?;
+
+    if wf_status != "EXECUTE" && wf_status != "ANALYZE" && wf_status != "PLAN" {
+        return Err(err(format!(
+            "Workflow is {wf_status}, tasks can only start in EXECUTE/ANALYZE/PLAN state"
+        )));
+    }
+
+    // Gate 4: check dependency completion
+    let deps_text: Option<String> = conn
+        .query_row(
+            "SELECT dependencies FROM tasks WHERE id=?1",
+            params![task_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+
+    if let Some(deps) = deps_text {
+        let dep_ids: Vec<&str> = serde_json::from_str::<Vec<&str>>(&deps).unwrap_or_default();
+        for dep_id in dep_ids {
+            let dep_status: String = conn
+                .query_row(
+                    "SELECT status FROM tasks WHERE id=?1",
+                    params![dep_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or_default();
+            if dep_status != "DONE" {
+                return Err(err(format!(
+                    "Dependency {dep_id} not complete (status: {dep_status})"
+                )));
+            }
+        }
+    }
+
+    let t = now();
+    conn.execute(
+        "UPDATE tasks SET status='RUNNING', started_at=?1, updated_at=?2 WHERE id=?3 AND workflow_id=?4",
+        params![&t, &t, task_id, wf_id],
+    ).map_err(|e| err(e))?;
 
     Ok(json!({"status": "RUNNING", "task_id": task_id}))
 }
@@ -1931,11 +2294,18 @@ pub async fn policy_require_context_refresh(
 }
 
 pub async fn policy_check_session_readiness(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Include mode-aware DB readiness
-    let db_status = crate::pg::pool_status().await;
-    Ok(json!({"ready": true, "databases": db_status}))
+    let system = system_readiness_check().await;
+    let session_key = args
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    Ok(json!({
+        "ready": system["ready"],
+        "session_key": session_key,
+        "system": system,
+    }))
 }
 
 // ============================================================================
@@ -2213,9 +2583,7 @@ pub async fn capability_scaffold_mcp_server(
 pub async fn capability_system_readiness(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Report dual-mode DB status based on config.toml mode
-    let db_status = crate::pg::pool_status().await;
-    Ok(json!({"ready": true, "databases": db_status}))
+    Ok(system_readiness_check().await)
 }
 
 pub async fn capability_workflow_audit(
@@ -2623,28 +2991,30 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         }
         (pushed_workflows, errors)
     }; // conn dropped
-       // Sync to PostgreSQL (fire-and-forget, non-blocking)
-    let wf_ids = pushed_workflows.clone();
-    let pg_result = tokio::spawn(async move {
-        let wf_ok = crate::direct_pg::workflows_bulk(&wf_ids).await;
-        let (mem_synced, mem_skipped, mem_errors) = crate::direct_pg::memories_bulk_push().await;
-        (wf_ok, mem_synced, mem_skipped, mem_errors)
-    })
-    .await;
 
-    let (mem_synced, mem_skipped, mem_errors) = match pg_result {
-        Ok((_, synced, skipped, errors)) => (synced, skipped, errors),
-        Err(e) => (0, 0, vec![format!("PG spawn error: {}", e)]),
-    };
+    // Sync to PostgreSQL — fire-and-forget (do NOT await).
+    // Previous code awaited the spawn, which blocked the tool response
+    // when PG bulk sync was slow (1221+ memories).
+    let wf_ids = pushed_workflows.clone();
+    tokio::spawn(async move {
+        // Workflow sync with 15s timeout
+        let wf_ok = crate::direct_pg::workflows_bulk(&wf_ids).await;
+        // Memory bulk push with 30s timeout
+        let (mem_synced, mem_skipped, mem_errors) =
+            tokio::time::timeout(std::time::Duration::from_secs(30), crate::direct_pg::memories_bulk_push())
+                .await
+                .unwrap_or((0, 0, vec!["Memory bulk push timed out after 30s".into()]));
+        tracing::info!(
+            "PG sync complete: workflows={} mem_synced={} mem_skipped={} mem_errors={}",
+            wf_ok, mem_synced, mem_skipped, mem_errors.len()
+        );
+    });
 
     Ok(json!({
         "pushed": true,
         "workflows_pushed": pushed_workflows,
         "count": pushed_workflows.len(),
-        "memories_synced": mem_synced,
-        "memories_skipped": mem_skipped,
-        "memory_errors": mem_errors,
-        "postgresql_synced": "async",
+        "postgresql_synced": "background",
         "errors": errors
     }))
 }

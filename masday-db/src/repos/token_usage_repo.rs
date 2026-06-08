@@ -152,7 +152,7 @@ impl TokenUsageRepo {
                 COALESCE(SUM(total_tokens), 0) as total_tokens,
                 COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
                 COALESCE(SUM(completion_tokens), 0) as completion_tokens,
-                COALESCE(AVG(latency_ms), 0) as avg_latency_ms
+                COALESCE(AVG(latency_ms), 0)::double precision as avg_latency_ms
             FROM token_usage
             WHERE source = $1
         "#;

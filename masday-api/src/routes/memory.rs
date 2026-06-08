@@ -297,7 +297,7 @@ async fn update_memory(
             .map_err(|e| masday_core::AppError::database(e.to_string()))?;
         client
             .execute(
-                r#"UPDATE "Memory" SET content = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                "UPDATE memories SET content = $1, updated_at = NOW() WHERE id = $2",
                 &[&content, &id],
             )
             .await
@@ -311,7 +311,7 @@ async fn update_memory(
             .map_err(|e| masday_core::AppError::database(e.to_string()))?;
         client
             .execute(
-                r#"UPDATE "Memory" SET "importanceScore" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                "UPDATE memories SET importance_score = $1, updated_at = NOW() WHERE id = $2",
                 &[&importance, &id],
             )
             .await
@@ -333,7 +333,7 @@ async fn delete_by_workflow(
         .map_err(|e| masday_core::AppError::database(e.to_string()))?;
     let result = client
         .execute(
-            r#"DELETE FROM "Memory" WHERE "workflowId" = $1"#,
+            "DELETE FROM memories WHERE workflow_id = $1",
             &[&workflow_id],
         )
         .await

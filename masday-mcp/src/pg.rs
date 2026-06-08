@@ -24,26 +24,35 @@ const MIGRATION_SQL: &str = include_str!(concat!(
     "/../masday-db/migrations/001_initial_schema.sql"
 ));
 
-/// Read database_url from ~/.masday/config.toml directly.
-fn read_db_url_from_config() -> Option<String> {
+/// Read a single key from ~/.masday/config.toml using line-by-line parsing.
+/// Matches both `key_name` and `key-name` variants (underscores and hyphens).
+/// Returns None if key not found or config missing.
+pub fn read_config_value(key: &str) -> Option<String> {
     let home = home::home_dir()?;
     let config_path = home.join(".masday").join("config.toml");
     if !config_path.exists() {
         return None;
     }
-
     let content = std::fs::read_to_string(&config_path).ok()?;
+    let key_alt = key.replace('_', "-");
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("database_url") || trimmed.starts_with("database-url") {
-            if let Some(value) = trimmed.split('=').nth(1) {
-                let url = value
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string();
-                if !url.is_empty() {
-                    return Some(url);
+        // Match "key =" or "key=" at the start of the line
+        if trimmed.starts_with(key) || trimmed.starts_with(&key_alt) {
+            // Ensure it's actually the key, not a prefix (e.g., "mode" shouldn't match "model")
+            let after_key = if trimmed.starts_with(key) {
+                &trimmed[key.len()..]
+            } else {
+                &trimmed[key_alt.len()..]
+            };
+            let after_key = after_key.trim_start();
+            if !after_key.starts_with('=') {
+                continue;
+            }
+            if let Some(value) = after_key.trim_start_matches('=').split('#').nth(0) {
+                let v = value.trim().trim_matches('"').trim_matches('\'');
+                if !v.is_empty() {
+                    return Some(v.to_string());
                 }
             }
         }
@@ -51,31 +60,25 @@ fn read_db_url_from_config() -> Option<String> {
     None
 }
 
+/// Read database_url from ~/.masday/config.toml directly.
+fn read_db_url_from_config() -> Option<String> {
+    read_config_value("database_url")
+}
+
 /// Read mode from config.toml (standalone/local/remote).
-///
 /// Returns "standalone" if no config or no mode key found.
 pub fn read_mode() -> String {
-    let home = match home::home_dir() {
-        Some(h) => h,
-        None => return "standalone".to_string(),
-    };
-    let config_path = home.join(".masday").join("config.toml");
-    let content = match std::fs::read_to_string(&config_path) {
-        Ok(c) => c,
-        Err(_) => return "standalone".to_string(),
-    };
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("mode") || trimmed.starts_with("mode =") {
-            if let Some(value) = trimmed.split('=').nth(1) {
-                let v = value.trim().trim_matches('"').trim_matches('\'');
-                if !v.is_empty() {
-                    return v.to_string();
-                }
-            }
-        }
-    }
-    "standalone".to_string()
+    read_config_value("mode").unwrap_or_else(|| "standalone".to_string())
+}
+
+/// Read API URL from config.toml.
+pub fn read_api_url() -> Option<String> {
+    read_config_value("api_url")
+}
+
+/// Read Redis URL from config.toml.
+pub fn read_redis_url() -> Option<String> {
+    read_config_value("redis_url")
 }
 
 /// Run embedded migrations directly (doesn't depend on filesystem migrations dir).

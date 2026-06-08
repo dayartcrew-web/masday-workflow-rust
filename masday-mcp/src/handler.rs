@@ -155,11 +155,12 @@ impl McpHandler {
             "capabilities": {
                 "tools": {
                     "listChanged": false
-                }
+                },
+                "logging": {}
             },
             "serverInfo": {
                 "name": "masday-mcp",
-                "version": "0.1.0"
+                "version": env!("CARGO_PKG_VERSION")
             }
         });
 
