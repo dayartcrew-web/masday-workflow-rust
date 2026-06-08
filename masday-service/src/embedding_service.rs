@@ -677,6 +677,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "local-embeddings")]
     fn test_config_from_values_local() {
         let config = EmbeddingConfig::from_values("local", None, None, None, None).unwrap();
         assert_eq!(config.provider, "local");
