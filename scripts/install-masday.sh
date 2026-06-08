@@ -49,7 +49,10 @@ _start_spinner() {
     local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     _spin() {
         local i=0
-        tput civis 2>/dev/null || true  # hide cursor
+        # Only hide cursor if stderr is truly a terminal
+        if [ -t 2 ]; then
+            tput civis 2>/dev/null || true  # hide cursor
+        fi
         while true; do
             local frame="${frames:$((i % ${#frames})):1}"
             printf "\r  ${CYAN}%s${NC} %s" "$frame" "$_SPINNER_MSG" >&2
@@ -57,7 +60,13 @@ _start_spinner() {
             sleep 0.08
         done
     }
-    _spin &
+    # Redirect all spinner output to /dev/null when not on a real TTY
+    # Prevents ANSI escapes from leaking into $() captures
+    if [ -t 2 ]; then
+        _spin &
+    else
+        _spin &>/dev/null &
+    fi
     _SPINNER_PID=$!
 }
 
@@ -186,7 +195,11 @@ download_binary() {
     local download_url="https://github.com/${REPO}/releases/download/${version}/${artifact}"
 
     local tmp_file
-    tmp_file="$(mktemp)"
+    tmp_file="$(mktemp 2>/dev/null)"
+    # Windows Git Bash: ensure Windows-native tools can resolve the temp path
+    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+        tmp_file="$(cygpath -u "$(cygpath -w "$tmp_file")" 2>/dev/null || echo "$tmp_file")"
+    fi
 
     info "Downloading masday ${version} for ${platform}..."
 
@@ -228,7 +241,18 @@ verify_checksum() {
     local checksum_url="https://github.com/${REPO}/releases/download/${version}/checksums-sha256.txt"
     local actual_hash
 
-    actual_hash="$(sha256sum "$binary_file" | awk '{print $1}')"
+    # Use certified path for sha256sum (Windows Git Bash safe)
+    if command -v sha256sum &>/dev/null; then
+        actual_hash="$(sha256sum "$binary_file" 2>/dev/null | awk '{print $1}')"
+    elif command -v sha256sum.exe &>/dev/null; then
+        # Windows: use .exe variant with Windows-native path
+        local win_path
+        win_path="$(cygpath -w "$binary_file" 2>/dev/null || echo "$binary_file")"
+        actual_hash="$(sha256sum.exe "$win_path" 2>/dev/null | awk '{print $1}')"
+    elif command -v certutil &>/dev/null; then
+        # Windows fallback: certutil
+        actual_hash="$(certutil -hashfile "$binary_file" SHA256 2>/dev/null | grep -v ':' | tr -d ' \r\n' | tr 'A-F' 'a-f')"
+    fi
 
     _start_spinner "Verifying checksum..."
     if checksums="$(curl -fSL --connect-timeout 5 --max-time 15 "$checksum_url" 2>/dev/null)"; then
