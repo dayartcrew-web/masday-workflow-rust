@@ -82,12 +82,10 @@ pub async fn migrate() -> Result<()> {
     pb.finish_with_message(format!("{} Connected", style("✓").green()));
 
     let pb = spinner("Applying migrations...");
-    masday_db::run_migrations(&pool)
-        .await
-        .map_err(|e| {
-            pb.finish_with_message(format!("{} Migration failed", style("✗").red()));
-            anyhow::anyhow!("Migration failed: {}", e)
-        })?;
+    masday_db::run_migrations(&pool).await.map_err(|e| {
+        pb.finish_with_message(format!("{} Migration failed", style("✗").red()));
+        anyhow::anyhow!("Migration failed: {}", e)
+    })?;
     pb.finish_with_message(format!("{} Migrations applied", style("✓").green()));
 
     // Verify tables were created
