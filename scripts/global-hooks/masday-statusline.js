@@ -53,14 +53,15 @@ function readConfigPort(key) {
 function estimateContext(data) {
   // Method 1: Use Claude Code's own context_window data (most accurate)
   const remaining = data?.context_window?.remaining_percentage;
-  if (remaining != null) {
-    // Use raw percentage — Claude's remaining_percentage is the actual remaining
-    // Auto-compact triggers at 10% remaining (autoCompactThreshold: 0.9)
+  if (remaining != null && remaining >= 0 && remaining <= 100) {
     const used = Math.max(0, Math.min(100, Math.round(100 - remaining)));
     return { pct: used, remainingPct: remaining, source: "claude-api" };
   }
 
-  // Method 2: Fallback — parse session JSONL
+  // Method 2: Fallback — parse current session's JSONL only
+  // Skip if JSONL is stale (>60s old) to avoid showing previous session's usage
+  const currentSessionId = data?.session_id;
+  if (!currentSessionId) return null;
   try {
     const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
     const projectsDir = path.join(claudeDir, "projects");
@@ -113,6 +114,10 @@ function estimateContext(data) {
       } catch {}
     }
     if (!latest) return null;
+
+    // Staleness check: skip JSONL older than 60s (avoids previous session data)
+    const fileAge = (Date.now() - latestMtime) / 1000;
+    if (fileAge > 60) return null;
 
     const content = fs.readFileSync(latest, "utf8");
     const lines = content.split("\n");
