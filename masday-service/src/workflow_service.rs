@@ -8,7 +8,7 @@ use masday_core::{AppError, Result, WorkflowState};
 use masday_db::repos::{ContextDocumentRepo, MemoryRepo, PlanRepo, TaskRepo, WorkflowRepo};
 use masday_db::schema::{NewWorkflow, Workflow};
 use masday_db::DbPool;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Check if a state transition is valid
 ///
@@ -259,7 +259,40 @@ impl WorkflowService {
                     &WorkflowState::Plan,
                 )
                 .await?;
-                Self::transition_status(pool, id, WorkflowState::Plan).await
+                let updated = Self::transition_status(pool, id, WorkflowState::Plan).await?;
+
+                // Auto-store analysis summary as context document + memory
+                {
+                    let memories = MemoryRepo::new(pool.clone())
+                        .recall_by_workflow(id, 10)
+                        .await
+                        .unwrap_or_default();
+                    let summary_content = serde_json::json!({
+                        "transition": "ANALYZE -> PLAN",
+                        "workflow_id": id,
+                        "artifacts_found": memories.len(),
+                        "artifact_summaries": memories.iter().take(5).map(|m| &m.summary).collect::<Vec<_>>(),
+                    })
+                    .to_string();
+
+                    auto_store_context_document(pool, id, "analysis", "Analysis Summary", &summary_content).await;
+                    auto_store_memory(
+                        pool,
+                        id,
+                        None,
+                        "experience",
+                        &format!(
+                            "Workflow transitioned ANALYZE -> PLAN ({} artifacts)",
+                            memories.len()
+                        ),
+                        &summary_content,
+                        0.6,
+                        vec!["auto".to_string(), "analyze-to-plan".to_string()],
+                    )
+                    .await;
+                }
+
+                Ok(updated)
             }
             WorkflowState::Plan => {
                 // Validate plan and tasks exist before advancing to EXECUTE
@@ -410,6 +443,78 @@ impl WorkflowService {
         info!("Updating workflow {} with {:?}", id, updates);
         let service = Self::new(pool.clone());
         service.repo.update(id, updates).await
+    }
+}
+
+/// Auto-store an experience memory (best-effort, logs errors but doesn't fail the transition).
+pub async fn auto_store_memory(
+    pool: &DbPool,
+    workflow_id: &str,
+    task_id: Option<&str>,
+    memory_type: &str,
+    summary: &str,
+    content: &str,
+    importance: f64,
+    tags: Vec<String>,
+) {
+    use crate::memory_service::{MemoryService, StoreMemoryParams};
+
+    // Dedup: skip if a system memory with the same summary already exists
+    let repo = MemoryRepo::new(pool.clone());
+    if let Ok(existing) = repo.recall_by_workflow(workflow_id, 100).await {
+        if existing.iter().any(|m| {
+            m.created_by_agent == "system" && m.summary == summary
+                && m.tags.as_ref().map_or(false, |t| t.contains(&"auto".to_string()))
+        }) {
+            debug!("Skipping auto-store: duplicate memory for workflow {}", workflow_id);
+            return;
+        }
+    }
+
+    let params = StoreMemoryParams {
+        memory_type,
+        summary,
+        content,
+        created_by: "system",
+        importance,
+        tags,
+        workflow_id: Some(workflow_id),
+        task_id,
+    };
+
+    if let Err(e) = MemoryService::store(pool, params).await {
+        warn!("Auto-store memory failed for workflow {}: {}", workflow_id, e);
+    }
+}
+
+/// Auto-store a context document (best-effort).
+pub async fn auto_store_context_document(
+    pool: &DbPool,
+    workflow_id: &str,
+    source_type: &str,
+    title: &str,
+    content: &str,
+) {
+    use masday_db::repos::ContextDocumentRepo;
+    use masday_db::schema::NewContextDocument;
+
+    let repo = ContextDocumentRepo::new(pool.clone());
+    let doc = NewContextDocument {
+        workflow_id: Some(workflow_id.to_string()),
+        source_type: source_type.to_string(),
+        source_ref: None,
+        title: Some(title.to_string()),
+        content: content.to_string(),
+        metadata: None,
+        fingerprint: None,
+        embedding: None,
+    };
+
+    if let Err(e) = repo.create(&doc).await {
+        warn!(
+            "Auto-store context document failed for workflow {}: {}",
+            workflow_id, e
+        );
     }
 }
 

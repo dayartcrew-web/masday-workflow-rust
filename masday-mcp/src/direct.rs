@@ -93,6 +93,78 @@ fn collect_rows(rows: impl Iterator<Item = Result<Value, rusqlite::Error>>) -> V
 }
 
 // ============================================================================
+// Auto-store helpers (SQLite path)
+// ============================================================================
+
+/// Auto-store a memory in SQLite (best-effort, logs errors but doesn't fail).
+/// Takes a &Connection to avoid deadlocking on the global Mutex.
+fn auto_store_memory_sqlite(
+    conn: &rusqlite::Connection,
+    workflow_id: &str,
+    task_id: Option<&str>,
+    memory_type: &str,
+    summary: &str,
+    content: &str,
+    importance: f64,
+    tags: &[&str],
+) {
+    // Dedup: skip if a system memory with the same summary already exists
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM memories WHERE workflow_id=?1 AND created_by_agent='system' AND summary=?2",
+            params![workflow_id, summary],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if exists > 0 {
+        info!("Skipping auto-store: duplicate memory for workflow {}", workflow_id);
+        return;
+    }
+
+    let id = new_id();
+    let tags_json =
+        serde_json::Value::Array(tags.iter().map(|t| serde_json::json!(t)).collect()).to_string();
+    let t = now();
+
+    if let Err(e) = conn.execute(
+        "INSERT INTO memories (id, workflow_id, task_id, memory_type, summary, content, importance_score, created_by_agent, tags, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'system',?8,?9,?9)",
+        params![id, workflow_id, task_id, memory_type, summary, content, importance, &tags_json, &t],
+    ) {
+        warn!("auto_store_memory_sqlite: failed for workflow {}: {e}", workflow_id);
+    } else {
+        info!("Auto-stored {} memory for workflow {}", memory_type, workflow_id);
+    }
+}
+
+/// Auto-store a context document in SQLite (best-effort).
+/// Takes a &Connection to avoid deadlocking on the global Mutex.
+fn auto_store_context_document_sqlite(
+    conn: &rusqlite::Connection,
+    workflow_id: &str,
+    source_type: &str,
+    title: &str,
+    content: &str,
+) {
+    let id = new_id();
+    let t = now();
+
+    if let Err(e) = conn.execute(
+        "INSERT INTO context_documents (id, workflow_id, source_type, title, content, metadata, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,'{}',?6,?6)",
+        params![id, workflow_id, source_type, title, content, &t],
+    ) {
+        warn!(
+            "auto_store_context_document_sqlite: failed for workflow {}: {e}",
+            workflow_id
+        );
+    } else {
+        info!(
+            "Auto-stored context document '{}' for workflow {}",
+            source_type, workflow_id
+        );
+    }
+}
+
+// ============================================================================
 // Workflow Tools (22)
 // ============================================================================
 
@@ -226,6 +298,38 @@ pub async fn workflow_execute(
                 .map_err(|e| err(e))?;
 
                 info!("Workflow {} transitioned to PLAN (from ANALYZE)", id);
+
+                // Auto-store analysis summary as context document + memory
+                {
+                    let summary_json = serde_json::json!({
+                        "transition": "ANALYZE -> PLAN",
+                        "workflow_id": id,
+                        "artifacts_found": (doc_count + mem_count),
+                    })
+                    .to_string();
+
+                    auto_store_context_document_sqlite(
+                        &conn,
+                        id,
+                        "analysis",
+                        "Analysis Summary",
+                        &summary_json,
+                    );
+                    auto_store_memory_sqlite(
+                        &conn,
+                        id,
+                        None,
+                        "experience",
+                        &format!(
+                            "Workflow transitioned ANALYZE -> PLAN ({} artifacts)",
+                            doc_count + mem_count
+                        ),
+                        &summary_json,
+                        0.6,
+                        &["auto", "analyze-to-plan"],
+                    );
+                }
+
                 (id.to_string(), "PLAN".to_string())
             }
             "PLAN" => {
@@ -579,6 +683,28 @@ pub async fn workflow_complete_task(
     conn.execute("UPDATE tasks SET status='DONE', result=?1, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
         params![result, &t, &t, task_id, wf_id]).map_err(|e| err(e))?;
 
+    // Auto-store task result as experience memory (best-effort)
+    {
+        let task_title: String = conn
+            .query_row(
+                "SELECT title FROM tasks WHERE id=?1",
+                params![task_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| "Unknown task".to_string());
+        let result_str = result.as_deref().unwrap_or("null");
+        auto_store_memory_sqlite(
+            &conn,
+            wf_id,
+            Some(task_id),
+            "experience",
+            &format!("Task completed: {}", task_title),
+            result_str,
+            0.6,
+            &["auto", "task-complete"],
+        );
+    }
+
     // Auto-transition workflow if all tasks done
     let pending: i64 = conn
         .query_row(
@@ -591,6 +717,38 @@ pub async fn workflow_complete_task(
     if pending == 0 {
         conn.execute("UPDATE workflows SET status='DONE', updated_at=?1 WHERE id=?2 AND status NOT IN ('DONE','FAILED')",
             params![&t, wf_id]).map_err(|e| err(e))?;
+
+        // Auto-store workflow completion summary (best-effort)
+        {
+            let wf_name: String = conn
+                .query_row(
+                    "SELECT name FROM workflows WHERE id=?1",
+                    params![wf_id],
+                    |r| r.get(0),
+                )
+                .unwrap_or_else(|_| "Unknown".to_string());
+            let task_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1",
+                    params![wf_id],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+
+            auto_store_memory_sqlite(
+                &conn,
+                wf_id,
+                None,
+                "experience",
+                &format!("Workflow '{}' completed ({} tasks)", wf_name, task_count),
+                &format!(
+                    "{{\"workflow_id\":\"{}\",\"workflow_name\":\"{}\",\"final_status\":\"DONE\",\"task_count\":{}}}",
+                    wf_id, wf_name, task_count
+                ),
+                0.8,
+                &["auto", "workflow-complete"],
+            );
+        }
     }
 
     Ok(json!({"status": "DONE", "task_id": task_id}))

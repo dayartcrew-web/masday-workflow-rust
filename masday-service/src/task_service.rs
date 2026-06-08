@@ -195,9 +195,27 @@ impl TaskService {
 
         // Update task with result and completion
         let result_data = result.unwrap_or(serde_json::Value::Null);
+        let result_for_memory = result_data.clone();
         let updated_task = service.repo.complete(task_id, result_data).await?;
 
         debug!("Task {} completed successfully", task_id);
+
+        // Auto-store task result as experience memory (best-effort)
+        {
+            let summary = format!("Task completed: {}", task.title);
+            let content = result_for_memory.to_string();
+            workflow_service::auto_store_memory(
+                pool,
+                workflow_id,
+                Some(task_id),
+                "experience",
+                &summary,
+                &content,
+                0.6,
+                vec!["auto".to_string(), "task-complete".to_string()],
+            )
+            .await;
+        }
 
         // Auto-transition workflow if all tasks are done
         Self::auto_transition_if_all_done(pool, workflow_id).await?;
@@ -368,6 +386,7 @@ impl TaskService {
         };
 
         // Execute transitions sequentially
+        let mut reached_done = false;
         for target in transitions {
             match workflow_service::WorkflowService::transition_status(
                 pool,
@@ -378,6 +397,9 @@ impl TaskService {
             {
                 Ok(_) => {
                     info!("Workflow {} transitioned to {:?}", workflow_id, target);
+                    if target == WorkflowState::Done {
+                        reached_done = true;
+                    }
                 }
                 Err(e) => {
                     warn!(
@@ -387,6 +409,44 @@ impl TaskService {
                     break;
                 }
             }
+        }
+
+        // Auto-store workflow completion summary (best-effort)
+        if reached_done {
+            let task_summaries: Vec<serde_json::Value> = all_tasks
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "id": t.id,
+                        "title": t.title,
+                        "status": t.status,
+                    })
+                })
+                .collect();
+            let summary_content = serde_json::json!({
+                "workflow_id": workflow_id,
+                "workflow_name": workflow.name,
+                "final_status": "DONE",
+                "task_count": all_tasks.len(),
+                "tasks": task_summaries,
+            })
+            .to_string();
+
+            workflow_service::auto_store_memory(
+                pool,
+                workflow_id,
+                None,
+                "experience",
+                &format!(
+                    "Workflow '{}' completed ({} tasks)",
+                    workflow.name,
+                    all_tasks.len()
+                ),
+                &summary_content,
+                0.8,
+                vec!["auto".to_string(), "workflow-complete".to_string()],
+            )
+            .await;
         }
 
         Ok(())
