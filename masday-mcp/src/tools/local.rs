@@ -324,14 +324,23 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         files
     };
 
+    let total_files = workflow_files.len();
+
     // Push each workflow state
-    for workflow_file in workflow_files {
+    for (idx, workflow_file) in workflow_files.iter().enumerate() {
         let file_stem = workflow_file
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
 
-        let content = match tokio::fs::read_to_string(&workflow_file).await {
+        info!(
+            "local_push [{}/{}] processing {}",
+            idx + 1,
+            total_files,
+            file_stem
+        );
+
+        let content = match tokio::fs::read_to_string(workflow_file).await {
             Ok(c) => c,
             Err(e) => {
                 errors.push(serde_json::json!({
@@ -370,14 +379,18 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
             continue;
         }
 
-        // Push workflow state via API (update endpoint)
-        match client::api_post(
-            &format!("/api/workflows/{}/update", workflow_id),
-            workflow_data.clone(),
+        // Push workflow state via API with per-workflow timeout
+        let push_result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            client::api_post(
+                &format!("/api/workflows/{}/update", workflow_id),
+                workflow_data.clone(),
+            ),
         )
-        .await
-        {
-            Ok(_) => {
+        .await;
+
+        match push_result {
+            Ok(Ok(_)) => {
                 pushed_workflows.push(workflow_id.to_string());
 
                 // Also push task states if present
@@ -392,7 +405,7 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                                     "output": task.get("output")
                                 });
 
-                                // Generate embedding for task output/result content
+                                // Generate embedding for task output/result content (with timeout)
                                 let embedding_text = {
                                     let output =
                                         task.get("output").and_then(|v| v.as_str()).unwrap_or("");
@@ -402,58 +415,94 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                                 };
 
                                 if !embedding_text.trim().is_empty() {
-                                    match generate_embedding(&embedding_text).await {
-                                        Ok(embedding) => {
-                                            task_update["embedding"] = serde_json::json!(embedding);
+                                    match tokio::time::timeout(
+                                        std::time::Duration::from_secs(5),
+                                        generate_embedding(&embedding_text),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Ok(embedding)) => {
+                                            task_update["embedding"] =
+                                                serde_json::json!(embedding);
                                             info!(
                                                 "Generated embedding for task {}: {} dimensions",
                                                 task_id,
                                                 embedding.len()
                                             );
                                         }
-                                        Err(e) => {
-                                            // For critical operations, propagate the error
-                                            errors.push(serde_json::json!({
-                                                "workflow_id": workflow_id,
-                                                "task_id": task_id,
-                                                "error": format!("Failed to generate embedding: {}", e)
-                                            }));
-                                            // Continue without embedding to allow task to complete
-                                            // The error is logged in the errors array
+                                        Ok(Err(e)) => {
+                                            warn!(
+                                                "Embedding generation failed for task {}: {}",
+                                                task_id, e
+                                            );
+                                            // Continue without embedding
+                                        }
+                                        Err(_) => {
+                                            warn!(
+                                                "Embedding generation timed out for task {}",
+                                                task_id
+                                            );
+                                            // Continue without embedding
                                         }
                                     }
                                 }
 
-                                if let Err(e) = client::api_post(
-                                    &format!("/api/workflows/{}/complete-task", workflow_id),
-                                    task_update,
+                                // Push task with timeout
+                                let task_result = tokio::time::timeout(
+                                    std::time::Duration::from_secs(10),
+                                    client::api_post(
+                                        &format!(
+                                            "/api/workflows/{}/complete-task",
+                                            workflow_id
+                                        ),
+                                        task_update,
+                                    ),
                                 )
-                                .await
-                                {
-                                    errors.push(serde_json::json!({
-                                        "workflow_id": workflow_id,
-                                        "task_id": task_id,
-                                        "error": format!("Failed to push task: {}", e)
-                                    }));
+                                .await;
+
+                                match task_result {
+                                    Ok(Ok(_)) => {}
+                                    Ok(Err(e)) => {
+                                        errors.push(serde_json::json!({
+                                            "workflow_id": workflow_id,
+                                            "task_id": task_id,
+                                            "error": format!("Failed to push task: {}", e)
+                                        }));
+                                    }
+                                    Err(_) => {
+                                        errors.push(serde_json::json!({
+                                            "workflow_id": workflow_id,
+                                            "task_id": task_id,
+                                            "error": "Task push timed out after 10s"
+                                        }));
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 errors.push(serde_json::json!({
                     "workflow_id": workflow_id,
                     "error": format!("Failed to push workflow: {}", e)
                 }));
             }
+            Err(_) => {
+                errors.push(serde_json::json!({
+                    "workflow_id": workflow_id,
+                    "error": "Workflow push timed out after 10s"
+                }));
+            }
         }
     }
 
+    let pushed = !pushed_workflows.is_empty();
     Ok(serde_json::json!({
-        "pushed": true,
+        "pushed": pushed,
         "workflows_pushed": pushed_workflows,
         "count": pushed_workflows.len(),
+        "skipped": total_files - pushed_workflows.len() - errors.len(),
         "errors": errors
     }))
 }
