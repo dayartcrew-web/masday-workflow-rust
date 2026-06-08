@@ -37,6 +37,12 @@ mcp-stderr.txt
 e2e-results.json
 docs/plans/*/
 
+# Backup and temp files
+*.bak
+*.dflt
+*-audit-report.md
+*-fixes-summary.md
+
 # Rust build artifacts
 target/
 **/*.rs.bk
