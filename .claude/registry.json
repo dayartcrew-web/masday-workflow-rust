@@ -2,102 +2,597 @@
   "version": 1,
   "components": {
     "agents": [
-      { "name": "masday-backend", "file": ".claude/agents/masday-backend.md", "model": "sonnet", "category": "implementation", "description": "Server-side specialist for API endpoints, database operations, infrastructure code, and containerization." },
-      { "name": "masday-ci-cd-pipeline", "file": ".claude/agents/masday-ci-cd-pipeline.md", "model": "sonnet", "category": "operations", "description": "CI/CD pipeline specialist for GitHub Actions. Creates, optimizes, and troubleshoots build, test, and deployment pipelines." },
-      { "name": "masday-codebase-mapper", "file": ".claude/agents/masday-codebase-mapper.md", "model": "sonnet", "category": "analysis", "description": "Codebase exploration specialist. Traces execution paths, maps architecture layers, and documents dependencies." },
-      { "name": "masday-config", "file": ".claude/agents/masday-config.md", "model": "sonnet", "category": "operations", "description": "Configuration management specialist for environment variables, config files, secrets, and multi-environment setups." },
-      { "name": "masday-context-manager", "file": ".claude/agents/masday-context-manager.md", "model": "sonnet", "category": "orchestration", "description": "Context preservation specialist for multi-agent workflows. Captures decisions, builds context packs, tracks state changes." },
-      { "name": "masday-database-arch", "file": ".claude/agents/masday-database-arch.md", "model": "sonnet", "category": "implementation", "description": "Database architecture specialist. Designs Prisma schemas, writes migrations, and optimizes PostgreSQL queries." },
-      { "name": "masday-debugger", "file": ".claude/agents/masday-debugger.md", "model": "sonnet", "category": "quality", "description": "Root cause investigation specialist using the scientific method. Reproduces errors, forms hypotheses, traces code paths." },
-      { "name": "masday-doc-updater", "file": ".claude/agents/masday-doc-updater.md", "model": "sonnet", "category": "documentation", "description": "Documentation specialist. Generates and maintains technical docs, API references, READMEs, and architecture docs." },
-      { "name": "masday-e2e-tester", "file": ".claude/agents/masday-e2e-tester.md", "model": "sonnet", "category": "quality", "description": "End-to-end testing specialist. Designs, writes, and runs integration tests for critical user flows using Vitest." },
-      { "name": "masday-executor", "file": ".claude/agents/masday-executor.md", "model": "sonnet", "category": "implementation", "description": "Implementation specialist that reads workflow context, implements code changes, validates results, and reports progress." },
-      { "name": "masday-frontend", "file": ".claude/agents/masday-frontend.md", "model": "sonnet", "category": "implementation", "description": "UI implementation specialist. Creates components, implements styling, enforces WCAG 2.1 AA accessibility." },
-      { "name": "masday-git-master", "file": ".claude/agents/masday-git-master.md", "model": "sonnet", "category": "operations", "description": "Git operations specialist. Handles branches, commits, merges, PRs, worktrees, and conflict resolution." },
-      { "name": "masday-ideation", "file": ".claude/agents/masday-ideation.md", "model": "sonnet", "category": "analysis", "description": "Feature ideation specialist. Analyzes codebase to generate improvement ideas and map features to extension points." },
-      { "name": "masday-integrator", "file": ".claude/agents/masday-integrator.md", "model": "sonnet", "category": "implementation", "description": "Cross-module integration specialist. Connects frontend and backend systems, validates cross-module interactions." },
-      { "name": "masday-intel-updater", "file": ".claude/agents/masday-intel-updater.md", "model": "sonnet", "category": "analysis", "description": "Codebase intelligence updater. Writes structured intel files covering file graphs, API surfaces, and dependencies." },
-      { "name": "masday-linter", "file": ".claude/agents/masday-linter.md", "model": "haiku", "category": "quality", "description": "Code style enforcer. Fixes TypeScript strict mode violations, ESLint errors, and project convention violations." },
-      { "name": "masday-orchestrator", "file": ".claude/agents/masday-orchestrator.md", "model": "sonnet", "category": "orchestration", "description": "Full lifecycle workflow coordinator. Manages 6-phase state machine, routes tasks, enforces policies." },
-      { "name": "masday-performance", "file": ".claude/agents/masday-performance.md", "model": "sonnet", "category": "quality", "description": "Performance optimizer. Identifies and fixes bottlenecks: N+1 queries, memory leaks, bundle bloat." },
-      { "name": "masday-planner", "file": ".claude/agents/masday-planner.md", "model": "sonnet", "category": "orchestration", "description": "Task decomposition specialist. Breaks complex features into plans with dependency analysis and acceptance criteria." },
-      { "name": "masday-qa", "file": ".claude/agents/masday-qa.md", "model": "sonnet", "category": "quality", "description": "Testing and QA specialist. Writes tests using TDD, runs suites, analyzes coverage, validates PR completeness." },
-      { "name": "masday-refactor-cleaner", "file": ".claude/agents/masday-refactor-cleaner.md", "model": "sonnet", "category": "maintenance", "description": "Dead code cleanup specialist. Removes unused code, eliminates duplicates, improves structure." },
-      { "name": "masday-researcher", "file": ".claude/agents/masday-researcher.md", "model": "sonnet", "category": "analysis", "description": "Multi-source research specialist. Gathers from web search, docs, and codebase, synthesizes findings." },
-      { "name": "masday-reviewer", "file": ".claude/agents/masday-reviewer.md", "model": "sonnet", "category": "quality", "description": "Quality gate code reviewer. Returns APPROVED/REWORK_REQUIRED/BLOCKED verdicts against acceptance criteria." },
-      { "name": "masday-security", "file": ".claude/agents/masday-security.md", "model": "sonnet", "category": "quality", "description": "Security vulnerability scanner. Detects OWASP Top 10, hardcoded secrets, injection risks, auth bypasses." },
-      { "name": "masday-synthesizer", "file": ".claude/agents/masday-synthesizer.md", "model": "sonnet", "category": "orchestration", "description": "Merges parallel branch outputs. Detects contradictions, removes duplication, validates against acceptance criteria." },
-      { "name": "masday-tdd-guide", "file": ".claude/agents/masday-tdd-guide.md", "model": "sonnet", "category": "quality", "description": "Test-Driven Development specialist. Enforces strict RED-GREEN-REFACTOR with Vitest, 80%+ coverage, masday review pipeline." },
-      { "name": "masday-verifier", "file": ".claude/agents/masday-verifier.md", "model": "sonnet", "category": "quality", "description": "Final validation specialist. Runs scope drift detection, checks review status, verifies evidence completeness." }
+      {
+        "name": "masday-backend",
+        "file": ".claude/agents/masday-backend.md",
+        "model": "sonnet",
+        "category": "implementation",
+        "description": "Server-side specialist for API endpoints, database operations, infrastructure code, and containerization."
+      },
+      {
+        "name": "masday-ci-cd-pipeline",
+        "file": ".claude/agents/masday-ci-cd-pipeline.md",
+        "model": "sonnet",
+        "category": "operations",
+        "description": "CI/CD pipeline specialist for GitHub Actions. Creates, optimizes, and troubleshoots build, test, and deployment pipelines."
+      },
+      {
+        "name": "masday-codebase-mapper",
+        "file": ".claude/agents/masday-codebase-mapper.md",
+        "model": "sonnet",
+        "category": "analysis",
+        "description": "Codebase exploration specialist. Traces execution paths, maps architecture layers, and documents dependencies."
+      },
+      {
+        "name": "masday-config",
+        "file": ".claude/agents/masday-config.md",
+        "model": "sonnet",
+        "category": "operations",
+        "description": "Configuration management specialist for environment variables, config files, secrets, and multi-environment setups."
+      },
+      {
+        "name": "masday-context-manager",
+        "file": ".claude/agents/masday-context-manager.md",
+        "model": "sonnet",
+        "category": "orchestration",
+        "description": "Context preservation specialist for multi-agent workflows. Captures decisions, builds context packs, tracks state changes."
+      },
+      {
+        "name": "masday-database-arch",
+        "file": ".claude/agents/masday-database-arch.md",
+        "model": "sonnet",
+        "category": "implementation",
+        "description": "Database architecture specialist. Designs Prisma schemas, writes migrations, and optimizes PostgreSQL queries."
+      },
+      {
+        "name": "masday-debugger",
+        "file": ".claude/agents/masday-debugger.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Root cause investigation specialist using the scientific method. Reproduces errors, forms hypotheses, traces code paths."
+      },
+      {
+        "name": "masday-doc-updater",
+        "file": ".claude/agents/masday-doc-updater.md",
+        "model": "sonnet",
+        "category": "documentation",
+        "description": "Documentation specialist. Generates and maintains technical docs, API references, READMEs, and architecture docs."
+      },
+      {
+        "name": "masday-e2e-tester",
+        "file": ".claude/agents/masday-e2e-tester.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "End-to-end testing specialist. Designs, writes, and runs integration tests for critical user flows using Vitest."
+      },
+      {
+        "name": "masday-executor",
+        "file": ".claude/agents/masday-executor.md",
+        "model": "sonnet",
+        "category": "implementation",
+        "description": "Implementation specialist that reads workflow context, implements code changes, validates results, and reports progress."
+      },
+      {
+        "name": "masday-frontend",
+        "file": ".claude/agents/masday-frontend.md",
+        "model": "sonnet",
+        "category": "implementation",
+        "description": "UI implementation specialist. Creates components, implements styling, enforces WCAG 2.1 AA accessibility."
+      },
+      {
+        "name": "masday-git-master",
+        "file": ".claude/agents/masday-git-master.md",
+        "model": "sonnet",
+        "category": "operations",
+        "description": "Git operations specialist. Handles branches, commits, merges, PRs, worktrees, and conflict resolution."
+      },
+      {
+        "name": "masday-ideation",
+        "file": ".claude/agents/masday-ideation.md",
+        "model": "sonnet",
+        "category": "analysis",
+        "description": "Feature ideation specialist. Analyzes codebase to generate improvement ideas and map features to extension points."
+      },
+      {
+        "name": "masday-integrator",
+        "file": ".claude/agents/masday-integrator.md",
+        "model": "sonnet",
+        "category": "implementation",
+        "description": "Cross-module integration specialist. Connects frontend and backend systems, validates cross-module interactions."
+      },
+      {
+        "name": "masday-intel-updater",
+        "file": ".claude/agents/masday-intel-updater.md",
+        "model": "sonnet",
+        "category": "analysis",
+        "description": "Codebase intelligence updater. Writes structured intel files covering file graphs, API surfaces, and dependencies."
+      },
+      {
+        "name": "masday-linter",
+        "file": ".claude/agents/masday-linter.md",
+        "model": "haiku",
+        "category": "quality",
+        "description": "Code style enforcer. Fixes TypeScript strict mode violations, ESLint errors, and project convention violations."
+      },
+      {
+        "name": "masday-orchestrator",
+        "file": ".claude/agents/masday-orchestrator.md",
+        "model": "sonnet",
+        "category": "orchestration",
+        "description": "Full lifecycle workflow coordinator. Manages 6-phase state machine, routes tasks, enforces policies."
+      },
+      {
+        "name": "masday-performance",
+        "file": ".claude/agents/masday-performance.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Performance optimizer. Identifies and fixes bottlenecks: N+1 queries, memory leaks, bundle bloat."
+      },
+      {
+        "name": "masday-planner",
+        "file": ".claude/agents/masday-planner.md",
+        "model": "sonnet",
+        "category": "orchestration",
+        "description": "Task decomposition specialist. Breaks complex features into plans with dependency analysis and acceptance criteria."
+      },
+      {
+        "name": "masday-qa",
+        "file": ".claude/agents/masday-qa.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Testing and QA specialist. Writes tests using TDD, runs suites, analyzes coverage, validates PR completeness."
+      },
+      {
+        "name": "masday-refactor-cleaner",
+        "file": ".claude/agents/masday-refactor-cleaner.md",
+        "model": "sonnet",
+        "category": "maintenance",
+        "description": "Dead code cleanup specialist. Removes unused code, eliminates duplicates, improves structure."
+      },
+      {
+        "name": "masday-researcher",
+        "file": ".claude/agents/masday-researcher.md",
+        "model": "sonnet",
+        "category": "analysis",
+        "description": "Multi-source research specialist. Gathers from web search, docs, and codebase, synthesizes findings."
+      },
+      {
+        "name": "masday-reviewer",
+        "file": ".claude/agents/masday-reviewer.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Quality gate code reviewer. Returns APPROVED/REWORK_REQUIRED/BLOCKED verdicts against acceptance criteria."
+      },
+      {
+        "name": "masday-security",
+        "file": ".claude/agents/masday-security.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Security vulnerability scanner. Detects OWASP Top 10, hardcoded secrets, injection risks, auth bypasses."
+      },
+      {
+        "name": "masday-synthesizer",
+        "file": ".claude/agents/masday-synthesizer.md",
+        "model": "sonnet",
+        "category": "orchestration",
+        "description": "Merges parallel branch outputs. Detects contradictions, removes duplication, validates against acceptance criteria."
+      },
+      {
+        "name": "masday-tdd-guide",
+        "file": ".claude/agents/masday-tdd-guide.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Test-Driven Development specialist. Enforces strict RED-GREEN-REFACTOR with Vitest, 80%+ coverage, masday review pipeline."
+      },
+      {
+        "name": "masday-verifier",
+        "file": ".claude/agents/masday-verifier.md",
+        "model": "sonnet",
+        "category": "quality",
+        "description": "Final validation specialist. Runs scope drift detection, checks review status, verifies evidence completeness."
+      },
+      {
+        "name": "e2e-test-agent",
+        "file": ".claude/agents/e2e-test-agent.md",
+        "model": "sonnet",
+        "category": "testing",
+        "description": "End-to-end test runner for critical user flows"
+      },
+      {
+        "name": "masday-stack-detector",
+        "file": ".claude/agents/masday-stack-detector.md",
+        "model": "sonnet",
+        "category": "configuration",
+        "description": "Technology stack detection and configuration specialist. Analyzes codebase structure, tooling, and configuration files to automatically detect the current technology stack."
+      }
     ],
     "skills": [
-      { "name": "masday-autopilot", "directory": ".claude/skills/masday-autopilot", "category": "workflow", "description": "Full autopilot pipeline: create task, execute, save progress, review, validate, complete, sync." },
-      { "name": "masday-cicd-check", "directory": ".claude/skills/masday-cicd-check", "category": "operations", "description": "Check CI/CD pipeline status and recent runs." },
-      { "name": "masday-cicd-ops", "directory": ".claude/skills/masday-cicd-ops", "category": "operations", "description": "Create, optimize, and troubleshoot CI/CD pipelines for the pnpm TypeScript monorepo." },
-      { "name": "masday-code-analyze", "directory": ".claude/skills/masday-code-analyze", "category": "analysis", "description": "Analyze code for quality, patterns, and potential issues." },
-      { "name": "masday-context-retrieval", "directory": ".claude/skills/masday-context-retrieval", "category": "orchestration", "description": "Retrieve and build context packs for workflow tasks." },
-      { "name": "masday-create-agent", "directory": ".claude/skills/masday-create-agent", "category": "scaffolding", "description": "Create new agent definitions with proper frontmatter and role descriptions." },
-      { "name": "masday-create-command", "directory": ".claude/skills/masday-create-command", "category": "scaffolding", "description": "Create new slash command definitions." },
-      { "name": "masday-create-mcp-skill", "directory": ".claude/skills/masday-create-mcp-skill", "category": "scaffolding", "description": "Create new MCP skill definitions that call MCP tools." },
-      { "name": "masday-create-skill", "directory": ".claude/skills/masday-create-skill", "category": "scaffolding", "description": "Create new skill definitions with proper frontmatter and step-by-step instructions." },
-      { "name": "masday-deploy-check", "directory": ".claude/skills/masday-deploy-check", "category": "operations", "description": "Check deployment readiness and status." },
-      { "name": "masday-docker-ops", "directory": ".claude/skills/masday-docker-ops", "category": "operations", "description": "Docker build, run, and container management operations." },
-      { "name": "masday-e2e", "directory": ".claude/skills/masday-e2e", "category": "testing", "description": "End-to-end testing using Vitest for critical user flows." },
-      { "name": "masday-frontend-library", "directory": ".claude/skills/masday-frontend-library", "category": "implementation", "description": "Frontend component library design and implementation." },
-      { "name": "masday-git-workflow", "directory": ".claude/skills/masday-git-workflow", "category": "operations", "description": "Git branching, committing, and version control workflows." },
-      { "name": "masday-github-flow", "directory": ".claude/skills/masday-github-flow", "category": "operations", "description": "GitHub issue and PR management workflows." },
-      { "name": "masday-github-pr", "directory": ".claude/skills/masday-github-pr", "category": "operations", "description": "GitHub pull request creation and management." },
-      { "name": "masday-memory-search", "directory": ".claude/skills/masday-memory-search", "category": "orchestration", "description": "Search and retrieve stored memories for context." },
-      { "name": "masday-parallel-execution", "directory": ".claude/skills/masday-parallel-execution", "category": "workflow", "description": "Execute multiple independent tasks in parallel." },
-      { "name": "masday-parallel-research", "directory": ".claude/skills/masday-parallel-research", "category": "analysis", "description": "Dispatch parallel research agents and synthesize findings." },
-      { "name": "masday-research", "directory": ".claude/skills/masday-research", "category": "analysis", "description": "Multi-source research: web search, documentation lookup, and codebase analysis." },
-      { "name": "masday-sequential-thinking", "directory": ".claude/skills/masday-sequential-thinking", "category": "analysis", "description": "Structured multi-step reasoning for complex problems." },
-      { "name": "masday-skill-builder", "directory": ".claude/skills/masday-skill-builder", "category": "scaffolding", "description": "Build and validate new skills with proper frontmatter and references." },
-      { "name": "masday-tdd", "directory": ".claude/skills/masday-tdd", "category": "testing", "description": "Test-Driven Development with strict RED-GREEN-REFACTOR cycle, Vitest, 80%+ coverage enforcement, and masday review pipeline." },
-      { "name": "masday-web-research", "directory": ".claude/skills/masday-web-research", "category": "analysis", "description": "Web search and content fetching for research." },
-      { "name": "masday-workflow-add-task", "directory": ".claude/skills/masday-workflow-add-task", "category": "workflow", "description": "Add a new task to an existing workflow." },
-      { "name": "masday-workflow-audit", "directory": ".claude/skills/masday-workflow-audit", "category": "workflow", "description": "Audit workflow health, check for stale tasks, and verify policy compliance." },
-      { "name": "masday-workflow-continue", "directory": ".claude/skills/masday-workflow-continue", "category": "workflow", "description": "Resume an interrupted workflow from the exact stopping point." },
-      { "name": "masday-workflow-discipline", "directory": ".claude/skills/masday-workflow-discipline", "category": "workflow", "description": "Enforce workflow discipline: review gates, progress saves, and policy validation." },
-      { "name": "masday-workflow-fix", "directory": ".claude/skills/masday-workflow-fix", "category": "workflow", "description": "Fix broken or stuck workflows." },
-      { "name": "masday-workflow-init", "directory": ".claude/skills/masday-workflow-init", "category": "workflow", "description": "Initialize a new workflow session." },
-      { "name": "masday-workflow-new", "directory": ".claude/skills/masday-workflow-new", "category": "workflow", "description": "Create a brand new workflow from scratch." },
-      { "name": "masday-workflow-next", "directory": ".claude/skills/masday-workflow-next", "category": "workflow", "description": "Advance to the next task in a workflow." },
-      { "name": "masday-workflow-plan", "directory": ".claude/skills/masday-workflow-plan", "category": "workflow", "description": "Create a structured implementation plan for a workflow." },
-      { "name": "masday-workflow-run", "directory": ".claude/skills/masday-workflow-run", "category": "workflow", "description": "Execute a workflow by running tasks in dependency order." },
-      { "name": "masday-workflow-status", "directory": ".claude/skills/masday-workflow-status", "category": "workflow", "description": "Check current workflow status and task progress." },
-      { "name": "masday-workflow-verify", "directory": ".claude/skills/masday-workflow-verify", "category": "workflow", "description": "Verify workflow completion: review status, evidence, and policy compliance." },
-      { "name": "masday-active", "directory": ".claude/skills/masday-active", "category": "orchestration", "description": "Universal entry point — auto-triggers on any user instruction, calls use_masday MCP tool to parse intent, routes to appropriate masday skill or workflow." }
+      {
+        "name": "masday-autopilot",
+        "directory": ".claude/skills/masday-autopilot",
+        "category": "workflow",
+        "description": "Full autopilot pipeline: create task, execute, save progress, review, validate, complete, sync."
+      },
+      {
+        "name": "masday-cicd-check",
+        "directory": ".claude/skills/masday-cicd-check",
+        "category": "operations",
+        "description": "Check CI/CD pipeline status and recent runs."
+      },
+      {
+        "name": "masday-cicd-ops",
+        "directory": ".claude/skills/masday-cicd-ops",
+        "category": "operations",
+        "description": "Create, optimize, and troubleshoot CI/CD pipelines for the pnpm TypeScript monorepo."
+      },
+      {
+        "name": "masday-code-analyze",
+        "directory": ".claude/skills/masday-code-analyze",
+        "category": "analysis",
+        "description": "Analyze code for quality, patterns, and potential issues."
+      },
+      {
+        "name": "masday-context-retrieval",
+        "directory": ".claude/skills/masday-context-retrieval",
+        "category": "orchestration",
+        "description": "Retrieve and build context packs for workflow tasks."
+      },
+      {
+        "name": "masday-create-agent",
+        "directory": ".claude/skills/masday-create-agent",
+        "category": "scaffolding",
+        "description": "Create new agent definitions with proper frontmatter and role descriptions."
+      },
+      {
+        "name": "masday-create-command",
+        "directory": ".claude/skills/masday-create-command",
+        "category": "scaffolding",
+        "description": "Create new slash command definitions."
+      },
+      {
+        "name": "masday-create-mcp-skill",
+        "directory": ".claude/skills/masday-create-mcp-skill",
+        "category": "scaffolding",
+        "description": "Create new MCP skill definitions that call MCP tools."
+      },
+      {
+        "name": "masday-create-skill",
+        "directory": ".claude/skills/masday-create-skill",
+        "category": "scaffolding",
+        "description": "Create new skill definitions with proper frontmatter and step-by-step instructions."
+      },
+      {
+        "name": "masday-deploy-check",
+        "directory": ".claude/skills/masday-deploy-check",
+        "category": "operations",
+        "description": "Check deployment readiness and status."
+      },
+      {
+        "name": "masday-docker-ops",
+        "directory": ".claude/skills/masday-docker-ops",
+        "category": "operations",
+        "description": "Docker build, run, and container management operations."
+      },
+      {
+        "name": "masday-e2e",
+        "directory": ".claude/skills/masday-e2e",
+        "category": "testing",
+        "description": "End-to-end testing using Vitest for critical user flows."
+      },
+      {
+        "name": "masday-frontend-library",
+        "directory": ".claude/skills/masday-frontend-library",
+        "category": "implementation",
+        "description": "Frontend component library design and implementation."
+      },
+      {
+        "name": "masday-git-workflow",
+        "directory": ".claude/skills/masday-git-workflow",
+        "category": "operations",
+        "description": "Git branching, committing, and version control workflows."
+      },
+      {
+        "name": "masday-github-flow",
+        "directory": ".claude/skills/masday-github-flow",
+        "category": "operations",
+        "description": "GitHub issue and PR management workflows."
+      },
+      {
+        "name": "masday-github-pr",
+        "directory": ".claude/skills/masday-github-pr",
+        "category": "operations",
+        "description": "GitHub pull request creation and management."
+      },
+      {
+        "name": "masday-memory-search",
+        "directory": ".claude/skills/masday-memory-search",
+        "category": "orchestration",
+        "description": "Search and retrieve stored memories for context."
+      },
+      {
+        "name": "masday-parallel-execution",
+        "directory": ".claude/skills/masday-parallel-execution",
+        "category": "workflow",
+        "description": "Execute multiple independent tasks in parallel."
+      },
+      {
+        "name": "masday-parallel-research",
+        "directory": ".claude/skills/masday-parallel-research",
+        "category": "analysis",
+        "description": "Dispatch parallel research agents and synthesize findings."
+      },
+      {
+        "name": "masday-research",
+        "directory": ".claude/skills/masday-research",
+        "category": "analysis",
+        "description": "Multi-source research: web search, documentation lookup, and codebase analysis."
+      },
+      {
+        "name": "masday-sequential-thinking",
+        "directory": ".claude/skills/masday-sequential-thinking",
+        "category": "analysis",
+        "description": "Structured multi-step reasoning for complex problems."
+      },
+      {
+        "name": "masday-skill-builder",
+        "directory": ".claude/skills/masday-skill-builder",
+        "category": "scaffolding",
+        "description": "Build and validate new skills with proper frontmatter and references."
+      },
+      {
+        "name": "masday-tdd",
+        "directory": ".claude/skills/masday-tdd",
+        "category": "testing",
+        "description": "Test-Driven Development with strict RED-GREEN-REFACTOR cycle, Vitest, 80%+ coverage enforcement, and masday review pipeline."
+      },
+      {
+        "name": "masday-web-research",
+        "directory": ".claude/skills/masday-web-research",
+        "category": "analysis",
+        "description": "Web search and content fetching for research."
+      },
+      {
+        "name": "masday-workflow-add-task",
+        "directory": ".claude/skills/masday-workflow-add-task",
+        "category": "workflow",
+        "description": "Add a new task to an existing workflow."
+      },
+      {
+        "name": "masday-workflow-audit",
+        "directory": ".claude/skills/masday-workflow-audit",
+        "category": "workflow",
+        "description": "Audit workflow health, check for stale tasks, and verify policy compliance."
+      },
+      {
+        "name": "masday-workflow-continue",
+        "directory": ".claude/skills/masday-workflow-continue",
+        "category": "workflow",
+        "description": "Resume an interrupted workflow from the exact stopping point."
+      },
+      {
+        "name": "masday-workflow-discipline",
+        "directory": ".claude/skills/masday-workflow-discipline",
+        "category": "workflow",
+        "description": "Enforce workflow discipline: review gates, progress saves, and policy validation."
+      },
+      {
+        "name": "masday-workflow-fix",
+        "directory": ".claude/skills/masday-workflow-fix",
+        "category": "workflow",
+        "description": "Fix broken or stuck workflows."
+      },
+      {
+        "name": "masday-workflow-init",
+        "directory": ".claude/skills/masday-workflow-init",
+        "category": "workflow",
+        "description": "Initialize a new workflow session."
+      },
+      {
+        "name": "masday-workflow-new",
+        "directory": ".claude/skills/masday-workflow-new",
+        "category": "workflow",
+        "description": "Create a brand new workflow from scratch."
+      },
+      {
+        "name": "masday-workflow-next",
+        "directory": ".claude/skills/masday-workflow-next",
+        "category": "workflow",
+        "description": "Advance to the next task in a workflow."
+      },
+      {
+        "name": "masday-workflow-plan",
+        "directory": ".claude/skills/masday-workflow-plan",
+        "category": "workflow",
+        "description": "Create a structured implementation plan for a workflow."
+      },
+      {
+        "name": "masday-workflow-run",
+        "directory": ".claude/skills/masday-workflow-run",
+        "category": "workflow",
+        "description": "Execute a workflow by running tasks in dependency order."
+      },
+      {
+        "name": "masday-workflow-status",
+        "directory": ".claude/skills/masday-workflow-status",
+        "category": "workflow",
+        "description": "Check current workflow status and task progress."
+      },
+      {
+        "name": "masday-workflow-verify",
+        "directory": ".claude/skills/masday-workflow-verify",
+        "category": "workflow",
+        "description": "Verify workflow completion: review status, evidence, and policy compliance."
+      },
+      {
+        "name": "masday-active",
+        "directory": ".claude/skills/masday-active",
+        "category": "orchestration",
+        "description": "Universal entry point \u2014 auto-triggers on any user instruction, calls use_masday MCP tool to parse intent, routes to appropriate masday skill or workflow."
+      },
+      {
+        "name": "e2e-test-skill",
+        "file": ".claude/skills/e2e-test-skill",
+        "description": "End-to-end testing skill for critical user flows"
+      },
+      {
+        "name": "masday-doctor",
+        "file": ".claude/skills/masday-doctor",
+        "description": "System diagnostics and health check skill"
+      },
+      {
+        "name": "masday-stack-detector",
+        "file": ".claude/skills/masday-stack-detector",
+        "description": "Technology stack detection and configuration skill"
+      }
     ],
     "hooks": [
-      { "name": "masday-mem-context", "file": ".claude/hooks/masday-mem-context.js", "type": "executable", "description": "SessionStart hook that loads top memories and injects as context." },
-      { "name": "on-notification", "file": ".claude/hooks/on-notification.js", "type": "executable", "description": "Handles notification events from the session." },
-      { "name": "on-stop", "file": ".claude/hooks/on-stop.js", "type": "executable", "description": "Runs cleanup and final verification when session ends." },
-      { "name": "post-tool-use", "file": ".claude/hooks/post-tool-use.js", "type": "executable", "description": "Runs after tool execution for auto-formatting and checks." },
-      { "name": "post-task-complete", "file": ".claude/hooks/post-task-complete.md", "type": "advisory", "description": "Advisory hook for auto-verify and store progress after task completion." },
-      { "name": "pre-build-skill", "file": ".claude/hooks/pre-build-skill.js", "type": "executable", "description": "Validates skill files before building." },
-      { "name": "pre-commit", "file": ".claude/hooks/pre-commit.md", "type": "advisory", "description": "Advisory quality gate hook before git commits." },
-      { "name": "pre-task-complete", "file": ".claude/hooks/pre-task-complete.js", "type": "executable", "description": "Enforces review gate before workflow.completeTask." },
-      { "name": "pre-tool-use", "file": ".claude/hooks/pre-tool-use.js", "type": "executable", "description": "Runs before tool execution for validation and parameter modification." },
-      { "name": "pre-workflow-execute", "file": ".claude/hooks/pre-workflow-execute.md", "type": "advisory", "description": "Advisory hook for pre-execution workflow checks." },
-      { "name": "run-hook", "file": ".claude/hooks/run-hook.mjs", "type": "executable", "description": "Hook runner utility for executing hook scripts." },
-      { "name": "tdd-guard", "file": ".claude/hooks/tdd-guard.js", "type": "executable", "description": "Guards that TDD workflow is followed before code changes." },
-      { "name": "tool-name-guard", "file": ".claude/hooks/tool-name-guard.js", "type": "executable", "description": "Validates MCP tool namespace registrations against known list." },
-      { "name": "workflow-lock", "file": ".claude/hooks/workflow-lock.js", "type": "executable", "description": "Ensures workflow context is loaded before editing source files." }
+      {
+        "name": "masday-mem-context",
+        "file": ".claude/hooks/masday-mem-context.js",
+        "type": "executable",
+        "description": "SessionStart hook that loads top memories and injects as context."
+      },
+      {
+        "name": "on-notification",
+        "file": ".claude/hooks/on-notification.js",
+        "type": "executable",
+        "description": "Handles notification events from the session."
+      },
+      {
+        "name": "on-stop",
+        "file": ".claude/hooks/on-stop.js",
+        "type": "executable",
+        "description": "Runs cleanup and final verification when session ends."
+      },
+      {
+        "name": "post-tool-use",
+        "file": ".claude/hooks/post-tool-use.js",
+        "type": "executable",
+        "description": "Runs after tool execution for auto-formatting and checks."
+      },
+      {
+        "name": "post-task-complete",
+        "file": ".claude/hooks/post-task-complete.md",
+        "type": "advisory",
+        "description": "Advisory hook for auto-verify and store progress after task completion."
+      },
+      {
+        "name": "pre-build-skill",
+        "file": ".claude/hooks/pre-build-skill.js",
+        "type": "executable",
+        "description": "Validates skill files before building."
+      },
+      {
+        "name": "pre-commit",
+        "file": ".claude/hooks/pre-commit.md",
+        "type": "advisory",
+        "description": "Advisory quality gate hook before git commits."
+      },
+      {
+        "name": "pre-task-complete",
+        "file": ".claude/hooks/pre-task-complete.js",
+        "type": "executable",
+        "description": "Enforces review gate before workflow.completeTask."
+      },
+      {
+        "name": "pre-tool-use",
+        "file": ".claude/hooks/pre-tool-use.js",
+        "type": "executable",
+        "description": "Runs before tool execution for validation and parameter modification."
+      },
+      {
+        "name": "pre-workflow-execute",
+        "file": ".claude/hooks/pre-workflow-execute.md",
+        "type": "advisory",
+        "description": "Advisory hook for pre-execution workflow checks."
+      },
+      {
+        "name": "run-hook",
+        "file": ".claude/hooks/run-hook.mjs",
+        "type": "executable",
+        "description": "Hook runner utility for executing hook scripts."
+      },
+      {
+        "name": "tdd-guard",
+        "file": ".claude/hooks/tdd-guard.js",
+        "type": "executable",
+        "description": "Guards that TDD workflow is followed before code changes."
+      },
+      {
+        "name": "tool-name-guard",
+        "file": ".claude/hooks/tool-name-guard.js",
+        "type": "executable",
+        "description": "Validates MCP tool namespace registrations against known list."
+      },
+      {
+        "name": "workflow-lock",
+        "file": ".claude/hooks/workflow-lock.js",
+        "type": "executable",
+        "description": "Ensures workflow context is loaded before editing source files."
+      }
     ],
     "mcpServers": [
-      { "name": "masday-mcp", "path": "target/release/masday-mcp", "description": "Rust MCP server with 90 tools across 18 namespaces, PostgreSQL-backed via Axum API." }
+      {
+        "name": "masday-mcp",
+        "path": "target/release/masday-mcp",
+        "description": "Rust MCP server with 90 tools across 18 namespaces, PostgreSQL-backed via Axum API."
+      }
     ],
     "docs": [
-      { "name": "project-claude-md", "file": ".claude/CLAUDE.md", "category": "project", "description": "Project-level CLAUDE.md with agent orchestration, skill priority, and masday pipeline rules." },
-      { "name": "agent-routing", "file": ".claude/skills/masday-workflow-run/references/agent-routing.md", "category": "reference", "description": "Agent-to-task routing table with model, tools, and dispatch patterns." },
-      { "name": "state-model", "file": ".claude/skills/masday-workflow-plan/references/state-model.md", "category": "reference", "description": "Workflow state machine: states, transitions, events, runtime behaviors." },
-      { "name": "frontmatter-reference", "file": ".claude/skills/masday-skill-builder/references/frontmatter-reference.md", "category": "reference", "description": "SKILL.md frontmatter schema: fields, types, allowed values." },
-      { "name": "tdd-workflow", "file": ".claude/skills/masday-tdd/references/tdd-workflow.md", "category": "reference", "description": "TDD agent sequence, phase checklists, coverage thresholds, Vitest commands, pipeline integration." },
-      { "name": "execution-checklist", "file": ".claude/agents/references/execution-checklist.md", "category": "reference", "description": "Pre/during/post implementation checklists, quality gate table, report template." },
-      { "name": "post-task-complete", "file": ".claude/hooks/post-task-complete.md", "category": "advisory", "description": "Advisory hook for auto-verify and store progress after task completion." },
-      { "name": "pre-commit", "file": ".claude/hooks/pre-commit.md", "category": "advisory", "description": "Advisory quality gate hook before git commits." },
-      { "name": "pre-workflow-execute", "file": ".claude/hooks/pre-workflow-execute.md", "category": "advisory", "description": "Advisory hook for pre-execution workflow checks." }
+      {
+        "name": "project-claude-md",
+        "file": ".claude/CLAUDE.md",
+        "category": "project",
+        "description": "Project-level CLAUDE.md with agent orchestration, skill priority, and masday pipeline rules."
+      },
+      {
+        "name": "agent-routing",
+        "file": ".claude/skills/masday-workflow-run/references/agent-routing.md",
+        "category": "reference",
+        "description": "Agent-to-task routing table with model, tools, and dispatch patterns."
+      },
+      {
+        "name": "state-model",
+        "file": ".claude/skills/masday-workflow-plan/references/state-model.md",
+        "category": "reference",
+        "description": "Workflow state machine: states, transitions, events, runtime behaviors."
+      },
+      {
+        "name": "frontmatter-reference",
+        "file": ".claude/skills/masday-skill-builder/references/frontmatter-reference.md",
+        "category": "reference",
+        "description": "SKILL.md frontmatter schema: fields, types, allowed values."
+      },
+      {
+        "name": "tdd-workflow",
+        "file": ".claude/skills/masday-tdd/references/tdd-workflow.md",
+        "category": "reference",
+        "description": "TDD agent sequence, phase checklists, coverage thresholds, Vitest commands, pipeline integration."
+      },
+      {
+        "name": "execution-checklist",
+        "file": ".claude/agents/references/execution-checklist.md",
+        "category": "reference",
+        "description": "Pre/during/post implementation checklists, quality gate table, report template."
+      },
+      {
+        "name": "post-task-complete",
+        "file": ".claude/hooks/post-task-complete.md",
+        "category": "advisory",
+        "description": "Advisory hook for auto-verify and store progress after task completion."
+      },
+      {
+        "name": "pre-commit",
+        "file": ".claude/hooks/pre-commit.md",
+        "category": "advisory",
+        "description": "Advisory quality gate hook before git commits."
+      },
+      {
+        "name": "pre-workflow-execute",
+        "file": ".claude/hooks/pre-workflow-execute.md",
+        "category": "advisory",
+        "description": "Advisory hook for pre-execution workflow checks."
+      }
     ]
   }
 }
