@@ -38,18 +38,19 @@ pub fn read_config_value(key: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         // Match "key =" or "key=" at the start of the line
-        if trimmed.starts_with(key) || trimmed.starts_with(&key_alt) {
-            // Ensure it's actually the key, not a prefix (e.g., "mode" shouldn't match "model")
-            let after_key = if trimmed.starts_with(key) {
-                &trimmed[key.len()..]
-            } else {
-                &trimmed[key_alt.len()..]
-            };
-            let after_key = after_key.trim_start();
+        let matched_key = if let Some(rest) = trimmed.strip_prefix(key) {
+            rest
+        } else if let Some(rest) = trimmed.strip_prefix(&key_alt) {
+            rest
+        } else {
+            continue;
+        };
+        {
+            let after_key = matched_key.trim_start();
             if !after_key.starts_with('=') {
                 continue;
             }
-            if let Some(value) = after_key.trim_start_matches('=').split('#').nth(0) {
+            if let Some(value) = after_key.trim_start_matches('=').split('#').next() {
                 let v = value.trim().trim_matches('"').trim_matches('\'');
                 if !v.is_empty() {
                     return Some(v.to_string());
