@@ -422,8 +422,7 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                                     .await
                                     {
                                         Ok(Ok(embedding)) => {
-                                            task_update["embedding"] =
-                                                serde_json::json!(embedding);
+                                            task_update["embedding"] = serde_json::json!(embedding);
                                             info!(
                                                 "Generated embedding for task {}: {} dimensions",
                                                 task_id,
@@ -451,10 +450,7 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
                                 let task_result = tokio::time::timeout(
                                     std::time::Duration::from_secs(10),
                                     client::api_post(
-                                        &format!(
-                                            "/api/workflows/{}/complete-task",
-                                            workflow_id
-                                        ),
+                                        &format!("/api/workflows/{}/complete-task", workflow_id),
                                         task_update,
                                     ),
                                 )

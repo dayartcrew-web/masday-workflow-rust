@@ -81,10 +81,7 @@ async fn get_latest_review(
     State(state): State<AppState>,
     Query(params): Query<LatestReviewQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let task_id = params
-        .task_id
-        .as_deref()
-        .unwrap_or("");
+    let task_id = params.task_id.as_deref().unwrap_or("");
 
     if task_id.is_empty() {
         return Ok(Json(serde_json::json!({

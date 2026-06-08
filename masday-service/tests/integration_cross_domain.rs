@@ -32,7 +32,8 @@ async fn setup_workflow(pool: &DbPool) -> Result<String, Box<dyn std::error::Err
 /// Test 1: Cross-domain workflow → task → plan → complete lifecycle
 #[tokio::test]
 #[ignore]
-async fn test_cross_domain_workflow_task_plan_lifecycle() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn test_cross_domain_workflow_task_plan_lifecycle(
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = get_pool();
     let workflow_id = setup_workflow(&pool).await?;
 
@@ -84,7 +85,8 @@ async fn test_cross_domain_workflow_task_plan_lifecycle() -> Result<(), Box<dyn 
 /// Test 2: Cross-domain memory store → search → recall → update → delete
 #[tokio::test]
 #[ignore]
-async fn test_cross_domain_memory_store_search_delete() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn test_cross_domain_memory_store_search_delete(
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = get_pool();
 
     // Store memory
@@ -127,7 +129,8 @@ async fn test_cross_domain_memory_store_search_delete() -> Result<(), Box<dyn st
 /// Test 3: Cross-domain review after task completion
 #[tokio::test]
 #[ignore]
-async fn test_cross_domain_review_after_task() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn test_cross_domain_review_after_task(
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = get_pool();
     let workflow_id = setup_workflow(&pool).await?;
 
@@ -176,7 +179,8 @@ async fn test_cross_domain_review_after_task() -> Result<(), Box<dyn std::error:
 /// Test 4: Cross-domain memory with workflow context
 #[tokio::test]
 #[ignore]
-async fn test_cross_domain_memory_with_workflow() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn test_cross_domain_memory_with_workflow(
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = get_pool();
     let workflow_id = setup_workflow(&pool).await?;
 

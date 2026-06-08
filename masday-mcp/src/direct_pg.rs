@@ -283,7 +283,10 @@ pub async fn memories_bulk_push() -> (usize, usize, Vec<String>) {
             Ok(c) => c,
             Err(e) => return (0, memories.len(), vec![format!("PG client error: {}", e)]),
         };
-        let rows = client.query("SELECT id FROM memories", &[]).await.unwrap_or_default();
+        let rows = client
+            .query("SELECT id FROM memories", &[])
+            .await
+            .unwrap_or_default();
         rows.iter()
             .filter_map(|r| {
                 let id: Result<String, _> = r.try_get(0);
@@ -362,13 +365,18 @@ pub async fn memories_bulk_push() -> (usize, usize, Vec<String>) {
 
 /// Pull a single workflow (with tasks) from PostgreSQL.
 /// Returns (workflow_data, tasks, source) for local_sync fallback.
-pub async fn pull_workflow(workflow_id: &str) -> Result<(serde_json::Value, Vec<serde_json::Value>, &'static str), String> {
+pub async fn pull_workflow(
+    workflow_id: &str,
+) -> Result<(serde_json::Value, Vec<serde_json::Value>, &'static str), String> {
     let pool = match crate::pg::get_pool().await {
         Some(p) => p,
         None => return Err("No PostgreSQL pool available".into()),
     };
 
-    let client = pool.get().await.map_err(|e| format!("PG pool error: {}", e))?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| format!("PG pool error: {}", e))?;
 
     // Query workflow
     let wf_rows = client.query(
@@ -376,7 +384,10 @@ pub async fn pull_workflow(workflow_id: &str) -> Result<(serde_json::Value, Vec<
         &[&workflow_id],
     ).await.map_err(|e| format!("PG query error: {}", e))?;
 
-    let wf_row = wf_rows.into_iter().next().ok_or_else(|| format!("Workflow {} not found in PostgreSQL", workflow_id))?;
+    let wf_row = wf_rows
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("Workflow {} not found in PostgreSQL", workflow_id))?;
 
     let wf = serde_json::json!({
         "id": wf_row.get::<_, String>(0),
@@ -395,18 +406,21 @@ pub async fn pull_workflow(workflow_id: &str) -> Result<(serde_json::Value, Vec<
         &[&workflow_id],
     ).await.map_err(|e| format!("PG tasks query error: {}", e))?;
 
-    let tasks: Vec<serde_json::Value> = task_rows.iter().map(|row| {
-        serde_json::json!({
-            "id": row.get::<_, String>(0),
-            "title": row.get::<_, String>(1),
-            "status": row.get::<_, String>(2),
-            "ownerAgent": row.get::<_, Option<String>>(3),
-            "priority": row.get::<_, Option<String>>(4),
-            "progressPercent": row.get::<_, Option<i64>>(5),
-            "createdAt": row.get::<_, String>(6),
-            "updatedAt": row.get::<_, String>(7),
+    let tasks: Vec<serde_json::Value> = task_rows
+        .iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<_, String>(0),
+                "title": row.get::<_, String>(1),
+                "status": row.get::<_, String>(2),
+                "ownerAgent": row.get::<_, Option<String>>(3),
+                "priority": row.get::<_, Option<String>>(4),
+                "progressPercent": row.get::<_, Option<i64>>(5),
+                "createdAt": row.get::<_, String>(6),
+                "updatedAt": row.get::<_, String>(7),
+            })
         })
-    }).collect();
+        .collect();
 
     // Also insert into SQLite for future lookups
     {

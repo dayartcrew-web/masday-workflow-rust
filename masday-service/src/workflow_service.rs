@@ -275,7 +275,14 @@ impl WorkflowService {
                     })
                     .to_string();
 
-                    auto_store_context_document(pool, id, "analysis", "Analysis Summary", &summary_content).await;
+                    auto_store_context_document(
+                        pool,
+                        id,
+                        "analysis",
+                        "Analysis Summary",
+                        &summary_content,
+                    )
+                    .await;
                     auto_store_memory(
                         pool,
                         id,
@@ -464,12 +471,16 @@ pub async fn auto_store_memory(
     let repo = MemoryRepo::new(pool.clone());
     if let Ok(existing) = repo.recall_by_workflow(workflow_id, 100).await {
         if existing.iter().any(|m| {
-            m.created_by_agent == "system" && m.summary == summary
+            m.created_by_agent == "system"
+                && m.summary == summary
                 && m.tags
                     .as_ref()
                     .is_some_and(|t| t.contains(&"auto".to_string()))
         }) {
-            debug!("Skipping auto-store: duplicate memory for workflow {}", workflow_id);
+            debug!(
+                "Skipping auto-store: duplicate memory for workflow {}",
+                workflow_id
+            );
             return;
         }
     }
@@ -486,7 +497,10 @@ pub async fn auto_store_memory(
     };
 
     if let Err(e) = MemoryService::store(pool, params).await {
-        warn!("Auto-store memory failed for workflow {}: {}", workflow_id, e);
+        warn!(
+            "Auto-store memory failed for workflow {}: {}",
+            workflow_id, e
+        );
     }
 }
 

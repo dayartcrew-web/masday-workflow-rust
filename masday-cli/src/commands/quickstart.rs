@@ -1513,10 +1513,7 @@ fn init_sqlite_database() -> Result<()> {
             // Check if it's just "already initialized" error
             let err_msg = e.to_string();
             if err_msg.contains("already initialized") {
-                println!(
-                    "  {} SQLite database already exists",
-                    style("✓").green()
-                );
+                println!("  {} SQLite database already exists", style("✓").green());
                 Ok(())
             } else {
                 // Real error - report but don't fail (PostgreSQL mode might not need SQLite)

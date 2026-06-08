@@ -5,7 +5,7 @@
 
 use rusqlite::params;
 use serde_json::{json, Value};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// Load the capability registry from `.claude/registry.json`.
 /// Returns the parsed JSON object, or an empty registry on failure.
@@ -118,7 +118,10 @@ fn auto_store_memory_sqlite(
         )
         .unwrap_or(0);
     if exists > 0 {
-        info!("Skipping auto-store: duplicate memory for workflow {}", workflow_id);
+        info!(
+            "Skipping auto-store: duplicate memory for workflow {}",
+            workflow_id
+        );
         return;
     }
 
@@ -259,7 +262,9 @@ async fn check_pg_pool() -> Value {
 
     let status = crate::pg::pool_status().await;
     let pg_ready = status["postgresql"]["ready"].as_bool().unwrap_or(false);
-    let configured = status["postgresql"]["configured"].as_bool().unwrap_or(false);
+    let configured = status["postgresql"]["configured"]
+        .as_bool()
+        .unwrap_or(false);
     let msg = if !configured {
         "not configured".to_string()
     } else if pg_ready {
@@ -282,13 +287,15 @@ fn check_disk_space() -> Value {
     let start = std::time::Instant::now();
     let home = match home::home_dir() {
         Some(h) => h,
-        None => return json!({
-            "name": "disk_space",
-            "ready": true,
-            "message": "cannot determine home directory",
-            "criticality": "advisory",
-            "duration_ms": 0
-        }),
+        None => {
+            return json!({
+                "name": "disk_space",
+                "ready": true,
+                "message": "cannot determine home directory",
+                "criticality": "advisory",
+                "duration_ms": 0
+            })
+        }
     };
     let masday_dir = home.join(".masday");
     if !masday_dir.exists() {
@@ -339,13 +346,15 @@ async fn check_api_health() -> Value {
 
     let api_url = match crate::pg::read_api_url() {
         Some(u) => u,
-        None => return json!({
-            "name": "api_health",
-            "ready": true,
-            "message": "api_url not configured",
-            "criticality": "advisory",
-            "duration_ms": 0
-        }),
+        None => {
+            return json!({
+                "name": "api_health",
+                "ready": true,
+                "message": "api_url not configured",
+                "criticality": "advisory",
+                "duration_ms": 0
+            })
+        }
     };
 
     let health_url = format!("{}/api/health", api_url.trim_end_matches('/'));
@@ -3000,13 +3009,18 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         // Workflow sync with 15s timeout
         let wf_ok = crate::direct_pg::workflows_bulk(&wf_ids).await;
         // Memory bulk push with 30s timeout
-        let (mem_synced, mem_skipped, mem_errors) =
-            tokio::time::timeout(std::time::Duration::from_secs(30), crate::direct_pg::memories_bulk_push())
-                .await
-                .unwrap_or((0, 0, vec!["Memory bulk push timed out after 30s".into()]));
+        let (mem_synced, mem_skipped, mem_errors) = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            crate::direct_pg::memories_bulk_push(),
+        )
+        .await
+        .unwrap_or((0, 0, vec!["Memory bulk push timed out after 30s".into()]));
         tracing::info!(
             "PG sync complete: workflows={} mem_synced={} mem_skipped={} mem_errors={}",
-            wf_ok, mem_synced, mem_skipped, mem_errors.len()
+            wf_ok,
+            mem_synced,
+            mem_skipped,
+            mem_errors.len()
         );
     });
 
@@ -3084,13 +3098,22 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         r.ok()
     }; // conn dropped here
 
-    let (workflow_data, tasks, source) = match sqlite_result {
+    let (workflow_data, tasks, _source) = match sqlite_result {
         Some((wf, task_list)) => (wf, task_list, "sqlite"),
         None => {
             // Fallback: query PostgreSQL
-            tracing::info!("local_sync: workflow {} not in SQLite, trying PostgreSQL", workflow_id);
-            crate::direct_pg::pull_workflow(workflow_id).await
-                .map_err(|e| err(format!("Workflow {} not found in SQLite or PostgreSQL: {}", workflow_id, e)))?
+            tracing::info!(
+                "local_sync: workflow {} not in SQLite, trying PostgreSQL",
+                workflow_id
+            );
+            crate::direct_pg::pull_workflow(workflow_id)
+                .await
+                .map_err(|e| {
+                    err(format!(
+                        "Workflow {} not found in SQLite or PostgreSQL: {}",
+                        workflow_id, e
+                    ))
+                })?
         }
     };
 
@@ -3356,8 +3379,7 @@ mod tests {
 
             TEST_ONCE.call_once(|| {
                 std::env::set_var("MASDAY_SQLITE_PATH", db_path.to_str().unwrap());
-                crate::sqlite::init_sqlite()
-                    .expect("SQLite init must succeed on first call");
+                crate::sqlite::init_sqlite().expect("SQLite init must succeed on first call");
             });
 
             Self { _dir: dir }

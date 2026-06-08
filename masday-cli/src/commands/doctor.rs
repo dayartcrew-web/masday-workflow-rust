@@ -812,38 +812,34 @@ async fn check_redis_connectivity(report: &mut DoctorReport) {
 
     if let Some(ref redis_url) = config.redis_url {
         match redis::Client::open(redis_url.as_str()) {
-            Ok(client) => {
-                match client.get_multiplexed_async_connection().await {
-                    Ok(mut conn) => {
-                        match redis::cmd("PING").query_async::<String>(&mut conn).await {
-                            Ok(_) => {
-                                report.checks.push(CheckResult {
-                                    name: "Redis".into(),
-                                    status: CheckStatus::Ok,
-                                    message: "Connected".into(),
-                                    detail: None,
-                                });
-                            }
-                            Err(e) => {
-                                report.checks.push(CheckResult {
-                                    name: "Redis".into(),
-                                    status: CheckStatus::Fail,
-                                    message: format!("Ping failed: {}", e),
-                                    detail: Some(redis_url.clone()),
-                                });
-                            }
-                        }
+            Ok(client) => match client.get_multiplexed_async_connection().await {
+                Ok(mut conn) => match redis::cmd("PING").query_async::<String>(&mut conn).await {
+                    Ok(_) => {
+                        report.checks.push(CheckResult {
+                            name: "Redis".into(),
+                            status: CheckStatus::Ok,
+                            message: "Connected".into(),
+                            detail: None,
+                        });
                     }
                     Err(e) => {
                         report.checks.push(CheckResult {
                             name: "Redis".into(),
                             status: CheckStatus::Fail,
-                            message: format!("Cannot connect: {}", e),
+                            message: format!("Ping failed: {}", e),
                             detail: Some(redis_url.clone()),
                         });
                     }
+                },
+                Err(e) => {
+                    report.checks.push(CheckResult {
+                        name: "Redis".into(),
+                        status: CheckStatus::Fail,
+                        message: format!("Cannot connect: {}", e),
+                        detail: Some(redis_url.clone()),
+                    });
                 }
-            }
+            },
             Err(e) => {
                 report.checks.push(CheckResult {
                     name: "Redis".into(),
@@ -912,14 +908,13 @@ async fn check_stale_workflows(report: &mut DoctorReport) {
 
     match rusqlite::Connection::open(&db_path) {
         Ok(conn) => {
-            let stale_count: Result<i64, _> = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM workflows
+            let stale_count: Result<i64, _> = conn.query_row(
+                "SELECT COUNT(*) FROM workflows
                      WHERE status IN ('RUNNING', 'EXECUTE')
                      AND datetime(updated_at) < datetime('now', '-30 minutes')",
-                    [],
-                    |row| row.get(0),
-                );
+                [],
+                |row| row.get(0),
+            );
 
             match stale_count {
                 Ok(0) => {
@@ -974,9 +969,7 @@ fn check_mcp_config(report: &mut DoctorReport) {
     };
 
     let global_mcp = home.join(".claude").join(".mcp.json");
-    let project_mcp = std::env::current_dir()
-        .ok()
-        .map(|p| p.join(".mcp.json"));
+    let project_mcp = std::env::current_dir().ok().map(|p| p.join(".mcp.json"));
 
     let (config_path, is_global) = if project_mcp.as_ref().map(|p| p.exists()).unwrap_or(false) {
         (project_mcp.unwrap(), false)
@@ -993,69 +986,67 @@ fn check_mcp_config(report: &mut DoctorReport) {
     };
 
     match std::fs::read_to_string(&config_path) {
-        Ok(content) => {
-            match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(json) => {
-                    let has_masday = json
+        Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(json) => {
+                let has_masday = json
+                    .get("mcpServers")
+                    .and_then(|s| s.as_object())
+                    .and_then(|s| s.get("masday"))
+                    .is_some();
+
+                if has_masday {
+                    let binary_path = json
                         .get("mcpServers")
-                        .and_then(|s| s.as_object())
                         .and_then(|s| s.get("masday"))
-                        .is_some();
+                        .and_then(|m| m.get("command"))
+                        .and_then(|c| c.as_str());
 
-                    if has_masday {
-                        let binary_path = json
-                            .get("mcpServers")
-                            .and_then(|s| s.get("masday"))
-                            .and_then(|m| m.get("command"))
-                            .and_then(|c| c.as_str());
-
-                        if let Some(path) = binary_path {
-                            if std::path::Path::new(path).exists() {
-                                report.checks.push(CheckResult {
-                                    name: "MCP Config".into(),
-                                    status: CheckStatus::Ok,
-                                    message: "Valid config found".into(),
-                                    detail: Some(if is_global {
-                                        "~/.claude/.mcp.json".into()
-                                    } else {
-                                        ".mcp.json".into()
-                                    }),
-                                });
-                            } else {
-                                report.checks.push(CheckResult {
-                                    name: "MCP Config".into(),
-                                    status: CheckStatus::Warn,
-                                    message: "Binary path invalid".into(),
-                                    detail: Some(format!("Path not found: {}", path)),
-                                });
-                            }
+                    if let Some(path) = binary_path {
+                        if std::path::Path::new(path).exists() {
+                            report.checks.push(CheckResult {
+                                name: "MCP Config".into(),
+                                status: CheckStatus::Ok,
+                                message: "Valid config found".into(),
+                                detail: Some(if is_global {
+                                    "~/.claude/.mcp.json".into()
+                                } else {
+                                    ".mcp.json".into()
+                                }),
+                            });
                         } else {
                             report.checks.push(CheckResult {
                                 name: "MCP Config".into(),
                                 status: CheckStatus::Warn,
-                                message: "Missing command field".into(),
-                                detail: Some(config_path.display().to_string()),
+                                message: "Binary path invalid".into(),
+                                detail: Some(format!("Path not found: {}", path)),
                             });
                         }
                     } else {
                         report.checks.push(CheckResult {
                             name: "MCP Config".into(),
                             status: CheckStatus::Warn,
-                            message: "Masday server not configured".into(),
+                            message: "Missing command field".into(),
                             detail: Some(config_path.display().to_string()),
                         });
                     }
-                }
-                Err(e) => {
+                } else {
                     report.checks.push(CheckResult {
                         name: "MCP Config".into(),
-                        status: CheckStatus::Fail,
-                        message: format!("Invalid JSON: {}", e),
+                        status: CheckStatus::Warn,
+                        message: "Masday server not configured".into(),
                         detail: Some(config_path.display().to_string()),
                     });
                 }
             }
-        }
+            Err(e) => {
+                report.checks.push(CheckResult {
+                    name: "MCP Config".into(),
+                    status: CheckStatus::Fail,
+                    message: format!("Invalid JSON: {}", e),
+                    detail: Some(config_path.display().to_string()),
+                });
+            }
+        },
         Err(e) => {
             report.checks.push(CheckResult {
                 name: "MCP Config".into(),
@@ -1091,7 +1082,8 @@ async fn apply_fixes(report: &DoctorReport) -> Result<Vec<String>> {
     }
 
     for check in &report.checks {
-        if check.name == "MCP Config" && check.status == CheckStatus::Warn
+        if check.name == "MCP Config"
+            && check.status == CheckStatus::Warn
             && check.message.contains("Binary path invalid")
         {
             if let Err(e) = fix_mcp_config_binary_path() {
@@ -1144,11 +1136,16 @@ async fn create_sqlite_database() -> Result<()> {
 }
 
 fn fix_mcp_config_binary_path() -> Result<()> {
-    let home = home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
+    let home =
+        home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
     let global_mcp = home.join(".claude").join(".mcp.json");
 
     let masday_home = MasdayConfig::masday_home();
-    let binary_name = if cfg!(windows) { "masday-mcp.exe" } else { "masday-mcp" };
+    let binary_name = if cfg!(windows) {
+        "masday-mcp.exe"
+    } else {
+        "masday-mcp"
+    };
     let correct_path = masday_home.join("bin").join(binary_name);
 
     if !global_mcp.exists() {
@@ -1159,8 +1156,14 @@ fn fix_mcp_config_binary_path() -> Result<()> {
     let mut json: serde_json::Value = serde_json::from_str(&content)?;
 
     if let Some(mcp_servers) = json.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
-        if let Some(masday) = mcp_servers.get_mut("masday").and_then(|m| m.as_object_mut()) {
-            masday.insert("command".into(), serde_json::json!(correct_path.display().to_string()));
+        if let Some(masday) = mcp_servers
+            .get_mut("masday")
+            .and_then(|m| m.as_object_mut())
+        {
+            masday.insert(
+                "command".into(),
+                serde_json::json!(correct_path.display().to_string()),
+            );
             masday.insert("args".into(), serde_json::json!(["stdio"]));
 
             let updated = serde_json::to_string_pretty(&json)?;
@@ -1199,7 +1202,7 @@ async fn reset_stale_workflows() -> Result<()> {
 }
 
 fn is_port_open(port: u16) -> bool {
-    use std::net::{TcpStream, SocketAddr};
+    use std::net::{SocketAddr, TcpStream};
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(100)).is_ok()
 }
