@@ -29,9 +29,9 @@ DIM='\033[0;2m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-info()  { echo -e "${CYAN}$*${NC}"; }
-ok()    { echo -e "${GREEN}✓ $*${NC}"; }
-warn()  { echo -e "${YELLOW}⚠ $*${NC}"; }
+info()  { echo -e "${CYAN}$*${NC}" >&2; }
+ok()    { echo -e "${GREEN}✓ $*${NC}" >&2; }
+warn()  { echo -e "${YELLOW}⚠ $*${NC}" >&2; }
 err()   { echo -e "${RED}✗ $*${NC}" >&2; }
 
 # ─── Progress spinner ────────────────────────────────────────────────────────
@@ -41,9 +41,9 @@ _SPINNER_MSG=""
 
 _start_spinner() {
     _SPINNER_MSG="${1:-Loading...}"
-    # Only spin if stdout is a terminal
-    if [ ! -t 1 ]; then
-        echo -e "${DIM}  ${_SPINNER_MSG}${NC}"
+    # Only spin if stderr is a terminal (stdout may be captured by $())
+    if [ ! -t 2 ]; then
+        echo -e "${DIM}  ${_SPINNER_MSG}${NC}" >&2
         return
     fi
     local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -52,7 +52,7 @@ _start_spinner() {
         tput civis 2>/dev/null || true  # hide cursor
         while true; do
             local frame="${frames:$((i % ${#frames})):1}"
-            printf "\r  ${CYAN}%s${NC} %s" "$frame" "$_SPINNER_MSG"
+            printf "\r  ${CYAN}%s${NC} %s" "$frame" "$_SPINNER_MSG" >&2
             i=$((i + 1))
             sleep 0.08
         done
@@ -73,9 +73,9 @@ _stop_spinner() {
     fi
 
     case "$result" in
-        ok)   printf "\r  %s %s\n" "${GREEN}✓${NC}" "$msg" ;;
-        fail) printf "\r  %s %s\n" "${RED}✗${NC}" "$msg" ;;
-        warn) printf "\r  %s %s\n" "${YELLOW}⚠${NC}" "$msg" ;;
+        ok)   printf "\r  %s %s\n" "${GREEN}✓${NC}" "$msg" >&2 ;;
+        fail) printf "\r  %s %s\n" "${RED}✗${NC}" "$msg" >&2 ;;
+        warn) printf "\r  %s %s\n" "${YELLOW}⚠${NC}" "$msg" >&2 ;;
     esac
 }
 
@@ -191,25 +191,16 @@ download_binary() {
     info "Downloading masday ${version} for ${platform}..."
 
     # Method 1: curl (direct download — works for public repos)
-    if [ -t 1 ]; then
-        # TTY: show curl's own progress bar
-        if curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>&1; then
-            echo "$tmp_file"
-            return
-        fi
-    else
-        # No TTY (piped): use our spinner
-        _start_spinner "Downloading ${artifact}..."
-        if curl -fSL -s --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>/dev/null; then
-            local size
-            size=$(du -h "$tmp_file" 2>/dev/null | cut -f1 || echo "???")
-            _stop_spinner ok "Downloaded ${artifact} (${size})"
-            echo "$tmp_file"
-            return
-        fi
-        _stop_spinner fail "Download failed"
+    _start_spinner "Downloading ${artifact}..."
+    if curl -fSL -s --connect-timeout 10 --max-time 120 -o "$tmp_file" "$download_url" 2>/dev/null; then
+        local size
+        size=$(du -h "$tmp_file" 2>/dev/null | cut -f1 || echo "???")
+        _stop_spinner ok "Downloaded ${artifact} (${size})"
+        echo "$tmp_file"
+        return
     fi
-    warn "curl download failed, trying gh CLI..."
+    _stop_spinner fail "curl download failed"
+    warn "Trying gh CLI fallback..."
 
     # Method 2: gh CLI (authenticated — fallback for private repos or restricted networks)
     if command -v gh &>/dev/null; then
