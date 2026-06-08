@@ -18,8 +18,7 @@ const { execSync } = require("child_process");
 // Context estimation config
 const CONTEXT_WINDOW_TOKENS = 200000;
 const BYTES_PER_TOKEN = 2.5;           // tool_use/tool_result JSON is token-dense
-const SYSTEM_OVERHEAD_TOKENS = 5000;
-const AUTO_COMPACT_BUFFER_PCT = 16.5;  // Claude Code reserves ~16.5% for autocompact
+const SYSTEM_OVERHEAD_TOKENS = 10000;  // system prompt + CLAUDE.md + rules + tool defs
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -55,9 +54,9 @@ function estimateContext(data) {
   // Method 1: Use Claude Code's own context_window data (most accurate)
   const remaining = data?.context_window?.remaining_percentage;
   if (remaining != null) {
-    // Normalize: subtract buffer from remaining, scale to usable range
-    const usableRemaining = Math.max(0, ((remaining - AUTO_COMPACT_BUFFER_PCT) / (100 - AUTO_COMPACT_BUFFER_PCT)) * 100);
-    const used = Math.max(0, Math.min(100, Math.round(100 - usableRemaining)));
+    // Use raw percentage — Claude's remaining_percentage is the actual remaining
+    // Auto-compact triggers at 10% remaining (autoCompactThreshold: 0.9)
+    const used = Math.max(0, Math.min(100, Math.round(100 - remaining)));
     return { pct: used, remainingPct: remaining, source: "claude-api" };
   }
 
@@ -213,9 +212,9 @@ async function main() {
       const filled = Math.min(barLen, Math.round(ctx.pct / 100 * barLen));
       const bar = "▓".repeat(filled) + "░".repeat(barLen - filled);
 
-      if (ctx.pct >= 80) {
+      if (ctx.pct >= 75) {
         parts.push(`💀 ${bar} ${ctx.pct}%`);
-      } else if (ctx.pct >= 65) {
+      } else if (ctx.pct >= 50) {
         parts.push(`🟡 ${bar} ${ctx.pct}%`);
       } else {
         parts.push(`🟢 ${bar} ${ctx.pct}%`);

@@ -15,7 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const CRITICAL_THRESHOLD = 25;
+const CRITICAL_USED_PCT = 75;
 
 let input = '';
 const stdinTimeout = setTimeout(() => process.exit(0), 10000);
@@ -40,13 +40,14 @@ process.stdin.on('end', () => {
     if (metrics.timestamp && (now - metrics.timestamp) > 60) { process.exit(0); }
 
     const remaining = metrics.remaining_percentage;
+    const usedPct = metrics.used_pct;
 
     // Only warn at critical level on UserPromptSubmit (PostToolUse handles warning level)
-    if (remaining <= CRITICAL_THRESHOLD) {
+    if (usedPct >= CRITICAL_USED_PCT) {
       const output = {
         continue: true,
         systemMessage:
-          `🔴 CONTEXT CRITICAL: Only ${remaining}% remaining. ` +
+          `🔴 CONTEXT CRITICAL: Usage at ${usedPct}%. Only ${remaining}% remaining. ` +
           'Auto-compact will trigger very soon. ' +
           'Consider running /compact now to control what gets preserved.'
       };

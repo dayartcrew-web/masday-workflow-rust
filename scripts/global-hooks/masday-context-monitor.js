@@ -23,8 +23,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const WARNING_THRESHOLD = 35;
-const CRITICAL_THRESHOLD = 25;
+const WARNING_USED_PCT = 50;
+const CRITICAL_USED_PCT = 75;
 const STALE_SECONDS = 60;
 const DEBOUNCE_CALLS = 5;
 
@@ -57,7 +57,7 @@ process.stdin.on('end', () => {
     const remaining = metrics.remaining_percentage;
     const usedPct = metrics.used_pct;
 
-    if (remaining > WARNING_THRESHOLD) { process.exit(0); }
+    if (usedPct < WARNING_USED_PCT) { process.exit(0); }
 
     // Debounce
     const warnPath = path.join(tmpDir, `claude-ctx-${sessionId}-warned.json`);
@@ -72,7 +72,7 @@ process.stdin.on('end', () => {
     }
 
     warnData.callsSinceWarn = (warnData.callsSinceWarn || 0) + 1;
-    const isCritical = remaining <= CRITICAL_THRESHOLD;
+    const isCritical = usedPct >= CRITICAL_USED_PCT;
     const currentLevel = isCritical ? 'critical' : 'warning';
 
     const severityEscalated = currentLevel === 'critical' && warnData.lastLevel === 'warning';

@@ -3041,37 +3041,31 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .join("state")
         .join("workflows");
 
-    // Query workflow data from SQLite (synchronous, no await)
-    let (workflow_data, tasks) = {
+    // Query workflow data: try SQLite first, fallback to PostgreSQL
+    let sqlite_result: Option<(Value, Vec<Value>)> = {
         let conn = conn();
+        let r: Result<(Value, Vec<Value>), _> = (|| {
+            let wf = conn
+                .query_row(
+                    "SELECT id, name, description, status, project_path, metadata, created_at, updated_at FROM workflows WHERE id=?1",
+                    params![workflow_id],
+                    |row| Ok(json!({
+                        "id": row.get::<_, String>(0)?,
+                        "name": row.get::<_, String>(1)?,
+                        "description": row.get::<_, Option<String>>(2)?,
+                        "status": row.get::<_, String>(3)?,
+                        "projectPath": row.get::<_, Option<String>>(4)?,
+                        "metadata": json_col(row, 5),
+                        "createdAt": row.get::<_, String>(6)?,
+                        "updatedAt": row.get::<_, String>(7)?,
+                    })),
+                )?;
 
-        // Query workflow data
-        let wf = conn
-            .query_row(
-                "SELECT id, name, description, status, project_path, metadata, created_at, updated_at FROM workflows WHERE id=?1",
-                params![workflow_id],
-                |row| Ok(json!({
-                    "id": row.get::<_, String>(0)?,
-                    "name": row.get::<_, String>(1)?,
-                    "description": row.get::<_, Option<String>>(2)?,
-                    "status": row.get::<_, String>(3)?,
-                    "projectPath": row.get::<_, Option<String>>(4)?,
-                    "metadata": json_col(row, 5),
-                    "createdAt": row.get::<_, String>(6)?,
-                    "updatedAt": row.get::<_, String>(7)?,
-                })),
-            )
-            .map_err(err)?;
-
-        // Query task data
-        let mut stmt = conn
-            .prepare(
+            let mut stmt = conn.prepare(
                 "SELECT id, title, status, owner_agent, priority, progress_percent, created_at, updated_at FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
-            )
-            .map_err(err)?;
+            )?;
 
-        let rows = stmt
-            .query_map(params![workflow_id], |row| {
+            let rows = stmt.query_map(params![workflow_id], |row| {
                 Ok(json!({
                     "id": row.get::<_, String>(0)?,
                     "title": row.get::<_, String>(1)?,
@@ -3082,12 +3076,22 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
                     "createdAt": row.get::<_, String>(6)?,
                     "updatedAt": row.get::<_, String>(7)?,
                 }))
-            })
-            .map_err(err)?;
+            })?;
 
-        let task_list: Vec<Value> = collect_rows(rows);
+            let task_list: Vec<Value> = collect_rows(rows);
+            Ok::<(Value, Vec<Value>), rusqlite::Error>((wf, task_list))
+        })();
+        r.ok()
+    }; // conn dropped here
 
-        (wf, task_list)
+    let (workflow_data, tasks, source) = match sqlite_result {
+        Some((wf, task_list)) => (wf, task_list, "sqlite"),
+        None => {
+            // Fallback: query PostgreSQL
+            tracing::info!("local_sync: workflow {} not in SQLite, trying PostgreSQL", workflow_id);
+            crate::direct_pg::pull_workflow(workflow_id).await
+                .map_err(|e| err(format!("Workflow {} not found in SQLite or PostgreSQL: {}", workflow_id, e)))?
+        }
     };
 
     // Ensure directory exists (async operation)

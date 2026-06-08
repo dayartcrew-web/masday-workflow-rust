@@ -360,7 +360,92 @@ pub async fn memories_bulk_push() -> (usize, usize, Vec<String>) {
     (synced, skipped, errors)
 }
 
-/// Bulk pull memories from PostgreSQL into SQLite.
+/// Pull a single workflow (with tasks) from PostgreSQL.
+/// Returns (workflow_data, tasks, source) for local_sync fallback.
+pub async fn pull_workflow(workflow_id: &str) -> Result<(serde_json::Value, Vec<serde_json::Value>, &'static str), String> {
+    let pool = match crate::pg::get_pool().await {
+        Some(p) => p,
+        None => return Err("No PostgreSQL pool available".into()),
+    };
+
+    let client = pool.get().await.map_err(|e| format!("PG pool error: {}", e))?;
+
+    // Query workflow
+    let wf_rows = client.query(
+        "SELECT id, name, description, status, project_path, metadata::text, created_at::text, updated_at::text FROM workflows WHERE id=$1",
+        &[&workflow_id],
+    ).await.map_err(|e| format!("PG query error: {}", e))?;
+
+    let wf_row = wf_rows.into_iter().next().ok_or_else(|| format!("Workflow {} not found in PostgreSQL", workflow_id))?;
+
+    let wf = serde_json::json!({
+        "id": wf_row.get::<_, String>(0),
+        "name": wf_row.get::<_, String>(1),
+        "description": wf_row.get::<_, Option<String>>(2),
+        "status": wf_row.get::<_, String>(3),
+        "projectPath": wf_row.get::<_, Option<String>>(4),
+        "metadata": wf_row.get::<_, Option<String>>(5).and_then(|m| serde_json::from_str(&m).ok()).unwrap_or(serde_json::json!({})),
+        "createdAt": wf_row.get::<_, String>(6),
+        "updatedAt": wf_row.get::<_, String>(7),
+    });
+
+    // Query tasks
+    let task_rows = client.query(
+        "SELECT id, title, status, owner_agent, priority, progress_percent, created_at::text, updated_at::text FROM tasks WHERE workflow_id=$1 ORDER BY created_at",
+        &[&workflow_id],
+    ).await.map_err(|e| format!("PG tasks query error: {}", e))?;
+
+    let tasks: Vec<serde_json::Value> = task_rows.iter().map(|row| {
+        serde_json::json!({
+            "id": row.get::<_, String>(0),
+            "title": row.get::<_, String>(1),
+            "status": row.get::<_, String>(2),
+            "ownerAgent": row.get::<_, Option<String>>(3),
+            "priority": row.get::<_, Option<String>>(4),
+            "progressPercent": row.get::<_, Option<i64>>(5),
+            "createdAt": row.get::<_, String>(6),
+            "updatedAt": row.get::<_, String>(7),
+        })
+    }).collect();
+
+    // Also insert into SQLite for future lookups
+    {
+        let conn = crate::sqlite::conn();
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO workflows (id, name, description, status, project_path, metadata, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            rusqlite::params![
+                wf["id"].as_str().unwrap_or(""),
+                wf["name"].as_str().unwrap_or(""),
+                wf["description"].as_str().unwrap_or(""),
+                wf["status"].as_str().unwrap_or("INIT"),
+                wf["projectPath"].as_str().unwrap_or(""),
+                wf["metadata"].to_string(),
+                wf["createdAt"].as_str().unwrap_or(&now),
+                wf["updatedAt"].as_str().unwrap_or(&now),
+            ],
+        );
+        for t in &tasks {
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO tasks (id, workflow_id, title, status, owner_agent, priority, progress_percent, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                rusqlite::params![
+                    t["id"].as_str().unwrap_or(""),
+                    workflow_id,
+                    t["title"].as_str().unwrap_or(""),
+                    t["status"].as_str().unwrap_or("PENDING"),
+                    t["ownerAgent"].as_str().unwrap_or(""),
+                    t["priority"].as_str().unwrap_or(""),
+                    t["progressPercent"].as_i64(),
+                    t["createdAt"].as_str().unwrap_or(&now),
+                    t["updatedAt"].as_str().unwrap_or(&now),
+                ],
+            );
+        }
+    }
+
+    Ok((wf, tasks, "postgresql"))
+}
+
 /// Only inserts memories that don't exist in SQLite (by id).
 /// Returns count of pulled memories.
 pub async fn memories_bulk_pull() -> (usize, usize, Vec<String>) {
