@@ -1,6 +1,6 @@
 [package]
 name = "masday-mcp"
-version = "0.3.53"
+version = "0.3.54"
 edition = "2021"
 
 [[bin]]

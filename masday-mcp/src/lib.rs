@@ -860,10 +860,10 @@ fn register_project_rules_tools(r: &mut ToolRegistry) {
 /// Run the MCP stdio server in HTTP proxy mode.
 /// Requires masday-api running on the given URL.
 pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_ansi(false) // No ANSI codes — stdout is JSON-RPC, colors break parsing
-        .init();
+    // Stdio MCP: stdout is JSON-RPC — suppress all tracing to prevent
+    // protocol corruption on Windows/Claude Desktop (merges stderr into stream).
+    tracing::subscriber::set_global_default(tracing::subscriber::NoSubscriber::default())
+        .ok(); // ignore error if already set
 
     client::init(api_url.clone(), api_key).map_err(|e| e.to_string())?;
     tracing::info!("MCP server (HTTP proxy) connected to {}", api_url);
@@ -879,16 +879,12 @@ pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn st
 /// Connects directly to PostgreSQL via DATABASE_URL. No masday-api needed.
 #[cfg(feature = "sqlite")]
 pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_ansi(false) // No ANSI codes — stdout is JSON-RPC
-        .init();
+    // Suppress all tracing — stdout is JSON-RPC, any log output corrupts the stream
+    let _ = tracing::subscriber::set_global_default(tracing::subscriber::NoSubscriber::default());
 
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
-    tracing::info!("MCP server (standalone) using SQLite");
 
     let registry = build_stdio_registry();
-    tracing::info!("Registered {} tools (standalone)", registry.count());
 
     let mut server = JsonRpcServer::new(registry);
     server.run().await
@@ -899,10 +895,8 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
 /// Falls back to SQLite-only if PostgreSQL is unavailable.
 #[cfg(feature = "sqlite")]
 pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_ansi(false) // No ANSI codes — stdout is JSON-RPC
-        .init();
+    // Suppress all tracing — stdout is JSON-RPC, any log output corrupts the stream
+    let _ = tracing::subscriber::set_global_default(tracing::subscriber::NoSubscriber::default());
 
     // Init SQLite (always needed for cache/fingerprints)
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
