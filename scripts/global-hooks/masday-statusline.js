@@ -168,7 +168,7 @@ async function main() {
     let data = {};
     try { data = JSON.parse(input); } catch {}
 
-    const model = data.model?.display_name || 'Masday';
+    const _model = data.model?.display_name || 'Masday'; // eslint-disable-line no-unused-vars
     const session = data.session_id || '';
     const cwd = data.workspace?.current_dir || process.cwd();
     const dirName = path.basename(cwd);

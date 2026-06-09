@@ -49,20 +49,24 @@ pub async fn cicd_pipeline_trigger(
 pub async fn cicd_runs_view(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    // Use `gh run list --json` to get structured run data (doesn't require interactive TTY)
     let output = tokio::process::Command::new("gh")
-        .args(["run", "view"])
+        .args(["run", "list", "--limit", "10", "--json", "number,status,conclusion,name,headBranch,createdAt,updatedAt"])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh run view: {}", e))?;
+        .map_err(|e| format!("Failed to run gh run list: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(format!("gh run view failed: {}", stderr).into());
+        return Err(format!("gh run list failed: {}", stderr).into());
     }
 
-    Ok(serde_json::json!({ "output": stdout }))
+    let runs: Vec<Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse run list JSON: {}", e))?;
+
+    Ok(serde_json::json!({ "runs": runs, "count": runs.len() }))
 }
 
 #[cfg(test)]

@@ -1650,7 +1650,35 @@ pub async fn memory_search(args: Value) -> Result<Value, Box<dyn std::error::Err
 pub async fn memory_recall_documents(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    memory_search(args).await
+    let conn = crate::sqlite::conn();
+    let workflow_id = args["workflow_id"]
+        .as_str()
+        .ok_or_else(|| err("missing workflow_id"))?;
+    let limit = args["limit"].as_u64().unwrap_or(10) as i64;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, memory_type, summary, content, importance_score, created_at FROM memories WHERE workflow_id=?1 ORDER BY created_at DESC LIMIT ?2"
+    ).map_err(err)?;
+
+    let rows = stmt
+        .query_map(params![workflow_id, limit], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "memoryType": row.get::<_, String>(1)?,
+                "summary": row.get::<_, String>(2)?,
+                "content": row.get::<_, String>(3)?,
+                "importanceScore": row.get::<_, f64>(4)?,
+                "createdAt": row.get::<_, String>(5)?,
+            }))
+        })
+        .map_err(err)?;
+
+    let mut docs = Vec::new();
+    for r in rows {
+        docs.push(r.map_err(err)?);
+    }
+
+    Ok(json!({"documents": docs, "count": docs.len(), "workflowId": workflow_id}))
 }
 
 pub async fn memory_recall_document_by_type(
@@ -2004,9 +2032,17 @@ pub async fn session_get_state(
             "executionMode": row.get::<_, Option<String>>(4)?,
             "metadata": json_col(row, 5),
         })),
-    ).map_err(|e| err(e))?;
+    );
 
-    Ok(json!({"state": state}))
+    match state {
+        Ok(s) => Ok(json!({"state": s})),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(json!({
+            "state": null,
+            "found": false,
+            "sessionKey": session_key
+        })),
+        Err(e) => Err(err(e)),
+    }
 }
 
 pub async fn session_patch_state(
@@ -2394,9 +2430,17 @@ pub async fn memory_create_entities(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
-    let entities_arr = args["entities"]
+    // Accept entities as either a JSON array or a JSON string containing an array
+    let entities_val = if args["entities"].is_array() {
+        args["entities"].clone()
+    } else if let Some(s) = args["entities"].as_str() {
+        serde_json::from_str::<Value>(s).map_err(|e| err(format!("invalid entities JSON: {}", e)))?
+    } else {
+        return Err(err("missing entities: expected array or JSON string"));
+    };
+    let entities_arr = entities_val
         .as_array()
-        .ok_or_else(|| err("missing entities array"))?;
+        .ok_or_else(|| err("entities must be a JSON array"))?;
     let t = now();
     let mut created = Vec::new();
 
@@ -3041,14 +3085,16 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or_else(|| err("missing cwd"))?;
 
-    let workflow_id = args
+    let workflow_id_opt = args
         .get("workflow_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| err("missing workflow_id"))?;
+        .and_then(|v| v.as_str());
 
-    // Sanitize workflow_id for path safety
-    let workflow_id = crate::client::sanitize_id(workflow_id)
-        .ok_or_else(|| err("invalid workflow_id: contains disallowed characters"))?;
+    // If no workflow_id provided, sync all workflows from SQLite to .masday/state/
+    let workflow_id = match workflow_id_opt {
+        None | Some("") => return local_sync_all(cwd).await,
+        Some(id) => crate::client::sanitize_id(id)
+            .ok_or_else(|| err("invalid workflow_id: contains disallowed characters"))?,
+    };
 
     let state_dir = std::path::Path::new(cwd)
         .join(".masday")
@@ -3148,6 +3194,118 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
     }
 
     Ok(state)
+}
+
+/// Sync all workflows from SQLite to .masday/state/ directory.
+/// Called when no specific workflow_id is provided.
+async fn local_sync_all(
+    cwd: &str,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::sqlite::conn;
+
+    let state_dir = std::path::Path::new(cwd)
+        .join(".masday")
+        .join("state")
+        .join("workflows");
+
+    tokio::fs::create_dir_all(&state_dir).await.map_err(err)?;
+
+    // Fetch all workflow IDs from SQLite (sync, then drop conn before any await)
+    let wf_ids: Vec<String> = {
+        let conn = conn();
+        let mut stmt = conn.prepare("SELECT id FROM workflows").map_err(err)?;
+        let ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .map_err(err)?
+            .filter_map(|r| r.ok())
+            .collect();
+        ids
+    }; // conn dropped here
+
+    let mut synced = Vec::new();
+    let mut errors = Vec::new();
+
+    for wf_id in &wf_ids {
+        let sanitized = match crate::client::sanitize_id(wf_id) {
+            Some(s) => s,
+            None => {
+                errors.push(format!("{}: invalid workflow_id", wf_id));
+                continue;
+            }
+        };
+
+        // Read workflow + tasks from SQLite (sync block, no await inside)
+        let sqlite_data: Option<(Value, Vec<Value>)> = {
+            let conn = conn();
+            (|| -> Result<(Value, Vec<Value>), rusqlite::Error> {
+                let wf = conn.query_row(
+                    "SELECT id, name, description, status, project_path, metadata, created_at, updated_at FROM workflows WHERE id=?1",
+                    params![sanitized],
+                    |row| Ok(json!({
+                        "id": row.get::<_, String>(0)?,
+                        "name": row.get::<_, String>(1)?,
+                        "description": row.get::<_, Option<String>>(2)?,
+                        "status": row.get::<_, String>(3)?,
+                        "projectPath": row.get::<_, Option<String>>(4)?,
+                        "metadata": json_col(row, 5),
+                        "createdAt": row.get::<_, String>(6)?,
+                        "updatedAt": row.get::<_, String>(7)?,
+                    })),
+                )?;
+                let mut stmt = conn.prepare(
+                    "SELECT id, title, status, owner_agent, priority, progress_percent, created_at, updated_at FROM tasks WHERE workflow_id=?1 ORDER BY created_at"
+                )?;
+                let rows = stmt.query_map(params![sanitized], |row| {
+                    Ok(json!({
+                        "id": row.get::<_, String>(0)?,
+                        "title": row.get::<_, String>(1)?,
+                        "status": row.get::<_, String>(2)?,
+                        "ownerAgent": row.get::<_, Option<String>>(3)?,
+                        "priority": row.get::<_, Option<String>>(4)?,
+                        "progressPercent": row.get::<_, Option<i64>>(5)?,
+                        "createdAt": row.get::<_, String>(6)?,
+                        "updatedAt": row.get::<_, String>(7)?,
+                    }))
+                })?;
+                let task_list: Vec<Value> = collect_rows(rows);
+                Ok((wf, task_list))
+            })().ok()
+        }; // conn dropped here
+
+        let Some((wf_data, tasks)) = sqlite_data else {
+            errors.push(format!("{}: not found in SQLite", wf_id));
+            continue;
+        };
+
+        // Write state file (async, but conn is already dropped)
+        let state = json!({"workflow": wf_data, "tasks": tasks, "syncedAt": now()});
+        let workflow_file = state_dir.join(format!("{}.json", sanitized));
+        match serde_json::to_string_pretty(&state) {
+            Ok(json_str) => {
+                if let Err(e) = tokio::fs::write(&workflow_file, json_str).await {
+                    errors.push(format!("{}: write failed: {}", wf_id, e));
+                    continue;
+                }
+            }
+            Err(e) => {
+                errors.push(format!("{}: serialize failed: {}", wf_id, e));
+                continue;
+            }
+        }
+        synced.push(wf_id.clone());
+    }
+
+    // Also pull memories from PostgreSQL → SQLite
+    let (mem_pulled, mem_skipped, mem_errors) = crate::direct_pg::memories_bulk_pull().await;
+
+    Ok(json!({
+        "synced": synced,
+        "syncedCount": synced.len(),
+        "errors": errors,
+        "memories_pulled": mem_pulled,
+        "memories_skipped": mem_skipped,
+        "memory_pull_errors": mem_errors,
+    }))
 }
 
 #[cfg(test)]

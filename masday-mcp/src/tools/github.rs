@@ -14,7 +14,7 @@ pub async fn github_pr_create(
     let body = args
         .get("body")
         .and_then(|v| v.as_str())
-        .ok_or("Missing 'body' argument")?;
+        .unwrap_or(""); // Optional: empty body is valid for gh pr create
 
     let output = tokio::process::Command::new("gh")
         .args(["pr", "create", "--title", title, "--body", body])
