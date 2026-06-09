@@ -51,7 +51,14 @@ pub async fn cicd_runs_view(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     // Use `gh run list --json` to get structured run data (doesn't require interactive TTY)
     let output = tokio::process::Command::new("gh")
-        .args(["run", "list", "--limit", "10", "--json", "number,status,conclusion,name,headBranch,createdAt,updatedAt"])
+        .args([
+            "run",
+            "list",
+            "--limit",
+            "10",
+            "--json",
+            "number,status,conclusion,name,headBranch,createdAt,updatedAt",
+        ])
         .output()
         .await
         .map_err(|e| format!("Failed to run gh run list: {}", e))?;

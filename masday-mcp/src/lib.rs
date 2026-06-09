@@ -862,8 +862,7 @@ fn register_project_rules_tools(r: &mut ToolRegistry) {
 pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn std::error::Error>> {
     // Stdio MCP: stdout is JSON-RPC — suppress all tracing to prevent
     // protocol corruption on Windows/Claude Desktop (merges stderr into stream).
-    tracing::subscriber::set_global_default(tracing::subscriber::NoSubscriber::default())
-        .ok(); // ignore error if already set
+    tracing::subscriber::set_global_default(tracing::subscriber::NoSubscriber::default()).ok(); // ignore error if already set
 
     client::init(api_url.clone(), api_key).map_err(|e| e.to_string())?;
     tracing::info!("MCP server (HTTP proxy) connected to {}", api_url);

@@ -2434,7 +2434,8 @@ pub async fn memory_create_entities(
     let entities_val = if args["entities"].is_array() {
         args["entities"].clone()
     } else if let Some(s) = args["entities"].as_str() {
-        serde_json::from_str::<Value>(s).map_err(|e| err(format!("invalid entities JSON: {}", e)))?
+        serde_json::from_str::<Value>(s)
+            .map_err(|e| err(format!("invalid entities JSON: {}", e)))?
     } else {
         return Err(err("missing entities: expected array or JSON string"));
     };
@@ -3085,9 +3086,7 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or_else(|| err("missing cwd"))?;
 
-    let workflow_id_opt = args
-        .get("workflow_id")
-        .and_then(|v| v.as_str());
+    let workflow_id_opt = args.get("workflow_id").and_then(|v| v.as_str());
 
     // If no workflow_id provided, sync all workflows from SQLite to .masday/state/
     let workflow_id = match workflow_id_opt {
@@ -3198,9 +3197,7 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
 /// Sync all workflows from SQLite to .masday/state/ directory.
 /// Called when no specific workflow_id is provided.
-async fn local_sync_all(
-    cwd: &str,
-) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+async fn local_sync_all(cwd: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     use crate::sqlite::conn;
 
     let state_dir = std::path::Path::new(cwd)
