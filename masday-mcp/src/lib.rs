@@ -862,6 +862,7 @@ fn register_project_rules_tools(r: &mut ToolRegistry) {
 pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
+        .with_ansi(false) // No ANSI codes — stdout is JSON-RPC, colors break parsing
         .init();
 
     client::init(api_url.clone(), api_key).map_err(|e| e.to_string())?;
@@ -880,6 +881,7 @@ pub async fn run_http(api_url: String, api_key: String) -> Result<(), Box<dyn st
 pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
+        .with_ansi(false) // No ANSI codes — stdout is JSON-RPC
         .init();
 
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
@@ -899,6 +901,7 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
+        .with_ansi(false) // No ANSI codes — stdout is JSON-RPC
         .init();
 
     // Init SQLite (always needed for cache/fingerprints)
