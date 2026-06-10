@@ -90,7 +90,18 @@ fn extract_name(line: &str) -> Option<String> {
         .trim_start_matches("type ")
         .trim_start_matches("const ");
 
-    let prefixes = ["fn ", "struct ", "enum ", "trait ", "impl ", "mod ", "class ", "def ", "function ", "interface "];
+    let prefixes = [
+        "fn ",
+        "struct ",
+        "enum ",
+        "trait ",
+        "impl ",
+        "mod ",
+        "class ",
+        "def ",
+        "function ",
+        "interface ",
+    ];
     for prefix in &prefixes {
         if let Some(rest) = stripped.strip_prefix(prefix) {
             let name = rest
@@ -194,18 +205,32 @@ fn chunk_file(content: &str, file_path: &str, language: &str) -> Vec<CodeChunk> 
         if chunk_lines.len() > MAX_CHUNK_LINES {
             let mut split_idx = SPLIT_TARGET;
             // Find nearest blank line after target
-            for i in SPLIT_TARGET..chunk_lines.len().min(SPLIT_TARGET + 30) {
-                if chunk_lines[i].0.trim().is_empty() {
+            for (i, (line, _)) in chunk_lines.iter().enumerate().skip(SPLIT_TARGET).take(30) {
+                if line.trim().is_empty() {
                     split_idx = i + 1;
                     break;
                 }
             }
             let first: Vec<(&str, usize)> = chunk_lines[..split_idx].to_vec();
             let second: Vec<(&str, usize)> = chunk_lines[split_idx..].to_vec();
-            push_chunk(&mut chunks, first, file_path, language, &chunk_type, name.clone());
+            push_chunk(
+                &mut chunks,
+                first,
+                file_path,
+                language,
+                &chunk_type,
+                name.clone(),
+            );
             push_chunk(&mut chunks, second, file_path, language, &chunk_type, None);
         } else {
-            push_chunk(&mut chunks, chunk_lines, file_path, language, &chunk_type, name);
+            push_chunk(
+                &mut chunks,
+                chunk_lines,
+                file_path,
+                language,
+                &chunk_type,
+                name,
+            );
         }
     }
 
@@ -256,8 +281,7 @@ fn push_chunk(
 fn should_index(ext: &str) -> bool {
     matches!(
         ext,
-        "rs"
-            | "ts"
+        "rs" | "ts"
             | "tsx"
             | "js"
             | "jsx"
@@ -326,7 +350,9 @@ fn collect_files_inner(dir: &str, files: &mut Vec<(String, String)>) {
 /// Index a project: walk files, chunk, embed, store in SQLite.
 ///
 /// Uses content hashing for incremental updates — only re-indexes changed files.
-pub fn index_project(project_path: &str) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+pub fn index_project(
+    project_path: &str,
+) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
     info!("Indexing project: {}", project_path);
     let files = collect_files(project_path);
     let mut indexed = 0usize;
@@ -481,6 +507,7 @@ pub fn search_code(
              FROM code_chunks WHERE project_path = ?1 AND embedding IS NOT NULL",
         )?;
 
+        #[allow(clippy::type_complexity)]
         let mapped = stmt.query_map([project_path], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -495,8 +522,7 @@ pub fn search_code(
             ))
         })?;
 
-        let collected: Vec<(String, String, String, String, Option<String>, i64, i64, String, Vec<u8>)> =
-            mapped.filter_map(|r| r.ok()).collect();
+        let collected: Vec<_> = mapped.filter_map(|r| r.ok()).collect();
         collected
     };
     // stmt and its borrow on conn dropped here
@@ -505,7 +531,18 @@ pub fn search_code(
 
     // Compute cosine similarity for each chunk
     let mut scored: Vec<(Value, f32)> = Vec::new();
-    for (id, file_path, language, chunk_type, name, start_line, end_line, content, embedding_blob) in rows {
+    for (
+        id,
+        file_path,
+        language,
+        chunk_type,
+        name,
+        start_line,
+        end_line,
+        content,
+        embedding_blob,
+    ) in rows
+    {
         let candidate_vec = blob_to_vector(&embedding_blob);
         if candidate_vec.is_empty() {
             continue;
@@ -607,7 +644,9 @@ mod tests {
     #[test]
     fn test_is_structure_boundary() {
         assert!(is_structure_boundary("fn foo() {"));
-        assert!(is_structure_boundary("pub fn create_workflow() -> Result<()> {"));
+        assert!(is_structure_boundary(
+            "pub fn create_workflow() -> Result<()> {"
+        ));
         assert!(is_structure_boundary("async fn handle_request() {"));
         assert!(is_structure_boundary("struct Workflow {"));
         assert!(is_structure_boundary("pub struct AppState {"));
@@ -626,13 +665,31 @@ mod tests {
 
     #[test]
     fn test_extract_name() {
-        assert_eq!(extract_name("fn create_workflow() {"), Some("create_workflow".to_string()));
-        assert_eq!(extract_name("pub fn handle_request() -> Result<()> {"), Some("handle_request".to_string()));
-        assert_eq!(extract_name("struct AppState {"), Some("AppState".to_string()));
-        assert_eq!(extract_name("pub struct WorkflowService {"), Some("WorkflowService".to_string()));
-        assert_eq!(extract_name("impl Handler for Server {"), Some("Handler".to_string()));
+        assert_eq!(
+            extract_name("fn create_workflow() {"),
+            Some("create_workflow".to_string())
+        );
+        assert_eq!(
+            extract_name("pub fn handle_request() -> Result<()> {"),
+            Some("handle_request".to_string())
+        );
+        assert_eq!(
+            extract_name("struct AppState {"),
+            Some("AppState".to_string())
+        );
+        assert_eq!(
+            extract_name("pub struct WorkflowService {"),
+            Some("WorkflowService".to_string())
+        );
+        assert_eq!(
+            extract_name("impl Handler for Server {"),
+            Some("Handler".to_string())
+        );
         assert_eq!(extract_name("enum Status {"), Some("Status".to_string()));
-        assert_eq!(extract_name("def create_item():"), Some("create_item".to_string()));
+        assert_eq!(
+            extract_name("def create_item():"),
+            Some("create_item".to_string())
+        );
         assert_eq!(extract_name("class MyClass:"), Some("MyClass".to_string()));
     }
 
@@ -664,16 +721,35 @@ impl AppState {
         assert!(!chunks.is_empty(), "Should produce at least one chunk");
 
         // Should have: file_header (imports), init(), create_workflow(), AppState struct, impl AppState
-        assert!(chunks.len() >= 4, "Expected at least 4 chunks, got {}", chunks.len());
+        assert!(
+            chunks.len() >= 4,
+            "Expected at least 4 chunks, got {}",
+            chunks.len()
+        );
 
         // Check that functions are detected
-        let fn_chunks: Vec<&CodeChunk> = chunks.iter().filter(|c| c.chunk_type == "function").collect();
-        assert!(fn_chunks.len() >= 2, "Expected at least 2 function chunks, got {}", fn_chunks.len());
+        let fn_chunks: Vec<&CodeChunk> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == "function")
+            .collect();
+        assert!(
+            fn_chunks.len() >= 2,
+            "Expected at least 2 function chunks, got {}",
+            fn_chunks.len()
+        );
 
         // Check names
         let names: Vec<Option<&str>> = chunks.iter().map(|c| c.name.as_deref()).collect();
-        assert!(names.contains(&Some("init")), "Should find 'init' function, got {:?}", names);
-        assert!(names.contains(&Some("create_workflow")), "Should find 'create_workflow' function, got {:?}", names);
+        assert!(
+            names.contains(&Some("init")),
+            "Should find 'init' function, got {:?}",
+            names
+        );
+        assert!(
+            names.contains(&Some("create_workflow")),
+            "Should find 'create_workflow' function, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -692,7 +768,10 @@ class MyClass:
 "#;
         let chunks = chunk_file(content, "src/main.py", "python");
         assert!(!chunks.is_empty());
-        assert!(chunks.len() >= 3, "Expected at least 3 chunks for Python file");
+        assert!(
+            chunks.len() >= 3,
+            "Expected at least 3 chunks for Python file"
+        );
     }
 
     #[test]
@@ -767,26 +846,40 @@ class MyClass:
         let sim_similar = cosine_similarity(&query_vec, &similar_vec);
         let sim_different = cosine_similarity(&query_vec, &different_vec);
 
-        assert!(sim_similar > sim_different, "Similar text should have higher cosine similarity");
+        assert!(
+            sim_similar > sim_different,
+            "Similar text should have higher cosine similarity"
+        );
 
         // Verify ranking logic: fetch from DB and compare
         let mut stmt = conn.prepare(
             "SELECT id, content, embedding FROM code_chunks WHERE project_path = ?1 ORDER BY id",
         ).unwrap();
-        let rows: Vec<(String, String, Vec<u8>)> = stmt.query_map(["/test"], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        }).unwrap().filter_map(|r| r.ok()).collect();
+        let rows: Vec<(String, String, Vec<u8>)> = stmt
+            .query_map(["/test"], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
 
         assert_eq!(rows.len(), 2, "Should have 2 chunks");
 
-        let mut scored: Vec<(String, f32)> = rows.iter().map(|(id, _, blob)| {
-            let vec = blob_to_vector(blob);
-            let sim = cosine_similarity(&query_vec, &vec);
-            (id.clone(), sim)
-        }).collect();
+        let mut scored: Vec<(String, f32)> = rows
+            .iter()
+            .map(|(id, _, blob)| {
+                let vec = blob_to_vector(blob);
+                let sim = cosine_similarity(&query_vec, &vec);
+                (id.clone(), sim)
+            })
+            .collect();
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        assert_eq!(scored[0].0, "c1", "Most similar should be the workflow chunk");
-        assert!(scored[0].1 > scored[1].1, "Workflow chunk should score higher than color picker");
+        assert_eq!(
+            scored[0].0, "c1",
+            "Most similar should be the workflow chunk"
+        );
+        assert!(
+            scored[0].1 > scored[1].1,
+            "Workflow chunk should score higher than color picker"
+        );
     }
 }

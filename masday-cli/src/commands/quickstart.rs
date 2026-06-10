@@ -1280,7 +1280,9 @@ fn detect_active_platforms_from_home() -> Vec<Platform> {
                 home.join("Library/Application Support/Claude/claude_desktop_config.json")
             } else if cfg!(target_os = "windows") {
                 std::env::var("APPDATA")
-                    .map(|appdata| std::path::PathBuf::from(appdata).join("Claude/claude_desktop_config.json"))
+                    .map(|appdata| {
+                        std::path::PathBuf::from(appdata).join("Claude/claude_desktop_config.json")
+                    })
                     .unwrap_or_else(|_| home.join(".config/Claude/claude_desktop_config.json"))
             } else {
                 home.join(".config/Claude/claude_desktop_config.json")

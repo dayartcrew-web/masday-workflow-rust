@@ -1,9 +1,9 @@
 //! Semantic search and context pack service
 
+use crate::embedding_service::EmbeddingService;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
-use crate::embedding_service::EmbeddingService;
 use tokio::fs;
 use tracing::{debug, info};
 
@@ -141,7 +141,11 @@ impl SearchService {
                 Ok(query_embedding) if !query_embedding.is_empty() => {
                     let embedding_str = format!(
                         "[{}]",
-                        query_embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+                        query_embedding
+                            .iter()
+                            .map(|f| f.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
                     );
                     let rows = sqlx::query(
                         r#"
@@ -160,14 +164,17 @@ impl SearchService {
 
                     if let Ok(rows) = rows {
                         if !rows.is_empty() {
-                            let results: Vec<Value> = rows.iter().map(|row| {
-                                json!({
-                                    "file_path": row.get::<String, _>("file_path"),
-                                    "language": row.get::<String, _>("language"),
-                                    "similarity": row.get::<f64, _>("similarity"),
-                                    "source": "pgvector"
+                            let results: Vec<Value> = rows
+                                .iter()
+                                .map(|row| {
+                                    json!({
+                                        "file_path": row.get::<String, _>("file_path"),
+                                        "language": row.get::<String, _>("language"),
+                                        "similarity": row.get::<f64, _>("similarity"),
+                                        "source": "pgvector"
+                                    })
                                 })
-                            }).collect();
+                                .collect();
                             return Ok(json!(results));
                         }
                     }
@@ -191,13 +198,16 @@ impl SearchService {
         .fetch_all(pool)
         .await?;
 
-        let results: Vec<Value> = rows.iter().map(|row| {
-            json!({
-                "file_path": row.get::<String, _>("file_path"),
-                "language": row.get::<String, _>("language"),
-                "source": "ilike"
+        let results: Vec<Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "file_path": row.get::<String, _>("file_path"),
+                    "language": row.get::<String, _>("language"),
+                    "source": "ilike"
+                })
             })
-        }).collect();
+            .collect();
 
         Ok(json!(results))
     }
@@ -427,7 +437,11 @@ impl SearchService {
                 if !query_embedding.is_empty() {
                     let embedding_str = format!(
                         "[{}]",
-                        query_embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+                        query_embedding
+                            .iter()
+                            .map(|f| f.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
                     );
                     // Vector search on memories
                     let vec_rows = sqlx::query(
@@ -447,18 +461,21 @@ impl SearchService {
 
                     if let Ok(rows) = vec_rows {
                         if !rows.is_empty() {
-                            let results: Vec<Value> = rows.iter().map(|row| {
-                                let vs = row.get::<f64, _>("vector_score");
-                                json!({
-                                    "id": row.get::<String, _>("id"),
-                                    "content": row.get::<String, _>("content"),
-                                    "summary": row.get::<Option<String>, _>("summary"),
-                                    "memory_type": row.get::<String, _>("memory_type"),
-                                    "vector_score": vs,
-                                    "hybrid_score": vs * 0.7,
-                                    "source": "pgvector"
+                            let results: Vec<Value> = rows
+                                .iter()
+                                .map(|row| {
+                                    let vs = row.get::<f64, _>("vector_score");
+                                    json!({
+                                        "id": row.get::<String, _>("id"),
+                                        "content": row.get::<String, _>("content"),
+                                        "summary": row.get::<Option<String>, _>("summary"),
+                                        "memory_type": row.get::<String, _>("memory_type"),
+                                        "vector_score": vs,
+                                        "hybrid_score": vs * 0.7,
+                                        "source": "pgvector"
+                                    })
                                 })
-                            }).collect();
+                                .collect();
                             return Ok(results);
                         }
                     }
@@ -484,18 +501,21 @@ impl SearchService {
 
         match text_results {
             Ok(rows) if !rows.is_empty() => {
-                let results: Vec<Value> = rows.iter().map(|row| {
-                    let ts = row.get::<f64, _>("text_score");
-                    json!({
-                        "id": row.get::<String, _>("id"),
-                        "content": row.get::<String, _>("content"),
-                        "summary": row.get::<Option<String>, _>("summary"),
-                        "memory_type": row.get::<String, _>("memory_type"),
-                        "text_score": ts,
-                        "hybrid_score": ts * 0.4,
-                        "source": "bm25"
+                let results: Vec<Value> = rows
+                    .iter()
+                    .map(|row| {
+                        let ts = row.get::<f64, _>("text_score");
+                        json!({
+                            "id": row.get::<String, _>("id"),
+                            "content": row.get::<String, _>("content"),
+                            "summary": row.get::<Option<String>, _>("summary"),
+                            "memory_type": row.get::<String, _>("memory_type"),
+                            "text_score": ts,
+                            "hybrid_score": ts * 0.4,
+                            "source": "bm25"
+                        })
                     })
-                }).collect();
+                    .collect();
                 Ok(results)
             }
             _ => {
@@ -510,16 +530,19 @@ impl SearchService {
                 .fetch_all(pool)
                 .await?;
 
-                Ok(rows.iter().map(|row| {
-                    json!({
-                        "id": row.get::<String, _>("id"),
-                        "content": row.get::<String, _>("content"),
-                        "summary": row.get::<Option<String>, _>("summary"),
-                        "memory_type": row.get::<String, _>("memory_type"),
-                        "hybrid_score": 0.12,
-                        "source": "ilike_fallback"
+                Ok(rows
+                    .iter()
+                    .map(|row| {
+                        json!({
+                            "id": row.get::<String, _>("id"),
+                            "content": row.get::<String, _>("content"),
+                            "summary": row.get::<Option<String>, _>("summary"),
+                            "memory_type": row.get::<String, _>("memory_type"),
+                            "hybrid_score": 0.12,
+                            "source": "ilike_fallback"
+                        })
                     })
-                }).collect())
+                    .collect())
             }
         }
     }

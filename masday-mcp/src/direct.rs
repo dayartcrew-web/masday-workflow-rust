@@ -2171,10 +2171,13 @@ pub async fn semantic_search_code_search(
     // Priority 1: PostgreSQL pgvector via API (if API server is configured)
     let api_url = crate::client::api_url();
     if !api_url.is_empty() {
-        let api_result = crate::client::api_get(&format!("/api/context/search?query={}", query)).await;
+        let api_result =
+            crate::client::api_get(&format!("/api/context/search?query={}", query)).await;
         if let Ok(val) = api_result {
-            if val["results"].as_array().map_or(false, |a| !a.is_empty()) {
-                return Ok(json!({"query": query, "results": val["results"], "source": "pgvector_api"}));
+            if val["results"].as_array().is_some_and(|a| !a.is_empty()) {
+                return Ok(
+                    json!({"query": query, "results": val["results"], "source": "pgvector_api"}),
+                );
             }
         }
     }
