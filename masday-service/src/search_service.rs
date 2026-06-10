@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
+use crate::embedding_service::EmbeddingService;
 use tokio::fs;
 use tracing::{debug, info};
 
@@ -119,15 +120,64 @@ impl SearchService {
         }))
     }
 
-    /// Search indexed code in database
-    #[allow(dead_code)]
+    /// Code search using PostgreSQL pgvector on indexed_files
+    pub async fn code_search_pg(
+        pool: &PgPool,
+        query: &str,
+        limit: i64,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        Self::search_indexed_code(pool, query, limit).await
+    }
+
+    /// Search indexed code using pgvector cosine similarity + ILIKE fallback
     async fn search_indexed_code(
         pool: &PgPool,
         query: &str,
         limit: i64,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let search_pattern = format!("%{}%", query);
+        // Try pgvector search if embedding service is available
+        if let Some(emb_service) = EmbeddingService::cached() {
+            match emb_service.embed(query).await {
+                Ok(query_embedding) if !query_embedding.is_empty() => {
+                    let embedding_str = format!(
+                        "[{}]",
+                        query_embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+                    );
+                    let rows = sqlx::query(
+                        r#"
+                        SELECT file_path, content, language,
+                               1 - (embedding <=> $1::vector) as similarity
+                        FROM indexed_files
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $2
+                        "#,
+                    )
+                    .bind(&embedding_str)
+                    .bind(limit)
+                    .fetch_all(pool)
+                    .await;
 
+                    if let Ok(rows) = rows {
+                        if !rows.is_empty() {
+                            let results: Vec<Value> = rows.iter().map(|row| {
+                                json!({
+                                    "file_path": row.get::<String, _>("file_path"),
+                                    "language": row.get::<String, _>("language"),
+                                    "similarity": row.get::<f64, _>("similarity"),
+                                    "source": "pgvector"
+                                })
+                            }).collect();
+                            return Ok(json!(results));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Fallback: ILIKE text search
+        let search_pattern = format!("%{}%", query);
         let rows = sqlx::query(
             r#"
             SELECT file_path, content, language
@@ -141,16 +191,13 @@ impl SearchService {
         .fetch_all(pool)
         .await?;
 
-        let results: Vec<Value> = rows
-            .iter()
-            .map(|row| {
-                json!({
-                    "file_path": row.get::<String, _>("file_path"),
-                    "language": row.get::<String, _>("language"),
-                    "matches": 1
-                })
+        let results: Vec<Value> = rows.iter().map(|row| {
+            json!({
+                "file_path": row.get::<String, _>("file_path"),
+                "language": row.get::<String, _>("language"),
+                "source": "ilike"
             })
-            .collect();
+        }).collect();
 
         Ok(json!(results))
     }
@@ -366,7 +413,7 @@ impl SearchService {
         format!("{:x}", result)
     }
 
-    /// Hybrid search — combines vector similarity + BM25 text search
+    /// Hybrid search — combines pgvector cosine similarity + BM25 text search
     pub async fn hybrid_search(
         pool: &PgPool,
         query: &str,
@@ -374,11 +421,56 @@ impl SearchService {
     ) -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {
         info!("Performing hybrid search for query: {}", query);
 
-        // BM25-style text search using PostgreSQL full-text search
+        // Priority 1: pgvector cosine similarity (if embedding available)
+        if let Some(emb_service) = EmbeddingService::cached() {
+            if let Ok(query_embedding) = emb_service.embed(query).await {
+                if !query_embedding.is_empty() {
+                    let embedding_str = format!(
+                        "[{}]",
+                        query_embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+                    );
+                    // Vector search on memories
+                    let vec_rows = sqlx::query(
+                        r#"
+                        SELECT id, content, summary, memory_type,
+                               1 - (embedding <=> $1::vector) as vector_score
+                        FROM memories
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $2
+                        "#,
+                    )
+                    .bind(&embedding_str)
+                    .bind(limit)
+                    .fetch_all(pool)
+                    .await;
+
+                    if let Ok(rows) = vec_rows {
+                        if !rows.is_empty() {
+                            let results: Vec<Value> = rows.iter().map(|row| {
+                                let vs = row.get::<f64, _>("vector_score");
+                                json!({
+                                    "id": row.get::<String, _>("id"),
+                                    "content": row.get::<String, _>("content"),
+                                    "summary": row.get::<Option<String>, _>("summary"),
+                                    "memory_type": row.get::<String, _>("memory_type"),
+                                    "vector_score": vs,
+                                    "hybrid_score": vs * 0.7,
+                                    "source": "pgvector"
+                                })
+                            }).collect();
+                            return Ok(results);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Priority 2: BM25 full-text search
         let text_query = r#"
-            SELECT id, content, summary, "memoryType",
+            SELECT id, content, summary, memory_type,
                    ts_rank(to_tsvector(content), query) as text_score
-            FROM "Memory", to_tsquery($1) query
+            FROM memories, to_tsquery($1) query
             WHERE to_tsvector(content) @@ query
             ORDER BY text_score DESC
             LIMIT $2
@@ -390,55 +482,44 @@ impl SearchService {
             .fetch_all(pool)
             .await;
 
-        // Combine results
         match text_results {
-            Ok(rows) => {
-                let results: Vec<Value> = rows
-                    .iter()
-                    .map(|row| {
-                        json!({
-                            "id": row.get::<String, _>("id"),
-                            "content": row.get::<String, _>("content"),
-                            "summary": row.get::<Option<String>, _>("summary"),
-                            "memory_type": row.get::<String, _>("memoryType"),
-                            "text_score": row.get::<f64, _>("text_score"),
-                            "hybrid_score": row.get::<f64, _>("text_score") * 0.4
-                        })
+            Ok(rows) if !rows.is_empty() => {
+                let results: Vec<Value> = rows.iter().map(|row| {
+                    let ts = row.get::<f64, _>("text_score");
+                    json!({
+                        "id": row.get::<String, _>("id"),
+                        "content": row.get::<String, _>("content"),
+                        "summary": row.get::<Option<String>, _>("summary"),
+                        "memory_type": row.get::<String, _>("memory_type"),
+                        "text_score": ts,
+                        "hybrid_score": ts * 0.4,
+                        "source": "bm25"
                     })
-                    .collect();
+                }).collect();
                 Ok(results)
             }
-            Err(_) => {
-                // Fallback to simple ILIKE search
+            _ => {
+                // Fallback: ILIKE
                 let pattern = format!("%{}%", query);
-                let fallback_query = r#"
-                    SELECT id, content, summary, "memoryType", 0.3 as text_score
-                    FROM "Memory"
-                    WHERE content ILIKE $1 OR summary ILIKE $1
-                    LIMIT $2
-                "#;
+                let rows = sqlx::query(
+                    r#"SELECT id, content, summary, memory_type, 0.3 as text_score
+                       FROM memories WHERE content ILIKE $1 OR summary ILIKE $1 LIMIT $2"#,
+                )
+                .bind(&pattern)
+                .bind(limit)
+                .fetch_all(pool)
+                .await?;
 
-                let rows = sqlx::query(fallback_query)
-                    .bind(&pattern)
-                    .bind(limit)
-                    .fetch_all(pool)
-                    .await?;
-
-                let results: Vec<Value> = rows
-                    .iter()
-                    .map(|row| {
-                        json!({
-                            "id": row.get::<String, _>("id"),
-                            "content": row.get::<String, _>("content"),
-                            "summary": row.get::<Option<String>, _>("summary"),
-                            "memory_type": row.get::<String, _>("memoryType"),
-                            "text_score": 0.3,
-                            "hybrid_score": 0.12
-                        })
+                Ok(rows.iter().map(|row| {
+                    json!({
+                        "id": row.get::<String, _>("id"),
+                        "content": row.get::<String, _>("content"),
+                        "summary": row.get::<Option<String>, _>("summary"),
+                        "memory_type": row.get::<String, _>("memory_type"),
+                        "hybrid_score": 0.12,
+                        "source": "ilike_fallback"
                     })
-                    .collect();
-
-                Ok(results)
+                }).collect())
             }
         }
     }
