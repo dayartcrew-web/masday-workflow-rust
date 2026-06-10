@@ -105,6 +105,45 @@ pub fn remove_masday_entries(settings_path: &Path) -> Result<()> {
         if let Some(mcp_servers) = obj.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
             mcp_servers.remove("masday");
         }
+
+        // Remove masday hook entries from each hook event
+        // Hook events: PostToolUse, UserPromptSubmit, SessionStart, PreToolUse, PreCompact, PostCompact
+        if let Some(hooks_obj) = obj.get_mut("hooks").and_then(|v| v.as_object_mut()) {
+            let hook_events = [
+                "PostToolUse",
+                "UserPromptSubmit",
+                "SessionStart",
+                "PreToolUse",
+                "PreCompact",
+                "PostCompact",
+            ];
+            for event in &hook_events {
+                if let Some(event_arr) = hooks_obj.get_mut(*event).and_then(|v| v.as_array_mut()) {
+                    // Remove entries that contain masday hook commands
+                    event_arr.retain(|entry| {
+                        if let Some(hooks) = entry.get("hooks").and_then(|h| h.as_array()) {
+                            // Keep entry only if NONE of its hooks reference masday
+                            !hooks.iter().any(|h| {
+                                h.get("command")
+                                    .and_then(|c| c.as_str())
+                                    .map(|c| c.contains("masday-"))
+                                    .unwrap_or(false)
+                            })
+                        } else {
+                            true // Keep entries without hooks array
+                        }
+                    });
+                    // Remove empty event arrays
+                    if event_arr.is_empty() {
+                        hooks_obj.remove(*event);
+                    }
+                }
+            }
+            // Remove empty hooks object
+            if hooks_obj.is_empty() {
+                obj.remove("hooks");
+            }
+        }
     }
 
     let content = serde_json::to_string_pretty(&json).context("Failed to serialize settings")?;

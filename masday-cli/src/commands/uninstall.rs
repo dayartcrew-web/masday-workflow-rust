@@ -80,6 +80,18 @@ pub fn run(args: UninstallArgs, project_dir: &Path) -> Result<()> {
         style(format!("{} hooks removed", hooks_report.copied)).green()
     );
 
+    // Clean project settings (remove masday hook entries from .claude/settings.json)
+    let project_settings = project_dir.join(".claude/settings.json");
+    if project_settings.exists() {
+        remove_masday_entries(&project_settings)?;
+        println!("  {}", style("Project settings cleaned").green());
+    }
+    let project_local_settings = project_dir.join(".claude/settings.local.json");
+    if project_local_settings.exists() {
+        remove_masday_entries(&project_local_settings)?;
+        println!("  {}", style("Project local settings cleaned").green());
+    }
+
     // Remove MCP configs
     println!();
     println!("{}", style("Removing MCP configs...").cyan());
