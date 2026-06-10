@@ -2168,9 +2168,20 @@ pub async fn semantic_search_code_search(
         .and_then(|v| v.as_str())
         .unwrap_or(".");
 
-    // Use semantic code index (feature hashing + cosine similarity)
+    // Priority 1: PostgreSQL pgvector via API (if API server is configured)
+    let api_url = crate::client::api_url();
+    if !api_url.is_empty() {
+        let api_result = crate::client::api_get(&format!("/api/context/search?query={}", query)).await;
+        if let Ok(val) = api_result {
+            if val["results"].as_array().map_or(false, |a| !a.is_empty()) {
+                return Ok(json!({"query": query, "results": val["results"], "source": "pgvector_api"}));
+            }
+        }
+    }
+
+    // Priority 2: SQLite feature hashing (local fallback)
     let results = crate::code_index::search_code(query, project_path, 20)?;
-    Ok(json!({"query": query, "results": results, "source": "semantic_index"}))
+    Ok(json!({"query": query, "results": results, "source": "sqlite_feature_hash"}))
 }
 
 pub async fn semantic_search_search_hybrid_context_pack(
