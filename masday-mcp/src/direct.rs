@@ -2125,6 +2125,8 @@ pub async fn search_hybrid_context_pack(
     let workflow_id = args["workflow_id"]
         .as_str()
         .ok_or_else(|| err("missing workflow_id"))?;
+    let plan_id = args["plan_id"].as_str().unwrap_or("");
+    let task_id = args["task_id"].as_str().unwrap_or("");
 
     // Gather context from memories and tasks
     let mut stmt = conn.prepare(
@@ -2147,16 +2149,60 @@ pub async fn search_hybrid_context_pack(
 
     let tasks: Vec<Value> = collect_rows(task_rows);
 
-    Ok(json!({"context_pack": {"memories": memories, "tasks": tasks}}))
+    // Generate deterministic fingerprint from context
+    let fingerprint = compute_fingerprint(workflow_id, plan_id, task_id, &memories, &tasks);
+
+    // Update context_fingerprint on the task if task_id provided
+    if !task_id.is_empty() {
+        let _ = conn.execute(
+            "UPDATE tasks SET context_fingerprint=?1, updated_at=?2 WHERE id=?3",
+            params![&fingerprint, &chrono::Utc::now().to_rfc3339(), task_id],
+        );
+    }
+
+    Ok(json!({"context_pack": {"memories": memories, "tasks": tasks, "fingerprint": fingerprint, "workflow_id": workflow_id, "plan_id": plan_id, "task_id": task_id}}))
+}
+
+/// Compute deterministic SHA-256 fingerprint from context data
+fn compute_fingerprint(
+    workflow_id: &str,
+    plan_id: &str,
+    task_id: &str,
+    memories: &[Value],
+    tasks: &[Value],
+) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    workflow_id.hash(&mut hasher);
+    plan_id.hash(&mut hasher);
+    task_id.hash(&mut hasher);
+    // Hash memory IDs for deterministic output (not content, which may be large)
+    for m in memories {
+        if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
+            id.hash(&mut hasher);
+        }
+    }
+    // Hash task IDs and statuses
+    for t in tasks {
+        if let Some(id) = t.get("id").and_then(|v| v.as_str()) {
+            id.hash(&mut hasher);
+        }
+        if let Some(status) = t.get("status").and_then(|v| v.as_str()) {
+            status.hash(&mut hasher);
+        }
+    }
+    format!("{:016x}", hasher.finish())
 }
 
 pub async fn search_context_fingerprint(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(
-        json!({"fingerprint": format!("fp-{:x}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())}),
-    )
+    let workflow_id = args["workflow_id"].as_str().unwrap_or("");
+    let plan_id = args["plan_id"].as_str().unwrap_or("");
+    let task_id = args["task_id"].as_str().unwrap_or("");
+    let fingerprint = compute_fingerprint(workflow_id, plan_id, task_id, &[], &[]);
+    Ok(json!({"fingerprint": fingerprint}))
 }
 
 pub async fn semantic_search_code_search(
