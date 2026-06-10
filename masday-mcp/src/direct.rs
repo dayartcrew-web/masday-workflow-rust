@@ -957,7 +957,9 @@ pub async fn workflow_add_task(
         params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, &t, &t],
     ).map_err(|e| err(e))?;
 
-    Ok(json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0}))
+    Ok(
+        json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0}),
+    )
 }
 
 pub async fn workflow_start_task(
@@ -1457,42 +1459,88 @@ pub async fn workflow_resume_suggestion(
     let mut stmt2 = conn.prepare(
         "SELECT id, title, status FROM tasks WHERE workflow_id=?1 AND status='PENDING' ORDER BY created_at"
     ).map_err(err)?;
-    let pending: Vec<Value> = stmt2.query_map(params![wf_id], |row| {
-        Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?}))
-    }).map_err(err)?.filter_map(|r| r.ok()).collect();
+    let pending: Vec<Value> = stmt2
+        .query_map(params![wf_id], |row| {
+            Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?}))
+        })
+        .map_err(err)?
+        .filter_map(|r| r.ok())
+        .collect();
 
     // Get done/failed counts
-    let done_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status='DONE'", params![wf_id], |row| row.get(0)
-    ).unwrap_or(0);
-    let failed_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status='FAILED'", params![wf_id], |row| row.get(0)
-    ).unwrap_or(0);
-    let total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1", params![wf_id], |row| row.get(0)
-    ).unwrap_or(1);
+    let done_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status='DONE'",
+            params![wf_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let failed_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status='FAILED'",
+            params![wf_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1",
+            params![wf_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(1);
 
     // Build actionable suggestion based on status
     let (next_action, command): (String, &str) = match status.as_str() {
-        "INIT" => ("Workflow baru saja dibuat. Jalankan analyze untuk memulai.".to_string(), "masday-workflow-run"),
-        "ANALYZE" => ("Sedang menganalisis. Lanjutkan ke planning.".to_string(), "masday-workflow-plan"),
-        "PLAN" => ("Plan sudah dibuat. Siap untuk eksekusi.".to_string(), "masday-workflow-run"),
+        "INIT" => (
+            "Workflow baru saja dibuat. Jalankan analyze untuk memulai.".to_string(),
+            "masday-workflow-run",
+        ),
+        "ANALYZE" => (
+            "Sedang menganalisis. Lanjutkan ke planning.".to_string(),
+            "masday-workflow-plan",
+        ),
+        "PLAN" => (
+            "Plan sudah dibuat. Siap untuk eksekusi.".to_string(),
+            "masday-workflow-run",
+        ),
         "EXECUTE" => {
             if !running.is_empty() {
                 let t = &running[0];
-                (format!("Lanjutkan task '{}' yang sedang berjalan.", t["title"]), "masday-workflow-run")
+                (
+                    format!("Lanjutkan task '{}' yang sedang berjalan.", t["title"]),
+                    "masday-workflow-run",
+                )
             } else if !pending.is_empty() {
                 let t = &pending[0];
-                (format!("Mulai task berikutnya: '{}'.", t["title"]), "masday-workflow-run")
+                (
+                    format!("Mulai task berikutnya: '{}'.", t["title"]),
+                    "masday-workflow-run",
+                )
             } else {
-                ("Semua task selesai. Jalankan verify.".to_string(), "masday-workflow-verify")
+                (
+                    "Semua task selesai. Jalankan verify.".to_string(),
+                    "masday-workflow-verify",
+                )
             }
         }
-        "VERIFY" => ("Sedang verifikasi hasil. Jalankan complete jika semua OK.".to_string(), "masday-workflow-verify"),
-        "FIX" => ("Ada task yang gagal. Perbaiki dan jalankan ulang.".to_string(), "masday-workflow-fix"),
-        "PAUSED" => ("Workflow di-pause. Lanjutkan ketika siap.".to_string(), "masday-workflow-run"),
+        "VERIFY" => (
+            "Sedang verifikasi hasil. Jalankan complete jika semua OK.".to_string(),
+            "masday-workflow-verify",
+        ),
+        "FIX" => (
+            "Ada task yang gagal. Perbaiki dan jalankan ulang.".to_string(),
+            "masday-workflow-fix",
+        ),
+        "PAUSED" => (
+            "Workflow di-pause. Lanjutkan ketika siap.".to_string(),
+            "masday-workflow-run",
+        ),
         "DONE" => ("Workflow sudah selesai!".to_string(), ""),
-        "FAILED" => ("Workflow gagal. Cek task yang failed dan perbaiki.".to_string(), "masday-workflow-fix"),
+        "FAILED" => (
+            "Workflow gagal. Cek task yang failed dan perbaiki.".to_string(),
+            "masday-workflow-fix",
+        ),
         _ => ("Status tidak dikenal.".to_string(), ""),
     };
 
@@ -2221,7 +2269,9 @@ pub async fn search_hybrid_context_pack(
         );
     }
 
-    Ok(json!({"context_pack": {"memories": memories, "tasks": tasks, "fingerprint": fingerprint, "workflow_id": workflow_id, "plan_id": plan_id, "task_id": task_id}}))
+    Ok(
+        json!({"context_pack": {"memories": memories, "tasks": tasks, "fingerprint": fingerprint, "workflow_id": workflow_id, "plan_id": plan_id, "task_id": task_id}}),
+    )
 }
 
 /// Compute deterministic SHA-256 fingerprint from context data
@@ -2835,23 +2885,29 @@ pub async fn capability_list_templates(
     let h = Path::new(&home);
 
     let categories = vec![
-        ("agents", vec![
-            pr.join(".claude/agents"),
-            pr.join(".gemini/agents"),
-            pr.join(".opencode/agents"),
-            h.join(".claude/agents"),
-            h.join(".config/opencode/agents"),
-        ]),
-        ("skills", vec![
-            pr.join(".claude/skills"),
-            pr.join(".gemini/skills"),
-            pr.join(".opencode/skills"),
-            h.join(".claude/skills"),
-        ]),
-        ("hooks", vec![
-            pr.join(".claude/hooks"),
-            h.join(".claude/hooks"),
-        ]),
+        (
+            "agents",
+            vec![
+                pr.join(".claude/agents"),
+                pr.join(".gemini/agents"),
+                pr.join(".opencode/agents"),
+                h.join(".claude/agents"),
+                h.join(".config/opencode/agents"),
+            ],
+        ),
+        (
+            "skills",
+            vec![
+                pr.join(".claude/skills"),
+                pr.join(".gemini/skills"),
+                pr.join(".opencode/skills"),
+                h.join(".claude/skills"),
+            ],
+        ),
+        (
+            "hooks",
+            vec![pr.join(".claude/hooks"), h.join(".claude/hooks")],
+        ),
     ];
 
     let mut templates = Vec::new();
