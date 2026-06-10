@@ -952,11 +952,11 @@ pub async fn workflow_add_task(
     }
 
     conn.execute(
-        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,?7,?8)",
+        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8)",
         params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, &t, &t],
     ).map_err(|e| err(e))?;
 
-    Ok(json!({"id": id, "title": title, "status": "PENDING"}))
+    Ok(json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0}))
 }
 
 pub async fn workflow_start_task(
@@ -1053,7 +1053,7 @@ pub async fn workflow_complete_task(
     let result: Option<String> = args.get("result").map(|v| v.to_string());
     let t = now();
 
-    conn.execute("UPDATE tasks SET status='DONE', result=?1, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
+    conn.execute("UPDATE tasks SET status='DONE', result=?1, progress_percent=100, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
         params![result, &t, &t, task_id, wf_id]).map_err(|e| err(e))?;
 
     // Auto-store task result as experience memory (best-effort)

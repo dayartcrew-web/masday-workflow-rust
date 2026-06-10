@@ -95,7 +95,7 @@ impl TaskService {
             plan_id,
             title: name,
             status: "PENDING".to_string(),
-            priority: None,
+            priority: Some("MEDIUM".to_string()),
             owner_agent: agent,
             skill: None,
             description: None,
