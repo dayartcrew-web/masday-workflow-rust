@@ -45,6 +45,35 @@ Visual review and frontend code audit with scored reporting. Analyzes running ap
 | **Full Review** | `/masday-frontend-review full` (browser + code) |
 | **Compare vs Reference** | `/masday-frontend-review compare https://stripe.com` |
 
+## Execution Model
+
+This skill **dispatches to the `masday-frontend-reviewer` agent** for actual review work. The skill handles mode detection and routing; the agent executes the audit with full tool access.
+
+```
+User calls /masday-frontend-review <mode>
+  → Skill detects mode from arguments
+  → Skill auto-detects project config (framework, routes, tokens)
+  → Skill dispatches to masday-frontend-reviewer agent with context
+  → Agent executes review step-by-step (visible progress)
+  → Agent returns scored report
+  → Skill handles fix dispatch if needed
+```
+
+**Dispatch pattern:**
+```
+Agent({
+  subagent_type: "masday-frontend-reviewer",
+  prompt: "Execute {mode} review for project at {cwd}.
+    Framework: {framework}
+    Styling: {styling}
+    Pages: {routes}
+    Token files: {token_files}
+    Dev server: {url}
+
+    Follow your 5-phase workflow. Report findings with severity levels."
+})
+```
+
 ## Modes
 
 ### `browser` — Visual Browser Review
