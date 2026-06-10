@@ -40,6 +40,19 @@ context: fork
 
 Unified frontend development with **browser agent**, **visual analysis**, **design token generation**, and **component building** — all in one pipeline.
 
+## Quick Start
+
+> No input detected. Choose a mode:
+
+| Usage | Example |
+|-------|---------|
+| **URL** | `/masday-visual-frontend https://stripe.com` |
+| **Screenshot** | `/masday-visual-frontend dashboard-design.png` |
+| **Design Doc** | `/masday-visual-frontend design.md` |
+| **Component** | `/masday-visual-frontend "Build a pricing card with 3 tiers"` |
+
+Paste a URL, screenshot path, design doc, or component description to get started.
+
 ## 4 Input Modes
 
 | Mode | Input | What Happens |
