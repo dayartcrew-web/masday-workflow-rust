@@ -1830,8 +1830,12 @@ pub async fn memory_delete(args: Value) -> Result<Value, Box<dyn std::error::Err
     let conn = crate::sqlite::conn();
     let id = args["id"].as_str().ok_or_else(|| err("missing id"))?;
 
-    conn.execute("DELETE FROM memories WHERE id=?1", params![id])
+    let count = conn
+        .execute("DELETE FROM memories WHERE id=?1", params![id])
         .map_err(err)?;
+    if count == 0 {
+        return Err(format!("Memory not found: {}", id).into());
+    }
     Ok(json!({"deleted": id}))
 }
 
@@ -1987,7 +1991,7 @@ pub async fn review_get_latest(
 
     match review {
         Some(r) => Ok(json!({"review": r})),
-        None => Ok(json!({"review": null})),
+        None => Err(err("No review found for task")),
     }
 }
 
@@ -2729,11 +2733,11 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     // Ensure directory exists
     if !state_dir.exists() {
-        return Ok(json!({
-            "pushed": false,
-            "error": "State directory does not exist",
-            "path": state_dir.to_string_lossy().to_string()
-        }));
+        return Err(format!(
+            "State directory does not exist: {}",
+            state_dir.to_string_lossy()
+        )
+        .into());
     }
 
     let (pushed_workflows, errors) = {
