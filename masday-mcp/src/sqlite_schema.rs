@@ -236,6 +236,29 @@ CREATE TABLE IF NOT EXISTS token_usage (
 );
 
 -- ============================================================================
+-- Code Index (Semantic Search)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS code_chunks (
+    id TEXT PRIMARY KEY,
+    project_path TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    language TEXT NOT NULL,
+    chunk_type TEXT NOT NULL DEFAULT 'block',
+    name TEXT,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    embedding BLOB,
+    indexed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_code_chunks_project ON code_chunks(project_path);
+CREATE INDEX IF NOT EXISTS idx_code_chunks_file ON code_chunks(file_path);
+CREATE INDEX IF NOT EXISTS idx_code_chunks_hash ON code_chunks(content_hash);
+
+-- ============================================================================
 -- Logging & Reminders
 -- ============================================================================
 

@@ -2162,43 +2162,15 @@ pub async fn search_context_fingerprint(
 pub async fn semantic_search_code_search(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Filesystem-based code search (grep) — no DB needed
     let query = args["query"].as_str().ok_or_else(|| err("missing query"))?;
     let project_path = args
         .get("project_path")
         .and_then(|v| v.as_str())
         .unwrap_or(".");
 
-    let output = std::process::Command::new("grep")
-        .args([
-            "-rn",
-            "--include=*.rs",
-            "--include=*.ts",
-            "--include=*.js",
-            "--include=*.py",
-            "--exclude-dir=node_modules",
-            "--exclude-dir=target",
-            "--exclude-dir=.git",
-            "--exclude-dir=dist",
-            "--exclude-dir=build",
-            "--exclude-dir=.next",
-            "--exclude-dir=__pycache__",
-            "--exclude-dir=.venv",
-            query,
-            project_path,
-        ])
-        .output();
-
-    let results = match output {
-        Ok(out) => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .take(20)
-            .map(|line| json!({"match": line}))
-            .collect::<Vec<_>>(),
-        Err(_) => vec![],
-    };
-
-    Ok(json!({"results": results}))
+    // Use semantic code index (feature hashing + cosine similarity)
+    let results = crate::code_index::search_code(query, project_path, 20)?;
+    Ok(json!({"query": query, "results": results, "source": "semantic_index"}))
 }
 
 pub async fn semantic_search_search_hybrid_context_pack(

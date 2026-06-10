@@ -9,6 +9,7 @@ pub mod client;
 pub mod direct;
 #[cfg(feature = "sqlite")]
 pub mod direct_pg;
+pub mod code_index;
 pub mod embedding;
 pub mod handler;
 pub mod mode;
