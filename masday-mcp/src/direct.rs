@@ -1243,6 +1243,19 @@ pub async fn workflow_list_tasks(
         .map_err(err)?;
 
     let tasks: Vec<Value> = collect_rows(rows);
+
+    // Verify the workflow exists
+    let wf_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM workflows WHERE id=?1",
+            params![workflow_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if wf_exists == 0 {
+        return Err(format!("Workflow not found: {}", workflow_id).into());
+    }
+
     Ok(json!({"tasks": tasks}))
 }
 
@@ -1454,7 +1467,7 @@ pub async fn workflow_get_current_task(
 
     match task {
         Some(t) => Ok(json!({"task": t})),
-        None => Ok(json!({"task": null})),
+        None => Err(format!("No running task found for workflow: {}", wf_id).into()),
     }
 }
 
@@ -1853,6 +1866,9 @@ pub async fn memory_delete_by_workflow(
             params![workflow_id],
         )
         .map_err(err)?;
+    if count == 0 {
+        return Err(format!("No memories found for workflow: {}", workflow_id).into());
+    }
     Ok(json!({"deleted": count, "workflow_id": workflow_id}))
 }
 
@@ -2639,8 +2655,14 @@ pub async fn capability_scaffold_mcp_server(
 }
 
 pub async fn capability_system_readiness(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    // Validate projectRoot if provided
+    if let Some(root) = args.get("projectRoot").and_then(|v| v.as_str()) {
+        if !root.is_empty() && !std::path::Path::new(root).exists() {
+            return Err(format!("projectRoot does not exist: {}", root).into());
+        }
+    }
     Ok(system_readiness_check().await)
 }
 
