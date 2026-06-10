@@ -45,13 +45,17 @@ Visual review and frontend code audit with scored reporting. Analyzes running ap
 | **Full Review** | `/masday-frontend-review full` (browser + code) |
 | **Compare vs Reference** | `/masday-frontend-review compare https://stripe.com` |
 
-## Mode Validation
+## Mode Detection
 
-Valid modes: `browser`, `code`, `full`, `compare <url>`. If `$ARGUMENTS` does not match any valid mode:
+Detect the review mode from the user's input. Check in this order:
 
-1. Print: `Unknown mode: "{arguments}". Valid modes: browser, code, full, compare <url>`
-2. Show the Quick Start table above
-3. STOP — do not proceed with a fallback mode
+1. **Explicit mode** — first word of the input matches: `browser`, `code`, `full`, `compare`
+2. **URL detected** — input starts with `http://` or `https://` → `compare` mode
+3. **Dev server running** — check if `localhost:3000` (or project port) responds → `browser` mode
+4. **Dev server down** — → `code` mode (works without running server)
+5. **Empty input** — show Quick Start table and STOP
+
+If the input contains an unrecognized word (not browser/code/full/compare/URL), print: `Unknown mode. Valid: browser, code, full, compare <url>` then STOP.
 
 ## Execution Model
 
