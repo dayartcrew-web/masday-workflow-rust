@@ -55,8 +55,21 @@ FAILED=0
 # --- Rust ---
 if [[ " ${STACKS[*]} " =~ " rust " ]]; then
   if command -v cargo &>/dev/null; then
-    echo "  [rust] cargo build ..."
-    cargo build --release --workspace 2>&1 | tail -3 || FAILED=1
+    # Check if release binary is already up-to-date
+    CARGO_VERSION="$(cargo metadata --format-version=1 2>/dev/null | python3 -c "import json,sys; pkgs=json.load(sys.stdin)['packages']; print(next((p['version'] for p in pkgs if p['name']=='masday-cli'),''))" 2>/dev/null || echo "")"
+    RELEASE_BIN="target/release/masday"
+    NEEDS_BUILD=1
+    if [ -n "$CARGO_VERSION" ] && [ -f "$RELEASE_BIN" ]; then
+      BIN_VERSION="$("$RELEASE_BIN" --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "")"
+      if [ "$BIN_VERSION" = "$CARGO_VERSION" ]; then
+        echo "  [rust] release binary v${BIN_VERSION} already built — skipping build"
+        NEEDS_BUILD=0
+      fi
+    fi
+    if [ "$NEEDS_BUILD" -eq 1 ]; then
+      echo "  [rust] cargo build ..."
+      cargo build --release --workspace 2>&1 | tail -3 || FAILED=1
+    fi
     if [ "$FAILED" -eq 0 ]; then
       echo "  [rust] cargo test ..."
       cargo test --workspace 2>&1 | tail -5 || FAILED=1
