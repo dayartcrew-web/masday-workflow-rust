@@ -64,7 +64,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@example.com"
-              className="w-full px-3 py-3 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)] text-[var(--color-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              className="w-full min-h-[44px] px-3 py-3 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)] text-[var(--color-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             />
           </div>
           <div>
@@ -78,7 +78,7 @@ export default function LoginPage() {
               onChange={(e) => setName(e.target.value)}
               required
               placeholder="Your name"
-              className="w-full px-3 py-3 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)] text-[var(--color-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              className="w-full min-h-[44px] px-3 py-3 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)] text-[var(--color-text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             />
           </div>
 
@@ -91,7 +91,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all duration-200"
+            className="w-full min-h-[44px] py-3 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all duration-200"
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}
           >
             {isLoading ? 'Signing in...' : 'Sign In'}
@@ -105,7 +105,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleDemoLogin}
-            className="w-full py-3 rounded-[var(--radius-md)] text-sm font-medium transition-all duration-200 border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-elevated)] hover:text-[var(--color-text)]"
+            className="w-full min-h-[44px] py-3 rounded-[var(--radius-md)] text-sm font-medium transition-all duration-200 border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-elevated)] hover:text-[var(--color-text)]"
           >
             Demo Mode (no backend)
           </button>
