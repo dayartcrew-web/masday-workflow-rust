@@ -57,33 +57,52 @@ Detect the review mode from the user's input. Check in this order:
 
 If the input contains an unrecognized word (not browser/code/full/compare/URL), print: `Unknown mode. Valid: browser, code, full, compare <url>` then STOP.
 
-## Execution Model
+## Execution Steps
 
-This skill **dispatches to the `masday-frontend-reviewer` agent** for actual review work. The skill handles mode detection and routing; the agent executes the audit with full tool access.
+After detecting the mode, execute these steps directly (do NOT just describe them — actually run each one):
 
+### Step 1: Auto-detect project config
 ```
-User calls /masday-frontend-review <mode>
-  → Skill detects mode from arguments
-  → Skill auto-detects project config (framework, routes, tokens)
-  → Skill dispatches to masday-frontend-reviewer agent with context
-  → Agent executes review step-by-step (visible progress)
-  → Agent returns scored report
-  → Skill handles fix dispatch if needed
+1. Read package.json → detect framework (react/vue/svelte/next/nuxt), styling (tailwind/css-modules/styled-components)
+2. Glob for page routes (app/**/page.tsx, pages/**/*.tsx, src/routes/*, src/routes/**/+page.svelte)
+3. Check if dev server is running: curl -sf http://localhost:3000 || curl -sf http://localhost:3001
+4. Grep for token files: tailwind.config.*, globals.css, tokens.ts, theme.ts, design-tokens.*
 ```
 
-**Dispatch pattern:**
+### Step 2: Dispatch to masday-frontend-reviewer agent
+
+Use the Agent tool to dispatch:
+
 ```
 Agent({
   subagent_type: "masday-frontend-reviewer",
-  prompt: "Execute {mode} review for project at {cwd}.
-    Framework: {framework}
-    Styling: {styling}
-    Pages: {routes}
-    Token files: {token_files}
-    Dev server: {url}
+  description: "Frontend {mode} review",
+  prompt: "Execute {MODE} review for this project.
 
-    Follow your 5-phase workflow. Report findings with severity levels."
+    PROJECT CONTEXT (auto-detected):
+    - Working directory: {cwd}
+    - Framework: {framework}
+    - Styling: {styling}
+    - Dev server: {url or 'not running'}
+    - Pages: {route list}
+    - Token files: {file list}
+
+    INSTRUCTIONS:
+    Follow your 5-phase workflow (setup → review → score → dispatch fixes → store).
+    Execute each phase step-by-step. Use browser tools for visual checks.
+    Return the full scored report when done."
 })
+```
+
+### Step 3: Display the agent's report
+
+Print the agent's full report output to the user. Do NOT summarize — show the complete findings.
+
+### Step 4: If agent found issues, offer to dispatch fixes
+
+If the report has CRITICAL or WARN findings:
+- Ask user: "Fix these issues? (y/n)"
+- If yes: dispatch to `masday-visual-frontend` skill for token/component fixes
 ```
 
 ## Modes
