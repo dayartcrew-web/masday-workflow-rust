@@ -31,5 +31,22 @@
     "model-context-protocol"
   ],
   "packageManager": "pnpm@11.5.0",
-  "license": "MIT"
+  "license": "MIT",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dayartcrew-web/masday-workflow-rust.git"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/dayartcrew-web/masday-workflow-rust/issues"
+  },
+  "homepage": "https://github.com/dayartcrew-web/masday-workflow-rust#readme",
+  "dependencies": {
+    "pg": "^8.21.0"
+  }
 }
