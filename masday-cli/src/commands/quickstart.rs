@@ -1274,6 +1274,21 @@ fn detect_active_platforms_from_home() -> Vec<Platform> {
         if home.join(".claude").exists() {
             platforms.push(Platform::ClaudeCode);
         }
+        // Claude Desktop detection — OS-specific config path
+        {
+            let desktop_config = if cfg!(target_os = "macos") {
+                home.join("Library/Application Support/Claude/claude_desktop_config.json")
+            } else if cfg!(target_os = "windows") {
+                std::env::var("APPDATA")
+                    .map(|appdata| std::path::PathBuf::from(appdata).join("Claude/claude_desktop_config.json"))
+                    .unwrap_or_else(|_| home.join(".config/Claude/claude_desktop_config.json"))
+            } else {
+                home.join(".config/Claude/claude_desktop_config.json")
+            };
+            if desktop_config.exists() {
+                platforms.push(Platform::ClaudeDesktop);
+            }
+        }
         if home.join(".gemini").exists() {
             platforms.push(Platform::GeminiCli);
         }
@@ -1282,6 +1297,15 @@ fn detect_active_platforms_from_home() -> Vec<Platform> {
         }
         if home.join(".config/opencode").exists() {
             platforms.push(Platform::OpenCode);
+        }
+        if home.join(".cursor").exists() {
+            platforms.push(Platform::Cursor);
+        }
+        if home.join(".codeium").exists() {
+            platforms.push(Platform::Windsurf);
+        }
+        if home.join(".codex").exists() {
+            platforms.push(Platform::Codex);
         }
     }
 

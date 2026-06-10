@@ -160,9 +160,13 @@ fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Resul
     if let Some(ref name) = platform_arg {
         match name.to_lowercase().as_str() {
             "claude-code" | "claude" => Ok(vec![Platform::ClaudeCode]),
+            "claude-desktop" => Ok(vec![Platform::ClaudeDesktop]),
             "gemini" => Ok(vec![Platform::GeminiCli]),
             "vscode" | "copilot" => Ok(vec![Platform::VsCodeCopilot]),
             "opencode" => Ok(vec![Platform::OpenCode]),
+            "cursor" => Ok(vec![Platform::Cursor]),
+            "windsurf" => Ok(vec![Platform::Windsurf]),
+            "codex" => Ok(vec![Platform::Codex]),
             _ => Ok(all_platforms()),
         }
     } else {

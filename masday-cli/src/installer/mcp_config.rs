@@ -19,7 +19,7 @@ pub fn generate_mcp_config(
     // 1. Write to project-level config (.mcp.json, .gemini/settings.json, etc.)
     let project_config_path = platform.project_mcp_config_path(project_dir);
     match platform {
-        Platform::ClaudeCode => {
+        Platform::ClaudeCode | Platform::ClaudeDesktop => {
             write_claude_code_config(&project_config_path, config)?;
         }
         Platform::GeminiCli => {
@@ -31,6 +31,15 @@ pub fn generate_mcp_config(
         Platform::OpenCode => {
             write_opencode_config(&project_config_path, config)?;
         }
+        Platform::Cursor => {
+            write_cursor_config(&project_config_path, config)?;
+        }
+        Platform::Windsurf => {
+            write_windsurf_config(&project_config_path, config)?;
+        }
+        Platform::Codex => {
+            write_codex_config(&project_config_path, config)?;
+        }
     }
 
     // 2. Also write to global config if available
@@ -39,8 +48,17 @@ pub fn generate_mcp_config(
             Platform::ClaudeCode => {
                 update_global_claude_config(&global_path, config)?;
             }
+            Platform::ClaudeDesktop => {
+                update_global_claude_desktop_config(&global_path, config)?;
+            }
             Platform::GeminiCli => {
                 update_gemini_config(&global_path, config)?;
+            }
+            Platform::Cursor => {
+                update_global_cursor_config(&global_path, config)?;
+            }
+            Platform::Windsurf => {
+                update_global_windsurf_config(&global_path, config)?;
             }
             _ => {}
         }
@@ -57,7 +75,12 @@ pub fn remove_mcp_config(platform: &Platform, project_dir: &Path) -> Result<()> 
     }
 
     match platform {
-        Platform::GeminiCli | Platform::ClaudeCode => {
+        Platform::GeminiCli
+        | Platform::ClaudeCode
+        | Platform::ClaudeDesktop
+        | Platform::Cursor
+        | Platform::Windsurf
+        | Platform::Codex => {
             remove_server_from_json(&config_path, "masday")?;
         }
         _ => {
@@ -206,6 +229,36 @@ fn write_vscode_config(path: &Path, config: &McpConfig) -> Result<()> {
 
 fn write_opencode_config(path: &Path, config: &McpConfig) -> Result<()> {
     write_vscode_config(path, config)
+}
+
+/// Write .cursor/mcp.json — uses `mcpServers` key (same schema as Claude Code)
+fn write_cursor_config(path: &Path, config: &McpConfig) -> Result<()> {
+    write_claude_code_config(path, config)
+}
+
+/// Write .windsurf/mcp.json — uses `mcpServers` key
+fn write_windsurf_config(path: &Path, config: &McpConfig) -> Result<()> {
+    write_claude_code_config(path, config)
+}
+
+/// Write .codex/mcp.json — uses `mcpServers` key
+fn write_codex_config(path: &Path, config: &McpConfig) -> Result<()> {
+    write_claude_code_config(path, config)
+}
+
+/// Update global Cursor config at ~/.cursor/mcp.json
+fn update_global_cursor_config(path: &Path, config: &McpConfig) -> Result<()> {
+    update_global_claude_config(path, config)
+}
+
+/// Update global Windsurf config at ~/.codeium/windsurf/mcp_config.json
+fn update_global_windsurf_config(path: &Path, config: &McpConfig) -> Result<()> {
+    update_global_claude_config(path, config)
+}
+
+/// Update Claude Desktop global config — OS-specific path, `mcpServers` key
+fn update_global_claude_desktop_config(path: &Path, config: &McpConfig) -> Result<()> {
+    update_global_claude_config(path, config)
 }
 
 // ─── Remove helpers ──────────────────────────────────────────────────────
