@@ -5,6 +5,7 @@
 
 use rusqlite::params;
 use serde_json::{json, Value};
+use std::path::Path;
 use tracing::{error, info, warn};
 
 /// Load the capability registry from `.claude/registry.json`.
@@ -2823,9 +2824,59 @@ pub async fn capability_create_skill(
 }
 
 pub async fn capability_list_templates(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"templates": []}))
+    let project_root = args["projectRoot"]
+        .as_str()
+        .or_else(|| args["project_root"].as_str())
+        .unwrap_or(".");
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
+    let pr = Path::new(project_root);
+    let h = Path::new(&home);
+
+    let categories = vec![
+        ("agents", vec![
+            pr.join(".claude/agents"),
+            pr.join(".gemini/agents"),
+            pr.join(".opencode/agents"),
+            h.join(".claude/agents"),
+            h.join(".config/opencode/agents"),
+        ]),
+        ("skills", vec![
+            pr.join(".claude/skills"),
+            pr.join(".gemini/skills"),
+            pr.join(".opencode/skills"),
+            h.join(".claude/skills"),
+        ]),
+        ("hooks", vec![
+            pr.join(".claude/hooks"),
+            h.join(".claude/hooks"),
+        ]),
+    ];
+
+    let mut templates = Vec::new();
+    for (category, dirs) in &categories {
+        let mut items = Vec::new();
+        for dir in dirs {
+            if dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.starts_with("masday-") && name.ends_with(".md") {
+                            items.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        items.sort();
+        items.dedup();
+        if !items.is_empty() {
+            templates.push(json!({"category": category, "items": items}));
+        }
+    }
+
+    Ok(json!({"templates": templates}))
 }
 
 // ============================================================================
