@@ -27,7 +27,11 @@ pub async fn github_pr_create(
     }
 
     // Extract URL from output (gh typically outputs the URL)
-    let url = stdout.lines().next().unwrap_or(&stdout).trim();
+    let url = stdout.lines().next().map(|s| s.trim()).unwrap_or("");
+
+    if url.is_empty() {
+        return Err("gh pr create returned empty output".into());
+    }
 
     Ok(serde_json::json!({ "url": url }))
 }
@@ -112,11 +116,16 @@ mod tests {
     #[test]
     fn test_github_output_parsing() {
         let stdout = "https://github.com/user/repo/pull/123\nCreated pull request #123";
-        let url = stdout.lines().next().unwrap_or(stdout).trim();
+        let url = stdout.lines().next().map(|s| s.trim()).unwrap_or("");
         assert_eq!(url, "https://github.com/user/repo/pull/123");
 
         let stdout = "single line";
-        let url = stdout.lines().next().unwrap_or(stdout).trim();
+        let url = stdout.lines().next().map(|s| s.trim()).unwrap_or("");
         assert_eq!(url, "single line");
+
+        // Empty output should produce empty url (caller should handle)
+        let stdout = "";
+        let url = stdout.lines().next().map(|s| s.trim()).unwrap_or("");
+        assert_eq!(url, "");
     }
 }

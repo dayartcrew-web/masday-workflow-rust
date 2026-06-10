@@ -67,13 +67,25 @@ pub async fn docker_ps(_args: Value) -> Result<Value, Box<dyn std::error::Error 
     }
 
     // Parse JSON lines into an array
+    let mut parse_errors = 0i32;
     let containers: Vec<Value> = stdout
         .lines()
         .filter(|line| !line.is_empty())
-        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter_map(|line| match serde_json::from_str(line) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("docker_ps: failed to parse container JSON: {e} | line: {line}");
+                parse_errors += 1;
+                None
+            }
+        })
         .collect();
 
-    Ok(serde_json::json!({ "containers": containers }))
+    let mut result = serde_json::json!({ "containers": containers });
+    if parse_errors > 0 {
+        result["parse_warnings"] = serde_json::json!(parse_errors);
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -110,5 +122,48 @@ mod tests {
             args.get("image").and_then(|v| v.as_str()).unwrap(),
             "nginx:latest"
         );
+    }
+
+    #[test]
+    fn test_docker_container_json_parsing() {
+        let stdout = r#"{"ID":"abc123","Names":"web"}
+{"ID":"def456","Names":"api"}"#;
+
+        let mut parse_errors = 0i32;
+        let containers: Vec<serde_json::Value> = stdout
+            .lines()
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| match serde_json::from_str(line) {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    parse_errors += 1;
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(containers.len(), 2);
+        assert_eq!(parse_errors, 0);
+
+        // Test with mixed valid/invalid lines
+        let stdout = r#"{"ID":"abc123"}
+not-json
+{"ID":"def456"}"#;
+
+        let mut parse_errors = 0i32;
+        let containers: Vec<serde_json::Value> = stdout
+            .lines()
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| match serde_json::from_str(line) {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    parse_errors += 1;
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(containers.len(), 2);
+        assert_eq!(parse_errors, 1);
     }
 }

@@ -134,6 +134,9 @@ call_tool "workflow_create" '{"name":"__TEST_RPC_TOOL__","description":"automate
 # memory_store (test memory)
 call_tool "memory_store" '{"memory_type":"fact","summary":"RPC test memory","content":"This is an automated test","created_by_agent":"test-script"}' $((ID++)) >> "$BUILD_FILE"
 
+# memory_store_research (test research memory)
+call_tool "memory_store_research" '{"summary":"RPC test research","content":"Automated research test content","created_by_agent":"test-script"}' $((ID++)) >> "$BUILD_FILE"
+
 # session_init_context
 call_tool "session_init_context" '{"cwd":"/home/vibe-dev/masday-workflow-rust"}' $((ID++)) >> "$BUILD_FILE"
 
@@ -317,7 +320,7 @@ TOTAL_TOOLS=$((ID - 10))
 # Send all calls to MCP binary and capture output
 echo "Sending ${TOTAL_TOOLS} tool calls to MCP binary..."
 sleep 0.2
-cat "$BUILD_FILE" | timeout 60 "$MCP_BIN" 2>"$RESULTS_DIR/stderr.log" | grep -v '^\[' | grep '"jsonrpc"' > "$RESULTS_DIR/raw_output.json"
+cat "$BUILD_FILE" | timeout 120 "$MCP_BIN" 2>"$RESULTS_DIR/stderr.log" | grep -v '^\[' | grep '"jsonrpc"' > "$RESULTS_DIR/raw_output.json"
 
 echo "Raw output lines: $(wc -l < "$RESULTS_DIR/raw_output.json")"
 

@@ -138,14 +138,17 @@ impl McpHandler {
                         data: None,
                     }),
                 };
-                return Some(serde_json::to_string(&response).unwrap_or_default());
+                return Some(
+                    serde_json::to_string(&response)
+                        .unwrap_or_else(|e| format!("{{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{{\"code\":-32603,\"message\":\"JSON serialization failed: {}\"}}}}", e)),
+                );
             }
         };
 
-        match self.handle_request(request).await {
-            Some(response) => serde_json::to_string(&response).ok(),
-            None => None,
-        }
+        self.handle_request(request).await.map(|response| {
+            serde_json::to_string(&response)
+                .unwrap_or_else(|e| format!("{{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{{\"code\":-32603,\"message\":\"JSON serialization failed: {}\"}}}}", e))
+        })
     }
 
     async fn handle_initialize(&self, id: Option<Value>) -> JsonResponse {
@@ -237,11 +240,25 @@ impl McpHandler {
 
         match self.registry.call_tool(tool_name, args).await {
             Ok(result) => {
+                let text = match serde_json::to_string(&result) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("Failed to serialize tool result: {}", e);
+                        return JsonResponse {
+                            jsonrpc: "2.0",
+                            id,
+                            result: Some(serde_json::json!({
+                                "content": [{"type": "text", "text": format!("Internal error: failed to serialize result: {}", e)}],
+                                "isError": true
+                            })),
+                            error: None,
+                        };
+                    }
+                };
                 let tool_result = ToolResult {
                     content: vec![ToolContent {
                         content_type: "text".to_string(),
-                        text: serde_json::to_string(&result)
-                            .unwrap_or_else(|_| "Failed to serialize result".to_string()),
+                        text,
                     }],
                     is_error: None,
                 };
@@ -249,7 +266,10 @@ impl McpHandler {
                 JsonResponse {
                     jsonrpc: "2.0",
                     id,
-                    result: Some(serde_json::to_value(tool_result).unwrap()),
+                    result: Some(
+                        serde_json::to_value(tool_result)
+                            .unwrap_or_else(|e| serde_json::json!({"content":[{"type":"text","text":format!("Internal serialization error: {}", e)}],"isError":true})),
+                    ),
                     error: None,
                 }
             }
@@ -266,7 +286,10 @@ impl McpHandler {
                 JsonResponse {
                     jsonrpc: "2.0",
                     id,
-                    result: Some(serde_json::to_value(tool_result).unwrap()),
+                    result: Some(
+                        serde_json::to_value(tool_result)
+                            .unwrap_or_else(|e| serde_json::json!({"content":[{"type":"text","text":format!("Internal serialization error: {}", e)}],"isError":true})),
+                    ),
                     error: None,
                 }
             }

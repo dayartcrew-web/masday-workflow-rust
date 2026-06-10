@@ -3069,11 +3069,14 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
         );
     });
 
+    let pg_available = crate::pg::get_pool().await.is_some();
+
     Ok(json!({
         "pushed": true,
         "workflows_pushed": pushed_workflows,
         "count": pushed_workflows.len(),
-        "postgresql_synced": "background",
+        "postgresql_synced": if pg_available { "background" } else { "skipped_no_pool" },
+        "pg_sync_failed": !pg_available,
         "errors": errors
     }))
 }
@@ -3190,6 +3193,12 @@ pub async fn local_sync(args: Value) -> Result<Value, Box<dyn std::error::Error 
         s.insert("memories_pulled".into(), json!(mem_pulled));
         s.insert("memories_skipped".into(), json!(mem_skipped));
         s.insert("memory_pull_errors".into(), json!(mem_errors));
+        // Flag PG failure clearly so callers know sync was incomplete
+        let pg_failed = crate::pg::get_pool().await.is_none();
+        if pg_failed {
+            s.insert("pg_sync_failed".into(), json!(true));
+            s.insert("pg_unavailable".into(), json!(true));
+        }
     }
 
     Ok(state)
@@ -3294,6 +3303,7 @@ async fn local_sync_all(cwd: &str) -> Result<Value, Box<dyn std::error::Error + 
 
     // Also pull memories from PostgreSQL → SQLite
     let (mem_pulled, mem_skipped, mem_errors) = crate::direct_pg::memories_bulk_pull().await;
+    let pg_failed = crate::pg::get_pool().await.is_none();
 
     Ok(json!({
         "synced": synced,
@@ -3302,6 +3312,8 @@ async fn local_sync_all(cwd: &str) -> Result<Value, Box<dyn std::error::Error + 
         "memories_pulled": mem_pulled,
         "memories_skipped": mem_skipped,
         "memory_pull_errors": mem_errors,
+        "pg_sync_failed": pg_failed,
+        "pg_unavailable": pg_failed,
     }))
 }
 
