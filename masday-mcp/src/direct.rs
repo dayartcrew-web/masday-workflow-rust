@@ -1435,6 +1435,7 @@ pub async fn workflow_resume_suggestion(
         .as_str()
         .ok_or_else(|| err("missing workflow_id"))?;
 
+    // Get workflow info
     let (name, status): (String, String) = conn
         .query_row(
             "SELECT name, status FROM workflows WHERE id=?1",
@@ -1443,8 +1444,67 @@ pub async fn workflow_resume_suggestion(
         )
         .map_err(err)?;
 
-    Ok(json!({"workflow_id": wf_id, "current_status": status,
-        "suggestion": format!("Resume workflow '{}' from status '{}'", name, status)}))
+    // Get running tasks
+    let mut stmt = conn.prepare(
+        "SELECT id, title, status, owner_agent FROM tasks WHERE workflow_id=?1 AND status='RUNNING'"
+    ).map_err(err)?;
+    let running: Vec<Value> = stmt.query_map(params![wf_id], |row| {
+        Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?, "status": row.get::<_, String>(2)?, "owner_agent": row.get::<_, Option<String>>(3)?}))
+    }).map_err(err)?.filter_map(|r| r.ok()).collect();
+
+    // Get pending tasks
+    let mut stmt2 = conn.prepare(
+        "SELECT id, title, status FROM tasks WHERE workflow_id=?1 AND status='PENDING' ORDER BY created_at"
+    ).map_err(err)?;
+    let pending: Vec<Value> = stmt2.query_map(params![wf_id], |row| {
+        Ok(json!({"id": row.get::<_, String>(0)?, "title": row.get::<_, String>(1)?}))
+    }).map_err(err)?.filter_map(|r| r.ok()).collect();
+
+    // Get done/failed counts
+    let done_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status='DONE'", params![wf_id], |row| row.get(0)
+    ).unwrap_or(0);
+    let failed_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status='FAILED'", params![wf_id], |row| row.get(0)
+    ).unwrap_or(0);
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1", params![wf_id], |row| row.get(0)
+    ).unwrap_or(1);
+
+    // Build actionable suggestion based on status
+    let (next_action, command): (String, &str) = match status.as_str() {
+        "INIT" => ("Workflow baru saja dibuat. Jalankan analyze untuk memulai.".to_string(), "masday-workflow-run"),
+        "ANALYZE" => ("Sedang menganalisis. Lanjutkan ke planning.".to_string(), "masday-workflow-plan"),
+        "PLAN" => ("Plan sudah dibuat. Siap untuk eksekusi.".to_string(), "masday-workflow-run"),
+        "EXECUTE" => {
+            if !running.is_empty() {
+                let t = &running[0];
+                (format!("Lanjutkan task '{}' yang sedang berjalan.", t["title"]), "masday-workflow-run")
+            } else if !pending.is_empty() {
+                let t = &pending[0];
+                (format!("Mulai task berikutnya: '{}'.", t["title"]), "masday-workflow-run")
+            } else {
+                ("Semua task selesai. Jalankan verify.".to_string(), "masday-workflow-verify")
+            }
+        }
+        "VERIFY" => ("Sedang verifikasi hasil. Jalankan complete jika semua OK.".to_string(), "masday-workflow-verify"),
+        "FIX" => ("Ada task yang gagal. Perbaiki dan jalankan ulang.".to_string(), "masday-workflow-fix"),
+        "PAUSED" => ("Workflow di-pause. Lanjutkan ketika siap.".to_string(), "masday-workflow-run"),
+        "DONE" => ("Workflow sudah selesai!".to_string(), ""),
+        "FAILED" => ("Workflow gagal. Cek task yang failed dan perbaiki.".to_string(), "masday-workflow-fix"),
+        _ => ("Status tidak dikenal.".to_string(), ""),
+    };
+
+    Ok(json!({
+        "workflow_id": wf_id,
+        "name": name,
+        "current_status": status,
+        "next_action": next_action,
+        "command": command,
+        "progress": {"done": done_count, "failed": failed_count, "running": running.len(), "pending": pending.len(), "total": total},
+        "running_tasks": running,
+        "pending_tasks": pending,
+    }))
 }
 
 pub async fn workflow_get_current_task(
