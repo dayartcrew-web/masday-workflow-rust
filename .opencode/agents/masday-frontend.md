@@ -53,7 +53,7 @@ you create is typed, tested, and ready for integration.
 
 ### Phase 2: Implementation (build to match)
 
-**Design token source**: If the task was initiated by `masday-frontend-library` skill, use the extracted design tokens as the source of truth for colors, typography, spacing, and components. Load tokens from the skill's output before writing any component code.
+**Design token source**: If the task was initiated by `masday-frontend-library` or `masday-visual-frontend` skill, use the extracted design tokens as the source of truth for colors, typography, spacing, and components. Load tokens from the skill's output before writing any component code.
 
 4. Write the component file using `Write` (new) or `Edit` (existing):
    - Define TypeScript interface for all props (no implicit `any`)

@@ -388,6 +388,7 @@ Skills are markdown files that tell Claude Code *how* to do things. They referen
 | `masday-parallel-*` | 2 | Tool calls go through HTTP |
 | `masday-tdd` | 1 | Unchanged — triggers step guard hooks |
 | `masday-e2e` | 1 | Unchanged — uses Playwright |
+| `masday-visual-frontend` | 1 | New — browser automation, visual analysis, design token extraction, Playwright |
 | `masday-autopilot` | 1 | Tool calls go through HTTP |
 | Other `masday-*` | 12 | Mix — shell tools stay local, data tools go HTTP |
 

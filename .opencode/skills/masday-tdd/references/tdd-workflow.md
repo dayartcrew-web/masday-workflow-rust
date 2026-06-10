@@ -92,3 +92,4 @@ workflow_saveProgress  ->  review_submit  ->  policy_validate_completion  ->  wo
 | Executor | `.claude/agents/masday-executor.md` | GREEN phase implementation |
 | QA Agent | `.claude/agents/masday-qa.md` | Coverage + CI/CD |
 | E2E Skill | `.claude/skills/masday-e2e/SKILL.md` | `/masday-e2e` |
+| Visual Frontend Skill | `.claude/skills/masday-visual-frontend/SKILL.md` | `/masday-visual-frontend` |

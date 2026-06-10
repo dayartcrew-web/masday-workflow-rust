@@ -203,6 +203,7 @@ capability_match_agent({
 | Category | Agent | When to Delegate |
 |----------|-------|------------------|
 | Frontend | `masday-frontend` | UI components, styling, responsive design |
+| Visual Frontend | `masday-frontend` | Browser automation, visual analysis, design token extraction (`/masday-visual-frontend`) |
 | Backend | `masday-backend` | APIs, databases, server infrastructure |
 | Security | `masday-security` | OWASP scan, secrets, auth bypass check |
 | Linting | `masday-linter` | TypeScript strict, ESLint, code style |
