@@ -45,6 +45,14 @@ Visual review and frontend code audit with scored reporting. Analyzes running ap
 | **Full Review** | `/masday-frontend-review full` (browser + code) |
 | **Compare vs Reference** | `/masday-frontend-review compare https://stripe.com` |
 
+## Mode Validation
+
+Valid modes: `browser`, `code`, `full`, `compare <url>`. If `$ARGUMENTS` does not match any valid mode:
+
+1. Print: `Unknown mode: "{arguments}". Valid modes: browser, code, full, compare <url>`
+2. Show the Quick Start table above
+3. STOP — do not proceed with a fallback mode
+
 ## Execution Model
 
 This skill **dispatches to the `masday-frontend-reviewer` agent** for actual review work. The skill handles mode detection and routing; the agent executes the audit with full tool access.
