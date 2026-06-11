@@ -9,19 +9,34 @@ use std::path::Path;
 use tracing::{error, info, warn};
 
 /// Load the capability registry from `.claude/registry.json`.
+/// Checks project dir first, then falls back to `~/.claude/registry.json` (global).
 /// Returns the parsed JSON object, or an empty registry on failure.
 fn load_registry(project_root: &str) -> Value {
-    let path = std::path::Path::new(project_root).join(".claude/registry.json");
-    match std::fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
-            warn!("load_registry: failed to parse {}: {e}", path.display());
-            json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": []}})
-        }),
-        Err(e) => {
-            warn!("load_registry: failed to read {}: {e}", path.display());
-            json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": []}})
+    let empty = json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": []}});
+
+    // 1. Project-level: {project_root}/.claude/registry.json
+    let project_path = Path::new(project_root).join(".claude/registry.json");
+    if let Ok(content) = std::fs::read_to_string(&project_path) {
+        if let Ok(val) = serde_json::from_str::<Value>(&content) {
+            return val;
+        } else {
+            warn!("load_registry: failed to parse {}", project_path.display());
         }
     }
+
+    // 2. Global fallback: ~/.claude/registry.json
+    if let Some(home) = home::home_dir() {
+        let global_path = home.join(".claude/registry.json");
+        if let Ok(content) = std::fs::read_to_string(&global_path) {
+            if let Ok(val) = serde_json::from_str::<Value>(&content) {
+                return val;
+            } else {
+                warn!("load_registry: failed to parse {}", global_path.display());
+            }
+        }
+    }
+
+    empty
 }
 
 /// Timestamp helper — returns current UTC time as RFC 3339 string.
