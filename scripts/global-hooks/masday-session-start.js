@@ -28,6 +28,20 @@ process.stdin.on('end', () => {
     if (hasAgents || hasConfig) {
       lines.push("⚡ Masday session started.");
 
+
+      // Auto-sync registry.json from disk
+      const syncScript = path.join(cwd, "scripts", "registry-sync.mjs");
+      const registryFile = path.join(cwd, ".claude", "registry.json");
+      if (fs.existsSync(syncScript)) {
+        try {
+          const { execSync } = require("child_process");
+          execSync(`node "${syncScript}"`, { cwd, timeout: 5000, stdio: "pipe" });
+          const reg = JSON.parse(fs.readFileSync(registryFile, "utf8"));
+          const ac = reg.components?.agents?.length || 0;
+          const sc = reg.components?.skills?.length || 0;
+          lines.push(`  Registry: ${ac} agents, ${sc} skills synced`);
+        } catch {}
+      }
       // Read config summary
       if (hasConfig) {
         try {
