@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS session_states (
 CREATE TABLE IF NOT EXISTS parallel_branches (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT, -- nullable, no FK — branches can use custom identifiers
     branch_key TEXT NOT NULL DEFAULT 'default',
     role TEXT NOT NULL DEFAULT 'executor',
     status TEXT NOT NULL DEFAULT 'ACTIVE',
