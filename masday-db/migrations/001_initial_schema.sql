@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- ============================================================================
 
 -- Workflows table: Stores workflow execution state with status tracking
-CREATE TABLE workflows (
+CREATE TABLE IF NOT EXISTS workflows (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
@@ -23,11 +23,11 @@ CREATE TABLE workflows (
 );
 
 -- Indexes for workflows
-CREATE INDEX idx_workflows_status ON workflows(status);
-CREATE INDEX idx_workflows_project_path ON workflows(project_path);
+CREATE INDEX IF NOT EXISTS idx_workflows_status ON workflows(status);
+CREATE INDEX IF NOT EXISTS idx_workflows_project_path ON workflows(project_path);
 
 -- Plans table: Stores plan versions with phases and content
-CREATE TABLE plans (
+CREATE TABLE IF NOT EXISTS plans (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     version INTEGER NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE plans (
 -- ============================================================================
 
 -- Tasks table: Stores tasks with TDD support and progress tracking
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
@@ -71,12 +71,12 @@ CREATE TABLE tasks (
 );
 
 -- Indexes for tasks
-CREATE INDEX idx_tasks_workflow_id ON tasks(workflow_id);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_plan_id ON tasks(plan_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_workflow_id ON tasks(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_plan_id ON tasks(plan_id);
 
 -- Task progress logs table: Tracks progress updates with evidence capture
-CREATE TABLE task_progress_logs (
+CREATE TABLE IF NOT EXISTS task_progress_logs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     task_id TEXT NOT NULL ,
@@ -93,7 +93,7 @@ CREATE TABLE task_progress_logs (
 -- ============================================================================
 
 -- Review decisions table: Stores code review decisions with gap analysis
-CREATE TABLE review_decisions (
+CREATE TABLE IF NOT EXISTS review_decisions (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     task_id TEXT NOT NULL ,
@@ -107,7 +107,7 @@ CREATE TABLE review_decisions (
 );
 
 -- Session states table: Tracks session state with loading flags and execution mode
-CREATE TABLE session_states (
+CREATE TABLE IF NOT EXISTS session_states (
     id TEXT PRIMARY KEY,
     session_key TEXT UNIQUE NOT NULL,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
@@ -134,7 +134,7 @@ CREATE TABLE session_states (
 -- ============================================================================
 
 -- Parallel branches table: Stores parallel execution branches within workflows
-CREATE TABLE parallel_branches (
+CREATE TABLE IF NOT EXISTS parallel_branches (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     task_id TEXT ,
@@ -152,7 +152,7 @@ CREATE TABLE parallel_branches (
 -- ============================================================================
 
 -- Memories table: Stores long-term memories with importance scoring and tags
-CREATE TABLE memories (
+CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
     task_id TEXT ,
@@ -172,12 +172,12 @@ CREATE TABLE memories (
 );
 
 -- Indexes for memories
-CREATE INDEX idx_memories_workflow_id ON memories(workflow_id);
-CREATE INDEX idx_memories_type ON memories(memory_type);
-CREATE INDEX idx_memories_tags ON memories USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_memories_workflow_id ON memories(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
+CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories USING GIN(tags);
 
 -- Context documents table: Stores context documents with fingerprinting and embeddings
-CREATE TABLE context_documents (
+CREATE TABLE IF NOT EXISTS context_documents (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
     source_type TEXT NOT NULL, -- file, url, code_search, memory_store
@@ -196,7 +196,7 @@ CREATE TABLE context_documents (
 -- ============================================================================
 
 -- Graph nodes table: Stores nodes in the knowledge graph
-CREATE TABLE graph_nodes (
+CREATE TABLE IF NOT EXISTS graph_nodes (
     id TEXT PRIMARY KEY,
     node_type TEXT NOT NULL, -- workflow, task, memory, concept, agent, skill
     name TEXT UNIQUE NOT NULL,
@@ -205,7 +205,7 @@ CREATE TABLE graph_nodes (
 );
 
 -- Graph edges table: Stores edges between nodes in the knowledge graph
-CREATE TABLE graph_edges (
+CREATE TABLE IF NOT EXISTS graph_edges (
     id TEXT PRIMARY KEY,
     source_node_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
     target_node_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
@@ -216,16 +216,16 @@ CREATE TABLE graph_edges (
 );
 
 -- Indexes for graph edges
-CREATE INDEX idx_graph_edges_source ON graph_edges(source_node_id);
-CREATE INDEX idx_graph_edges_target ON graph_edges(target_node_id);
-CREATE INDEX idx_graph_edges_relation ON graph_edges(relation_type);
+CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_node_id);
+CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_node_id);
+CREATE INDEX IF NOT EXISTS idx_graph_edges_relation ON graph_edges(relation_type);
 
 -- ============================================================================
 -- Episodic Memory Tables
 -- ============================================================================
 
 -- Episodic memories table: Stores episodic memories per session with sequence ordering
-CREATE TABLE episodic_memories (
+CREATE TABLE IF NOT EXISTS episodic_memories (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     role TEXT NOT NULL, -- user, assistant, system, tool
@@ -235,14 +235,14 @@ CREATE TABLE episodic_memories (
 );
 
 -- Index for episodic memories
-CREATE INDEX idx_episodic_session_id ON episodic_memories(session_id);
+CREATE INDEX IF NOT EXISTS idx_episodic_session_id ON episodic_memories(session_id);
 
 -- ============================================================================
 -- LLM & Token Tracking Tables
 -- ============================================================================
 
 -- LLM provider configs table: Stores LLM provider configuration with models and priority
-CREATE TABLE llm_provider_configs (
+CREATE TABLE IF NOT EXISTS llm_provider_configs (
     id TEXT PRIMARY KEY,
     provider_name TEXT NOT NULL UNIQUE,
     base_url TEXT NOT NULL,
@@ -255,7 +255,7 @@ CREATE TABLE llm_provider_configs (
 );
 
 -- Token usage table: Tracks token usage per source, route, and model
-CREATE TABLE token_usage (
+CREATE TABLE IF NOT EXISTS token_usage (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL, -- anthropic, openai, custom
     route TEXT NOT NULL, -- API endpoint or skill name
@@ -269,15 +269,15 @@ CREATE TABLE token_usage (
 );
 
 -- Indexes for token usage
-CREATE INDEX idx_token_usage_source ON token_usage(source);
-CREATE INDEX idx_token_usage_created_at ON token_usage(created_at);
+CREATE INDEX IF NOT EXISTS idx_token_usage_source ON token_usage(source);
+CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at);
 
 -- ============================================================================
 -- Logging & Reminder Tables
 -- ============================================================================
 
 -- Retrieval logs table: Logs retrieval operations for context and semantic search
-CREATE TABLE retrieval_logs (
+CREATE TABLE IF NOT EXISTS retrieval_logs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
     task_id TEXT ,
@@ -289,11 +289,11 @@ CREATE TABLE retrieval_logs (
 );
 
 -- Indexes for retrieval logs
-CREATE INDEX idx_retrieval_workflow_id ON retrieval_logs(workflow_id);
-CREATE INDEX idx_retrieval_created_at ON retrieval_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_retrieval_workflow_id ON retrieval_logs(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_retrieval_created_at ON retrieval_logs(created_at);
 
 -- Workflow reminders table: Stores reminders for workflows with severity levels
-CREATE TABLE workflow_reminders (
+CREATE TABLE IF NOT EXISTS workflow_reminders (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     task_id TEXT ,
@@ -305,5 +305,5 @@ CREATE TABLE workflow_reminders (
 );
 
 -- Indexes for workflow reminders
-CREATE INDEX idx_reminders_workflow_id ON workflow_reminders(workflow_id);
-CREATE INDEX idx_reminders_acknowledged ON workflow_reminders(acknowledged);
+CREATE INDEX IF NOT EXISTS idx_reminders_workflow_id ON workflow_reminders(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_acknowledged ON workflow_reminders(acknowledged);
