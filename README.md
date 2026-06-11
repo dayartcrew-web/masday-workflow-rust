@@ -114,6 +114,53 @@ MASDAY_API_KEY="your-api-key"
 
 ### Memory Stack
 
+Masday uses a **3-layer persistence** architecture:
+
+#### Layer 1: File-based Memory (Claude Code native)
+
+```
+~/.claude/projects/<project>/memory/
+├── MEMORY.md              ← Index (auto-loaded every session)
+├── decision-name.md       ← Individual memory files
+└── another-fact.md
+```
+
+- Each file = 1 fact with frontmatter (`name`, `description`, `metadata.type`)
+- `MEMORY.md` = table of contents loaded into context at every session start
+- Written by Claude via `Write` tool, not MCP
+- Best for: user preferences, critical decisions, project constraints
+
+#### Layer 2: SQLite/PostgreSQL Memory (MCP `memory_*` tools)
+
+```
+Local:  ~/.masday/data.db → table: memories
+Remote: PostgreSQL        → table: memories (with pgvector)
+```
+
+- Store/search via `mcp__masday__memory_store`, `memory_search`, `memory_recall`
+- 4-layer model: working → episodic → long-term → graph
+- **Local mode (SQLite):** Feature hashing vectorizer (not neural embeddings)
+  - `hash(text) → [f32; 768]` — non-cryptographic hash functions
+  - Vectors stored as BLOB in SQLite
+  - Cosine similarity computed in **Rust code** (brute-force, not SQL)
+  - Suitable for hundreds of memories, not thousands
+- **Remote mode (PostgreSQL):** pgvector extension for proper vector search
+  - `ORDER BY embedding <=> $query_vector` — indexable with IVFFlat/HNSW
+  - Scales to millions of vectors
+- Scoring: `similarity×0.6 + importance×0.2 + recency×0.1 + usage×0.1`
+
+#### Layer 3: Knowledge Graph (MCP `graph_*` tools)
+
+```
+Local:  ~/.masday/data.db → tables: graph_nodes, graph_edges
+Remote: PostgreSQL        → tables: graph_nodes, graph_edges
+```
+
+- Concepts as nodes, relationships as edges
+- Jaccard similarity auto-link (threshold 0.3)
+
+#### 4-Layer Memory Model
+
 ```
   +----------------------------------------------------------+
   |                   WORKING MEMORY                         |
@@ -123,19 +170,29 @@ MASDAY_API_KEY="your-api-key"
   +----------------------------------------------------------+
   |                  EPISODIC MEMORY                         |
   |            Last N messages per session                   |
+  |         Persisted to EpisodicMemory table                |
   +----------------------------------------------------------+
                            |
   +----------------------------------------------------------+
   |                 LONG-TERM MEMORY                         |
-  |   Scoring: similarity*0.6 + importance*0.2               |
-  |            + recency*0.1 + usage*0.1                     |
+  |   Scoring: similarity×0.6 + importance×0.2               |
+  |            + recency×0.1 + usage×0.1                     |
+  |   Memory table (SQLite BLOB or PostgreSQL pgvector)      |
   +----------------------------------------------------------+
                            |
   +----------------------------------------------------------+
   |                 KNOWLEDGE GRAPH                          |
   |             Nodes & edges, auto-linked                   |
+  |        GraphNode + GraphEdge tables                      |
   +----------------------------------------------------------+
 ```
+
+#### Embedding Implementation
+
+| Mode | Vectorizer | Storage | Search | Scale |
+|------|-----------|---------|--------|-------|
+| Local (SQLite) | Feature hashing (768-dim) | BLOB column | Rust brute-force cosine | ~100s |
+| Remote (PostgreSQL) | ONNX nomic-embed-text or OpenAI | pgvector column | `ORDER BY <=>` (IVFFlat/HNSW index) | ~millions |
 
 ### Workflow States
 
