@@ -1,11 +1,15 @@
 {
   "servers": {
     "masday": {
-      "headers": {
-        "Authorization": "Bearer ***"
+      "args": [
+        "mcp"
+      ],
+      "command": "/home/vibe-dev/.masday/bin/masday (deleted)",
+      "env": {
+        "MASDAY_API_KEY": "none",
+        "MASDAY_API_URL": "none"
       },
-      "type": "streamableHttp",
-      "url": "http://localhost:30101/mcp"
+      "type": "stdio"
     }
   }
 }

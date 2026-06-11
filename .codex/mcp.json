@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "masday": {
+      "args": [
+        "mcp"
+      ],
+      "command": "/home/vibe-dev/.masday/bin/masday (deleted)",
+      "env": {
+        "MASDAY_API_KEY": "none",
+        "MASDAY_API_URL": "none"
+      },
+      "type": "stdio"
+    }
+  }
+}
