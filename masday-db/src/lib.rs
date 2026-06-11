@@ -64,6 +64,14 @@ pub async fn run_migrations(pool: &DbPool) -> Result<(), String> {
             "002_add_missing_columns",
             include_str!("../migrations/002_add_missing_columns.sql"),
         ),
+        (
+            "003_indexed_files",
+            include_str!("../migrations/003_indexed_files.sql"),
+        ),
+        (
+            "004_drop_task_id_fks",
+            include_str!("../migrations/004_drop_task_id_fks.sql"),
+        ),
     ];
 
     let client = pool
