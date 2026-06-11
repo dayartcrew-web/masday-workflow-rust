@@ -79,7 +79,7 @@ CREATE INDEX idx_tasks_plan_id ON tasks(plan_id);
 CREATE TABLE task_progress_logs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL ,
     agent_name TEXT NOT NULL,
     status_before TEXT,
     status_after TEXT,
@@ -96,7 +96,7 @@ CREATE TABLE task_progress_logs (
 CREATE TABLE review_decisions (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL ,
     reviewer_agent TEXT NOT NULL,
     decision TEXT NOT NULL, -- APPROVED, REWORK_REQUIRED, BLOCKED
     notes TEXT NOT NULL,
@@ -112,7 +112,7 @@ CREATE TABLE session_states (
     session_key TEXT UNIQUE NOT NULL,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
     plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT ,
     workflow_loaded BOOLEAN,
     plan_loaded BOOLEAN,
     task_loaded BOOLEAN,
@@ -137,7 +137,7 @@ CREATE TABLE session_states (
 CREATE TABLE parallel_branches (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT ,
     branch_key TEXT NOT NULL,
     role TEXT NOT NULL,
     status TEXT NOT NULL, -- PENDING, RUNNING, DONE, FAILED
@@ -155,7 +155,7 @@ CREATE TABLE parallel_branches (
 CREATE TABLE memories (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT ,
     memory_type TEXT NOT NULL, -- fact, preference, skill, experience, strategy
     summary TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -280,7 +280,7 @@ CREATE INDEX idx_token_usage_created_at ON token_usage(created_at);
 CREATE TABLE retrieval_logs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT ,
     agent_name TEXT NOT NULL,
     query TEXT NOT NULL,
     source TEXT NOT NULL, -- memory, semantic_search, code_search, hybrid
@@ -296,7 +296,7 @@ CREATE INDEX idx_retrieval_created_at ON retrieval_logs(created_at);
 CREATE TABLE workflow_reminders (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT ,
     reminder_type TEXT NOT NULL, -- stale, stuck, failed, timeout
     severity TEXT NOT NULL, -- LOW, MEDIUM, HIGH, CRITICAL
     message TEXT NOT NULL,
