@@ -10,13 +10,18 @@ fn main() {
     let skills_src = workspace_root.join(".claude/skills");
     let hooks_src = workspace_root.join(".claude/hooks");
     let global_hooks_src = workspace_root.join("scripts/global-hooks");
+    let git_hooks_src = workspace_root.join("scripts/git-hooks");
     let scripts_src = workspace_root.join("scripts");
 
     println!("cargo:rerun-if-changed={}", agents_src.display());
     println!("cargo:rerun-if-changed={}", skills_src.display());
     println!("cargo:rerun-if-changed={}", global_hooks_src.display());
     println!("cargo:rerun-if-changed={}", hooks_src.display());
-    println!("cargo:rerun-if-changed={}", scripts_src.join("registry-sync.mjs").display());
+    println!("cargo:rerun-if-changed={}", git_hooks_src.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        scripts_src.join("registry-sync.mjs").display()
+    );
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let templates_dir = Path::new(&out_dir).join("templates");
@@ -25,12 +30,14 @@ fn main() {
     let agents_dir = templates_dir.join("agents");
     let skills_dir = templates_dir.join("skills");
     let global_hooks_dir = templates_dir.join("global-hooks");
+    let git_hooks_dir = templates_dir.join("git-hooks");
     let project_hooks_dir = templates_dir.join("project-hooks");
     let scripts_dir = templates_dir.join("scripts");
 
     fs::create_dir_all(&agents_dir).unwrap();
     fs::create_dir_all(&skills_dir).unwrap();
     fs::create_dir_all(&global_hooks_dir).unwrap();
+    fs::create_dir_all(&git_hooks_dir).unwrap();
     fs::create_dir_all(&project_hooks_dir).unwrap();
     fs::create_dir_all(&scripts_dir).unwrap();
 
@@ -70,6 +77,19 @@ fn main() {
             if path.is_file() {
                 if let Some(filename) = path.file_name() {
                     let dest = global_hooks_dir.join(filename);
+                    fs::copy(&path, &dest).unwrap();
+                }
+            }
+        }
+    }
+
+    // Copy git hooks (pre-commit, pre-push, etc.)
+    if let Ok(entries) = fs::read_dir(&git_hooks_src) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(filename) = path.file_name() {
+                    let dest = git_hooks_dir.join(filename);
                     fs::copy(&path, &dest).unwrap();
                 }
             }

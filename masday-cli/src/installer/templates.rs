@@ -86,6 +86,26 @@ pub fn extract_global_hooks() -> Vec<(String, String)> {
     hooks
 }
 
+/// Extract all git hook files as (filename, content) tuples
+pub fn extract_git_hooks() -> Vec<(String, String)> {
+    let mut hooks = Vec::new();
+
+    if let Some(hooks_dir) = TEMPLATES.get_dir("git-hooks") {
+        for entry in hooks_dir.entries() {
+            if let Some(file) = entry.as_file() {
+                if let Some(name) = file.path().file_name().and_then(|n| n.to_str()) {
+                    if let Some(content_utf8) = file.contents_utf8() {
+                        hooks.push((name.to_string(), content_utf8.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    hooks.sort_by(|a, b| a.0.cmp(&b.0));
+    hooks
+}
+
 /// Extract all project hook files as (filename, content) tuples
 pub fn extract_project_hooks() -> Vec<(String, String)> {
     let mut hooks = Vec::new();
@@ -127,22 +147,45 @@ pub fn extract_scripts() -> Vec<(String, String)> {
 }
 
 /// Install utility scripts to ~/.masday/scripts/
+/// Also syncs git-hooks to ~/.masday/scripts/git-hooks/
 pub fn sync_scripts_to_masday_dir(home_dir: &Path) -> usize {
-    let scripts = extract_scripts();
-    let scripts_dir = home_dir.join(".masday").join("scripts");
-
-    if scripts.is_empty() {
-        return 0;
-    }
-
-    let _ = std::fs::create_dir_all(&scripts_dir);
     let mut count = 0;
-    for (name, content) in &scripts {
-        let dest = scripts_dir.join(name);
-        if std::fs::write(&dest, content).is_ok() {
-            count += 1;
+
+    // Utility scripts (flat files)
+    let scripts = extract_scripts();
+    if !scripts.is_empty() {
+        let scripts_dir = home_dir.join(".masday").join("scripts");
+        let _ = std::fs::create_dir_all(&scripts_dir);
+        for (name, content) in &scripts {
+            let dest = scripts_dir.join(name);
+            if std::fs::write(&dest, content).is_ok() {
+                count += 1;
+            }
         }
     }
+
+    // Git hooks → ~/.masday/scripts/git-hooks/
+    let git_hooks = extract_git_hooks();
+    if !git_hooks.is_empty() {
+        let git_hooks_dir = home_dir.join(".masday").join("scripts").join("git-hooks");
+        let _ = std::fs::create_dir_all(&git_hooks_dir);
+        for (name, content) in &git_hooks {
+            let dest = git_hooks_dir.join(name);
+            if std::fs::write(&dest, content).is_ok() {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Ok(metadata) = std::fs::metadata(&dest) {
+                        let mut perms = metadata.permissions();
+                        perms.set_mode(0o755);
+                        let _ = std::fs::set_permissions(&dest, perms);
+                    }
+                }
+                count += 1;
+            }
+        }
+    }
+
     count
 }
 

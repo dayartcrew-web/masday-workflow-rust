@@ -20,6 +20,7 @@ use crate::installer::{
     all_platforms, build_crates, generate_mcp_config, install_global_hooks, install_project_hooks,
     is_build_fresh, register_hooks_in_settings, sync_agents_to_global, sync_agents_to_project,
     sync_skills_to_global, sync_skills_to_project, sync_scripts_to_masday_dir, McpConfig, Platform,
+    install_git_hooks,
 };
 
 /// Arguments for the quickstart command (supports non-interactive mode).
@@ -1223,6 +1224,20 @@ pub fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> 
         "  {} project hooks installed",
         style(project_report.copied).green()
     );
+
+    // Git hooks (pre-commit, pre-push → .git/hooks/)
+    let git_report = install_git_hooks(project_dir)?;
+    if git_report.copied > 0 {
+        println!(
+            "  {} git hooks installed (pre-commit, pre-push)",
+            style(git_report.copied).green()
+        );
+    } else if git_report.skipped > 0 {
+        println!(
+            "  {} git hooks skipped (no .git/hooks/ found)",
+            style(git_report.skipped).dim()
+        );
+    }
     println!();
 
     // ── Register hooks in Claude Code settings ─────────────────────────

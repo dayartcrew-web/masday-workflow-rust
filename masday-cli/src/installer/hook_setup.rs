@@ -43,6 +43,46 @@ pub fn install_global_hooks(home_dir: &Path) -> Result<SyncReport> {
     Ok(report)
 }
 
+/// Install git hooks (pre-commit, pre-push, etc.) to the project's .git/hooks/
+pub fn install_git_hooks(project_dir: &Path) -> Result<SyncReport> {
+    let hooks = templates::extract_git_hooks();
+    let git_hooks_dir = project_dir.join(".git/hooks");
+
+    // Skip if not a git repo
+    if !git_hooks_dir.exists() {
+        return Ok(SyncReport {
+            platform: "git".to_string(),
+            copied: 0,
+            skipped: hooks.len(),
+        });
+    }
+
+    let mut report = SyncReport {
+        platform: "git".to_string(),
+        copied: 0,
+        skipped: 0,
+    };
+
+    for (name, content) in hooks.iter() {
+        let hook_path = git_hooks_dir.join(name);
+        fs::write(&hook_path, content)
+            .with_context(|| format!("Failed to write git hook {}", hook_path.display()))?;
+
+        // Set executable permission on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&hook_path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&hook_path, perms)?;
+        }
+
+        report.copied += 1;
+    }
+
+    Ok(report)
+}
+
 pub fn install_project_hooks(project_dir: &Path) -> Result<SyncReport> {
     let hooks = templates::extract_project_hooks();
     let hooks_dir = project_dir.join(".claude/hooks");

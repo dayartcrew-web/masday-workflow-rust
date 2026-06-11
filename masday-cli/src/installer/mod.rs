@@ -22,8 +22,9 @@ pub use build::{
 };
 pub use env_setup::{check_prerequisites, ensure_env_file, load_env, Prerequisites};
 pub use hook_setup::{
-    install_global_hooks, install_project_hooks, register_hooks_in_settings,
-    uninstall_global_hooks, uninstall_project_hooks, SyncReport as HookSyncReport,
+    install_git_hooks, install_global_hooks, install_project_hooks,
+    register_hooks_in_settings, uninstall_global_hooks, uninstall_project_hooks,
+    SyncReport as HookSyncReport,
 };
 pub use mcp_config::{generate_mcp_config, remove_mcp_config, McpConfig};
 pub use platform::{
