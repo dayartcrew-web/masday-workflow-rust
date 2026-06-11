@@ -98,7 +98,9 @@ fn backfill_embeddings(conn: &Connection) {
 /// Initialize the SQLite database.
 ///
 /// Creates `~/.masday/data.db` if it doesn't exist, then runs the embedded schema.
-/// Panics if initialization fails.
+/// If the database already exists, creates a timestamped backup before applying
+/// any schema changes. Existing data is never deleted — `CREATE TABLE IF NOT EXISTS`
+/// is used throughout.
 pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db_path = db_path()?;
 
@@ -107,12 +109,29 @@ pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         std::fs::create_dir_all(parent)?;
     }
 
-    info!("Opening SQLite database at {}", db_path.display());
+    let db_exists = db_path.exists() && db_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+
+    if db_exists {
+        // Backup existing database before any schema operations
+        let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let backup_path = db_path.with_extension(format!("db.backup.{}", timestamp));
+        match std::fs::copy(&db_path, &backup_path) {
+            Ok(bytes) => info!(
+                "Existing database backed up to {} ({} bytes)",
+                backup_path.display(),
+                bytes
+            ),
+            Err(e) => info!("Backup failed (continuing anyway): {}", e),
+        }
+        info!("Opening existing SQLite database at {}", db_path.display());
+    } else {
+        info!("Creating new SQLite database at {}", db_path.display());
+    }
 
     let conn = Connection::open(&db_path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
 
-    // Create schema
+    // Create schema (safe — uses IF NOT EXISTS throughout)
     conn.execute_batch(crate::sqlite_schema::SCHEMA)?;
 
     // Run migrations for existing databases
@@ -121,7 +140,26 @@ pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Backfill embeddings for existing memories
     backfill_embeddings(&conn);
 
-    info!("SQLite schema initialized");
+    // Count tables for logging
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    if db_exists {
+        info!(
+            "SQLite database ready — {} tables (existing DB preserved)",
+            table_count
+        );
+    } else {
+        info!(
+            "SQLite database initialized — {} tables created",
+            table_count
+        );
+    }
 
     DB.set(Mutex::new(conn))
         .map_err(|_| "SQLite database already initialized".to_string())?;
