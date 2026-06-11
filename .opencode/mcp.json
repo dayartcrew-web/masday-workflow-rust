@@ -4,7 +4,7 @@
       "args": [
         "mcp"
       ],
-      "command": "/home/vibe-dev/.masday/bin/masday (deleted)",
+      "command": "/home/vibe-dev/.masday/bin/masday",
       "env": {
         "MASDAY_API_KEY": "none",
         "MASDAY_API_URL": "none"
