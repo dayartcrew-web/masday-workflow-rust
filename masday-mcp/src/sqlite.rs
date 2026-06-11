@@ -129,7 +129,9 @@ pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     let conn = Connection::open(&db_path)?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    // foreign_keys=OFF: MCP uses custom task_id identifiers that don't exist in tasks table.
+    // Referential integrity is handled at application level (masday-service).
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=OFF;")?;
 
     // Create schema (safe — uses IF NOT EXISTS throughout)
     conn.execute_batch(crate::sqlite_schema::SCHEMA)?;
