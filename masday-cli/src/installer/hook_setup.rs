@@ -64,6 +64,15 @@ pub fn install_git_hooks(project_dir: &Path) -> Result<SyncReport> {
     };
 
     for (name, content) in hooks.iter() {
+        // Skip bash-only hooks on Windows
+        #[cfg(windows)]
+        {
+            if name == "pre-commit-docs" {
+                report.skipped += 1;
+                continue;
+            }
+        }
+
         let hook_path = git_hooks_dir.join(name);
         fs::write(&hook_path, content)
             .with_context(|| format!("Failed to write git hook {}", hook_path.display()))?;

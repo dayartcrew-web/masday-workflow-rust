@@ -170,6 +170,14 @@ pub fn sync_scripts_to_masday_dir(home_dir: &Path) -> usize {
         let git_hooks_dir = home_dir.join(".masday").join("scripts").join("git-hooks");
         let _ = std::fs::create_dir_all(&git_hooks_dir);
         for (name, content) in &git_hooks {
+            // Skip bash-only hooks on Windows
+            #[cfg(windows)]
+            {
+                if name == "pre-commit-docs" {
+                    continue;
+                }
+            }
+
             let dest = git_hooks_dir.join(name);
             if std::fs::write(&dest, content).is_ok() {
                 #[cfg(unix)]
