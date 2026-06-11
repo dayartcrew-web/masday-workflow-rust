@@ -459,6 +459,12 @@
         "directory": ".claude/skills/masday-workflow-verify",
         "category": "general",
         "description": ""
+      },
+      {
+        "name": "masday-worktree",
+        "directory": ".claude/skills/masday-worktree",
+        "category": "operations",
+        "description": "Manage per-task git worktrees for isolated implementation"
       }
     ],
     "hooks": [
