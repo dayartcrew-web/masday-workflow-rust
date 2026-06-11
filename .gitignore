@@ -52,3 +52,6 @@ target/
 
 # Local embedding model cache
 .fastembed_cache/
+
+# Worktree state (local only)
+.masday/worktrees/
