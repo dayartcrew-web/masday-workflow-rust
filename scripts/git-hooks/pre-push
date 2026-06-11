@@ -55,17 +55,27 @@ FAILED=0
 # --- Rust ---
 if [[ " ${STACKS[*]} " =~ " rust " ]]; then
   if command -v cargo &>/dev/null; then
-    # Check if release binary is already up-to-date
-    CARGO_VERSION="$(cargo metadata --format-version=1 2>/dev/null | python3 -c "import json,sys; pkgs=json.load(sys.stdin)['packages']; print(next((p['version'] for p in pkgs if p['name']=='masday-cli'),''))" 2>/dev/null || echo "")"
     RELEASE_BIN="target/release/masday"
     NEEDS_BUILD=1
-    if [ -n "$CARGO_VERSION" ] && [ -f "$RELEASE_BIN" ]; then
-      BIN_VERSION="$("$RELEASE_BIN" --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "")"
-      if [ "$BIN_VERSION" = "$CARGO_VERSION" ]; then
-        echo "  [rust] release binary v${BIN_VERSION} already built — skipping build"
-        NEEDS_BUILD=0
+
+    # Skip build if release binary exists and no source files are newer
+    if [ -f "$RELEASE_BIN" ]; then
+      # 1) Version match: compare binary version with Cargo.toml
+      BIN_VERSION="$("$RELEASE_BIN" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")"
+      CARGO_VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' masday-cli/Cargo.toml 2>/dev/null | head -1 || echo "")"
+
+      if [ -n "$BIN_VERSION" ] && [ "$BIN_VERSION" = "$CARGO_VERSION" ]; then
+        # 2) Freshness: ensure no .rs files changed after the binary
+        STALE_FILES="$(find . -name '*.rs' -newer "$RELEASE_BIN" -not -path './target/*' 2>/dev/null | head -1)"
+        if [ -z "$STALE_FILES" ]; then
+          echo "  [rust] release binary v${BIN_VERSION} up-to-date — skipping build"
+          NEEDS_BUILD=0
+        else
+          echo "  [rust] source files changed since last build — rebuilding"
+        fi
       fi
     fi
+
     if [ "$NEEDS_BUILD" -eq 1 ]; then
       echo "  [rust] cargo build ..."
       cargo build --release --workspace 2>&1 | tail -3 || FAILED=1
