@@ -219,6 +219,7 @@ capability_match_agent({
 | Config | `masday-config` | Env vars, secrets, multi-environment |
 | Ideation | `masday-ideation` | Feature ideas, improvement opportunities |
 | Git | `masday-git-master` | Branches, merges, PRs, conflict resolution |
+| Worktree | `masday-git-master` + `/masday-worktree` | Per-task isolated git worktrees |
 | Intel | `masday-intel-updater` | Codebase intelligence, .masday/intel/ files |
 
 ### Delegation Rules
