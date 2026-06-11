@@ -191,6 +191,70 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
 
 ## Memory Stack
 
+Masday uses a **3-layer persistence** architecture for memory:
+
+### Layer 1: File-based Memory (Claude Code native)
+
+```
+~/.claude/projects/<project>/memory/
+├── MEMORY.md              ← Index (auto-loaded every session)
+├── decision-name.md       ← Individual memory files
+└── another-fact.md
+```
+
+- Each file = 1 fact with frontmatter (`name`, `description`, `metadata.type`)
+- `MEMORY.md` = table of contents loaded into context at every session start
+- Written by Claude via `Write` tool, not MCP
+- Best for: user preferences, critical decisions, project constraints
+
+### Layer 2: SQLite/PostgreSQL Memory (MCP `memory_*` tools)
+
+```
+Local:  ~/.masday/data.db → table: memories
+Remote: PostgreSQL        → table: memories (with pgvector)
+```
+
+- Store/search via `mcp__masday__memory_store`, `memory_search`, `memory_recall`
+- 4-layer memory model: working → episodic → long-term → graph
+- **Local mode (SQLite):** Feature hashing vectorizer (not neural embeddings)
+  - `hash(text) → [f32; 768]` using non-cryptographic hash functions
+  - Vectors stored as BLOB in SQLite
+  - Cosine similarity computed in **Rust code** (brute-force, not SQL)
+  - Suitable for hundreds of memories, not thousands
+- **Remote mode (PostgreSQL):** pgvector extension for proper vector search
+  - `ORDER BY embedding <=> $query_vector` — indexable with IVFFlat/HNSW
+  - Scales to millions of vectors
+- Scoring formula: `similarity*0.6 + importance*0.2 + recency*0.1 + usage*0.1`
+
+### Layer 3: Knowledge Graph (MCP `graph_*` tools)
+
+```
+Local:  ~/.masday/data.db → tables: graph_nodes, graph_edges
+Remote: PostgreSQL        → tables: graph_nodes, graph_edges
+```
+
+- Concepts as nodes, relationships as edges
+- Jaccard similarity auto-link (threshold 0.3)
+- Automatically creates nodes on `memory_store`, `workflow_create`, `addTask`
+
+### Memory Flow at Session Start
+
+```
+SessionStart hook
+    │
+    ├── Loads MEMORY.md (file-based index → context)
+    ├── Registry sync (agents/skills refresh)
+    └── Infra health check (DB, API, MCP status)
+
+During session:
+    │
+    ├── memory_search (SQLite/PG) → retrieve relevant context
+    ├── Claude reads MEMORY.md entries for background facts
+    └── New decisions → memory_store (MCP) + Write memory file (file-based)
+```
+
+### 4-Layer Memory Model
+
 ```
   ┌──────────────────────────────────────────────────────────┐
   │                   WORKING MEMORY                         │
@@ -207,7 +271,7 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   │                 LONG-TERM MEMORY                         │
   │   Scoring: similarity*0.6 + importance*0.2               │
   │            + recency*0.1 + usage*0.1                      │
-  │   Memory table (PostgreSQL)                              │
+  │   Memory table (SQLite BLOB or PostgreSQL pgvector)      │
   └──────────────────────────────────────────────────────────┘
                             │
   ┌──────────────────────────────────────────────────────────┐
@@ -216,6 +280,13 @@ INIT ──> ANALYZE ──> PLAN ──> EXECUTE ──> VERIFY ──> DONE
   │        GraphNode + GraphEdge tables                      │
   └──────────────────────────────────────────────────────────┘
 ```
+
+### Embedding Implementation
+
+| Mode | Vectorizer | Storage | Search | Scale |
+|------|-----------|---------|--------|-------|
+| Local (SQLite) | Feature hashing (768-dim) | BLOB column | Rust brute-force cosine | ~100s |
+| Remote (PostgreSQL) | ONNX nomic-embed-text or OpenAI | pgvector column | `ORDER BY <=>` (IVFFlat/HNSW index) | ~millions |
 
 ## Build Profile
 
