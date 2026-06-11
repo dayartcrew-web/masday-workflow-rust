@@ -31,11 +31,14 @@ process.stdin.on('end', () => {
 
       // Auto-sync registry.json from disk
       const syncScript = path.join(cwd, "scripts", "registry-sync.mjs");
+      const homeSyncScript = path.join(os.homedir(), ".masday", "scripts", "registry-sync.mjs");
       const registryFile = path.join(cwd, ".claude", "registry.json");
-      if (fs.existsSync(syncScript)) {
+      const activeSyncScript = fs.existsSync(syncScript) ? syncScript
+        : fs.existsSync(homeSyncScript) ? homeSyncScript : null;
+      if (activeSyncScript) {
         try {
           const { execSync } = require("child_process");
-          execSync(`node "${syncScript}"`, { cwd, timeout: 5000, stdio: "pipe" });
+          execSync(`node "${activeSyncScript}"`, { cwd, timeout: 5000, stdio: "pipe" });
           const reg = JSON.parse(fs.readFileSync(registryFile, "utf8"));
           const ac = reg.components?.agents?.length || 0;
           const sc = reg.components?.skills?.length || 0;

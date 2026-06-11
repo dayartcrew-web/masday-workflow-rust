@@ -19,7 +19,7 @@ use crate::docker;
 use crate::installer::{
     all_platforms, build_crates, generate_mcp_config, install_global_hooks, install_project_hooks,
     is_build_fresh, register_hooks_in_settings, sync_agents_to_global, sync_agents_to_project,
-    sync_skills_to_global, sync_skills_to_project, McpConfig, Platform,
+    sync_skills_to_global, sync_skills_to_project, sync_scripts_to_masday_dir, McpConfig, Platform,
 };
 
 /// Arguments for the quickstart command (supports non-interactive mode).
@@ -1153,7 +1153,7 @@ fn ask_platforms(detected: &[Platform]) -> Result<Vec<Platform>> {
 }
 
 /// Sync agents, skills, hooks to project and global dirs
-fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
+pub fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
     println!("{}", style("Syncing agents...").cyan());
     let reports = sync_agents_to_project(project_dir, platforms, true)?;
     for r in &reports {
@@ -1206,6 +1206,15 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
             "  {} global hooks installed",
             style(global_report.copied).green()
         );
+
+        // Utility scripts (e.g. ~/.masday/scripts/registry-sync.mjs)
+        let script_count = sync_scripts_to_masday_dir(&home);
+        if script_count > 0 {
+            println!(
+                "  {} utility scripts installed to ~/.masday/scripts/",
+                style(script_count).green()
+            );
+        }
     }
 
     // Project hooks (e.g. .claude/hooks/ in project dir)
@@ -1233,7 +1242,7 @@ fn sync_templates(project_dir: &Path, platforms: &[Platform]) -> Result<()> {
 }
 
 /// Register MCP servers for all selected platforms
-fn register_mcp_servers(
+pub fn register_mcp_servers(
     project_dir: &Path,
     platforms: &[Platform],
     api_url: &str,
@@ -1267,7 +1276,7 @@ fn register_mcp_servers(
 }
 
 /// Detect platforms from home directory config files
-fn detect_active_platforms_from_home() -> Vec<Platform> {
+pub fn detect_active_platforms_from_home() -> Vec<Platform> {
     let mut platforms = Vec::new();
 
     if let Some(home) = home::home_dir() {
@@ -1518,7 +1527,7 @@ fn spinner(message: &str) -> ProgressBar {
 /// This function is called by all quickstart modes (local, remote, standalone, server)
 /// to ensure the SQLite database is properly initialized with all required tables.
 /// The database is used by the MCP server in stdio transport mode.
-fn init_sqlite_database() -> Result<()> {
+pub fn init_sqlite_database() -> Result<()> {
     println!("{}", style("Initializing SQLite database...").cyan());
 
     // Call the MCP crate's SQLite initialization

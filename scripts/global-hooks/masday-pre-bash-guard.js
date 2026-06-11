@@ -8,13 +8,16 @@
 //   - Warn about cargo clean (big rebuild)
 //
 
-const { execSync } = require("child_process");
-
-const PROJECT = "/home/vibe-dev/masday-workflow-rust";
+const fs = require("fs");
+const path = require("path");
 
 function main() {
   const cwd = process.cwd();
-  if (!cwd.includes("masday-workflow-rust") && !cwd.includes("masday-workflow-rebuild")) return;
+  // Only activate in masday project directories
+  const hasMasdayDir = fs.existsSync(path.join(cwd, ".masday")) ||
+    fs.existsSync(path.join(cwd, "masday-core")) ||
+    fs.existsSync(path.join(cwd, ".claude", "agents"));
+  if (!hasMasdayDir) return;
 
   const input = JSON.parse(process.argv[2] || "{}");
   const command = (input.command || "").toLowerCase();

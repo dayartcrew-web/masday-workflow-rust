@@ -12,7 +12,8 @@ use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
 
-use super::install::{run as install_run, InstallArgs};
+use super::quickstart;
+use crate::installer::all_platforms;
 
 const GITHUB_RELEASE_REPO: &str = "dayartcrew-web/masday-workflow-rust";
 const GITHUB_API_BASE: &str = "https://api.github.com";
@@ -583,22 +584,44 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
         println!("  {} Skipped binary download", style("⊘").dim());
     }
 
-    // Restore config.toml (install_run may overwrite)
+    // Restore config.toml (sync may overwrite)
     if let Some(ref content) = config_backup {
         restore_config(&config_path, content)?;
     }
 
-    // Re-run install to re-sync agents/skills/hooks/MCP config
+    // Re-sync agents, skills, hooks, and MCP config
     println!();
     println!("{}", style("Re-syncing configuration...").cyan());
 
-    let install_args = InstallArgs {
-        skip_build: true,
-        force: true,
-        ..Default::default()
+    // Detect platforms from home directory
+    let platforms = quickstart::detect_active_platforms_from_home();
+    let sync_platforms = if platforms.is_empty() {
+        all_platforms() // default to all if none detected
+    } else {
+        platforms
     };
 
-    install_run(install_args, project_dir)?;
+    // Sync agents, skills, hooks (uses embedded templates from binary)
+    quickstart::sync_templates(project_dir, &sync_platforms)?;
+
+    // Re-initialize SQLite (idempotent)
+    quickstart::init_sqlite_database()?;
+
+    // Re-register MCP servers using current binary
+    if let Some(config) = crate::config::MasdayConfig::load() {
+        let api_url = config.api_url.clone();
+        let api_key = config.api_key.clone();
+        let db_url = config.database_url.clone();
+        let mode = config.mode.clone();
+        quickstart::register_mcp_servers(
+            project_dir,
+            &sync_platforms,
+            &api_url,
+            &api_key,
+            db_url.as_deref(),
+            &mode,
+        )?;
+    }
 
     // Ensure config.toml is preserved after install
     if let Some(ref content) = config_backup {

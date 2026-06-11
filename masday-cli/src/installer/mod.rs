@@ -38,8 +38,9 @@ pub use skill_sync::{
     sync_skills_to_global, sync_skills_to_project, SyncReport as SkillSyncReport,
 };
 pub use templates::{
-    extract_agents, extract_global_hooks, extract_project_hooks, extract_skill_files,
-    extract_skill_names, get_templates,
+    extract_agents, extract_global_hooks, extract_project_hooks, extract_scripts,
+    extract_skill_files, extract_skill_names, get_templates,
+    sync_scripts_to_masday_dir,
 };
 
 #[cfg(test)]

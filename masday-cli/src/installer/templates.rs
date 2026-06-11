@@ -106,6 +106,46 @@ pub fn extract_project_hooks() -> Vec<(String, String)> {
     hooks
 }
 
+/// Extract utility scripts (registry-sync.mjs, etc.) as (filename, content) tuples
+pub fn extract_scripts() -> Vec<(String, String)> {
+    let mut scripts = Vec::new();
+
+    if let Some(scripts_dir) = TEMPLATES.get_dir("scripts") {
+        for entry in scripts_dir.entries() {
+            if let Some(file) = entry.as_file() {
+                if let Some(name) = file.path().file_name().and_then(|n| n.to_str()) {
+                    if let Some(content_utf8) = file.contents_utf8() {
+                        scripts.push((name.to_string(), content_utf8.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    scripts.sort_by(|a, b| a.0.cmp(&b.0));
+    scripts
+}
+
+/// Install utility scripts to ~/.masday/scripts/
+pub fn sync_scripts_to_masday_dir(home_dir: &Path) -> usize {
+    let scripts = extract_scripts();
+    let scripts_dir = home_dir.join(".masday").join("scripts");
+
+    if scripts.is_empty() {
+        return 0;
+    }
+
+    let _ = std::fs::create_dir_all(&scripts_dir);
+    let mut count = 0;
+    for (name, content) in &scripts {
+        let dest = scripts_dir.join(name);
+        if std::fs::write(&dest, content).is_ok() {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Helper to recursively extract files from a directory
 fn extract_files_recursive(dir: &Dir, base_path: &Path, output: &mut Vec<(String, String)>) {
     for entry in dir.entries() {
