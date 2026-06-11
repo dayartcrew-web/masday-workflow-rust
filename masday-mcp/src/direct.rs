@@ -14,29 +14,51 @@ use tracing::{error, info, warn};
 fn load_registry(project_root: &str) -> Value {
     let empty = json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": []}});
 
-    // 1. Project-level: {project_root}/.claude/registry.json
+    // 1. Global: ~/.claude/registry.json (Claude Code reads agents from here)
+    if let Some(home) = home::home_dir() {
+        let global_path = home.join(".claude").join("registry.json");
+        if let Ok(content) = std::fs::read_to_string(&global_path) {
+            if let Ok(val) = serde_json::from_str::<Value>(&content) {
+                if !registry_agents_empty(&val) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    // 2. Masday home: ~/.masday/registry.json (installed by masday update)
+    if let Some(home) = home::home_dir() {
+        let masday_path = home.join(".masday").join("registry.json");
+        if let Ok(content) = std::fs::read_to_string(&masday_path) {
+            if let Ok(val) = serde_json::from_str::<Value>(&content) {
+                if !registry_agents_empty(&val) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    // 3. Project-level: {project_root}/.claude/registry.json (lowest priority)
     let project_path = Path::new(project_root).join(".claude/registry.json");
     if let Ok(content) = std::fs::read_to_string(&project_path) {
         if let Ok(val) = serde_json::from_str::<Value>(&content) {
-            return val;
+            if !registry_agents_empty(&val) {
+                return val;
+            }
         } else {
             warn!("load_registry: failed to parse {}", project_path.display());
         }
     }
 
-    // 2. Global fallback: ~/.claude/registry.json
-    if let Some(home) = home::home_dir() {
-        let global_path = home.join(".claude/registry.json");
-        if let Ok(content) = std::fs::read_to_string(&global_path) {
-            if let Ok(val) = serde_json::from_str::<Value>(&content) {
-                return val;
-            } else {
-                warn!("load_registry: failed to parse {}", global_path.display());
-            }
-        }
-    }
-
     empty
+}
+
+/// Check if a registry has agents.
+fn registry_agents_empty(reg: &Value) -> bool {
+    reg["components"]["agents"]
+        .as_array()
+        .map(|a| a.is_empty())
+        .unwrap_or(true)
 }
 
 /// Timestamp helper — returns current UTC time as RFC 3339 string.
