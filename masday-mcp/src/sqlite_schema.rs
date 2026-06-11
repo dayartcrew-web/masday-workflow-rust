@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS task_progress_logs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
     agent_name TEXT NOT NULL,
     status_before TEXT,
     status_after TEXT,
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS task_progress_logs (
 CREATE TABLE IF NOT EXISTS review_decisions (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
     reviewer_agent TEXT NOT NULL,
     decision TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS session_states (
     session_key TEXT UNIQUE NOT NULL,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
     plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT,
     workflow_loaded INTEGER DEFAULT 0,
     plan_loaded INTEGER DEFAULT 0,
     task_loaded INTEGER DEFAULT 0,
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS parallel_branches (
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT,
     memory_type TEXT NOT NULL,
     summary TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL,
@@ -265,7 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_code_chunks_hash ON code_chunks(content_hash);
 CREATE TABLE IF NOT EXISTS retrieval_logs (
     id TEXT PRIMARY KEY,
     workflow_id TEXT REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT,
     agent_name TEXT NOT NULL,
     query TEXT NOT NULL,
     source TEXT NOT NULL,
@@ -276,7 +276,7 @@ CREATE TABLE IF NOT EXISTS retrieval_logs (
 CREATE TABLE IF NOT EXISTS workflow_reminders (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id TEXT,
     reminder_type TEXT NOT NULL,
     severity TEXT NOT NULL DEFAULT 'MEDIUM',
     message TEXT NOT NULL DEFAULT '',
