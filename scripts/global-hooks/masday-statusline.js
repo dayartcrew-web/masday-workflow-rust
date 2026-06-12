@@ -17,8 +17,8 @@ const { execSync } = require("child_process");
 
 // Context estimation config
 const CONTEXT_WINDOW_TOKENS = 200000;
-const BYTES_PER_TOKEN = 2.5;           // tool_use/tool_result JSON is token-dense
-const SYSTEM_OVERHEAD_TOKENS = 10000;  // system prompt + CLAUDE.md + rules + tool defs
+const BYTES_PER_TOKEN = 2.2;           // tool_use/tool_result JSON is token-dense (~2 bytes/token)
+const SYSTEM_OVERHEAD_TOKENS = 18000;  // system prompt + CLAUDE.md + rules + tool defs + memory
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -168,7 +168,6 @@ async function main() {
     let data = {};
     try { data = JSON.parse(input); } catch {}
 
-    const _model = data.model?.display_name || 'Masday'; // eslint-disable-line no-unused-vars
     const session = data.session_id || '';
     const cwd = data.workspace?.current_dir || process.cwd();
     const dirName = path.basename(cwd);
@@ -210,6 +209,12 @@ async function main() {
             source: ctx.source,
             total_tokens: ctx.totalTokens || null,
             used_tokens: ctx.usedTokens || null,
+            messages_tokens: null,
+            tools_tokens: null,
+            system_tokens: null,
+            memory_tokens: null,
+            agents_tokens: null,
+            skills_tokens: null,
           };
           // Token breakdown from context_window if available
           if (data?.context_window) {

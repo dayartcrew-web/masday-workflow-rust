@@ -70,14 +70,25 @@ pub fn init(
     Ok(())
 }
 
-/// Get the shared HTTP client
+/// Get the shared HTTP client (panics if not initialized - use try_get_client for safe access)
 pub fn client() -> &'static Client {
     HTTP_CLIENT.get().expect("HTTP client not initialized")
 }
 
-/// Get the base API URL
+/// Safely get the HTTP client if initialized (returns None if not set)
+pub fn try_get_client() -> Option<&'static Client> {
+    HTTP_CLIENT.get()
+}
+
+/// Get the base API URL (panics if not set - use try_get_api_url for safe access)
 pub fn api_url() -> &'static String {
     API_URL.get().expect("API URL not set")
+}
+
+/// Safely get the API URL if initialized (returns None if not set)
+/// Use this for stdio mode where API client may not be initialized
+pub fn try_get_api_url() -> Option<&'static String> {
+    API_URL.get()
 }
 
 /// Get the API key

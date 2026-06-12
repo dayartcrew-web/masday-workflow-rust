@@ -140,7 +140,13 @@ async fn update_workflow_status(
     Json(input): Json<UpdateWorkflowInput>,
 ) -> Result<Json<Value>, ApiError> {
     if let Some(status) = input.status {
-        let wf = masday_service::WorkflowService::update_status(&state.pool, &id, &status).await?;
+        // Convert status string to WorkflowState (validates the string)
+        let target_state = masday_service::workflow_service::status_to_state(&status)?;
+
+        // Use transition_status which validates:
+        // 1. State transition is allowed by state machine
+        // 2. Transition prerequisites are met
+        let wf = masday_service::WorkflowService::transition_status(&state.pool, &id, target_state).await?;
         Ok(Json(serde_json::json!(wf)))
     } else {
         Err(ApiError(masday_core::AppError::validation(

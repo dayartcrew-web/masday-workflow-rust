@@ -5,6 +5,7 @@
 //! - `masday-mcp-stdio` — standalone, direct PostgreSQL access
 
 pub mod client;
+#[cfg(feature = "sqlite")]
 pub mod code_index;
 #[cfg(feature = "sqlite")]
 pub mod direct;

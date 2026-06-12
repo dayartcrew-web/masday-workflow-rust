@@ -2363,15 +2363,16 @@ pub async fn semantic_search_code_search(
         .unwrap_or(".");
 
     // Priority 1: PostgreSQL pgvector via API (if API server is configured)
-    let api_url = crate::client::api_url();
-    if !api_url.is_empty() {
-        let api_result =
-            crate::client::api_get(&format!("/api/context/search?query={}", query)).await;
-        if let Ok(val) = api_result {
-            if val["results"].as_array().is_some_and(|a| !a.is_empty()) {
-                return Ok(
-                    json!({"query": query, "results": val["results"], "source": "pgvector_api"}),
-                );
+    if let Some(api_url) = crate::client::try_get_api_url() {
+        if !api_url.is_empty() {
+            let api_result =
+                crate::client::api_get(&format!("/api/context/search?query={}", query)).await;
+            if let Ok(val) = api_result {
+                if val["results"].as_array().is_some_and(|a| !a.is_empty()) {
+                    return Ok(
+                        json!({"query": query, "results": val["results"], "source": "pgvector_api"}),
+                    );
+                }
             }
         }
     }
@@ -3824,5 +3825,92 @@ mod tests {
         )
         .unwrap();
         (id, ())
+    }
+
+    #[tokio::test]
+    async fn test_semantic_search_code_search_stdio_mode() {
+        // Test that semantic_search_code_search works in stdio mode (no API client)
+        // This should NOT panic - it should fall back to SQLite feature hashing
+        let _guard = TestDbGuard::new();
+
+        let args = json!({
+            "query": "test search",
+            "project_path": "."
+        });
+
+        let result = semantic_search_code_search(args).await;
+
+        // Should succeed with SQLite fallback (even with no indexed files)
+        assert!(result.is_ok(), "semantic_search_code_search should not panic in stdio mode");
+        let val = result.unwrap();
+
+        // Verify it returns the expected structure
+        assert_eq!(val["query"], "test search");
+        assert!(val["source"].is_string());
+
+        // In stdio mode without API, it should use SQLite fallback
+        assert_eq!(val["source"], "sqlite_feature_hash");
+        assert!(val["results"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_search_hybrid_context_pack_stdio_mode() {
+        // Test that search_hybrid_context_pack works in stdio mode
+        let guard = TestDbGuard::new();
+        let (workflow_id, _) = setup_test_db_via_guard(&guard, "EXECUTE");
+
+        let args = json!({
+            "workflow_id": workflow_id,
+            "plan_id": "test-plan",
+            "task_id": "test-task"
+        });
+
+        let result = search_hybrid_context_pack(args).await;
+
+        // Should succeed (pure SQLite operation)
+        assert!(result.is_ok(), "search_hybrid_context_pack should work in stdio mode");
+        let val = result.unwrap();
+
+        assert!(val["context_pack"].is_object());
+        assert_eq!(val["context_pack"]["workflow_id"], workflow_id);
+    }
+
+    #[tokio::test]
+    async fn test_search_context_fingerprint_stdio_mode() {
+        // Test that search_context_fingerprint works in stdio mode
+        let args = json!({
+            "workflow_id": "test-workflow",
+            "plan_id": "test-plan",
+            "task_id": "test-task"
+        });
+
+        let result = search_context_fingerprint(args).await;
+
+        // Should succeed (pure computation, no API calls)
+        assert!(result.is_ok(), "search_context_fingerprint should work in stdio mode");
+        let val = result.unwrap();
+
+        assert!(val["fingerprint"].is_string());
+        assert!(!val["fingerprint"].as_str().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_semantic_search_make_fingerprint_stdio_mode() {
+        // Test that semantic_search_make_fingerprint works in stdio mode
+        let args = json!({
+            "workflow_id": "test-workflow",
+            "plan_id": "test-plan",
+            "task_id": "test-task"
+        });
+
+        let result = semantic_search_make_fingerprint(args).await;
+
+        // Should succeed (pure computation, no API calls)
+        assert!(result.is_ok(), "semantic_search_make_fingerprint should work in stdio mode");
+        let val = result.unwrap();
+
+        assert!(val["fingerprint"].is_string());
+        assert!(!val["fingerprint"].as_str().unwrap().is_empty());
+        assert_eq!(val["workflow_id"], "test-workflow");
     }
 }
