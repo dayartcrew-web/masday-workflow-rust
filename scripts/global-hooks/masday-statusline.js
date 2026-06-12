@@ -202,13 +202,26 @@ async function main() {
       if (sessionSafe) {
         try {
           const bridgePath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
-          fs.writeFileSync(bridgePath, JSON.stringify({
+          const bridge = {
             session_id: session,
             remaining_percentage: ctx.remainingPct,
             used_pct: ctx.pct,
             timestamp: Math.floor(Date.now() / 1000),
-            source: ctx.source
-          }));
+            source: ctx.source,
+            total_tokens: ctx.totalTokens || null,
+            used_tokens: ctx.usedTokens || null,
+          };
+          // Token breakdown from context_window if available
+          if (data?.context_window) {
+            const cw = data.context_window;
+            if (cw.messages_bytes) bridge.messages_tokens = cw.messages_bytes;
+            if (cw.tools_bytes) bridge.tools_tokens = cw.tools_bytes;
+            if (cw.system_bytes) bridge.system_tokens = cw.system_bytes;
+            if (cw.memory_bytes) bridge.memory_tokens = cw.memory_bytes;
+            if (cw.agents_bytes) bridge.agents_tokens = cw.agents_bytes;
+            if (cw.skills_bytes) bridge.skills_tokens = cw.skills_bytes;
+          }
+          fs.writeFileSync(bridgePath, JSON.stringify(bridge));
         } catch {}
       }
 

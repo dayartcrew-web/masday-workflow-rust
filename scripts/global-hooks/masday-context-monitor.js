@@ -23,8 +23,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const WARNING_USED_PCT = 50;
-const CRITICAL_USED_PCT = 75;
+const WARNING_USED_PCT = 75;
+const CRITICAL_USED_PCT = 90;
 const STALE_SECONDS = 60;
 const DEBOUNCE_CALLS = 5;
 
@@ -113,6 +113,23 @@ process.stdin.on('end', () => {
         additionalContext: message
       }
     };
+
+    // Add context breakdown if metrics has token details
+    if (metrics.total_tokens && metrics.used_tokens) {
+      const total = metrics.total_tokens;
+      const free = total - metrics.used_tokens;
+      const breakdown = [
+        `Context: ${(metrics.used_tokens/1000).toFixed(1)}k / ${(total/1000).toFixed(1)}k (${usedPct}%)`,
+        `Free space: ${(free/1000).toFixed(1)}k (${remaining}%)`,
+      ];
+      if (metrics.messages_tokens) breakdown.push(`Messages: ${(metrics.messages_tokens/1000).toFixed(1)}k`);
+      if (metrics.tools_tokens) breakdown.push(`MCP tools: ${(metrics.tools_tokens/1000).toFixed(1)}k`);
+      if (metrics.system_tokens) breakdown.push(`System: ${(metrics.system_tokens/1000).toFixed(1)}k`);
+      if (metrics.memory_tokens) breakdown.push(`Memory files: ${(metrics.memory_tokens/1000).toFixed(1)}k`);
+      if (metrics.agents_tokens) breakdown.push(`Custom agents: ${(metrics.agents_tokens/1000).toFixed(1)}k`);
+      if (metrics.skills_tokens) breakdown.push(`Skills: ${(metrics.skills_tokens/1000).toFixed(1)}k`);
+      output.hookSpecificOutput.additionalContext += '\n\n' + breakdown.join(' | ');
+    }
 
     process.stdout.write(JSON.stringify(output));
   } catch {
