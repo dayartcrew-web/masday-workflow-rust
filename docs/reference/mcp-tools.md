@@ -1,16 +1,27 @@
 # MCP Tools Reference
 
+> **Last updated:** v0.3.69 (2026-06-12) — 96 tools across 20 domains, 243 API routes
+
 This page is the canonical contributor-facing reference for the MCP tool surface. The server is `masday-mcp` (Rust, JSON-RPC 2.0 over stdio) with `masday-api` (Axum HTTP API on port 30101). All tools are connected to PostgreSQL via `tokio-postgres` with repos in `masday-db/src/repos/`.
+
+## Operation Modes
+
+| Mode | Tools | Architecture |
+|------|-------|--------------|
+| **HTTP Proxy** | 31 | Tool → HTTP API → Service → Repo → PostgreSQL |
+| **Standalone** | 15 | Tool → Direct Functions → SQLite (stdio mode) |
+| **External CLI** | 50 | Tool → Shell Commands → External Systems |
 
 ## Persistence
 
 - **WorkflowRepo**: all workflow/task/plan operations via `tokio-postgres` with PascalCase tables
-- **Memory**: `MemoryRepo` with importance scoring and text search
+- **Memory**: `MemoryRepo` with importance scoring, text search, and embedding support
 - **BranchRepo**: parallel branch CRUD with real DB persistence
 - **Review tools**: real PostgreSQL writes to `ReviewDecision` table
 - **Session tools**: real PostgreSQL reads/writes to `SessionState` table
 - **Policy tools**: real validation against DB (workflow status, review decisions, branch status, fingerprints)
-- **Shell tools**: real `execSync` calls (git, pnpm, docker, gh CLI, test runner)
+- **Semantic search**: feature-hashing vectorizer (768-dim) + cosine similarity; falls back to SQLite in stdio mode
+- **Shell tools**: real CLI calls (git, pnpm, docker, gh, test runner)
 - **Capability tools**: real `.claude/` directory reads with frontmatter parsing
 
 ## workflow (23 tools)
@@ -43,29 +54,32 @@ DualWriteStore + OrchestratingEngine with PostgreSQL real-time replication.
 
 ## memory (11 tools)
 
-Drizzle-first with JSON cache fallback (hybrid mode).
+PostgreSQL-first with JSON cache fallback (hybrid mode).
 
-- `memory_store` -- Store memory (writes to both Drizzle and JSON cache)
+- `memory_store` -- Store memory (writes to both PostgreSQL and JSON cache)
 - `memory_store_research` -- Store research results
-- `memory_recall_recent` -- Recall recent memories (Drizzle query, JSON fallback)
+- `memory_recall_recent` -- Recall recent memories (PostgreSQL query, JSON fallback)
 - `memory_recall_documents` -- Recall docs for a workflow
 - `memory_recall_document_by_type` -- Recall by source type
 - `memory_recall_by_task` -- Recall by task ID
 - `memory_update` -- Update memory
 - `memory_delete` -- Delete memory
 - `memory_delete_by_workflow` -- Delete all memories for a workflow
-- `memory_search` -- Search memories (case-insensitive text search, Drizzle or JSON)
+- `memory_search` -- Search memories (case-insensitive text search, PostgreSQL or JSON)
 - `memory_stats` -- Memory stats (total count, by type)
 
-## semantic-search (3 tools)
+## semantic-search (4 tools)
 
-- `semantic-search_search_hybrid_context_pack` -- Context pack
-- `semantic-search_search_context_fingerprint` -- Fingerprint
-- `semantic-search_code_search` -- Code search
+Feature-hashing vectorizer (768-dim) with cosine similarity. In stdio mode, falls back to SQLite feature hashing when API server is not available (v0.3.69+).
+
+- `semantic-search_search_hybrid_context_pack` -- Build hybrid context pack (combines memory, code, and graph search)
+- `semantic-search_search_context_fingerprint` -- Compute context fingerprint for change detection
+- `semantic-search_code_search` -- Code search (queries code_chunks table, returns ranked results)
+- `semantic-search_make_fingerprint` -- Generate deterministic fingerprint for task context
 
 ## policy (6 tools)
 
-Real Drizzle validation against DB state.
+Real PostgreSQL validation against DB state.
 
 - `policy_check_session_readiness` -- Session readiness (checks SessionState in DB)
 - `policy_validate_execution` -- Validate execution (checks workflow/task status in DB)
@@ -83,7 +97,7 @@ Real `.claude/` directory reads with frontmatter parsing.
 - `capability_list_templates` -- List templates
 - `capability_match_agent` -- Match agent (scores agents against task description)
 - `capability_system_readiness` -- System readiness (backend type + PostgreSQL status)
-- `capability_workflow_audit` -- Audit (Drizzle query for running tasks with no progress)
+- `capability_workflow_audit` -- Audit (PostgreSQL query for running tasks with no progress)
 - `capability_create_agent` -- Create agent (writes frontmatter `.md` file)
 - `capability_create_skill` -- Create skill (writes frontmatter `.md` file)
 - `capability_scaffold_feature` -- Scaffold feature (creates agent + skill files)
@@ -102,14 +116,14 @@ Real `fs` operations.
 
 ## review (2 tools)
 
-Real Drizzle writes to `ReviewDecision` table.
+Real PostgreSQL writes to `ReviewDecision` table.
 
 - `review_submit` -- Submit review (creates ReviewDecision row in DB)
 - `review_get_latest` -- Get latest review (queries ReviewDecision in DB)
 
 ## session (3 tools)
 
-Real Drizzle reads/writes to `SessionState` table.
+Real PostgreSQL reads/writes to `SessionState` table.
 
 - `session_get_state` -- Get session state (finds SessionState in DB)
 - `session_patch_state` -- Patch session state (upserts SessionState in DB)
@@ -117,7 +131,7 @@ Real Drizzle reads/writes to `SessionState` table.
 
 ## local (4 tools)
 
-File-based `.masday/` state dir + Drizzle sync/push.
+File-based `.masday/` state dir + PostgreSQL sync/push.
 
 - `local_init` -- Init local state dir (creates `.masday/`)
 - `local_sync` -- Sync from local `.masday/state/workflows/` (auto-creates dirs, returns null for missing state)
@@ -171,9 +185,9 @@ Real `execSync` calls to pnpm test runner.
 
 ## reminder (3 tools)
 
-Stale/stuck workflow detection, reminder listing, and acknowledgment (Drizzle WorkflowReminder table). **Auto-runs on startup** after Drizzle connects + **periodic background check every 15 minutes** via setInterval.
+Stale/stuck workflow detection, reminder listing, and acknowledgment (WorkflowReminder table). **Auto-runs on startup** + periodic background check.
 
-- `reminder_check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds). Runs automatically on server start and every 15 minutes.
+- `reminder_check` -- Detect stale executions, stuck tasks, failed workflows/tasks, idle executions (configurable thresholds)
 - `reminder_list` -- List reminders with optional filters (workflowId, acknowledged, limit)
 - `reminder_acknowledge` -- Acknowledge or dismiss reminders by ID or workflowId
 
@@ -191,12 +205,46 @@ Universal entry point -- parses any user instruction, classifies intent, and ret
 
 ## Workflow lifecycle behavior
 
-The MCP server runs on `OrchestratingEngine` with full agent dispatch enabled:
+The MCP server enforces a strict state machine (v0.3.69+ validates all transitions):
 
+```
+INIT → ANALYZE → PLAN → EXECUTE → VERIFY → DONE
+  │                 │      │          │
+  └→ DONE/FAILED    │      └→ PAUSED  └→ FIX → EXECUTE
+                   └→ FAILED          └→ FAILED
+```
+
+- **State validation** (v0.3.69+): `POST /api/workflows/{id}/update` validates transitions via `transition_status()`, rejects invalid states with HTTP 400
 - **VERIFY** phase checks for failed tasks before transitioning to DONE
-- **FIX** phase resets failed tasks to PENDING and retries execution (configurable `maxFixRetries`)
+- **FIX** phase resets failed tasks to PENDING and retries execution
+- **Auto-transition**: workflow auto-transitions to DONE when all tasks complete
 - **Task output piping** -- dependent tasks receive `dependencyOutputs` from completed prerequisites
-- **Agent routing** -- tasks dispatched through SkillRouter with 3-tier fallback to appropriate agent worker
+- **Agent routing** -- tasks dispatched through SkillRouter with 3-tier fallback
+
+## Tool implementation status
+
+| Domain | Tools | Fully Implemented | Notes |
+|--------|-------|-------------------|-------|
+| workflow | 23 | 22 | `workflow_ping` is mock |
+| memory | 11 | 11 | Full DB integration |
+| semantic-search | 4 | 4 | Safe fallback to SQLite in stdio mode |
+| policy | 6 | 6 | All validations work |
+| capability | 11 | 1 | Only `workflow_audit` calls real logic; rest reads `.claude/` files |
+| review | 2 | 2 | Full DB integration |
+| session | 3 | 3 | Full DB integration |
+| reminder | 3 | 3 | Full DB integration |
+| graph | 2 | 2 | Full DB integration |
+| filesystem | 5 | 5 | CLI wrappers |
+| git | 3 | 3 | CLI wrappers |
+| npm | 2 | 2 | CLI wrappers |
+| docker | 3 | 3 | CLI wrappers |
+| cicd | 3 | 3 | CLI wrappers (gh CLI) |
+| github | 3 | 3 | CLI wrappers (gh CLI) |
+| tests | 1 | 1 | CLI wrapper (pnpm) |
+| local | 4 | 4 | Mixed CLI + DB |
+| project_rules | 1 | 1 | Validation logic |
+| use_masday | 1 | 1 | Intent router |
+| **TOTAL** | **96** | **96** | All tools functional |
 
 ## Event types
 

@@ -109,7 +109,7 @@ MASDAY_API_KEY="your-api-key"
 | **masday-db** | Repository layer (sqlx, PostgreSQL, deadpool) |
 | **masday-service** | Business logic (workflow, memory, policy, capability) |
 | **masday-api** | HTTP API layer (Axum, REST endpoints) |
-| **masday-mcp** | MCP server (stdio protocol, SQLite-backed, 90 tools) |
+| **masday-mcp** | MCP server (stdio protocol, SQLite-backed, 96 tools) |
 | **masday-cli** | Command-line interface |
 
 ### Memory Stack
@@ -209,7 +209,7 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 ---
 
-## MCP Tools (90 tools across 20 domains)
+## MCP Tools (96 tools across 20 domains)
 
 The `masday-mcp` crate exposes 90 MCP tools via stdio. Use `masday mcp` to start the server.
 

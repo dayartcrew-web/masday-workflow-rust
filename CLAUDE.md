@@ -67,33 +67,32 @@ masday-mcp  --> masday-service --> masday-db --> masday-core
 masday-api  --> masday-service --> masday-db --> masday-core
 ```
 
-## MCP Server — 20 Tool Domains
+## MCP Server — 20 Tool Domains (96 tools)
 
 Binary: `masday-mcp` (stdio transport)
 
-| Domain | Module | Description |
-|--------|--------|-------------|
-| workflow | `workflow.rs` | CRUD, execute, status transitions, task lifecycle |
-| memory | `memory.rs` | Store, search, recall (4-layer: working/episodic/long-term/graph) |
-| embedding | `embedding.rs` | Feature hashing vectorizer (768-dim), cosine similarity, hybrid search |
-| graph | `graph.rs` | Knowledge graph nodes & edges, Jaccard auto-link |
-| context | `context.rs` | Context packs, fingerprints |
-| session | `session.rs` | Session state management |
-| policy | `policy.rs` | Workflow audit, completion validation, drift detection |
-| review | `review.rs` | Review decisions (APPROVED/REWORK_REQUIRED/BLOCKED) |
-| capability | `capability.rs` | Agent/skill registry, system readiness |
-| reminder | `reminder.rs` | Stale/stuck workflow detection |
-| local | `local.rs` | File-based `.masday/` state sync |
-| filesystem | `filesystem.rs` | Read/write/list/delete/stat |
-| git | `git.rs` | Git CLI operations |
-| npm | `npm.rs` | pnpm CLI operations |
-| docker | `docker.rs` | Docker CLI operations |
-| cicd | `cicd.rs` | GitHub Actions via `gh` CLI |
-| github | `github.rs` | GitHub operations via `gh` CLI |
-| tests | `tests.rs` | Test runner via pnpm |
-| project_rules | `project_rules.rs` | Refactor rules validation (14 checks) |
-| use_masday | `use_masday.rs` | Universal entry point — parses intent, routes to tool |
-| search | `search.rs` | Semantic search, BM25, code indexing |
+| Domain | Tools | Module | Description |
+|--------|-------|--------|-------------|
+| workflow | 23 | `workflow.rs` | CRUD, execute, status transitions, task lifecycle |
+| memory | 11 | `memory.rs` | Store, search, recall (4-layer: working/episodic/long-term/graph) |
+| embedding | — | `embedding.rs` | Feature hashing vectorizer (768-dim), cosine similarity, hybrid search |
+| graph | 2 | `graph.rs` | Knowledge graph nodes & edges, Jaccard auto-link |
+| context | 4 | `context.rs` | Context packs, fingerprints, code search, hybrid search |
+| session | 3 | `session.rs` | Session state management |
+| policy | 6 | `policy.rs` | Workflow audit, completion validation, drift detection |
+| review | 2 | `review.rs` | Review decisions (APPROVED/REWORK_REQUIRED/BLOCKED) |
+| capability | 11 | `capability.rs` | Agent/skill registry, system readiness, scaffolding |
+| reminder | 3 | `reminder.rs` | Stale/stuck workflow detection |
+| local | 4 | `local.rs` | File-based `.masday/` state sync |
+| filesystem | 5 | `filesystem.rs` | Read/write/list/delete/stat |
+| git | 3 | `git.rs` | Git CLI operations |
+| npm | 2 | `npm.rs` | pnpm CLI operations |
+| docker | 3 | `docker.rs` | Docker CLI operations |
+| cicd | 3 | `cicd.rs` | GitHub Actions via `gh` CLI |
+| github | 3 | `github.rs` | GitHub operations via `gh` CLI |
+| tests | 1 | `tests.rs` | Test runner via pnpm |
+| project_rules | 1 | `project_rules.rs` | Refactor rules validation (14 checks) |
+| use_masday | 1 | `use_masday.rs` | Universal entry point — parses intent, routes to tool |
 
 ## Database — 15 Repos, 16 Tables
 
