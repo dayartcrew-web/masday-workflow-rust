@@ -146,7 +146,8 @@ async fn update_workflow_status(
         // Use transition_status which validates:
         // 1. State transition is allowed by state machine
         // 2. Transition prerequisites are met
-        let wf = masday_service::WorkflowService::transition_status(&state.pool, &id, target_state).await?;
+        let wf = masday_service::WorkflowService::transition_status(&state.pool, &id, target_state)
+            .await?;
         Ok(Json(serde_json::json!(wf)))
     } else {
         Err(ApiError(masday_core::AppError::validation(

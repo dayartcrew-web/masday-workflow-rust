@@ -3841,7 +3841,10 @@ mod tests {
         let result = semantic_search_code_search(args).await;
 
         // Should succeed with SQLite fallback (even with no indexed files)
-        assert!(result.is_ok(), "semantic_search_code_search should not panic in stdio mode");
+        assert!(
+            result.is_ok(),
+            "semantic_search_code_search should not panic in stdio mode"
+        );
         let val = result.unwrap();
 
         // Verify it returns the expected structure
@@ -3868,7 +3871,10 @@ mod tests {
         let result = search_hybrid_context_pack(args).await;
 
         // Should succeed (pure SQLite operation)
-        assert!(result.is_ok(), "search_hybrid_context_pack should work in stdio mode");
+        assert!(
+            result.is_ok(),
+            "search_hybrid_context_pack should work in stdio mode"
+        );
         let val = result.unwrap();
 
         assert!(val["context_pack"].is_object());
@@ -3887,7 +3893,10 @@ mod tests {
         let result = search_context_fingerprint(args).await;
 
         // Should succeed (pure computation, no API calls)
-        assert!(result.is_ok(), "search_context_fingerprint should work in stdio mode");
+        assert!(
+            result.is_ok(),
+            "search_context_fingerprint should work in stdio mode"
+        );
         let val = result.unwrap();
 
         assert!(val["fingerprint"].is_string());
@@ -3906,7 +3915,10 @@ mod tests {
         let result = semantic_search_make_fingerprint(args).await;
 
         // Should succeed (pure computation, no API calls)
-        assert!(result.is_ok(), "semantic_search_make_fingerprint should work in stdio mode");
+        assert!(
+            result.is_ok(),
+            "semantic_search_make_fingerprint should work in stdio mode"
+        );
         let val = result.unwrap();
 
         assert!(val["fingerprint"].is_string());
