@@ -29,6 +29,25 @@ pub fn sync_skills_to_project(
 
         let target_dir = platform.project_skills_dir(project_dir);
 
+        // OpenCode: if the global agent dir already exists, the user manages
+        // opencode globally — don't pollute the project with .opencode/skills.
+        if *platform == Platform::OpenCode {
+            if let Some(global) = platform.global_agents_dir() {
+                if global.exists() {
+                    report.skipped = skill_names
+                        .iter()
+                        .filter(|n| n.starts_with("masday-"))
+                        .count();
+                    report.warnings.push(format!(
+                        "opencode global agent dir exists ({}); skipping project .opencode/skills",
+                        global.display()
+                    ));
+                    reports.push(report);
+                    continue;
+                }
+            }
+        }
+
         fs::create_dir_all(&target_dir)
             .with_context(|| format!("Failed to create directory {}", target_dir.display()))?;
 

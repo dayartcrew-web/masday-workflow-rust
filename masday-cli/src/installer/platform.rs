@@ -59,7 +59,7 @@ impl Platform {
             Platform::ClaudeDesktop => None, // Desktop app — no global agents dir
             Platform::GeminiCli => Some(home::home_dir()?.join(".gemini/agents")),
             Platform::VsCodeCopilot => Some(home::home_dir()?.join(".continue/agents")),
-            Platform::OpenCode => Some(home::home_dir()?.join(".config/opencode/agents")),
+            Platform::OpenCode => Some(home::home_dir()?.join(".config/opencode/agent")),
             Platform::Cursor => None, // Cursor uses .cursor/rules/ project-level only
             Platform::Windsurf => None, // No agent folder
             Platform::Codex => Some(home::home_dir()?.join(".codex/agents")),
@@ -251,6 +251,19 @@ mod tests {
         assert_eq!(
             Platform::Codex.project_mcp_config_path(project),
             PathBuf::from("/test/project/.codex/mcp.json")
+        );
+    }
+
+    #[test]
+    fn test_opencode_global_agents_dir_is_singular() {
+        // opencode's real global agent dir is `agent` (singular), not `agents`.
+        let dir = Platform::OpenCode
+            .global_agents_dir()
+            .expect("opencode should have a global agents dir");
+        assert!(
+            dir.ends_with(".config/opencode/agent"),
+            "expected singular `.config/opencode/agent`, got {}",
+            dir.display()
         );
     }
 }
