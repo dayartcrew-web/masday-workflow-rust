@@ -80,7 +80,7 @@ masday --version                        # Print version
 | Claude Code | `.claude/agents/` | `.claude/skills/` | `~/.claude/skills/` | `.mcp.json` |
 | Gemini CLI | `.gemini/agents/` | `.gemini/skills/` | `~/.gemini/config/skills/` | `.gemini/settings.json` |
 | VS Code Copilot | `.agents/` | `.continue/skills/` | — | `.vscode/mcp.json` |
-| OpenCode | `.opencode/agents/` | `.opencode/skills/` | `~/.config/opencode/skills/` | `.opencode/mcp.json` |
+| OpenCode | `.opencode/agent/` | `.opencode/skills/` | `~/.config/opencode/agent/` (singular) | `.opencode/mcp.json` |
 
 ## Local project commands (Development)
 

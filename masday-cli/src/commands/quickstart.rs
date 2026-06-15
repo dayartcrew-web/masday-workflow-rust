@@ -1268,7 +1268,7 @@ pub fn register_mcp_servers(
     println!("{}", style("Registering MCP servers...").cyan());
 
     // Find the masday binary itself to use as MCP command
-    let mcp_binary = std::env::current_exe().unwrap_or_else(|_| "masday".into());
+    let mcp_binary = resolve_mcp_binary();
 
     // Determine transport mode: remote and server use HTTP/SSE, local and standalone use stdio
     let use_http_transport = mode == "remote" || mode == "server";
@@ -1288,6 +1288,43 @@ pub fn register_mcp_servers(
 
     println!();
     Ok(())
+}
+
+/// Resolve the masday binary path to use as the MCP `command`.
+///
+/// Prefers the canonical install path (`~/.masday/bin/masday`) so that a
+/// self-update that has replaced the running binary on disk does not leak a
+/// stale `/proc/self/exe` value — on Linux an in-flight, replaced inode reads
+/// back as `path (deleted)`, which would otherwise be written verbatim into
+/// every platform MCP config. Falls back to `current_exe()` only when it is a
+/// real file on disk and not marked deleted (dev builds running from
+/// `target/`). Last resort: the bare name `masday` (relies on PATH).
+pub fn resolve_mcp_binary() -> std::path::PathBuf {
+    resolve_mcp_binary_inner(
+        home::home_dir()
+            .map(|h| h.join(".masday").join("bin").join("masday"))
+            .as_deref(),
+        std::env::current_exe().ok().as_deref(),
+    )
+}
+
+fn resolve_mcp_binary_inner(
+    installed: Option<&std::path::Path>,
+    current_exe: Option<&std::path::Path>,
+) -> std::path::PathBuf {
+    // Production: prefer the canonical install path when it exists.
+    if let Some(p) = installed.filter(|p| p.exists()) {
+        return p.to_path_buf();
+    }
+    // Dev fallback: current_exe only if it is a real, non-"(deleted)" file.
+    if let Some(exe) = current_exe {
+        let s = exe.to_string_lossy();
+        if !s.contains(" (deleted)") && exe.exists() {
+            return exe.to_path_buf();
+        }
+    }
+    // Last resort: rely on PATH.
+    std::path::PathBuf::from("masday")
 }
 
 /// Detect platforms from home directory config files
@@ -1877,5 +1914,24 @@ mod tests {
     fn test_mode_server() {
         let mode_str = "server";
         assert_eq!(mode_str, "server");
+    }
+
+    #[test]
+    fn test_resolve_mcp_binary_prefers_install_path_over_deleted_exe() {
+        use std::path::PathBuf;
+        let installed = PathBuf::from("/tmp/masday-fake-install-exists");
+        std::fs::write(&installed, b"fake").unwrap();
+        let deleted = PathBuf::from("/tmp/masday-fake-install-exists (deleted)");
+        let resolved = super::resolve_mcp_binary_inner(Some(&installed), Some(&deleted));
+        assert_eq!(
+            resolved, installed,
+            "must prefer real install path, not (deleted)"
+        );
+        let _ = std::fs::remove_file(&installed);
+
+        // When install path is absent, a "(deleted)" current_exe is rejected → bare "masday".
+        let none_installed = PathBuf::from("/tmp/does-not-exist-masday");
+        let resolved2 = super::resolve_mcp_binary_inner(Some(&none_installed), Some(&deleted));
+        assert_eq!(resolved2, PathBuf::from("masday"));
     }
 }
