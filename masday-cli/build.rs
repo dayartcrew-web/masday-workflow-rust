@@ -117,7 +117,8 @@ fn main() {
     }
 
     // Copy utility scripts (registry-sync.mjs, etc.)
-    for script_name in &["registry-sync.mjs"] {
+    {
+        let script_name = &"registry-sync.mjs";
         let src = scripts_src.join(script_name);
         if src.exists() {
             let dest = scripts_dir.join(script_name);

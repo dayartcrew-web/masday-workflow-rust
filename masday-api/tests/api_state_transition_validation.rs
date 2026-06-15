@@ -168,7 +168,7 @@ async fn test_status_to_state_all_valid_states() {
         assert!(result.is_ok(), "status_to_state should accept '{}'", status_str);
 
         let state = result.unwrap();
-        assert!(std::mem::discriminant(&state) == std::mem::discriminant(&expected_state),
+        assert!(std::mem::discriminant(&state) == std::mem::discriminant(expected_state),
                 "status_to_state should convert '{}' to {:?}", status_str, expected_state);
     }
 
@@ -179,7 +179,7 @@ async fn test_status_to_state_all_valid_states() {
         assert!(result.is_ok(), "status_to_state should accept lowercase '{}'", lowercase);
 
         let state = result.unwrap();
-        assert!(std::mem::discriminant(&state) == std::mem::discriminant(&expected_state),
+        assert!(std::mem::discriminant(&state) == std::mem::discriminant(expected_state),
                 "status_to_state should convert '{}' to {:?}", lowercase, expected_state);
     }
 }
