@@ -2,11 +2,12 @@
 
 ## Release Process
 
-⚠️ **Read [docs/release-guide.md](docs/release-guide.md) before touching releases.**
+⚠️ **Read [../docs/release-guide.md](../docs/release-guide.md) before touching releases.**
 
+- **CI (`.github/workflows/release.yml`) is the active, recommended release path.** It triggers on tag push (`v*`), builds Linux x86_64 + macOS aarch64 + Windows x86_64, and publishes to GitHub Releases (~6 min). No manual release needed.
+- **To release:** bump the version in all 6 crate `Cargo.toml` files + the matching `Cargo.lock` entries, commit as `chore: bump version to 0.3.XX`, then push master + the `v0.3.XX` tag. CI publishes automatically.
+- `scripts/release.sh` is a **fallback only** — Linux + Windows, no macOS — for when CI is unavailable.
 - Releases are published to **source repo** GitHub Releases: `dayartcrew-web/masday-workflow-rust/releases`
-- Built locally via `scripts/release.sh` from project root
-- **Do NOT use CI workflows** — they are disabled
 - **Do NOT create releases with version 0.7x** — use 0.x.x format
 - Source repo: `dayartcrew-web/masday-workflow-rust` (private)
 
