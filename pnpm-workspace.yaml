@@ -2,7 +2,10 @@ packages:
   - "apps/dashboard"
 overrides:
   "esbuild": "^0.28.1"
+  "form-data": "^4.0.6"
+  "js-yaml": "^4.2.0"
   "postcss": "8.5.15"
+  "vite": "7.3.5"
 allowBuilds:
   esbuild: true
   sharp: true
