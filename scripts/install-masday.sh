@@ -82,9 +82,11 @@ _stop_spinner() {
     fi
 
     case "$result" in
-        ok)   printf "\r  %s %s\n" "${GREEN}✓${NC}" "$msg" >&2 ;;
-        fail) printf "\r  %s %s\n" "${RED}✗${NC}" "$msg" >&2 ;;
-        warn) printf "\r  %s %s\n" "${YELLOW}⚠${NC}" "$msg" >&2 ;;
+        # NB: color vars must be in the FORMAT string (not a %s arg), otherwise
+        # printf emits the literal "\033[..." text — %s does not interpret escapes.
+        ok)   printf "\r  ${GREEN}✓${NC} %s\n" "$msg" >&2 ;;
+        fail) printf "\r  ${RED}✗${NC} %s\n" "$msg" >&2 ;;
+        warn) printf "\r  ${YELLOW}⚠${NC} %s\n" "$msg" >&2 ;;
     esac
 }
 
@@ -241,17 +243,20 @@ verify_checksum() {
     local checksum_url="https://github.com/${REPO}/releases/download/${version}/checksums-sha256.txt"
     local actual_hash
 
-    # Use certified path for sha256sum (Windows Git Bash safe)
+    # Use certified path for sha256sum (Windows Git Bash safe).
+    # NOTE: each branch is made non-fatal with `|| actual_hash=""` — under
+    # `set -euo pipefail` a failing sha256sum pipe inside the assignment would
+    # otherwise abort the entire install before the binary is ever installed.
     if command -v sha256sum &>/dev/null; then
-        actual_hash="$(sha256sum "$binary_file" 2>/dev/null | awk '{print $1}')"
+        actual_hash="$(sha256sum "$binary_file" 2>/dev/null | awk '{print $1}')" || actual_hash=""
     elif command -v sha256sum.exe &>/dev/null; then
         # Windows: use .exe variant with Windows-native path
         local win_path
         win_path="$(cygpath -w "$binary_file" 2>/dev/null || echo "$binary_file")"
-        actual_hash="$(sha256sum.exe "$win_path" 2>/dev/null | awk '{print $1}')"
+        actual_hash="$(sha256sum.exe "$win_path" 2>/dev/null | awk '{print $1}')" || actual_hash=""
     elif command -v certutil &>/dev/null; then
         # Windows fallback: certutil
-        actual_hash="$(certutil -hashfile "$binary_file" SHA256 2>/dev/null | grep -v ':' | tr -d ' \r\n' | tr 'A-F' 'a-f')"
+        actual_hash="$(certutil -hashfile "$binary_file" SHA256 2>/dev/null | grep -v ':' | tr -d ' \r\n' | tr 'A-F' 'a-f')" || actual_hash=""
     fi
 
     _start_spinner "Verifying checksum..."
