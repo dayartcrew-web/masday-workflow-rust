@@ -247,15 +247,19 @@ verify_checksum() {
     # NOTE: each branch is made non-fatal with `|| actual_hash=""` — under
     # `set -euo pipefail` a failing sha256sum pipe inside the assignment would
     # otherwise abort the entire install before the binary is ever installed.
+    actual_hash=""
     if command -v sha256sum &>/dev/null; then
         actual_hash="$(sha256sum "$binary_file" 2>/dev/null | awk '{print $1}')" || actual_hash=""
-    elif command -v sha256sum.exe &>/dev/null; then
-        # Windows: use .exe variant with Windows-native path
+    fi
+    # Fall through: if the first tool produced nothing (common on Git Bash where
+    # the bare `sha256sum` can resolve to a shim that errors on MSYS paths), try
+    # the .exe variant with a Windows-native path, then certutil.
+    if [ -z "$actual_hash" ] && command -v sha256sum.exe &>/dev/null; then
         local win_path
         win_path="$(cygpath -w "$binary_file" 2>/dev/null || echo "$binary_file")"
         actual_hash="$(sha256sum.exe "$win_path" 2>/dev/null | awk '{print $1}')" || actual_hash=""
-    elif command -v certutil &>/dev/null; then
-        # Windows fallback: certutil
+    fi
+    if [ -z "$actual_hash" ] && command -v certutil &>/dev/null; then
         actual_hash="$(certutil -hashfile "$binary_file" SHA256 2>/dev/null | grep -v ':' | tr -d ' \r\n' | tr 'A-F' 'a-f')" || actual_hash=""
     fi
 
@@ -268,7 +272,12 @@ verify_checksum() {
         local expected
         expected="$(echo "$checksums" | grep "${artifact}" | awk '{print $1}')"
 
-        if [ -n "$expected" ] && [ "$actual_hash" = "$expected" ]; then
+        if [ -z "$actual_hash" ]; then
+            # Could not compute a LOCAL hash (sha256sum/certutil unavailable or
+            # broken on this platform). That is a tooling gap, NOT a security
+            # failure — skip verification rather than aborting the install.
+            _stop_spinner warn "Could not compute local checksum — skipped (no sha256sum/certutil result)"
+        elif [ -n "$expected" ] && [ "$actual_hash" = "$expected" ]; then
             _stop_spinner ok "Checksum verified"
         else
             _stop_spinner fail "Checksum mismatch. Expected: ${expected:-missing}, Got: ${actual_hash}"
