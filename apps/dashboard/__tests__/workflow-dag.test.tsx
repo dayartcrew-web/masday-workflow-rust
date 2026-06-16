@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { WorkflowDag } from '@/components/workflow-dag';
 
 describe('WorkflowDag', () => {
@@ -13,7 +13,6 @@ describe('WorkflowDag', () => {
   it('renders SVG element', () => {
     render(<WorkflowDag tasks={mockTasks} />);
 
-    expect(screen.getByRole('img', { hidden: true })?.tagName || document.querySelector('svg')).toBeTruthy();
     expect(document.querySelector('svg')).toBeInTheDocument();
   });
 
@@ -27,10 +26,11 @@ describe('WorkflowDag', () => {
   it('renders task states', () => {
     render(<WorkflowDag tasks={mockTasks} />);
 
-    expect(screen.getByText('pending')).toBeInTheDocument();
-    expect(screen.getByText('running')).toBeInTheDocument();
-    expect(screen.getByText('done')).toBeInTheDocument();
-    expect(screen.getByText('failed')).toBeInTheDocument();
+    // States appear in both task nodes and the legend.
+    expect(screen.getAllByText('pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('running').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('done').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('failed').length).toBeGreaterThan(0);
   });
 
   it('shows empty message when no tasks', () => {
@@ -43,16 +43,16 @@ describe('WorkflowDag', () => {
     const onTaskClick = vi.fn();
     render(<WorkflowDag tasks={mockTasks} onTaskClick={onTaskClick} />);
 
-    screen.getByText('Task 1').click();
+    fireEvent.click(screen.getByText('Task 1'));
     expect(onTaskClick).toHaveBeenCalledWith(mockTasks[0]);
   });
 
   it('renders legend with state colors', () => {
     render(<WorkflowDag tasks={mockTasks} />);
 
-    expect(screen.getByText('pending')).toBeInTheDocument();
-    expect(screen.getByText('running')).toBeInTheDocument();
-    expect(screen.getByText('done')).toBeInTheDocument();
-    expect(screen.getByText('failed')).toBeInTheDocument();
+    expect(screen.getAllByText('pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('running').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('done').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('failed').length).toBeGreaterThan(0);
   });
 });

@@ -305,7 +305,9 @@ describe('WebSocketClient', () => {
       close: vi.fn(),
       readyState: 1,
     };
-    const MockWebSocket = vi.fn(() => mockWs) as unknown as typeof WebSocket;
+    const MockWebSocket = vi.fn(function () {
+      return mockWs;
+    }) as unknown as typeof WebSocket;
     vi.stubGlobal('WebSocket', MockWebSocket);
   });
 

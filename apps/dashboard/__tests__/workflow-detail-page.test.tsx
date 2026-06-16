@@ -201,10 +201,10 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    expect(screen.getByText('Build')).toBeInTheDocument();
-    expect(screen.getByText('Test')).toBeInTheDocument();
-    expect(screen.getByText('builder')).toBeInTheDocument();
-    expect(screen.getByText('tester')).toBeInTheDocument();
+    expect(screen.getAllByText('Build')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Test')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('builder')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('tester')[0]).toBeInTheDocument();
   });
 
   it('shows task state badges with correct colors', () => {
@@ -219,10 +219,10 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    expect(screen.getByText('done')).toBeInTheDocument();
-    expect(screen.getByText('failed')).toBeInTheDocument();
-    expect(screen.getByText('running')).toBeInTheDocument();
-    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(screen.getAllByText('done')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('failed')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('running')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('pending')[0]).toBeInTheDocument();
   });
 
   it('selects a task when clicking on a row', () => {
@@ -232,9 +232,9 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    fireEvent.click(screen.getByText('Selected Task'));
+    fireEvent.click(screen.getAllByText('Selected Task')[0]);
 
-    expect(screen.getByText('Selected Task')).toBeInTheDocument();
+    expect(screen.getAllByText('Selected Task').length).toBeGreaterThan(0);
   });
 
   it('selects a task when clicking on a DAG node', () => {
@@ -247,7 +247,7 @@ describe('WorkflowDetailPage', () => {
     fireEvent.click(screen.getByTestId('dag-task-t1'));
 
     // Task detail panel should appear
-    expect(screen.getByText('DAG Task')).toBeInTheDocument();
+    expect(screen.getAllByText('DAG Task')[0]).toBeInTheDocument();
   });
 
   it('shows selected task details panel', () => {
@@ -264,7 +264,7 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    fireEvent.click(screen.getByText('Detail Task'));
+    fireEvent.click(screen.getAllByText('Detail Task')[0]);
 
     expect(screen.getByText((_, el) => el?.textContent === 'State: running')).toBeInTheDocument();
     expect(screen.getByText((_, el) => el?.textContent === 'Agent: executor')).toBeInTheDocument();
@@ -283,7 +283,7 @@ describe('WorkflowDetailPage', () => {
 
     render(<WorkflowDetailPage />);
 
-    fireEvent.click(screen.getByText('Output Task'));
+    fireEvent.click(screen.getAllByText('Output Task')[0]);
 
     expect(screen.getByText(/Output:/)).toBeInTheDocument();
     expect(screen.getByText(/"result": "success"/)).toBeInTheDocument();
