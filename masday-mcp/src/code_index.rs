@@ -492,6 +492,10 @@ pub fn search_code(
     } else {
         // Refresh stale chunks
         refresh_stale_chunks(&conn, project_path)?;
+        // Release the lock before re-acquiring below — sqlite::conn() returns a
+        // non-reentrant MutexGuard, so holding `conn` here would self-deadlock
+        // on the next conn() call (every search after the index is built).
+        drop(conn);
     }
 
     // Re-acquire connection after potential drop
