@@ -91,7 +91,7 @@ Binary: `masday-mcp` (stdio transport)
 | cicd | 3 | `cicd.rs` | GitHub Actions via `gh` CLI |
 | github | 3 | `github.rs` | GitHub operations via `gh` CLI |
 | tests | 1 | `tests.rs` | Test runner via pnpm |
-| project_rules | 1 | `project_rules.rs` | Refactor rules validation (14 checks) |
+| project_rules | 1 | `project_rules.rs` | `.claude/rules` file-format sanity check (5 basic checks, not a lint) |
 | use_masday | 1 | `use_masday.rs` | Universal entry point — parses intent, routes to tool |
 
 ## Database — 15 Repos, 16 Tables

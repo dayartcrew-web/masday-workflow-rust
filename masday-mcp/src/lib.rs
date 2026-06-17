@@ -855,7 +855,7 @@ fn register_project_rules_tools(r: &mut ToolRegistry) {
     reg!(
         r,
         "projectRules_check",
-        "Validate project against refactor rules",
+        "Sanity-check that .claude/rules markdown files exist and are well-formed (basic file-format check: directory present, >=1 non-empty .md with markdown headers). NOT a lint or rule-content validator.",
         schema!("projectRoot?"),
         pr::projectrules_check
     );
