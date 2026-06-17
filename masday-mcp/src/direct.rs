@@ -130,6 +130,33 @@ fn collect_rows(rows: impl Iterator<Item = Result<Value, rusqlite::Error>>) -> V
     .collect()
 }
 
+/// Render a plan row (JSON `Value`) as the markdown body for `.masday/plans/`.
+///
+/// The plan `content` is a JSON blob (phases/plan); it is pretty-printed inside
+/// a fenced block so operators can read/review it from disk. Used by
+/// `local_sync_all` to fulfill the documented `.masday/plans/` artifact contract
+/// (audit round-1 C4).
+fn render_plan_markdown(plan: &Value) -> String {
+    let summary = plan["summary"].as_str().unwrap_or("(untitled plan)");
+    let wf = plan["workflowId"].as_str().unwrap_or("");
+    let version = plan["version"].as_i64().unwrap_or(0);
+    let status = plan["status"].as_str().unwrap_or("");
+    let created_by = plan["createdByAgent"].as_str().unwrap_or("");
+    let created_at = plan["createdAt"].as_str().unwrap_or("");
+    let content_pretty =
+        serde_json::to_string_pretty(&plan["content"]).unwrap_or_else(|_| "null".into());
+    format!(
+        "# {summary} (v{version})\n\n\
+         - **Workflow:** {wf}\n\
+         - **Version:** {version}\n\
+         - **Status:** {status}\n\
+         - **Created by:** {created_by}\n\
+         - **Created at:** {created_at}\n\n\
+         ## Content\n\n\
+         ```json\n{content_pretty}\n```\n"
+    )
+}
+
 // ============================================================================
 // Auto-store helpers (SQLite path)
 // ============================================================================
@@ -3656,6 +3683,53 @@ async fn local_sync_all(cwd: &str) -> Result<Value, Box<dyn std::error::Error + 
         synced.push(wf_id.clone());
     }
 
+    // C4: mirror plans to {cwd}/.masday/plans/{wf}-v{version}.md so the
+    // documented plans/ artifact contract is fulfilled (previously it stayed
+    // empty forever). Mirrors the workflow-state write pattern above:
+    // read from SQLite in a sync block, drop the conn, then write async.
+    let plans_dir = std::path::Path::new(cwd).join(".masday").join("plans");
+    if tokio::fs::create_dir_all(&plans_dir).await.is_ok() {
+        let plans: Vec<Value> = {
+            let conn = conn();
+            (|| -> Result<Vec<Value>, rusqlite::Error> {
+                let mut stmt = conn.prepare(
+                    "SELECT id, workflow_id, version, status, summary, content, created_by_agent, created_at FROM plans ORDER BY workflow_id, version",
+                )?;
+                let rows = stmt.query_map([], |row| {
+                    Ok(json!({
+                        "id": row.get::<_, String>(0)?,
+                        "workflowId": row.get::<_, String>(1)?,
+                        "version": row.get::<_, i64>(2)?,
+                        "status": row.get::<_, String>(3)?,
+                        "summary": row.get::<_, String>(4)?,
+                        "content": json_col(row, 5),
+                        "createdByAgent": row.get::<_, String>(6)?,
+                        "createdAt": row.get::<_, String>(7)?,
+                    }))
+                })?;
+                Ok(collect_rows(rows))
+            })()
+            .unwrap_or_default()
+        }; // conn dropped here
+
+        for plan in &plans {
+            let wf_id = plan["workflowId"].as_str().unwrap_or("unknown");
+            let plan_id = plan["id"].as_str().unwrap_or("?");
+            let sanitized = match crate::client::sanitize_id(wf_id) {
+                Some(s) => s,
+                None => {
+                    errors.push(format!("plan {plan_id} (wf {wf_id}): invalid workflow_id"));
+                    continue;
+                }
+            };
+            let version = plan["version"].as_i64().unwrap_or(0);
+            let plan_file = plans_dir.join(format!("{sanitized}-v{version}.md"));
+            if let Err(e) = tokio::fs::write(&plan_file, render_plan_markdown(plan)).await {
+                errors.push(format!("plan {plan_id} (wf {wf_id}): write failed: {e}"));
+            }
+        }
+    }
+
     // Also pull memories from PostgreSQL → SQLite
     let (mem_pulled, mem_skipped, mem_errors) = crate::direct_pg::memories_bulk_pull().await;
     let pg_failed = crate::pg::get_pool().await.is_none();
@@ -3694,6 +3768,50 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("invalid workflow_id"));
+    }
+
+    #[tokio::test]
+    async fn test_local_sync_writes_plan_to_disk() {
+        // C4: local_sync must mirror plans to {cwd}/.masday/plans/{wf}-v{version}.md
+        // (previously the plans/ dir stayed empty despite the documented contract).
+        let _guard = TestDbGuard::new();
+        let cwd_dir = TempDir::new().unwrap();
+        let cwd = cwd_dir.path().to_str().unwrap();
+
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        // Scope the connection so it is dropped before local_sync_all re-locks it.
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "plan-sync-test", "PLAN"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) \
+                 VALUES (?1, ?2, 1, 'ACTIVE', ?3, ?4, 'test')",
+                params!["plan-1", &wf_id, "Plan v1", r#"{"phases":[]}"#],
+            )
+            .unwrap();
+        }
+
+        let res = local_sync_all(cwd).await;
+        assert!(res.is_ok(), "local_sync_all failed: {:?}", res);
+
+        let plan_file = std::path::Path::new(cwd)
+            .join(".masday")
+            .join("plans")
+            .join(format!("{wf_id}-v1.md"));
+        assert!(
+            plan_file.exists(),
+            "plan file not written: {}",
+            plan_file.display()
+        );
+
+        let body = std::fs::read_to_string(&plan_file).unwrap();
+        assert!(body.contains("Plan v1"), "summary missing in: {body}");
+        assert!(body.contains(&wf_id), "workflow id missing in: {body}");
+        assert!(body.contains("```json"), "content block missing in: {body}");
     }
 
     #[test]
