@@ -112,10 +112,13 @@ pub async fn filesystem_read(
         validate_path(path, project_root).map_err(|e| format!("Path validation failed: {}", e))?;
 
     // Check file size before reading to prevent loading huge files into memory
-    let metadata =
-        tokio::fs::metadata(&validated_path)
-            .await
-            .map_err(|e| format!("Failed to get metadata for {}: {}", validated_path.display(), e))?;
+    let metadata = tokio::fs::metadata(&validated_path).await.map_err(|e| {
+        format!(
+            "Failed to get metadata for {}: {}",
+            validated_path.display(),
+            e
+        )
+    })?;
 
     if metadata.len() > crate::tools::cmd::MAX_OUTPUT_BYTES as u64 {
         return Err(format!(

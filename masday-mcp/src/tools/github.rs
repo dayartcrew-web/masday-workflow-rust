@@ -11,10 +11,7 @@ pub async fn github_pr_create(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'title' argument")?;
 
-    let body = args
-        .get("body")
-        .and_then(|v| v.as_str())
-        .unwrap_or(""); // Optional: empty body is valid for gh pr create
+    let body = args.get("body").and_then(|v| v.as_str()).unwrap_or(""); // Optional: empty body is valid for gh pr create
 
     let mut cmd = tokio::process::Command::new("gh");
     cmd.args(["pr", "create", "--title", title, "--body", body]);
@@ -56,8 +53,8 @@ pub async fn github_pr_list(
         return Err(format!("gh pr list failed: {}", stderr).into());
     }
 
-    let prs: Vec<Value> =
-        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse PR list JSON: {}", e))?;
+    let prs: Vec<Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse PR list JSON: {}", e))?;
 
     Ok(serde_json::json!({ "prs": prs }))
 }
@@ -79,8 +76,8 @@ pub async fn github_issue_list(
         return Err(format!("gh issue list failed: {}", stderr).into());
     }
 
-    let issues: Vec<Value> =
-        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse issue list JSON: {}", e))?;
+    let issues: Vec<Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse issue list JSON: {}", e))?;
 
     Ok(serde_json::json!({ "issues": issues }))
 }

@@ -88,7 +88,9 @@ fn resolve_registry_path(project_root: &str) -> std::path::PathBuf {
 /// Preserves all other entries and order. If replacing, keeps the original position.
 fn upsert_entry(mut entries: Vec<Value>, name: &str, new_entry: Value) -> Vec<Value> {
     // Find position of existing entry with the same name
-    let pos = entries.iter().position(|e| e["name"].as_str() == Some(name));
+    let pos = entries
+        .iter()
+        .position(|e| e["name"].as_str() == Some(name));
 
     if let Some(idx) = pos {
         // Replace existing entry at the same position
@@ -141,7 +143,11 @@ fn write_registry_entry(
     // Ensure parent directory exists
     if let Some(parent) = registry_path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            warn!("write_registry_entry: failed to create directory {}: {}", parent.display(), e);
+            warn!(
+                "write_registry_entry: failed to create directory {}: {}",
+                parent.display(),
+                e
+            );
             return;
         }
     }
@@ -152,8 +158,17 @@ fn write_registry_entry(
             // Convert 4-space indent to 2-space for consistency
             let json_str_2space = json_str.replace("    ", "  ");
             match std::fs::write(&registry_path, format!("{}\n", json_str_2space)) {
-                Ok(_) => info!("write_registry_entry: wrote {} entry '{}' to {}", entry_type, name, registry_path.display()),
-                Err(e) => warn!("write_registry_entry: failed to write {}: {}", registry_path.display(), e),
+                Ok(_) => info!(
+                    "write_registry_entry: wrote {} entry '{}' to {}",
+                    entry_type,
+                    name,
+                    registry_path.display()
+                ),
+                Err(e) => warn!(
+                    "write_registry_entry: failed to write {}: {}",
+                    registry_path.display(),
+                    e
+                ),
             }
         }
         Err(e) => warn!("write_registry_entry: failed to serialize registry: {}", e),
@@ -4314,7 +4329,10 @@ mod tests {
         assert!(result.is_ok());
         let val = result.unwrap();
         assert_eq!(val["valid"], false);
-        assert!(val["reason"].as_str().unwrap().contains("requires review but none found"));
+        assert!(val["reason"]
+            .as_str()
+            .unwrap()
+            .contains("requires review but none found"));
     }
 
     #[tokio::test]
@@ -4440,7 +4458,11 @@ mod tests {
         // The file might be written to project registry or global registry (if it exists)
         // Check where it was actually written
         let registry_path = resolve_registry_path(project_root);
-        assert!(registry_path.exists(), "Registry should exist at: {}", registry_path.display());
+        assert!(
+            registry_path.exists(),
+            "Registry should exist at: {}",
+            registry_path.display()
+        );
 
         let content = std::fs::read_to_string(&registry_path).unwrap();
         let registry: Value = serde_json::from_str(&content).unwrap();
@@ -4450,7 +4472,10 @@ mod tests {
 
         // Find our test agent (might be among other agents if global registry was used)
         let test_agent = agents.iter().find(|a| a["name"] == "test-agent-write-test");
-        assert!(test_agent.is_some(), "Should find test-agent-write-test in registry");
+        assert!(
+            test_agent.is_some(),
+            "Should find test-agent-write-test in registry"
+        );
 
         let agent = test_agent.unwrap();
         assert_eq!(agent["file"], ".claude/agents/test-agent-write-test.md");
@@ -4463,7 +4488,12 @@ mod tests {
             "category": "quality",
             "description": "Test agent 2"
         });
-        write_registry_entry(project_root, "agents", "test-agent-write-test-2", agent2_entry);
+        write_registry_entry(
+            project_root,
+            "agents",
+            "test-agent-write-test-2",
+            agent2_entry,
+        );
 
         // Reload and verify both are present
         let content = std::fs::read_to_string(&registry_path).unwrap();
@@ -4471,7 +4501,9 @@ mod tests {
         let agents = registry["components"]["agents"].as_array().unwrap();
 
         let agent1 = agents.iter().find(|a| a["name"] == "test-agent-write-test");
-        let agent2 = agents.iter().find(|a| a["name"] == "test-agent-write-test-2");
+        let agent2 = agents
+            .iter()
+            .find(|a| a["name"] == "test-agent-write-test-2");
         assert!(agent1.is_some(), "First agent should still exist");
         assert!(agent2.is_some(), "Second agent should be added");
 
@@ -4483,7 +4515,12 @@ mod tests {
             "category": "general",
             "description": "Updated test agent"
         });
-        write_registry_entry(project_root, "agents", "test-agent-write-test", agent_updated);
+        write_registry_entry(
+            project_root,
+            "agents",
+            "test-agent-write-test",
+            agent_updated,
+        );
 
         // Reload and verify no duplicates, model updated
         let content = std::fs::read_to_string(&registry_path).unwrap();
@@ -4491,10 +4528,19 @@ mod tests {
         let agents = registry["components"]["agents"].as_array().unwrap();
 
         // Count how many times our test agent appears
-        let count = agents.iter().filter(|a| a["name"] == "test-agent-write-test").count();
-        assert_eq!(count, 1, "Should have exactly one entry for test-agent-write-test, not duplicates");
+        let count = agents
+            .iter()
+            .filter(|a| a["name"] == "test-agent-write-test")
+            .count();
+        assert_eq!(
+            count, 1,
+            "Should have exactly one entry for test-agent-write-test, not duplicates"
+        );
 
-        let test_agent = agents.iter().find(|a| a["name"] == "test-agent-write-test").unwrap();
+        let test_agent = agents
+            .iter()
+            .find(|a| a["name"] == "test-agent-write-test")
+            .unwrap();
         assert_eq!(test_agent["model"], "opus");
         assert_eq!(test_agent["description"], "Updated test agent");
     }
@@ -4522,7 +4568,10 @@ mod tests {
 
         // Find our test skill
         let test_skill = skills.iter().find(|s| s["name"] == "test-skill-write-test");
-        assert!(test_skill.is_some(), "Should find test-skill-write-test in registry");
+        assert!(
+            test_skill.is_some(),
+            "Should find test-skill-write-test in registry"
+        );
 
         let skill = test_skill.unwrap();
         assert_eq!(skill["directory"], ".claude/skills/test-skill-write-test");

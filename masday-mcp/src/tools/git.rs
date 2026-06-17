@@ -63,7 +63,8 @@ pub async fn git_commit(args: Value) -> Result<Value, Box<dyn std::error::Error 
             .map_err(|e| format!("Failed to run git add: {}", e))?;
 
         if !add_output.status.success() {
-            let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&add_output.stderr));
+            let stderr =
+                crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&add_output.stderr));
             return Err(format!("Git add failed: {}", stderr).into());
         }
     }
@@ -76,7 +77,8 @@ pub async fn git_commit(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .map_err(|e| format!("Failed to run git commit: {}", e))?;
 
     if !commit_output.status.success() {
-        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&commit_output.stderr));
+        let stderr =
+            crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&commit_output.stderr));
         return Err(format!("Git commit failed: {}", stderr).into());
     }
 

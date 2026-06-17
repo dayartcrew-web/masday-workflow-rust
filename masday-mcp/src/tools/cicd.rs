@@ -70,8 +70,8 @@ pub async fn cicd_runs_view(
         return Err(format!("gh run list failed: {}", stderr).into());
     }
 
-    let runs: Vec<Value> =
-        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse run list JSON: {}", e))?;
+    let runs: Vec<Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse run list JSON: {}", e))?;
 
     Ok(serde_json::json!({ "runs": runs, "count": runs.len() }))
 }
