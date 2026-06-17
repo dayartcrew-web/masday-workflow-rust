@@ -200,9 +200,18 @@ async fn add_task(
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect()
             });
+    let requires_tdd = payload.get("requires_tdd").and_then(|v| v.as_bool());
 
-    let task =
-        masday_service::TaskService::add_task(&state.pool, id, plan_id, name, agent, deps).await?;
+    let task = masday_service::TaskService::add_task(
+        &state.pool,
+        id,
+        plan_id,
+        name,
+        agent,
+        deps,
+        requires_tdd,
+    )
+    .await?;
     Ok(Json(serde_json::json!(task)))
 }
 
