@@ -58,18 +58,26 @@ impl ReviewRepo {
         Ok(ReviewDecision::from_row(&row))
     }
 
-    /// Get the latest review for a task
-    pub async fn get_latest(&self, task_id: &str) -> Result<Option<ReviewDecision>> {
+    /// Get the latest review for a task within a workflow.
+    ///
+    /// Scopes by BOTH `workflow_id` AND `task_id`: a task_id alone is not
+    /// sufficient to identify a review (task IDs may be reused across workflows
+    /// or a stray row from another workflow could match). The workflow_id
+    /// predicate prevents returning a foreign workflow's review decision.
+    pub async fn get_latest(
+        &self,
+        workflow_id: &str,
+        task_id: &str,
+    ) -> Result<Option<ReviewDecision>> {
         let client = self
             .pool
             .get()
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let query =
-            r#"SELECT * FROM review_decisions WHERE task_id = $1 ORDER BY created_at DESC LIMIT 1"#;
+        let query = r#"SELECT * FROM review_decisions WHERE workflow_id = $1 AND task_id = $2 ORDER BY created_at DESC LIMIT 1"#;
         let rows = client
-            .query(query, &[&task_id])
+            .query(query, &[&workflow_id, &task_id])
             .await
             .map_err(|e| AppError::Database(format!("Failed to get latest review: {}", e)))?;
 

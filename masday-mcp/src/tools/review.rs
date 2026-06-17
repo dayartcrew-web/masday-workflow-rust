@@ -20,7 +20,18 @@ pub async fn review_get_latest(
         return Err(format!("Invalid task_id format: '{}'", task_id).into());
     }
 
-    client::api_get(&format!("/api/reviews/task/{}", task_id)).await
+    // workflow_id is required by the API to scope the review lookup
+    // (get_latest filters by workflow_id AND task_id). Pass it as a query param.
+    let workflow_id = args
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing workflow_id".to_string())?;
+
+    client::api_get(&format!(
+        "/api/reviews/task/{}?workflow_id={}",
+        task_id, workflow_id
+    ))
+    .await
 }
 
 #[cfg(test)]

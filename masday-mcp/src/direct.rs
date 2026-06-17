@@ -2130,13 +2130,16 @@ pub async fn review_get_latest(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
+    let workflow_id = args["workflow_id"]
+        .as_str()
+        .ok_or_else(|| err("missing workflow_id"))?;
     let task_id = args["task_id"]
         .as_str()
         .ok_or_else(|| err("missing task_id"))?;
 
     let review = match conn.query_row(
-        "SELECT id, reviewer_agent, decision, notes, gaps, created_at FROM review_decisions WHERE task_id=?1 ORDER BY created_at DESC LIMIT 1",
-        params![task_id],
+        "SELECT id, reviewer_agent, decision, notes, gaps, created_at FROM review_decisions WHERE workflow_id=?1 AND task_id=?2 ORDER BY created_at DESC LIMIT 1",
+        params![workflow_id, task_id],
         |row| Ok(json!({
             "id": row.get::<_, String>(0)?,
             "reviewerAgent": row.get::<_, String>(1)?,
@@ -2153,7 +2156,7 @@ pub async fn review_get_latest(
 
     match review {
         Some(r) => Ok(json!({"review": r})),
-        None => Err(err("No review found for task")),
+        None => Err(err("No review found for workflow/task")),
     }
 }
 

@@ -87,25 +87,36 @@ impl ReviewService {
     ///
     /// # Returns
     /// * `Result<Option<ReviewDecision>>` - The latest review if any
-    pub async fn get_latest_review(pool: &DbPool, task_id: &str) -> Result<Option<ReviewDecision>> {
-        debug!("Getting latest review for task {}", task_id);
+    pub async fn get_latest_review(
+        pool: &DbPool,
+        workflow_id: &str,
+        task_id: &str,
+    ) -> Result<Option<ReviewDecision>> {
+        debug!(
+            "Getting latest review for workflow {} task {}",
+            workflow_id, task_id
+        );
 
         let service = Self::new(pool.clone());
-        service.repo.get_latest(task_id).await
+        service.repo.get_latest(workflow_id, task_id).await
     }
 
-    /// Check if a task is approved
+    /// Check if a task is approved within a workflow.
     ///
     /// # Arguments
     /// * `pool` - Database connection pool
+    /// * `workflow_id` - Workflow ID (scopes the review lookup)
     /// * `task_id` - Task ID
     ///
     /// # Returns
-    /// * `bool` - true if approved, false otherwise
-    pub async fn is_approved(pool: &DbPool, task_id: &str) -> bool {
-        match Self::get_latest_review(pool, task_id).await {
-            Ok(Some(review)) => review.decision == "APPROVED",
-            _ => false,
+    /// * `Result<bool>` - `Ok(true)` if the latest review is APPROVED, `Ok(false)`
+    ///   if there is no review or it is not APPROVED. A DB error is propagated as
+    ///   `Err` (previously collapsed to `false`, which silently treated transient
+    ///   failures as rejection).
+    pub async fn is_approved(pool: &DbPool, workflow_id: &str, task_id: &str) -> Result<bool> {
+        match Self::get_latest_review(pool, workflow_id, task_id).await? {
+            Some(review) => Ok(review.decision == "APPROVED"),
+            None => Ok(false),
         }
     }
 }

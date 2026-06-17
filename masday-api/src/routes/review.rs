@@ -12,7 +12,6 @@ use crate::AppState;
 
 #[derive(serde::Deserialize)]
 struct LatestReviewQuery {
-    #[allow(dead_code)]
     workflow_id: Option<String>,
     task_id: Option<String>,
 }
@@ -71,9 +70,23 @@ async fn submit_review(
 async fn get_review_by_task(
     State(state): State<AppState>,
     Path(task_id): Path<String>,
-) -> Json<Value> {
-    let approved = masday_service::ReviewService::is_approved(&state.pool, &task_id).await;
-    Json(serde_json::json!({"task_id": task_id, "approved": approved}))
+    Query(params): Query<LatestReviewQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let workflow_id = params.workflow_id.as_deref().unwrap_or("");
+
+    if workflow_id.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "task_id": task_id,
+            "approved": false,
+            "message": "workflow_id query parameter is required"
+        })));
+    }
+
+    let approved =
+        masday_service::ReviewService::is_approved(&state.pool, workflow_id, &task_id).await?;
+    Ok(Json(
+        serde_json::json!({"task_id": task_id, "approved": approved}),
+    ))
 }
 
 /// GET /reviews/latest?workflow_id=X&task_id=Y — get latest review decision
@@ -82,19 +95,21 @@ async fn get_latest_review(
     Query(params): Query<LatestReviewQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let task_id = params.task_id.as_deref().unwrap_or("");
+    let workflow_id = params.workflow_id.as_deref().unwrap_or("");
 
-    if task_id.is_empty() {
+    if task_id.is_empty() || workflow_id.is_empty() {
         return Ok(Json(serde_json::json!({
             "review": null,
-            "message": "task_id query parameter is required"
+            "message": "workflow_id and task_id query parameters are required"
         })));
     }
 
     let repo = masday_db::repos::ReviewRepo::new(state.pool.clone());
-    match repo.get_latest(task_id).await? {
+    match repo.get_latest(workflow_id, task_id).await? {
         Some(review) => Ok(Json(serde_json::json!(review))),
         None => Ok(Json(serde_json::json!({
             "review": null,
+            "workflow_id": workflow_id,
             "task_id": task_id
         }))),
     }
