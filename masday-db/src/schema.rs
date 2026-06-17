@@ -539,6 +539,80 @@ pub struct NewContextDocument {
 }
 
 // ============================================================================
+// Code Chunks Table (pgvector code search)
+// ============================================================================
+
+/// CodeChunk table model
+///
+/// A chunk of source code extracted for chunk-level pgvector semantic search.
+/// Mirrors the MCP SQLite `code_chunks` schema, extended with a real embedding.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct CodeChunk {
+    pub id: String,
+    pub project_path: String,
+    pub file_path: String,
+    pub language: String,
+    pub chunk_type: String,
+    pub name: Option<String>,
+    pub start_line: i32,
+    pub end_line: i32,
+    pub content: String,
+    pub content_hash: String,
+    #[serde(skip)]
+    pub embedding: Option<Vector>,
+    pub indexed_at: DateTime<Utc>,
+}
+
+impl CodeChunk {
+    /// Map from a DB row with snake_case columns.
+    pub fn from_row(row: &tokio_postgres::Row) -> Self {
+        CodeChunk {
+            id: row.get("id"),
+            project_path: row.get("project_path"),
+            file_path: row.get("file_path"),
+            language: row.get("language"),
+            chunk_type: row.get("chunk_type"),
+            name: row.get("name"),
+            start_line: row.get("start_line"),
+            end_line: row.get("end_line"),
+            content: row.get("content"),
+            content_hash: row.get("content_hash"),
+            embedding: row.get("embedding"),
+            indexed_at: row.get("indexed_at"),
+        }
+    }
+}
+
+/// New code chunk for insertion (id + indexed_at defaulted by DB).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewCodeChunk {
+    pub project_path: String,
+    pub file_path: String,
+    pub language: String,
+    pub chunk_type: String,
+    pub name: Option<String>,
+    pub start_line: i32,
+    pub end_line: i32,
+    pub content: String,
+    pub content_hash: String,
+    #[serde(skip)]
+    pub embedding: Option<Vec<f32>>,
+}
+
+/// A code search result: the chunk plus its cosine similarity to the query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeChunkResult {
+    pub file_path: String,
+    pub language: String,
+    pub chunk_type: String,
+    pub name: Option<String>,
+    pub start_line: i32,
+    pub end_line: i32,
+    pub content: String,
+    pub similarity: f64,
+}
+
+// ============================================================================
 // Knowledge Graph Tables
 // ============================================================================
 

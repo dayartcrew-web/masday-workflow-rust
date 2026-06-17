@@ -1,6 +1,7 @@
 //! Database repository modules
 
 pub mod branch_repo;
+pub mod code_chunk_repo;
 pub mod context_document_repo;
 pub mod episodic_memory_repo;
 pub mod graph_repo;
@@ -18,6 +19,7 @@ pub mod workflow_repo;
 
 // Re-export main repository types
 pub use branch_repo::BranchRepo;
+pub use code_chunk_repo::CodeChunkRepo;
 pub use context_document_repo::ContextDocumentRepo;
 pub use episodic_memory_repo::EpisodicMemoryRepo;
 pub use graph_repo::GraphRepo;

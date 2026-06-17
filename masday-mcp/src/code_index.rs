@@ -29,18 +29,18 @@ const MIN_CHUNK_LINES: usize = 2;
 
 /// A single code chunk extracted from a source file.
 #[derive(Debug, Clone)]
-struct CodeChunk {
-    file_path: String,
-    language: String,
-    chunk_type: String,
-    name: Option<String>,
-    start_line: usize,
-    end_line: usize,
-    content: String,
+pub(crate) struct CodeChunk {
+    pub(crate) file_path: String,
+    pub(crate) language: String,
+    pub(crate) chunk_type: String,
+    pub(crate) name: Option<String>,
+    pub(crate) start_line: usize,
+    pub(crate) end_line: usize,
+    pub(crate) content: String,
 }
 
 /// Deterministic content hash using DefaultHasher.
-fn content_hash(content: &str) -> String {
+pub(crate) fn content_hash(content: &str) -> String {
     let mut hasher = DefaultHasher::new();
     content.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
@@ -120,7 +120,7 @@ fn extract_name(line: &str) -> Option<String> {
 }
 
 /// Map file extension to language identifier.
-fn ext_to_language(ext: &str) -> &str {
+pub(crate) fn ext_to_language(ext: &str) -> &str {
     match ext {
         "rs" => "rust",
         "ts" | "tsx" => "typescript",
@@ -138,7 +138,7 @@ fn ext_to_language(ext: &str) -> &str {
 }
 
 /// Chunk a single file's content into searchable pieces.
-fn chunk_file(content: &str, file_path: &str, language: &str) -> Vec<CodeChunk> {
+pub(crate) fn chunk_file(content: &str, file_path: &str, language: &str) -> Vec<CodeChunk> {
     let lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() {
         return Vec::new();
@@ -314,7 +314,7 @@ const SKIP_DIRS: &[&str] = &[
 ];
 
 /// Recursively collect files to index.
-fn collect_files(project_path: &str) -> Vec<(String, String)> {
+pub(crate) fn collect_files(project_path: &str) -> Vec<(String, String)> {
     let mut files = Vec::new();
     collect_files_inner(project_path, &mut files);
     files

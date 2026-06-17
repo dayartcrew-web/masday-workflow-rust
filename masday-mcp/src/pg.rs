@@ -19,10 +19,23 @@ static PG_POOL: Lazy<Arc<RwLock<Option<DbPool>>>> = Lazy::new(|| Arc::new(RwLock
 static PG_INIT_STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Embedded migration SQL — included at compile time from masday-db.
-const MIGRATION_SQL: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../masday-db/migrations/001_initial_schema.sql"
-));
+/// Each file is run independently; statement splitting happens per-file.
+const MIGRATION_SQL: &[(&str, &str)] = &[
+    (
+        "001_initial_schema",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../masday-db/migrations/001_initial_schema.sql"
+        )),
+    ),
+    (
+        "005_code_chunks_pgvector",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../masday-db/migrations/005_code_chunks_pgvector.sql"
+        )),
+    ),
+];
 
 /// Read a single key from ~/.masday/config.toml using line-by-line parsing.
 /// Matches both `key_name` and `key-name` variants (underscores and hyphens).
@@ -82,26 +95,44 @@ pub fn read_redis_url() -> Option<String> {
     read_config_value("redis_url")
 }
 
-/// Read embedding provider from config.toml directly (no env).
-/// One of: "local" | "ollama" | "openai". Empty/None = embedding disabled (mock fallback).
+/// Read embedding provider. One of: "mock" | "ollama" | "openai".
+/// Explicit env (`EMBEDDING_PROVIDER`) wins over config.toml — mirrors
+/// masday-api's "env wins" rule and lets tests inject a provider without editing
+/// ~/.masday/config.toml. Production sets no env var, so config.toml governs there.
 pub fn read_embedding_provider() -> Option<String> {
-    read_config_value("embedding_provider")
+    std::env::var("EMBEDDING_PROVIDER")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| read_config_value("embedding_provider"))
 }
 
-/// Read embedding model name from config.toml directly (no env).
+/// Read embedding model name. Env (`EMBEDDING_MODEL`) wins over config.toml.
 pub fn read_embedding_model() -> Option<String> {
-    read_config_value("embedding_model")
+    std::env::var("EMBEDDING_MODEL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| read_config_value("embedding_model"))
 }
 
-/// Read embedding vector dimensions from config.toml directly (no env).
+/// Read embedding vector dimensions. Env (`EMBEDDING_DIMENSIONS`) wins over config.toml.
 pub fn read_embedding_dimensions() -> Option<usize> {
-    read_config_value("embedding_dimensions")?.parse::<usize>().ok()
+    if let Ok(d) = std::env::var("EMBEDDING_DIMENSIONS") {
+        if let Ok(parsed) = d.parse::<usize>() {
+            return Some(parsed);
+        }
+    }
+    read_config_value("embedding_dimensions")?
+        .parse::<usize>()
+        .ok()
 }
 
-/// Read embedding base URL from config.toml directly (no env).
+/// Read embedding base URL. Env (`EMBEDDING_BASE_URL`) wins over config.toml.
 /// Used to override the default Ollama/OpenAI endpoint.
 pub fn read_embedding_base_url() -> Option<String> {
-    read_config_value("embedding_base_url")
+    std::env::var("EMBEDDING_BASE_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| read_config_value("embedding_base_url"))
 }
 
 /// Run embedded migrations directly (doesn't depend on filesystem migrations dir).
@@ -112,54 +143,60 @@ async fn run_embedded_migrations(pool: &DbPool) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to get DB connection: {}", e))?;
 
-    // Collect multi-line statements (accumulate until we hit a line ending with ';')
-    let mut current = String::new();
-    let mut statements = Vec::new();
+    let mut total_ok = 0;
+    let mut total_stmts = 0;
 
-    for line in MIGRATION_SQL.lines() {
-        let trimmed = line.trim();
-        // Skip empty lines and comment-only lines
-        if trimmed.is_empty() || trimmed.starts_with("--") {
-            continue;
-        }
-        // Add non-comment parts of the line
-        current.push_str(line);
-        current.push('\n');
-        if trimmed.ends_with(';') {
-            let stmt = current.trim().trim_end_matches(';').trim().to_string();
-            if !stmt.is_empty() {
-                statements.push(stmt);
+    for (_name, migration_sql) in MIGRATION_SQL {
+        // Collect multi-line statements (accumulate until we hit a line ending with ';')
+        let mut current = String::new();
+        let mut statements = Vec::new();
+
+        for line in migration_sql.lines() {
+            let trimmed = line.trim();
+            // Skip empty lines and comment-only lines
+            if trimmed.is_empty() || trimmed.starts_with("--") {
+                continue;
             }
-            current.clear();
+            // Add non-comment parts of the line
+            current.push_str(line);
+            current.push('\n');
+            if trimmed.ends_with(';') {
+                let stmt = current.trim().trim_end_matches(';').trim().to_string();
+                if !stmt.is_empty() {
+                    statements.push(stmt);
+                }
+                current.clear();
+            }
         }
-    }
-    // Handle any remaining statement without trailing semicolon
-    if !current.trim().is_empty() {
-        statements.push(current.trim().to_string());
-    }
+        // Handle any remaining statement without trailing semicolon
+        if !current.trim().is_empty() {
+            statements.push(current.trim().to_string());
+        }
 
-    let mut ok = 0;
-    for sql in &statements {
-        if let Err(e) = client.execute(sql, &[]).await {
-            let msg = e.to_string();
-            if msg.contains("already exists") {
-                tracing::debug!("Schema exists: {}", &msg[..msg.len().min(60)]);
+        for sql in &statements {
+            total_stmts += 1;
+            if let Err(e) = client.execute(sql, &[]).await {
+                let msg = e.to_string();
+                if msg.contains("already exists") {
+                    tracing::debug!("Schema exists: {}", &msg[..msg.len().min(60)]);
+                    total_ok += 1;
+                } else {
+                    tracing::warn!(
+                        "Migration: {} — {}",
+                        &sql[..sql.len().min(50)],
+                        &msg[..msg.len().min(80)]
+                    );
+                }
             } else {
-                tracing::warn!(
-                    "Migration: {} — {}",
-                    &sql[..sql.len().min(50)],
-                    &msg[..msg.len().min(80)]
-                );
+                total_ok += 1;
             }
-        } else {
-            ok += 1;
         }
     }
 
     tracing::info!(
         "PostgreSQL schema ready ({}/{} statements OK)",
-        ok,
-        statements.len()
+        total_ok,
+        total_stmts
     );
     Ok(())
 }

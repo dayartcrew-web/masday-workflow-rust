@@ -15,6 +15,8 @@ pub mod embedding;
 pub mod handler;
 pub mod mode;
 pub mod pg;
+#[cfg(feature = "sqlite")]
+pub mod pg_code_index;
 pub mod registry;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
@@ -903,6 +905,21 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
     tracing::info!("SQLite initialized");
 
+    // Init the API client: local mode runs alongside the masday-api server on
+    // localhost, so API-mediated tools (remote-mode parity) need it wired. Reads
+    // api_url/api_key from ~/.masday/config.toml (production: no env vars). Non-fatal
+    // — PG-direct tools (e.g. pgvector code search) work without it; only the API
+    // path is skipped if the client can't be initialized.
+    if let Some(api_url) = pg::read_api_url() {
+        if !api_url.is_empty() {
+            let api_key = pg::read_config_value("api_key").unwrap_or_default();
+            match client::init(api_url, api_key) {
+                Ok(()) => tracing::info!("API client initialized (local mode)"),
+                Err(e) => tracing::warn!("API client init failed (non-fatal): {}", e),
+            }
+        }
+    }
+
     // PostgreSQL: eagerly init pool at startup (not lazy) so it's ready for sync.
     let pg_ready = pg::is_configured();
     if pg_ready {
@@ -944,9 +961,14 @@ pub async fn print_embedding_diagnostics() {
     let dims = pg::read_embedding_dimensions();
 
     let model_str = model.clone().unwrap_or_else(|| "(default)".to_string());
-    let dims_str = dims.map(|d| d.to_string()).unwrap_or_else(|| "(default)".to_string());
+    let dims_str = dims
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "(default)".to_string());
 
-    let detail = format!("provider={} model={} dims={}", provider, model_str, dims_str);
+    let detail = format!(
+        "provider={} model={} dims={}",
+        provider, model_str, dims_str
+    );
 
     match provider.to_lowercase().as_str() {
         "" => eprintln!(

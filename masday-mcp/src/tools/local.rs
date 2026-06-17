@@ -69,7 +69,7 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
 /// - "openai": HTTP POST to OpenAI API with text-embedding-3-small model
 ///
 /// Returns Result with vector or error message.
-async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
+pub(crate) async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
     // Read provider from ~/.masday/config.toml directly (production: no env vars).
     let provider = crate::pg::read_embedding_provider()
         .unwrap_or_else(|| "mock".to_string())
@@ -86,8 +86,8 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
             // Call Ollama API (config from ~/.masday/config.toml — no env)
             let base_url = crate::pg::read_embedding_base_url()
                 .unwrap_or_else(|| "http://localhost:11434".to_string());
-            let model = crate::pg::read_embedding_model()
-                .unwrap_or_else(|| "nomic-embed-text".to_string());
+            let model =
+                crate::pg::read_embedding_model().unwrap_or_else(|| "nomic-embed-text".to_string());
             let url = format!("{}/api/embeddings", base_url.trim_end_matches('/'));
 
             // Timeout prevents indefinite hang when Ollama is down/unreachable.
@@ -95,9 +95,12 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
                 .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+            // Ollama's /api/embeddings expects "prompt" (NOT "input"). Sending "input"
+            // makes Ollama return {"embedding":null} and poisons the runner so every
+            // subsequent request hangs. The correct field is "prompt".
             let payload = serde_json::json!({
                 "model": model,
-                "input": text
+                "prompt": text
             });
 
             let response = client
@@ -138,10 +141,15 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
                 .unwrap_or_else(|| "https://api.openai.com".to_string());
             let model = crate::pg::read_embedding_model()
                 .unwrap_or_else(|| "text-embedding-3-small".to_string());
-            let api_key = crate::pg::read_config_value("embedding_api_key")
+            // Env (`OPENAI_API_KEY`) wins over config.toml — consistent with the
+            // provider/base_url override rules above.
+            let api_key = std::env::var("OPENAI_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(|| crate::pg::read_config_value("embedding_api_key"))
                 .or_else(|| crate::pg::read_config_value("openai_api_key"))
                 .ok_or_else(|| {
-                    "OpenAI embedding key not set: add embedding_api_key/openai_api_key to ~/.masday/config.toml"
+                    "OPENAI_API_KEY not set: set the env var or add embedding_api_key/openai_api_key to ~/.masday/config.toml"
                         .to_string()
                 })?;
             let url = format!("{}/v1/embeddings", base_url.trim_end_matches('/'));
@@ -570,6 +578,14 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // The generate_embedding tests toggle the process-global EMBEDDING_PROVIDER /
+    // OPENAI_API_KEY env vars. Under parallel test execution those set_vars race, so
+    // serialize every test that touches embedding config behind this lock. Uses a
+    // tokio Mutex so the guard can be held across the `.await` (a std Mutex would
+    // trip clippy's await_holding_lock).
+    static EMBED_TEST_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
+
     #[test]
     fn test_sanitize_id_valid() {
         assert_eq!(sanitize_id("abc123").unwrap(), "abc123");
@@ -738,6 +754,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_mock() {
+        let _lock = EMBED_TEST_LOCK.lock().await;
         // Ensure clean state before test
         std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "mock");
@@ -757,6 +774,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_empty_text() {
+        let _lock = EMBED_TEST_LOCK.lock().await;
         // Ensure clean state before test
         std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "mock");
@@ -775,6 +793,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_deterministic() {
+        let _lock = EMBED_TEST_LOCK.lock().await;
         // Ensure clean state
         std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "mock");
@@ -795,6 +814,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_unknown_provider_fallback() {
+        let _lock = EMBED_TEST_LOCK.lock().await;
         // Ensure clean state before test
         std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "unknown_provider");
@@ -811,6 +831,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_embedding_openai_missing_key() {
+        let _lock = EMBED_TEST_LOCK.lock().await;
         // Ensure clean state before test
         std::env::remove_var("OPENAI_API_KEY");
         std::env::set_var("EMBEDDING_PROVIDER", "openai");

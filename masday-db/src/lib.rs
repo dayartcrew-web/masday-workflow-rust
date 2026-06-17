@@ -72,6 +72,10 @@ pub async fn run_migrations(pool: &DbPool) -> Result<(), String> {
             "004_drop_task_id_fks",
             include_str!("../migrations/004_drop_task_id_fks.sql"),
         ),
+        (
+            "005_code_chunks_pgvector",
+            include_str!("../migrations/005_code_chunks_pgvector.sql"),
+        ),
     ];
 
     let client = pool
