@@ -3,6 +3,7 @@
 //! Each function uses rusqlite directly against ~/.masday/data.db.
 //! Takes `serde_json::Value` args, returns `Result<Value, Box<dyn Error + Send + Sync>>`.
 
+use masday_core::WorkflowState;
 use rusqlite::params;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -74,6 +75,28 @@ fn new_id() -> String {
 /// Error helper — converts any error to the boxed type the registry expects.
 fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> {
     format!("{}", msg).into()
+}
+
+/// Parse a stored workflow status string into a WorkflowState.
+///
+/// SQLite stores status as an UPPERCASE string; this maps it to the canonical
+/// enum so transitions can be validated via WorkflowState::can_transition_to
+/// (round-1 audit C3 fix: the mark_*_ready handlers previously forced VERIFY /
+/// DONE unconditionally, bypassing the state machine).
+fn parse_workflow_state(status: &str) -> Option<WorkflowState> {
+    let upper = status.to_ascii_uppercase();
+    Some(match upper.as_str() {
+        "INIT" => WorkflowState::Init,
+        "ANALYZE" => WorkflowState::Analyze,
+        "PLAN" => WorkflowState::Plan,
+        "EXECUTE" => WorkflowState::Execute,
+        "VERIFY" => WorkflowState::Verify,
+        "FIX" => WorkflowState::Fix,
+        "DONE" => WorkflowState::Done,
+        "FAILED" => WorkflowState::Failed,
+        "PAUSED" => WorkflowState::Paused,
+        _ => return None,
+    })
 }
 
 /// Generate embedding vector for text content in standalone mode (synchronous).
@@ -1401,6 +1424,26 @@ pub async fn workflow_mark_synthesis_ready(
         .ok_or_else(|| err("missing workflow_id"))?;
     let t = now();
 
+    // Round-1 C3: VERIFY is reachable only from EXECUTE (per WorkflowState::
+    // can_transition_to). Validate before writing so a workflow cannot land in
+    // VERIFY from INIT/PLAN/etc. Idempotent if already VERIFY.
+    let current: String = conn
+        .query_row(
+            "SELECT status FROM workflows WHERE id=?1",
+            params![wf_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| err(e))?;
+    let target = WorkflowState::Verify;
+    let cur_state = parse_workflow_state(&current)
+        .ok_or_else(|| err(format!("unknown workflow status: {}", current)))?;
+    if cur_state != target && !cur_state.can_transition_to(&target) {
+        return Err(err(format!(
+            "illegal transition: {} -> VERIFY (synthesis ready requires EXECUTE)",
+            current
+        )));
+    }
+
     conn.execute(
         "UPDATE workflows SET status='VERIFY', updated_at=?1 WHERE id=?2",
         params![&t, wf_id],
@@ -1420,6 +1463,26 @@ pub async fn workflow_mark_verification_ready(
         .and_then(|v| v.as_str())
         .ok_or_else(|| err("missing workflow_id"))?;
     let t = now();
+
+    // Round-1 C3: DONE is reachable from INIT/ANALYZE/VERIFY/FIX. Validate
+    // before writing so a workflow cannot complete (e.g. from EXECUTE/PLAN)
+    // without passing verification. Idempotent if already DONE.
+    let current: String = conn
+        .query_row(
+            "SELECT status FROM workflows WHERE id=?1",
+            params![wf_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| err(e))?;
+    let target = WorkflowState::Done;
+    let cur_state = parse_workflow_state(&current)
+        .ok_or_else(|| err(format!("unknown workflow status: {}", current)))?;
+    if cur_state != target && !cur_state.can_transition_to(&target) {
+        return Err(err(format!(
+            "illegal transition: {} -> DONE (verification ready requires VERIFY/FIX)",
+            current
+        )));
+    }
 
     conn.execute(
         "UPDATE workflows SET status='DONE', updated_at=?1 WHERE id=?2",
@@ -3917,6 +3980,60 @@ mod tests {
         )
         .unwrap();
         (id, ())
+    }
+
+    #[tokio::test]
+    async fn test_mark_synthesis_ready_from_execute_ok() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "EXECUTE");
+
+        let result = workflow_mark_synthesis_ready(json!({ "workflow_id": id })).await;
+        assert!(
+            result.is_ok(),
+            "EXECUTE -> VERIFY must be allowed: {:?}",
+            result
+        );
+        assert_eq!(result.unwrap()["status"], "VERIFY");
+    }
+
+    #[tokio::test]
+    async fn test_mark_synthesis_ready_from_plan_rejected() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "PLAN");
+
+        let result = workflow_mark_synthesis_ready(json!({ "workflow_id": id })).await;
+        assert!(result.is_err(), "PLAN -> VERIFY must be rejected");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("illegal transition"));
+    }
+
+    #[tokio::test]
+    async fn test_mark_verification_ready_from_verify_ok() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "VERIFY");
+
+        let result = workflow_mark_verification_ready(json!({ "workflow_id": id })).await;
+        assert!(
+            result.is_ok(),
+            "VERIFY -> DONE must be allowed: {:?}",
+            result
+        );
+        assert_eq!(result.unwrap()["status"], "DONE");
+    }
+
+    #[tokio::test]
+    async fn test_mark_verification_ready_from_execute_rejected() {
+        let guard = TestDbGuard::new();
+        let (id, _) = setup_test_db_via_guard(&guard, "EXECUTE");
+
+        let result = workflow_mark_verification_ready(json!({ "workflow_id": id })).await;
+        assert!(result.is_err(), "EXECUTE -> DONE must be rejected");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("illegal transition"));
     }
 
     #[tokio::test]
