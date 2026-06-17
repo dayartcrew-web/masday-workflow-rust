@@ -95,10 +95,11 @@ pub fn read_redis_url() -> Option<String> {
     read_config_value("redis_url")
 }
 
-/// Read embedding provider. One of: "mock" | "ollama" | "openai".
-/// Explicit env (`EMBEDDING_PROVIDER`) wins over config.toml — mirrors
-/// masday-api's "env wins" rule and lets tests inject a provider without editing
-/// ~/.masday/config.toml. Production sets no env var, so config.toml governs there.
+/// Read embedding provider. One of: "local" | "ollama" | "openai" (mirrors
+/// masday-service's taxonomy). Explicit env (`EMBEDDING_PROVIDER`) wins over
+/// config.toml — mirrors masday-api's "env wins" rule and lets tests inject a
+/// provider without editing ~/.masday/config.toml. Production sets no env var,
+/// so config.toml governs there.
 pub fn read_embedding_provider() -> Option<String> {
     std::env::var("EMBEDDING_PROVIDER")
         .ok()

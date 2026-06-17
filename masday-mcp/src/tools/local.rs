@@ -63,21 +63,26 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
 
 /// Generate embedding vector for text content.
 ///
-/// Supports three providers (configured via EMBEDDING_PROVIDER env var):
-/// - "mock": Use feature hashing vectorizer (default, zero dependencies)
-/// - "ollama": HTTP POST to Ollama API with nomic-embed-text model
-/// - "openai": HTTP POST to OpenAI API with text-embedding-3-small model
+/// Provider taxonomy mirrors masday-service (`embedding_service.rs`):
+/// `local` | `ollama` | `openai`. The value comes from `EMBEDDING_PROVIDER`
+/// (env, wins) or `embedding_provider` in ~/.masday/config.toml.
+/// - "local": on-device feature-hashing vectorizer (default, zero deps).
+///   "mock" is accepted as a deprecated alias for backward compatibility.
+/// - "ollama": HTTP POST to Ollama /api/embeddings (nomic-embed-text).
+/// - "openai": HTTP POST to OpenAI /v1/embeddings (text-embedding-3-small).
 ///
 /// Returns Result with vector or error message.
 pub(crate) async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
     // Read provider from ~/.masday/config.toml directly (production: no env vars).
     let provider = crate::pg::read_embedding_provider()
-        .unwrap_or_else(|| "mock".to_string())
+        .unwrap_or_else(|| "local".to_string())
         .to_lowercase();
 
     match provider.as_str() {
-        "mock" => {
-            // Use existing feature hashing vectorizer
+        "local" | "mock" => {
+            // Feature-hashing vectorizer (the MCP's on-device "local" provider).
+            // masday-service's "local" loads an ONNX model; the MCP (built without
+            // the service's local-embeddings feature) uses feature hashing instead.
             let vector = embedding::text_to_vector(text);
             // Convert f32 to f64 for API compatibility
             Ok(vector.into_iter().map(|v| v as f64).collect())
@@ -201,7 +206,7 @@ pub(crate) async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
         }
         _ => {
             warn!(
-                "Unknown embedding provider: {}, defaulting to mock",
+                "Unknown embedding provider: {}, defaulting to local",
                 provider
             );
             let vector = embedding::text_to_vector(text);
