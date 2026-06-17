@@ -931,6 +931,78 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     server.run().await
 }
 
+/// Print embedding configuration + health to stderr.
+///
+/// Reads directly from `~/.masday/config.toml` (production: no env vars).
+/// Uses `eprintln!` (not tracing) so it survives the stdio NoSubscriber
+/// suppression — the user sees the active provider/model and any errors
+/// (Ollama unavailable, wrong provider, local model not compiled in) on
+/// every MCP startup.
+pub async fn print_embedding_diagnostics() {
+    let provider = pg::read_embedding_provider().unwrap_or_default();
+    let model = pg::read_embedding_model();
+    let dims = pg::read_embedding_dimensions();
+
+    let model_str = model.clone().unwrap_or_else(|| "(default)".to_string());
+    let dims_str = dims.map(|d| d.to_string()).unwrap_or_else(|| "(default)".to_string());
+
+    let detail = format!("provider={} model={} dims={}", provider, model_str, dims_str);
+
+    match provider.to_lowercase().as_str() {
+        "" => eprintln!(
+            "[masday] Embedding: DISABLED — embedding_provider tidak diset di ~/.masday/config.toml. \
+             Memory/code search memakai fallback feature-hashing. \
+             Set embedding_provider=ollama (butuh `ollama serve` + `ollama pull nomic-embed-text`) \
+             atau jalankan `masday embed setting`."
+        ),
+        "local" => eprintln!(
+            "[masday] Embedding: ⚠ TIDAK TERSEDIA — {}. Provider 'local' (fastembed/ONNX) tidak \
+             dikompilasi ke MCP server. Memory search jatuh ke mock. Solusi: set \
+             embedding_provider=\"ollama\" di config.toml, ATAU rebuild masday-mcp dengan \
+             feature local-embeddings.", detail
+        ),
+        "ollama" => {
+            let base_url = pg::read_embedding_base_url()
+                .unwrap_or_else(|| "http://localhost:11434".to_string());
+            let probe = format!("{}/api/tags", base_url.trim_end_matches('/'));
+            let ok = match reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+            {
+                Ok(c) => c.get(&probe).send().await.map(|r| r.status().is_success()).unwrap_or(false),
+                Err(_) => false,
+            };
+            if ok {
+                eprintln!("[masday] Embedding: ✓ OK — {} (Ollama {} reachable)", detail, base_url);
+            } else {
+                eprintln!(
+                    "[masday] Embedding: ⚠ OLLAMA TIDAK TERSEDIA — {} ({} tidak merespon). \
+                     Jalankan `ollama serve` lalu `ollama pull {}`. Memory search akan fallback ke mock.",
+                    detail, base_url, model.unwrap_or_else(|| "nomic-embed-text".to_string())
+                );
+            }
+        }
+        "openai" => {
+            let has_key = pg::read_config_value("embedding_api_key").is_some()
+                || pg::read_config_value("openai_api_key").is_some();
+            if has_key {
+                eprintln!("[masday] Embedding: ✓ configured — {} (API key present)", detail);
+            } else {
+                eprintln!(
+                    "[masday] Embedding: ⚠ OPENAI KEY HILANG — {} (embedding_api_key/openai_api_key \
+                     tidak ada di config.toml). Memory search akan fallback ke mock.",
+                    detail
+                );
+            }
+        }
+        other => eprintln!(
+            "[masday] Embedding: ⚠ SALAH SETTINGS — provider '{}' tidak dikenal. \
+             Pilihan valid: local | ollama | openai. Memory search fallback ke mock.",
+            other
+        ),
+    }
+}
+
 // ── Standalone Registry (direct DB calls) ──────────────────────────────────
 
 /// Build the stdio registry: DB-dependent tools use `direct::*`, local tools unchanged.

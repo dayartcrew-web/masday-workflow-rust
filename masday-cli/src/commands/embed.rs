@@ -937,6 +937,51 @@ fn test_local_embedding(model_id: &str, text: &str) -> Result<(std::time::Durati
     Ok((latency, result.len()))
 }
 
+/// Ensure a local fastembed model is downloaded and loadable.
+///
+/// Downloads the model if not already cached (fastembed shows a progress bar);
+/// loads instantly from cache if present — i.e. "download jika tidak ada, skip
+/// jika sudah ada". Returns the actual embedding dimensions on success.
+/// Spawns a dedicated thread to avoid tokio runtime nesting (mirrors
+/// `test_local_embedding`).
+#[cfg(feature = "local-embeddings")]
+pub fn ensure_local_model(model_id: &str) -> Result<usize> {
+    use masday_service::embedding_service::EmbeddingConfig;
+
+    let model_id = model_id.to_string();
+    let dims = std::thread::scope(|s| {
+        s.spawn(|| -> Result<usize> {
+            let config = EmbeddingConfig {
+                provider: "local".to_string(),
+                model: model_id,
+                dimensions: 0,
+                base_url: String::new(),
+                api_key: None,
+            };
+            // EmbeddingService::new for "local" loads the ONNX model, which
+            // triggers a fastembed download if the model is not cached.
+            let embedding_service =
+                masday_service::embedding_service::EmbeddingService::new(config);
+            let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+            // A tiny embed confirms the model loaded end-to-end.
+            let vec = rt.block_on(embedding_service.embed("init"))?;
+            Ok(vec.len())
+        })
+        .join()
+        .map_err(|_| anyhow::anyhow!("Model init thread panicked"))?
+    })?;
+    Ok(dims)
+}
+
+/// Stub when local-embeddings feature is not compiled in.
+#[cfg(not(feature = "local-embeddings"))]
+pub fn ensure_local_model(_model_id: &str) -> Result<usize> {
+    bail!(
+        "Local embeddings not compiled into this build (feature local-embeddings off). \
+         Use the ollama provider instead."
+    )
+}
+
 /// Interactive embedding configuration wizard
 fn run_settings() -> Result<()> {
     println!();

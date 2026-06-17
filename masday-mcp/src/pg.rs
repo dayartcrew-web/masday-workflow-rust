@@ -82,6 +82,28 @@ pub fn read_redis_url() -> Option<String> {
     read_config_value("redis_url")
 }
 
+/// Read embedding provider from config.toml directly (no env).
+/// One of: "local" | "ollama" | "openai". Empty/None = embedding disabled (mock fallback).
+pub fn read_embedding_provider() -> Option<String> {
+    read_config_value("embedding_provider")
+}
+
+/// Read embedding model name from config.toml directly (no env).
+pub fn read_embedding_model() -> Option<String> {
+    read_config_value("embedding_model")
+}
+
+/// Read embedding vector dimensions from config.toml directly (no env).
+pub fn read_embedding_dimensions() -> Option<usize> {
+    read_config_value("embedding_dimensions")?.parse::<usize>().ok()
+}
+
+/// Read embedding base URL from config.toml directly (no env).
+/// Used to override the default Ollama/OpenAI endpoint.
+pub fn read_embedding_base_url() -> Option<String> {
+    read_config_value("embedding_base_url")
+}
+
 /// Run embedded migrations directly (doesn't depend on filesystem migrations dir).
 /// Splits SQL by statement boundaries (lines ending with ;).
 async fn run_embedded_migrations(pool: &DbPool) -> Result<(), String> {

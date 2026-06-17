@@ -14,6 +14,9 @@ pub async fn run() -> Result<()> {
         cfg.set_env_vars();
     }
 
+    // Show embedding provider/model + health (reads ~/.masday/config.toml directly).
+    masday_mcp::print_embedding_diagnostics().await;
+
     let mode = config
         .as_ref()
         .map(|c| c.mode.as_str())

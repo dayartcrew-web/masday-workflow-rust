@@ -1107,9 +1107,43 @@ fn ask_embedding_model() -> Result<(Option<String>, Option<String>, Option<usize
         .find(|m| embed_choice.starts_with(m.name))
         .context("No matching local model found")?;
 
+    let model_id = selected.id.to_string();
+    let model_name = selected.name.to_string();
+
+    // Inline check + download: load the model now (downloads if not cached,
+    // instant if already present) so the user doesn't have to run
+    // `masday embed setting` separately. fastembed shows a progress bar when
+    // it actually downloads.
+    println!();
+    println!(
+        "{} Preparing local model '{}' (downloads if not already cached)...",
+        style("→").cyan(),
+        style(&model_name).yellow()
+    );
+    match embed::ensure_local_model(&model_id) {
+        Ok(actual_dims) => println!(
+            "{} '{}' ready — {} dims (cached or downloaded)",
+            style("✓").green(),
+            model_name,
+            actual_dims
+        ),
+        Err(e) => {
+            println!(
+                "{} Could not pre-download '{}': {}",
+                style("⚠").yellow(),
+                model_name,
+                e
+            );
+            println!(
+                "  {} It will download automatically on first API server use.",
+                style("→").dim()
+            );
+        }
+    }
+
     Ok((
         Some("local".to_string()),
-        Some(selected.id.to_string()),
+        Some(model_id),
         Some(selected.dimensions),
     ))
 }

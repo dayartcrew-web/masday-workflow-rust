@@ -70,8 +70,9 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
 ///
 /// Returns Result with vector or error message.
 async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
-    let provider = std::env::var("EMBEDDING_PROVIDER")
-        .unwrap_or_else(|_| "mock".to_string())
+    // Read provider from ~/.masday/config.toml directly (production: no env vars).
+    let provider = crate::pg::read_embedding_provider()
+        .unwrap_or_else(|| "mock".to_string())
         .to_lowercase();
 
     match provider.as_str() {
@@ -82,14 +83,20 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
             Ok(vector.into_iter().map(|v| v as f64).collect())
         }
         "ollama" => {
-            // Call Ollama API
-            let base_url = std::env::var("OLLAMA_BASE_URL")
-                .unwrap_or_else(|_| "http://localhost:11434".to_string());
-            let url = format!("{}/api/embeddings", base_url);
+            // Call Ollama API (config from ~/.masday/config.toml — no env)
+            let base_url = crate::pg::read_embedding_base_url()
+                .unwrap_or_else(|| "http://localhost:11434".to_string());
+            let model = crate::pg::read_embedding_model()
+                .unwrap_or_else(|| "nomic-embed-text".to_string());
+            let url = format!("{}/api/embeddings", base_url.trim_end_matches('/'));
 
-            let client = Client::new();
+            // Timeout prevents indefinite hang when Ollama is down/unreachable.
+            let client = Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
             let payload = serde_json::json!({
-                "model": "nomic-embed-text",
+                "model": model,
                 "input": text
             });
 
@@ -126,16 +133,25 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, String> {
                 .ok_or_else(|| "Invalid Ollama embedding response format".to_string())
         }
         "openai" => {
-            // Call OpenAI API
-            let base_url = std::env::var("OPENAI_BASE_URL")
-                .unwrap_or_else(|_| "https://api.openai.com".to_string());
-            let api_key = std::env::var("OPENAI_API_KEY")
-                .map_err(|_| "OPENAI_API_KEY not set".to_string())?;
-            let url = format!("{}/v1/embeddings", base_url);
+            // Call OpenAI API (config from ~/.masday/config.toml — no env)
+            let base_url = crate::pg::read_embedding_base_url()
+                .unwrap_or_else(|| "https://api.openai.com".to_string());
+            let model = crate::pg::read_embedding_model()
+                .unwrap_or_else(|| "text-embedding-3-small".to_string());
+            let api_key = crate::pg::read_config_value("embedding_api_key")
+                .or_else(|| crate::pg::read_config_value("openai_api_key"))
+                .ok_or_else(|| {
+                    "OpenAI embedding key not set: add embedding_api_key/openai_api_key to ~/.masday/config.toml"
+                        .to_string()
+                })?;
+            let url = format!("{}/v1/embeddings", base_url.trim_end_matches('/'));
 
-            let client = Client::new();
+            let client = Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
             let payload = serde_json::json!({
-                "model": "text-embedding-3-small",
+                "model": model,
                 "input": text
             });
 
