@@ -35,9 +35,9 @@ impl SearchService {
         );
 
         let query = r#"
-            SELECT id, content, summary, "memoryType",
+            SELECT id, content, summary, memory_type,
                    1 - (embedding <=> $1::vector) as similarity
-            FROM "Memory"
+            FROM memories
             WHERE embedding IS NOT NULL
             ORDER BY embedding <=> $1::vector
             LIMIT $2
@@ -62,7 +62,7 @@ impl SearchService {
                             "id": row.get::<String, _>("id"),
                             "content": row.get::<String, _>("content"),
                             "summary": row.get::<Option<String>, _>("summary"),
-                            "memory_type": row.get::<String, _>("memoryType"),
+                            "memory_type": row.get::<String, _>("memory_type"),
                             "similarity": row.get::<f64, _>("similarity")
                         })
                     })
@@ -79,9 +79,9 @@ impl SearchService {
         limit: i64,
     ) -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {
         let query = r#"
-            SELECT id, content, summary, "memoryType", 0.5 as similarity
-            FROM "Memory"
-            ORDER BY "createdAt" DESC
+            SELECT id, content, summary, memory_type, 0.5 as similarity
+            FROM memories
+            ORDER BY created_at DESC
             LIMIT $1
         "#;
 
@@ -94,7 +94,7 @@ impl SearchService {
                     "id": row.get::<String, _>("id"),
                     "content": row.get::<String, _>("content"),
                     "summary": row.get::<Option<String>, _>("summary"),
-                    "memory_type": row.get::<String, _>("memoryType"),
+                    "memory_type": row.get::<String, _>("memory_type"),
                     "similarity": row.get::<f64, _>("similarity")
                 })
             })
@@ -289,10 +289,10 @@ impl SearchService {
         // Get recent memories for this workflow
         let memories = sqlx::query(
             r#"
-            SELECT id, content, summary, "memoryType", "importanceScore"
-            FROM "Memory"
-            WHERE "workflowId" = $1 OR "importanceScore" > 0.7
-            ORDER BY "importanceScore" DESC, "createdAt" DESC
+            SELECT id, content, summary, memory_type, importance_score
+            FROM memories
+            WHERE workflow_id = $1 OR importance_score > 0.7
+            ORDER BY importance_score DESC, created_at DESC
             LIMIT 10
             "#,
         )
@@ -304,7 +304,7 @@ impl SearchService {
         let workflow = sqlx::query(
             r#"
             SELECT status, metadata
-            FROM "Workflow"
+            FROM workflows
             WHERE id = $1
             "#,
         )
@@ -316,7 +316,7 @@ impl SearchService {
         let plan = sqlx::query(
             r#"
             SELECT summary, content
-            FROM "Plan"
+            FROM plans
             WHERE id = $1
             "#,
         )
@@ -328,7 +328,7 @@ impl SearchService {
         let task = sqlx::query(
             r#"
             SELECT title, status
-            FROM "Task"
+            FROM tasks
             WHERE id = $1
             "#,
         )
@@ -386,8 +386,8 @@ impl SearchService {
                     "id": row.get::<String, _>("id"),
                     "content": row.get::<String, _>("content"),
                     "summary": row.get::<Option<String>, _>("summary"),
-                    "type": row.get::<String, _>("memoryType"),
-                    "importance": row.get::<Option<f64>, _>("importanceScore").unwrap_or(0.5)
+                    "type": row.get::<String, _>("memory_type"),
+                    "importance": row.get::<Option<f64>, _>("importance_score").unwrap_or(0.5)
                 })
             }).collect::<Vec<_>>(),
             "acceptance_criteria": acceptance_criteria,
@@ -670,5 +670,38 @@ mod tests {
         // SHA-256 hex strings are 64 characters
         assert_eq!(fingerprint.len(), 64);
         assert!(fingerprint.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_api_path_sql_has_no_pascalcase_identifiers() {
+        // C2.1/C2.2 regression guard. The API-path service layer previously
+        // quoted non-existent PascalCase SQL identifiers (e.g. Memory,
+        // memoryType, EpisodicMemory, Workflow, Plan, Task) instead of the
+        // real snake_case schema, so every API-path memory and context search
+        // failed at the SQL layer. The banned tokens below are written as
+        // escaped Rust string literals so this test's own source cannot
+        // satisfy the assertion.
+        for src in [
+            include_str!("search_service.rs"),
+            include_str!("memory_service.rs"),
+        ] {
+            for banned in [
+                "\"Memory\"",
+                "\"memoryType\"",
+                "\"Workflow\"",
+                "\"Plan\"",
+                "\"Task\"",
+                "\"EpisodicMemory\"",
+                "\"sessionId\"",
+                "\"sequenceOrder\"",
+                "\"importanceScore\"",
+                "\"workflowId\"",
+            ] {
+                assert!(
+                    !src.contains(banned),
+                    "PascalCase SQL identifier {banned} still present in service source"
+                );
+            }
+        }
     }
 }

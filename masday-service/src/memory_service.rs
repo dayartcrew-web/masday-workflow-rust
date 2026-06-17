@@ -188,7 +188,7 @@ impl MemoryService {
             .as_secs() as i32;
 
         let query = r#"
-            INSERT INTO "EpisodicMemory" (id, "sessionId", role, content, "sequenceOrder", "createdAt")
+            INSERT INTO episodic_memories (id, session_id, role, content, sequence_order, created_at)
             VALUES ($1, $2, $3, $4, $5, NOW())
         "#;
 
