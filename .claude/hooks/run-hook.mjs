@@ -10,6 +10,7 @@ const hookModules = {
   'masday-mem-context': './masday-mem-context.js',
   'pre-task-complete': './pre-task-complete.js',
   'skill-wrap-guard': './skill-wrap-guard.js',
+  'skill-step-guard': './skill-step-guard.cjs',
 };
 
 async function readStdin() {

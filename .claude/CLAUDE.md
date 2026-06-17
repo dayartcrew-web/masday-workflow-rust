@@ -36,5 +36,5 @@ After ANY non-masday skill: `workflow_saveProgress` → `review_submit` → `pol
 
 Hooks enforce step ordering for 30 skills. Key chains:
 - **TDD**: RED → RED_VERIFY → GREEN → GREEN_VERIFY → REFACTOR → COVERAGE
-- **Workflow new**: 8 steps (enforced by `masday-skill-checkpoint.js`)
+- **Workflow new**: 8 steps (enforced by `skill-step-guard.cjs`)
 - **Workflow run**: 5 steps | **plan**: 4 | **fix**: 4 | **verify**: 5

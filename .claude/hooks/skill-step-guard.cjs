@@ -397,7 +397,7 @@ function detectActiveSkill(toolName, toolInput) {
 
 // ── Evidence Collection ─────────────────────────────────────────────────────
 
-function collectEvidence(toolName, toolInput) {
+function collectEvidence(toolName, toolInput, toolResult) {
   const evidence = {};
 
   // File evidence from Write tool
@@ -456,8 +456,32 @@ function collectEvidence(toolName, toolInput) {
     evidence.browserResize = true;
   }
 
-  // MCP tool evidence — all patterns referenced by SKILL_STEPS
-  const mcpToolPatterns = [
+  // MCP tool evidence — CRITICAL FIX: Only record evidence for validation/checkpoint tools
+  // when their response indicates actual success. This prevents a failed validation from
+  // satisfying the step requirement.
+  //
+  // Tools that MUST return a success/failure indicator:
+  // - policy_validate_* → response.valid === true
+  // - review_submit → response.decision === "APPROVED" or response.completed === true
+  // - workflow_saveProgress → response.saved === true or response.ok === true
+  // - workflow_completeTask → response.completed === true or response.ok === true
+  //
+  // All other MCP tools are still recorded on call (backward compatible).
+
+  const validationTools = [
+    "policy_validate_completion",
+    "policy_validate_execution",
+    "policy_validate_parallel_completion",
+    "policy_check_session_readiness",
+    "policy_detect_scope_drift",
+    "policy_require_context_refresh",
+    "review_submit",
+    "review_get_latest",
+    "workflow_saveProgress",
+    "workflow_completeTask",
+  ];
+
+  const otherMcpToolPatterns = [
     "capability_system_readiness",
     "memory_search",
     "memory_recall_recent",
@@ -483,8 +507,6 @@ function collectEvidence(toolName, toolInput) {
     "workflow_getCurrentTask",
     "workflow_execute",
     "workflow_startTask",
-    "workflow_saveProgress",
-    "workflow_completeTask",
     "workflow_createParallelBranches",
     "workflow_completeParallelBranch",
     "workflow_listParallelBranches",
@@ -496,14 +518,6 @@ function collectEvidence(toolName, toolInput) {
     "capability_create_skill",
     "capability_workflow_audit",
     "capability_scaffold_feature",
-    "policy_check_session_readiness",
-    "policy_validate_execution",
-    "policy_validate_completion",
-    "policy_validate_parallel_completion",
-    "policy_detect_scope_drift",
-    "policy_require_context_refresh",
-    "review_submit",
-    "review_get_latest",
     "filesystem_list",
     "filesystem_read",
     "filesystem_write",
@@ -531,7 +545,49 @@ function collectEvidence(toolName, toolInput) {
     "session_patch_state",
   ];
 
-  for (const pattern of mcpToolPatterns) {
+  // Handle validation tools - require success indicator in result
+  for (const pattern of validationTools) {
+    if (toolName.includes(pattern)) {
+      // Only record evidence if we have a result and it indicates success
+      const result = toolResult;
+      let isSuccess = false;
+
+      if (result) {
+        // Check for common success fields
+        if (typeof result === 'object' && !Array.isArray(result)) {
+          // policy_validate_* → valid === true
+          if (pattern.startsWith("policy_validate") && result.valid === true) {
+            isSuccess = true;
+          }
+          // review_submit → completed === true or decision === "APPROVED"
+          else if (pattern === "review_submit" && (result.completed === true || result.decision === "APPROVED")) {
+            isSuccess = true;
+          }
+          // workflow_saveProgress → saved === true or ok === true
+          else if (pattern === "workflow_saveProgress" && (result.saved === true || result.ok === true)) {
+            isSuccess = true;
+          }
+          // workflow_completeTask → completed === true or ok === true
+          else if (pattern === "workflow_completeTask" && (result.completed === true || result.ok === true)) {
+            isSuccess = true;
+          }
+          // Generic success fallback for other validation tools
+          else if (result.success === true || result.ok === true || result.completed === true) {
+            isSuccess = true;
+          }
+        }
+      }
+
+      // Only record evidence if the validation/checkpoint succeeded
+      if (isSuccess) {
+        evidence[`tool:${pattern}`] = true;
+      }
+      // Note: we do NOT record evidence for failed validations - they must be retried
+    }
+  }
+
+  // Handle all other MCP tools - record on call (backward compatible)
+  for (const pattern of otherMcpToolPatterns) {
     if (toolName.includes(pattern)) {
       evidence[`tool:${pattern}`] = true;
     }
@@ -607,6 +663,7 @@ async function main() {
   const input = await readJsonFromStdin();
   const toolName = input.tool_name || "";
   const toolInput = input.tool_input || {};
+  const toolResult = input.tool_result || null;
 
   // 1. Detect if a skill is being activated
   const detectedSkill = detectActiveSkill(toolName, toolInput);
@@ -628,7 +685,7 @@ async function main() {
   // 3. Collect evidence from this tool call for all active skills
   for (const skillName of activeSkills) {
     const state = loadState(skillName);
-    const newEvidence = collectEvidence(toolName, toolInput);
+    const newEvidence = collectEvidence(toolName, toolInput, toolResult);
 
     if (Object.keys(newEvidence).length > 0) {
       Object.assign(state.evidence, newEvidence);
