@@ -4,16 +4,16 @@ use serde_json::Value;
 
 /// Get git status
 pub async fn git_status(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let output = tokio::process::Command::new("git")
-        .args(["status", "--porcelain"])
-        .output()
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["status", "--porcelain"]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run git status: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("Git status failed: {}", stderr).into());
     }
 
@@ -22,16 +22,16 @@ pub async fn git_status(_args: Value) -> Result<Value, Box<dyn std::error::Error
 
 /// Get git diff
 pub async fn git_diff(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let output = tokio::process::Command::new("git")
-        .args(["diff"])
-        .output()
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["diff"]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run git diff: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("Git diff failed: {}", stderr).into());
     }
 
@@ -56,27 +56,27 @@ pub async fn git_commit(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
     if stage_all {
         // Stage all changes first
-        let add_output = tokio::process::Command::new("git")
-            .args(["add", "-A"])
-            .output()
+        let mut add_cmd = tokio::process::Command::new("git");
+        add_cmd.args(["add", "-A"]);
+        let add_output = crate::tools::cmd::run(&mut add_cmd)
             .await
             .map_err(|e| format!("Failed to run git add: {}", e))?;
 
         if !add_output.status.success() {
-            let stderr = String::from_utf8_lossy(&add_output.stderr).to_string();
+            let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&add_output.stderr));
             return Err(format!("Git add failed: {}", stderr).into());
         }
     }
 
     // Commit (only stages changes if stage_all was true, otherwise commits staged changes)
-    let commit_output = tokio::process::Command::new("git")
-        .args(["commit", "-m", message])
-        .output()
+    let mut commit_cmd = tokio::process::Command::new("git");
+    commit_cmd.args(["commit", "-m", message]);
+    let commit_output = crate::tools::cmd::run(&mut commit_cmd)
         .await
         .map_err(|e| format!("Failed to run git commit: {}", e))?;
 
     if !commit_output.status.success() {
-        let stderr = String::from_utf8_lossy(&commit_output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&commit_output.stderr));
         return Err(format!("Git commit failed: {}", stderr).into());
     }
 

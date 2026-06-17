@@ -12,14 +12,14 @@ pub async fn docker_build(args: Value) -> Result<Value, Box<dyn std::error::Erro
         vec!["build", "."]
     };
 
-    let output = tokio::process::Command::new("docker")
-        .args(&cmd_args)
-        .output()
+    let mut cmd = tokio::process::Command::new("docker");
+    cmd.args(&cmd_args);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run docker build: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
+    let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
 
     if !output.status.success() {
         return Err(format!("Docker build failed: {}", stderr).into());
@@ -35,14 +35,14 @@ pub async fn docker_run(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or("Missing 'image' argument")?;
 
-    let output = tokio::process::Command::new("docker")
-        .args(["run", image])
-        .output()
+    let mut cmd = tokio::process::Command::new("docker");
+    cmd.args(["run", "--", image]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run docker run: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
+    let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
 
     if !output.status.success() {
         return Err(format!("Docker run failed: {}", stderr).into());
@@ -53,16 +53,16 @@ pub async fn docker_run(args: Value) -> Result<Value, Box<dyn std::error::Error 
 
 /// List Docker containers
 pub async fn docker_ps(_args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let output = tokio::process::Command::new("docker")
-        .args(["ps", "--format", "json"])
-        .output()
+    let mut cmd = tokio::process::Command::new("docker");
+    cmd.args(["ps", "--format", "json"]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run docker ps: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("Docker ps failed: {}", stderr).into());
     }
 

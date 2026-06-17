@@ -11,18 +11,21 @@ pub async fn github_pr_create(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'title' argument")?;
 
-    let body = args.get("body").and_then(|v| v.as_str()).unwrap_or(""); // Optional: empty body is valid for gh pr create
+    let body = args
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or(""); // Optional: empty body is valid for gh pr create
 
-    let output = tokio::process::Command::new("gh")
-        .args(["pr", "create", "--title", title, "--body", body])
-        .output()
+    let mut cmd = tokio::process::Command::new("gh");
+    cmd.args(["pr", "create", "--title", title, "--body", body]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run gh pr create: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("gh pr create failed: {}", stderr).into());
     }
 
@@ -40,21 +43,21 @@ pub async fn github_pr_create(
 pub async fn github_pr_list(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let output = tokio::process::Command::new("gh")
-        .args(["pr", "list", "--json", "number,title,state"])
-        .output()
+    let mut cmd = tokio::process::Command::new("gh");
+    cmd.args(["pr", "list", "--json", "number,title,state"]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run gh pr list: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("gh pr list failed: {}", stderr).into());
     }
 
-    let prs: Vec<Value> = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse PR list JSON: {}", e))?;
+    let prs: Vec<Value> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse PR list JSON: {}", e))?;
 
     Ok(serde_json::json!({ "prs": prs }))
 }
@@ -63,21 +66,21 @@ pub async fn github_pr_list(
 pub async fn github_issue_list(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let output = tokio::process::Command::new("gh")
-        .args(["issue", "list", "--json", "number,title,state"])
-        .output()
+    let mut cmd = tokio::process::Command::new("gh");
+    cmd.args(["issue", "list", "--json", "number,title,state"]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run gh issue list: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("gh issue list failed: {}", stderr).into());
     }
 
-    let issues: Vec<Value> = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse issue list JSON: {}", e))?;
+    let issues: Vec<Value> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse issue list JSON: {}", e))?;
 
     Ok(serde_json::json!({ "issues": issues }))
 }

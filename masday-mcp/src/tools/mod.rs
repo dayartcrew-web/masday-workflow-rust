@@ -1,5 +1,8 @@
 //! MCP tool handlers
 
+// Command execution utilities
+pub mod cmd;
+
 // Universal entry point
 pub mod use_masday;
 
