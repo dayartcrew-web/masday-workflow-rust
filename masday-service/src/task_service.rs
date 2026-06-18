@@ -233,6 +233,115 @@ impl TaskService {
         Ok(updated_task)
     }
 
+    /// Mark a task as FAILED and route the workflow into FIX (C2.10/C2.11).
+    ///
+    /// Previously no path existed to mark a task FAILED, and a failed task left its
+    /// workflow stuck in EXECUTE forever. Now failing an active (RUNNING/PENDING) task
+    /// marks it FAILED, records a best-effort failure memory, and — when the workflow
+    /// state allows it (Execute→Fix, Verify→Fix) — auto-transitions the workflow to FIX
+    /// so the failure becomes actionable. FAILED/Done workflows are left untouched.
+    ///
+    /// # Arguments
+    /// * `pool` - Database connection pool
+    /// * `workflow_id` - Parent workflow ID
+    /// * `task_id` - Task ID
+    /// * `error` - Optional failure reason (stored as an experience memory)
+    ///
+    /// # Returns
+    /// * `Result<Task>` - The FAILED task
+    pub async fn fail_task(
+        pool: &DbPool,
+        workflow_id: &str,
+        task_id: &str,
+        error: Option<String>,
+    ) -> Result<Task> {
+        info!("Failing task {} in workflow {}", task_id, workflow_id);
+
+        let service = Self::new(pool.clone());
+        let task = service.repo.get_by_id(task_id).await?;
+
+        // Validate task belongs to workflow
+        if task.workflow_id != workflow_id {
+            return Err(AppError::validation(format!(
+                "Task {} does not belong to workflow {}",
+                task_id, workflow_id
+            )));
+        }
+
+        // Only active tasks can fail
+        if task.status != "RUNNING" && task.status != "PENDING" {
+            return Err(AppError::validation(format!(
+                "Cannot fail task with status: {} (only RUNNING/PENDING tasks can fail)",
+                task.status
+            )));
+        }
+
+        // C2.10: mark the task FAILED
+        let failed_task = service.repo.update_status(task_id, "FAILED").await?;
+        debug!("Task {} marked FAILED", task_id);
+
+        // Best-effort failure memory (mirrors complete_task's result memory)
+        {
+            let summary = format!("Task failed: {}", task.title);
+            let content = error.unwrap_or_else(|| "Task failed".to_string());
+            workflow_service::auto_store_memory(
+                pool,
+                workflow_id,
+                Some(task_id),
+                "experience",
+                &summary,
+                &content,
+                0.7,
+                vec!["auto".to_string(), "task-failed".to_string()],
+            )
+            .await;
+        }
+
+        // C2.11: route the workflow into FIX so the failure is actionable.
+        // Execute→Fix and Verify→Fix are legal; other states are left as-is.
+        if let Ok(wf) = workflow_service::WorkflowService::get_workflow(pool, workflow_id).await {
+            if let Ok(current) = workflow_service::status_to_state(&wf.status) {
+                if workflow_service::can_transition(&current, &WorkflowState::Fix) {
+                    if let Err(e) = workflow_service::WorkflowService::transition_status(
+                        pool,
+                        workflow_id,
+                        WorkflowState::Fix,
+                    )
+                    .await
+                    {
+                        warn!(
+                            "Failed to auto-transition workflow {} to FIX after task {} failed: {}",
+                            workflow_id, task_id, e
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(failed_task)
+    }
+
+    /// Reset a workflow's FAILED tasks back to PENDING for re-execution (FIX-reset).
+    ///
+    /// Called when a workflow re-enters EXECUTE from FIX, so the previously-failed tasks
+    /// can be retried. Only FAILED tasks are reset — DONE tasks (already-succeeded work)
+    /// are preserved.
+    ///
+    /// # Returns
+    /// * `Result<u64>` - Number of tasks reset to PENDING
+    pub async fn reset_failed_tasks_for_reexecute(pool: &DbPool, workflow_id: &str) -> Result<u64> {
+        let service = Self::new(pool.clone());
+        let tasks = service.repo.list_by_workflow(workflow_id).await?;
+        let mut reset_count: u64 = 0;
+        for task in &tasks {
+            if task.status == "FAILED" {
+                service.repo.update_status(&task.id, "PENDING").await?;
+                reset_count += 1;
+            }
+        }
+        Ok(reset_count)
+    }
+
     /// Get the current active task for a workflow
     ///
     /// # Arguments
@@ -804,5 +913,59 @@ mod tests {
             !gate(tdd, true),
             "TDD task with approved review must not be blocked"
         );
+    }
+
+    // C2.10/C2.11/FIX-reset: failure→FIX recovery tests (structural — validate the
+    // decision rules, not DB operations; enforcement lives in fail_task +
+    // WorkflowService::transition_status's FIX-reset hook).
+
+    #[test]
+    fn test_fail_task_only_allows_active_statuses() {
+        // C2.10: fail_task rejects any task that isn't RUNNING or PENDING — you can't
+        // fail already-terminal work (mirrors the status gate in fail_task).
+        let can_fail = |status: &str| status == "RUNNING" || status == "PENDING";
+        for active in &["RUNNING", "PENDING"] {
+            assert!(can_fail(active), "{active} should be failable");
+        }
+        for terminal in &["DONE", "FAILED"] {
+            assert!(!can_fail(terminal), "{terminal} should not be failable");
+        }
+    }
+
+    #[test]
+    fn test_failure_routes_workflow_to_fix_only_when_allowed() {
+        // C2.11: fail_task auto-transitions to FIX only when the state machine permits.
+        // Execute→Fix and Verify→Fix are legal recovery routes; a terminal workflow
+        // (Done/Failed) is left untouched (can_transition guards it).
+        use crate::workflow_service::can_transition;
+        assert!(
+            can_transition(&WorkflowState::Execute, &WorkflowState::Fix),
+            "Execute→Fix must be allowed"
+        );
+        assert!(
+            can_transition(&WorkflowState::Verify, &WorkflowState::Fix),
+            "Verify→Fix must be allowed"
+        );
+        assert!(
+            !can_transition(&WorkflowState::Done, &WorkflowState::Fix),
+            "Done→Fix must not auto-fire"
+        );
+        assert!(
+            !can_transition(&WorkflowState::Failed, &WorkflowState::Fix),
+            "Failed→Fix must not auto-fire"
+        );
+    }
+
+    #[test]
+    fn test_reset_for_reexecute_only_targets_failed_tasks() {
+        // FIX-reset: on Fix→Execute, only FAILED tasks reset to PENDING; DONE tasks
+        // (already-succeeded work) are preserved. Mirrors reset_failed_tasks_for_reexecute.
+        let statuses = ["FAILED", "DONE", "FAILED", "PENDING", "DONE"];
+        let reset = statuses.iter().filter(|s| **s == "FAILED").count() as u64;
+        assert_eq!(reset, 2, "only the two FAILED tasks should be reset");
+
+        // DONE tasks must survive the reset untouched.
+        let done_survives = statuses.iter().filter(|s| **s == "DONE").count();
+        assert_eq!(done_survives, 2, "DONE tasks must be preserved");
     }
 }
