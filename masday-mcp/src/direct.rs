@@ -197,6 +197,10 @@ fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> 
 /// enum so transitions can be validated via WorkflowState::can_transition_to
 /// (round-1 audit C3 fix: the mark_*_ready handlers previously forced VERIFY /
 /// DONE unconditionally, bypassing the state machine).
+/// Parse a stored workflow status string into a `WorkflowState`.
+///
+/// Status is stored UPPERCASE in SQLite/PostgreSQL; the upper-casing makes this
+/// tolerant of any lingering lowercase rows. Returns `None` for unknown values.
 fn parse_workflow_state(status: &str) -> Option<WorkflowState> {
     let upper = status.to_ascii_uppercase();
     Some(match upper.as_str() {
@@ -211,6 +215,46 @@ fn parse_workflow_state(status: &str) -> Option<WorkflowState> {
         "PAUSED" => WorkflowState::Paused,
         _ => return None,
     })
+}
+
+/// Render a `WorkflowState` as the canonical UPPERCASE DB status string.
+fn workflow_state_str(state: &WorkflowState) -> &'static str {
+    match state {
+        WorkflowState::Init => "INIT",
+        WorkflowState::Analyze => "ANALYZE",
+        WorkflowState::Plan => "PLAN",
+        WorkflowState::Execute => "EXECUTE",
+        WorkflowState::Verify => "VERIFY",
+        WorkflowState::Fix => "FIX",
+        WorkflowState::Done => "DONE",
+        WorkflowState::Failed => "FAILED",
+        WorkflowState::Paused => "PAUSED",
+    }
+}
+
+/// Legal transition path to walk a workflow to DONE from `state`, mirroring the
+/// PG path (`task_service::auto_transition_if_all_done`). Every step is a legal
+/// direct transition by construction. Returns empty for Done/Failed (terminal),
+/// so auto-completion never advances a finished/failed workflow.
+fn auto_done_path(state: &WorkflowState) -> Vec<WorkflowState> {
+    match state {
+        WorkflowState::Execute => vec![WorkflowState::Verify, WorkflowState::Done],
+        WorkflowState::Verify => vec![WorkflowState::Done],
+        WorkflowState::Fix => vec![WorkflowState::Done],
+        WorkflowState::Init => vec![WorkflowState::Done],
+        WorkflowState::Analyze => vec![WorkflowState::Done],
+        WorkflowState::Plan => vec![
+            WorkflowState::Execute,
+            WorkflowState::Verify,
+            WorkflowState::Done,
+        ],
+        WorkflowState::Paused => vec![
+            WorkflowState::Execute,
+            WorkflowState::Verify,
+            WorkflowState::Done,
+        ],
+        WorkflowState::Done | WorkflowState::Failed => vec![],
+    }
 }
 
 /// Generate embedding vector for text content in standalone mode (synchronous).
@@ -1296,11 +1340,46 @@ pub async fn workflow_complete_task(
         .map_err(err)?;
 
     if pending == 0 {
-        conn.execute("UPDATE workflows SET status='DONE', updated_at=?1 WHERE id=?2 AND status NOT IN ('DONE','FAILED')",
-            params![&t, wf_id]).map_err(|e| err(e))?;
+        // C2 fix: walk the *legal* state-machine path to DONE instead of leaping
+        // from ANY non-terminal state (PLAN/Paused/Analyze/...) straight to DONE,
+        // which `WorkflowState::can_transition_to` rejects. Mirrors the PG path
+        // (`task_service::auto_transition_if_all_done`).
+        let current: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![wf_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
 
-        // Auto-store workflow completion summary (best-effort)
-        {
+        // Legal transition path to DONE for the current state (Done/Failed/
+        // unparseable -> empty, i.e. no auto-transition). See `auto_done_path`.
+        let path = match parse_workflow_state(&current) {
+            Some(state) => auto_done_path(&state),
+            None => vec![],
+        };
+
+        let mut reached_done = false;
+        let mut cur = parse_workflow_state(&current);
+        for target in path {
+            // Defensive guard mirroring the PG path's `transition_status`: never
+            // apply a step the state machine forbids.
+            if !cur.as_ref().is_some_and(|c| c.can_transition_to(&target)) {
+                break;
+            }
+            conn.execute(
+                "UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3",
+                params![workflow_state_str(&target), &t, wf_id],
+            )
+            .map_err(|e| err(e))?;
+            if target == WorkflowState::Done {
+                reached_done = true;
+            }
+            cur = Some(target);
+        }
+
+        // Auto-store workflow completion summary (best-effort), only if DONE
+        if reached_done {
             let wf_name: String = conn
                 .query_row(
                     "SELECT name FROM workflows WHERE id=?1",
@@ -4813,5 +4892,115 @@ mod tests {
 
         let skill = test_skill.unwrap();
         assert_eq!(skill["directory"], ".claude/skills/test-skill-write-test");
+    }
+
+    // ===== C2 regression: auto-transition to DONE must respect the state machine =====
+
+    /// Every auto-completion path to DONE must be a chain of legal
+    /// `can_transition_to` steps. This is the invariant the C2 bug violated
+    /// (the old code leaped straight to DONE from ANY non-terminal state).
+    #[test]
+    fn test_auto_done_paths_respect_state_machine() {
+        use masday_core::WorkflowState;
+        for src in [
+            WorkflowState::Init,
+            WorkflowState::Analyze,
+            WorkflowState::Plan,
+            WorkflowState::Execute,
+            WorkflowState::Verify,
+            WorkflowState::Fix,
+            WorkflowState::Paused,
+        ]
+        .iter()
+        {
+            let path = auto_done_path(src);
+            assert!(!path.is_empty(), "{:?} must have a path to DONE", src);
+            let mut cur = src.clone();
+            for target in &path {
+                assert!(
+                    cur.can_transition_to(target),
+                    "illegal step in auto-DONE path: {:?} -> {:?}",
+                    cur,
+                    target
+                );
+                cur = target.clone();
+            }
+            assert_eq!(cur, WorkflowState::Done, "{:?} path must end at DONE", src);
+        }
+        // Terminal states must NOT auto-transition.
+        assert!(auto_done_path(&WorkflowState::Done).is_empty());
+        assert!(auto_done_path(&WorkflowState::Failed).is_empty());
+    }
+
+    /// Create a workflow in `status` with one PENDING task; return (wf_id, task_id).
+    fn setup_workflow_with_pending_task(_guard: &TestDbGuard, status: &str) -> (String, String) {
+        let conn = crate::sqlite::conn();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+            params![&wf_id, "test-workflow", status],
+        )
+        .unwrap();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO plans (id, workflow_id, version, summary, created_by_agent)
+             VALUES (?1, ?2, 1, 'plan', 'test')",
+            params![&plan_id, &wf_id],
+        )
+        .unwrap();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO tasks (id, workflow_id, plan_id, title, status)
+             VALUES (?1, ?2, ?3, 'task', 'PENDING')",
+            params![&task_id, &wf_id, &plan_id],
+        )
+        .unwrap();
+        (wf_id, task_id)
+    }
+
+    fn read_workflow_status(wf_id: &str) -> String {
+        let conn = crate::sqlite::conn();
+        conn.query_row(
+            "SELECT status FROM workflows WHERE id=?1",
+            params![wf_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_transitions_execute_to_done() {
+        // Smoke: completing the last task of an EXECUTE workflow reaches DONE.
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+
+        let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
+        assert!(res.is_ok(), "{:?}", res);
+        assert_eq!(read_workflow_status(&wf_id), "DONE");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_walks_legal_path_from_plan() {
+        // The original bug: a PLAN workflow with all tasks done leaped PLAN->DONE
+        // (illegal direct transition). It must now walk PLAN->EXECUTE->VERIFY->DONE
+        // and still end at DONE.
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "PLAN");
+
+        let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
+        assert!(res.is_ok(), "{:?}", res);
+        assert_eq!(read_workflow_status(&wf_id), "DONE");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_does_not_transition_from_failed() {
+        // Guard: a FAILED workflow must NOT auto-advance to DONE even when all
+        // its tasks are complete (mirrors the PG path's FAILED skip).
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "FAILED");
+
+        let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
+        assert!(res.is_ok(), "{:?}", res);
+        assert_eq!(read_workflow_status(&wf_id), "FAILED");
     }
 }
