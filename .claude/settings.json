@@ -38,11 +38,33 @@
         ]
       },
       {
+        "matcher": "Skill|mcp__masday__workflow_execute|mcp__workflow-orchestrator__workflow_execute",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs skill-step-guard",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "mcp__masday__workflow_completeTask|mcp__workflow-orchestrator__workflow_complete_task",
         "hooks": [
           {
             "type": "command",
             "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs pre-task-complete",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__masday__policy_validate_completion|mcp__masday__policy_validate_execution|mcp__masday__review_submit|mcp__masday__workflow_saveProgress",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /home/vibe-dev/masday-workflow-rust/.claude/hooks/run-hook.mjs skill-step-guard",
             "timeout": 10
           }
         ]

@@ -6,16 +6,16 @@ use serde_json::Value;
 pub async fn cicd_pipeline_status(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let output = tokio::process::Command::new("gh")
-        .args(["run", "list", "--limit", "5"])
-        .output()
+    let mut cmd = tokio::process::Command::new("gh");
+    cmd.args(["run", "list", "--limit", "5"]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run gh run list: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("gh run list failed: {}", stderr).into());
     }
 
@@ -31,14 +31,14 @@ pub async fn cicd_pipeline_trigger(
         .and_then(|v| v.as_str())
         .ok_or("Missing 'pipeline' argument")?;
 
-    let output = tokio::process::Command::new("gh")
-        .args(["workflow", "run", pipeline])
-        .output()
+    let mut cmd = tokio::process::Command::new("gh");
+    cmd.args(["workflow", "run", "--", pipeline]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run gh workflow run: {}", e))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("gh workflow run failed: {}", stderr).into());
     }
 
@@ -50,23 +50,23 @@ pub async fn cicd_runs_view(
     _args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     // Use `gh run list --json` to get structured run data (doesn't require interactive TTY)
-    let output = tokio::process::Command::new("gh")
-        .args([
-            "run",
-            "list",
-            "--limit",
-            "10",
-            "--json",
-            "number,status,conclusion,name,headBranch,createdAt,updatedAt",
-        ])
-        .output()
+    let mut cmd = tokio::process::Command::new("gh");
+    cmd.args([
+        "run",
+        "list",
+        "--limit",
+        "10",
+        "--json",
+        "number,status,conclusion,name,headBranch,createdAt,updatedAt",
+    ]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run gh run list: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("gh run list failed: {}", stderr).into());
     }
 

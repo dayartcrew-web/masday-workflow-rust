@@ -61,6 +61,120 @@ fn registry_agents_empty(reg: &Value) -> bool {
         .unwrap_or(true)
 }
 
+/// Resolve the registry path that would be used by load_registry.
+/// Returns the first existing path, or the project path if none exist.
+fn resolve_registry_path(project_root: &str) -> std::path::PathBuf {
+    // 1. Global: ~/.claude/registry.json
+    if let Some(home) = home::home_dir() {
+        let global_path = home.join(".claude").join("registry.json");
+        if global_path.exists() {
+            return global_path;
+        }
+    }
+
+    // 2. Masday home: ~/.masday/registry.json
+    if let Some(home) = home::home_dir() {
+        let masday_path = home.join(".masday").join("registry.json");
+        if masday_path.exists() {
+            return masday_path;
+        }
+    }
+
+    // 3. Project-level: {project_root}/.claude/registry.json (default write target)
+    Path::new(project_root).join(".claude/registry.json")
+}
+
+/// Pure helper: upsert an entry into a list by name (replace existing, add if new).
+/// Preserves all other entries and order. If replacing, keeps the original position.
+fn upsert_entry(mut entries: Vec<Value>, name: &str, new_entry: Value) -> Vec<Value> {
+    // Find position of existing entry with the same name
+    let pos = entries
+        .iter()
+        .position(|e| e["name"].as_str() == Some(name));
+
+    if let Some(idx) = pos {
+        // Replace existing entry at the same position
+        entries[idx] = new_entry;
+    } else {
+        // Append new entry
+        entries.push(new_entry);
+    }
+    entries
+}
+
+/// Write an agent or skill entry to the registry.
+/// Loads the registry, merges the new entry (replacing any existing entry with the same name),
+/// and writes it back as pretty JSON with 2-space indent and trailing newline.
+/// Non-fatal on write failure: logs a warning and returns success (the .md file is source of truth).
+fn write_registry_entry(
+    project_root: &str,
+    entry_type: &str, // "agents" or "skills"
+    name: &str,
+    new_entry: Value,
+) {
+    let registry_path = resolve_registry_path(project_root);
+
+    // Load existing registry or create empty one
+    let mut registry = if registry_path.exists() {
+        match std::fs::read_to_string(&registry_path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+                warn!("write_registry_entry: failed to parse {}, using empty registry: {}", registry_path.display(), e);
+                json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": [], "docs": []}})
+            }),
+            Err(e) => {
+                warn!("write_registry_entry: failed to read {}, using empty registry: {}", registry_path.display(), e);
+                json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": [], "docs": []}})
+            }
+        }
+    } else {
+        json!({"version": 1, "components": {"agents": [], "skills": [], "hooks": [], "mcpServers": [], "docs": []}})
+    };
+
+    // Upsert the entry into the appropriate list
+    if let Some(components) = registry.get_mut("components") {
+        if let Some(entry_list) = components.get_mut(entry_type) {
+            if let Some(arr) = entry_list.as_array_mut() {
+                let updated = upsert_entry(arr.clone(), name, new_entry);
+                *arr = updated;
+            }
+        }
+    }
+
+    // Ensure parent directory exists
+    if let Some(parent) = registry_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            warn!(
+                "write_registry_entry: failed to create directory {}: {}",
+                parent.display(),
+                e
+            );
+            return;
+        }
+    }
+
+    // Write back as pretty JSON
+    match serde_json::to_string_pretty(&registry) {
+        Ok(json_str) => {
+            // Convert 4-space indent to 2-space for consistency
+            let json_str_2space = json_str.replace("    ", "  ");
+            match std::fs::write(&registry_path, format!("{}\n", json_str_2space)) {
+                Ok(_) => info!(
+                    "write_registry_entry: wrote {} entry '{}' to {}",
+                    entry_type,
+                    name,
+                    registry_path.display()
+                ),
+                Err(e) => warn!(
+                    "write_registry_entry: failed to write {}: {}",
+                    registry_path.display(),
+                    e
+                ),
+            }
+        }
+        Err(e) => warn!("write_registry_entry: failed to serialize registry: {}", e),
+    }
+}
+
 /// Timestamp helper — returns current UTC time as RFC 3339 string.
 fn now() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -1092,6 +1206,10 @@ pub async fn workflow_complete_task(
         .ok_or_else(|| err("missing task_id"))?;
     let result: Option<String> = args.get("result").map(|v| v.to_string());
     let t = now();
+
+    // TODO(C2.7/C2.8): Gate completion with policy_validate_completion before updating task status.
+    // This requires review_repo fix to properly query review_decisions in SQLite mode.
+    // See audit bug C2.5 — current implementation allows bypassing validation.
 
     conn.execute("UPDATE tasks SET status='DONE', result=?1, progress_percent=100, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
         params![result, &t, &t, task_id, wf_id]).map_err(|e| err(e))?;
@@ -2568,39 +2686,86 @@ pub async fn policy_validate_completion(
         }
     };
 
-    if task_status == "DONE" {
-        // Check if all tasks in workflow are done
-        let incomplete_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1 AND status != 'DONE'",
-                params![workflow_id],
-                |r| r.get(0),
-            )
-            .unwrap_or(0);
-
-        let all_done = incomplete_count == 0;
-        let detail = if all_done {
-            "Task complete, all workflow tasks done"
-        } else {
-            "Some workflow tasks still pending/running"
-        };
-        let has_result = task_result.is_some();
-        Ok(json!({
-            "valid": true,
-            "task_status": task_status,
-            "has_result": has_result,
-            "all_workflow_tasks_done": all_done,
-            "incomplete_count": incomplete_count,
-            "detail": detail
-        }))
-    } else {
-        Ok(json!({
+    // Task must be terminal (DONE or CANCELLED)
+    let terminal_statuses = ["DONE", "CANCELLED"];
+    if !terminal_statuses.contains(&task_status.as_str()) {
+        return Ok(json!({
             "valid": false,
             "task_status": task_status,
-            "reason": format!("Task status is {} (expected DONE). Complete the task first with workflow_completeTask.", task_status),
+            "reason": format!("Task status is {} (expected DONE or CANCELLED). Complete the task first with workflow_completeTask.", task_status),
             "suggestion": "Use workflow_saveProgress to save work, then workflow_completeTask to mark DONE."
-        }))
+        }));
     }
+
+    // Check all tasks in workflow are terminal (DONE or CANCELLED)
+    let non_terminal_tasks: Vec<(String, String)> = conn
+        .prepare("SELECT id, status FROM tasks WHERE workflow_id=?1 AND status NOT IN ('DONE', 'CANCELLED')")?
+        .query_map(params![workflow_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| err(format!("Failed to fetch tasks: {}", e)))?;
+
+    if !non_terminal_tasks.is_empty() {
+        let (non_terminal_id, non_terminal_status) = &non_terminal_tasks[0];
+        return Ok(json!({
+            "valid": false,
+            "task_status": task_status,
+            "reason": format!("Task {} not terminal: {}", non_terminal_id, non_terminal_status),
+            "suggestion": "Complete all workflow tasks before marking completion."
+        }));
+    }
+
+    // Check if task requires review and if review is APPROVED
+    let requires_tdd: i64 = conn
+        .query_row(
+            "SELECT requires_tdd FROM tasks WHERE id=?1",
+            params![task_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    if requires_tdd != 0 {
+        // Query latest review for this task
+        let review_result = conn.query_row(
+            "SELECT decision FROM review_decisions WHERE task_id=?1 ORDER BY created_at DESC LIMIT 1",
+            params![task_id],
+            |r| r.get::<_, String>(0),
+        );
+
+        match review_result {
+            Ok(decision) => {
+                if decision != "APPROVED" {
+                    return Ok(json!({
+                        "valid": false,
+                        "task_status": task_status,
+                        "reason": format!("Latest review is {}", decision),
+                        "suggestion": "Address review feedback and resubmit."
+                    }));
+                }
+            }
+            Err(_) => {
+                return Ok(json!({
+                    "valid": false,
+                    "task_status": task_status,
+                    "reason": "Task requires review but none found",
+                    "suggestion": "Submit review for approval before completing."
+                }));
+            }
+        }
+    }
+
+    let has_result = task_result.is_some();
+    Ok(json!({
+        "valid": true,
+        "task_status": task_status,
+        "has_result": has_result,
+        "all_workflow_tasks_terminal": true,
+        "detail": "Task terminal, all workflow tasks terminal"
+    }))
 }
 
 pub async fn policy_validate_parallel_completion(
@@ -2982,6 +3147,16 @@ pub async fn capability_create_agent(
     );
     std::fs::write(dir.join(format!("{}.md", name)), content).map_err(err)?;
 
+    // Update registry (non-fatal: log warning on failure, but .md file is source of truth)
+    let registry_entry = json!({
+        "name": name,
+        "file": format!(".claude/agents/{}.md", name),
+        "model": "sonnet", // default model for custom agents
+        "category": "general", // default category
+        "description": description
+    });
+    write_registry_entry(project_root, "agents", name, registry_entry);
+
     Ok(json!({"created": name}))
 }
 
@@ -2999,6 +3174,15 @@ pub async fn capability_create_skill(
         name, description, name
     );
     std::fs::write(dir.join("SKILL.md"), content).map_err(err)?;
+
+    // Update registry (non-fatal: log warning on failure, but SKILL.md is source of truth)
+    let registry_entry = json!({
+        "name": name,
+        "directory": format!(".claude/skills/{}", name),
+        "category": "general", // default category
+        "description": description
+    });
+    write_registry_entry(project_root, "skills", name, registry_entry);
 
     Ok(json!({"created": name}))
 }
@@ -4075,5 +4259,321 @@ mod tests {
         assert!(val["fingerprint"].is_string());
         assert!(!val["fingerprint"].as_str().unwrap().is_empty());
         assert_eq!(val["workflow_id"], "test-workflow");
+    }
+
+    /// Test pure logic for terminal status validation (extracted from policy_validate_completion)
+    #[test]
+    fn test_tasks_all_terminal_logic() {
+        // Helper function matching the logic in policy_validate_completion
+        fn tasks_all_terminal(statuses: &[&str]) -> bool {
+            statuses.iter().all(|&s| matches!(s, "DONE" | "CANCELLED"))
+        }
+
+        // All DONE -> terminal
+        assert!(tasks_all_terminal(&["DONE", "DONE", "DONE"]));
+
+        // Mix of DONE and CANCELLED -> terminal
+        assert!(tasks_all_terminal(&["DONE", "CANCELLED", "DONE"]));
+
+        // Any PENDING -> not terminal
+        assert!(!tasks_all_terminal(&["DONE", "PENDING", "DONE"]));
+
+        // Any RUNNING -> not terminal
+        assert!(!tasks_all_terminal(&["DONE", "RUNNING"]));
+
+        // Any FAILED -> not terminal (FAILED is not terminal for completion validation)
+        assert!(!tasks_all_terminal(&["DONE", "FAILED"]));
+
+        // Empty list -> terminal (edge case)
+        assert!(tasks_all_terminal(&[]));
+    }
+
+    #[tokio::test]
+    async fn test_policy_validate_completion_requires_review() {
+        let _guard = TestDbGuard::new();
+
+        // Setup workflow and task with requires_tdd=1
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+
+            // Task DONE with requires_tdd=1 but no review
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_id, &plan_id, "task1", "DONE", 1],
+            )
+            .unwrap();
+            // Lock is dropped here
+        }
+
+        let args = json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id
+        });
+
+        let result = policy_validate_completion(args).await;
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert_eq!(val["valid"], false);
+        assert!(val["reason"]
+            .as_str()
+            .unwrap()
+            .contains("requires review but none found"));
+    }
+
+    #[tokio::test]
+    async fn test_policy_validate_completion_with_review_approved() {
+        let _guard = TestDbGuard::new();
+
+        // Setup workflow, task, and review
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let review_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+
+            // Task DONE with requires_tdd=1
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_id, &plan_id, "task1", "DONE", 1],
+            )
+            .unwrap();
+
+            // Approved review
+            conn.execute(
+                "INSERT INTO review_decisions (id, workflow_id, task_id, reviewer_agent, decision, notes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&review_id, &wf_id, &task_id, "test-agent", "APPROVED", "LGTM"],
+            )
+            .unwrap();
+            // Lock is dropped here
+        }
+
+        let args = json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id
+        });
+
+        let result = policy_validate_completion(args).await;
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert_eq!(val["valid"], true);
+        assert_eq!(val["task_status"], "DONE");
+        assert_eq!(val["all_workflow_tasks_terminal"], true);
+    }
+
+    #[test]
+    fn test_upsert_entry_adds_new() {
+        let entries: Vec<Value> = vec![
+            json!({"name": "agent1", "file": "agent1.md"}),
+            json!({"name": "agent2", "file": "agent2.md"}),
+        ];
+
+        let new_entry = json!({"name": "agent3", "file": "agent3.md"});
+        let result = upsert_entry(entries, "agent3", new_entry);
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0]["name"], "agent1");
+        assert_eq!(result[1]["name"], "agent2");
+        assert_eq!(result[2]["name"], "agent3");
+    }
+
+    #[test]
+    fn test_upsert_entry_replaces_existing() {
+        let entries: Vec<Value> = vec![
+            json!({"name": "agent1", "file": "agent1.md", "model": "old"}),
+            json!({"name": "agent2", "file": "agent2.md"}),
+        ];
+
+        let new_entry = json!({"name": "agent1", "file": "agent1.md", "model": "new"});
+        let result = upsert_entry(entries, "agent1", new_entry);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0]["name"], "agent1"); // Stays at position 0
+        assert_eq!(result[0]["model"], "new"); // Updated
+        assert_eq!(result[1]["name"], "agent2"); // Stays at position 1
+    }
+
+    #[test]
+    fn test_upsert_entry_preserves_others() {
+        let entries: Vec<Value> = vec![
+            json!({"name": "agent1", "file": "agent1.md"}),
+            json!({"name": "agent2", "file": "agent2.md"}),
+            json!({"name": "agent3", "file": "agent3.md"}),
+        ];
+
+        let new_entry = json!({"name": "agent2", "file": "agent2-updated.md"});
+        let result = upsert_entry(entries, "agent2", new_entry);
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0]["name"], "agent1");
+        assert_eq!(result[0]["file"], "agent1.md");
+        assert_eq!(result[1]["name"], "agent2");
+        assert_eq!(result[1]["file"], "agent2-updated.md");
+        assert_eq!(result[2]["name"], "agent3");
+        assert_eq!(result[2]["file"], "agent3.md");
+    }
+
+    #[test]
+    fn test_write_registry_entry_round_trip() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().to_str().unwrap();
+
+        // Write an agent entry
+        let agent_entry = json!({
+            "name": "test-agent-write-test",
+            "file": ".claude/agents/test-agent-write-test.md",
+            "model": "sonnet",
+            "category": "general",
+            "description": "Test agent"
+        });
+        write_registry_entry(project_root, "agents", "test-agent-write-test", agent_entry);
+
+        // The file might be written to project registry or global registry (if it exists)
+        // Check where it was actually written
+        let registry_path = resolve_registry_path(project_root);
+        assert!(
+            registry_path.exists(),
+            "Registry should exist at: {}",
+            registry_path.display()
+        );
+
+        let content = std::fs::read_to_string(&registry_path).unwrap();
+        let registry: Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(registry["version"], 1);
+        let agents = registry["components"]["agents"].as_array().unwrap();
+
+        // Find our test agent (might be among other agents if global registry was used)
+        let test_agent = agents.iter().find(|a| a["name"] == "test-agent-write-test");
+        assert!(
+            test_agent.is_some(),
+            "Should find test-agent-write-test in registry"
+        );
+
+        let agent = test_agent.unwrap();
+        assert_eq!(agent["file"], ".claude/agents/test-agent-write-test.md");
+
+        // Write another agent (should not duplicate)
+        let agent2_entry = json!({
+            "name": "test-agent-write-test-2",
+            "file": ".claude/agents/test-agent-write-test-2.md",
+            "model": "haiku",
+            "category": "quality",
+            "description": "Test agent 2"
+        });
+        write_registry_entry(
+            project_root,
+            "agents",
+            "test-agent-write-test-2",
+            agent2_entry,
+        );
+
+        // Reload and verify both are present
+        let content = std::fs::read_to_string(&registry_path).unwrap();
+        let registry: Value = serde_json::from_str(&content).unwrap();
+        let agents = registry["components"]["agents"].as_array().unwrap();
+
+        let agent1 = agents.iter().find(|a| a["name"] == "test-agent-write-test");
+        let agent2 = agents
+            .iter()
+            .find(|a| a["name"] == "test-agent-write-test-2");
+        assert!(agent1.is_some(), "First agent should still exist");
+        assert!(agent2.is_some(), "Second agent should be added");
+
+        // Update the first agent (should replace, not duplicate)
+        let agent_updated = json!({
+            "name": "test-agent-write-test",
+            "file": ".claude/agents/test-agent-write-test.md",
+            "model": "opus", // changed model
+            "category": "general",
+            "description": "Updated test agent"
+        });
+        write_registry_entry(
+            project_root,
+            "agents",
+            "test-agent-write-test",
+            agent_updated,
+        );
+
+        // Reload and verify no duplicates, model updated
+        let content = std::fs::read_to_string(&registry_path).unwrap();
+        let registry: Value = serde_json::from_str(&content).unwrap();
+        let agents = registry["components"]["agents"].as_array().unwrap();
+
+        // Count how many times our test agent appears
+        let count = agents
+            .iter()
+            .filter(|a| a["name"] == "test-agent-write-test")
+            .count();
+        assert_eq!(
+            count, 1,
+            "Should have exactly one entry for test-agent-write-test, not duplicates"
+        );
+
+        let test_agent = agents
+            .iter()
+            .find(|a| a["name"] == "test-agent-write-test")
+            .unwrap();
+        assert_eq!(test_agent["model"], "opus");
+        assert_eq!(test_agent["description"], "Updated test agent");
+    }
+
+    #[test]
+    fn test_write_registry_entry_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().to_str().unwrap();
+
+        // Write a skill entry
+        let skill_entry = json!({
+            "name": "test-skill-write-test",
+            "directory": ".claude/skills/test-skill-write-test",
+            "category": "general",
+            "description": "Test skill"
+        });
+        write_registry_entry(project_root, "skills", "test-skill-write-test", skill_entry);
+
+        // Load and verify
+        let registry_path = resolve_registry_path(project_root);
+        let content = std::fs::read_to_string(&registry_path).unwrap();
+        let registry: Value = serde_json::from_str(&content).unwrap();
+
+        let skills = registry["components"]["skills"].as_array().unwrap();
+
+        // Find our test skill
+        let test_skill = skills.iter().find(|s| s["name"] == "test-skill-write-test");
+        assert!(
+            test_skill.is_some(),
+            "Should find test-skill-write-test in registry"
+        );
+
+        let skill = test_skill.unwrap();
+        assert_eq!(skill["directory"], ".claude/skills/test-skill-write-test");
     }
 }

@@ -17,10 +17,9 @@ pub async fn tests_run(args: Value) -> Result<Value, Box<dyn std::error::Error +
             vec!["test"]
         };
 
-        tokio::process::Command::new("cargo")
-            .args(&cmd_args)
-            .output()
-            .await
+        let mut cmd = tokio::process::Command::new("cargo");
+        cmd.args(&cmd_args);
+        crate::tools::cmd::run(&mut cmd).await
     } else if is_npm {
         let cmd_args = if let Some(p) = pattern {
             vec!["test", p]
@@ -28,18 +27,17 @@ pub async fn tests_run(args: Value) -> Result<Value, Box<dyn std::error::Error +
             vec!["test"]
         };
 
-        tokio::process::Command::new("pnpm")
-            .args(&cmd_args)
-            .output()
-            .await
+        let mut cmd = tokio::process::Command::new("pnpm");
+        cmd.args(&cmd_args);
+        crate::tools::cmd::run(&mut cmd).await
     } else {
         return Err("No Cargo.toml or package.json found".into());
     };
 
     let output = output.map_err(|e| format!("Failed to run tests: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
+    let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
 
     let passed = output.status.success();
 

@@ -193,9 +193,9 @@ Stale/stuck workflow detection, reminder listing, and acknowledgment (WorkflowRe
 
 ## projectRules (1 tool)
 
-Real refactor rules validation from `@mcp-rebuild/project-rules`.
+Basic `.claude/rules` file-format sanity check (not a lint or content validator).
 
-- `projectRules_check` -- Validate project against refactor rules and conventions (14 checks: naming, patterns, tools, docs, TypeScript, security, imports). Returns a report of passed/failed checks.
+- `projectRules_check` -- Verify `.claude/rules/` exists and contains well-formed markdown rule files. Runs 5 basic format checks (directory exists, >=1 `.md` found, file length, presence of `#` headers, presence of `##` subsections in longer files). Returns `{ valid, errors, warnings, files_checked }`. Does **not** analyze rule content, naming patterns, security, or imports.
 
 ## use_masday (1 tool)
 

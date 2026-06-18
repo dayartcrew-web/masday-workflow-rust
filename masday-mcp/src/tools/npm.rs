@@ -10,27 +10,23 @@ pub async fn npm_install(args: Value) -> Result<Value, Box<dyn std::error::Error
         let pkg_names: Vec<&str> = pkgs.iter().filter_map(|v| v.as_str()).collect();
 
         if pkg_names.is_empty() {
-            tokio::process::Command::new("pnpm")
-                .args(["install"])
-                .output()
-                .await
+            let mut cmd = tokio::process::Command::new("pnpm");
+            cmd.args(["install"]);
+            crate::tools::cmd::run(&mut cmd).await
         } else {
-            tokio::process::Command::new("pnpm")
-                .args(["add"])
-                .args(&pkg_names)
-                .output()
-                .await
+            let mut cmd = tokio::process::Command::new("pnpm");
+            cmd.args(["add", "--"]).args(&pkg_names);
+            crate::tools::cmd::run(&mut cmd).await
         }
     } else {
-        tokio::process::Command::new("pnpm")
-            .args(["install"])
-            .output()
-            .await
+        let mut cmd = tokio::process::Command::new("pnpm");
+        cmd.args(["install"]);
+        crate::tools::cmd::run(&mut cmd).await
     }
     .map_err(|e| format!("Failed to run pnpm install: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
+    let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
 
     if !output.status.success() {
         return Err(format!("pnpm install failed: {}", stderr).into());
@@ -46,14 +42,14 @@ pub async fn npm_run(args: Value) -> Result<Value, Box<dyn std::error::Error + S
         .and_then(|v| v.as_str())
         .ok_or("Missing 'script' argument")?;
 
-    let output = tokio::process::Command::new("pnpm")
-        .args([script])
-        .output()
+    let mut cmd = tokio::process::Command::new("pnpm");
+    cmd.args(["run", "--", script]);
+    let output = crate::tools::cmd::run(&mut cmd)
         .await
         .map_err(|e| format!("Failed to run pnpm {}: {}", script, e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stdout));
+    let stderr = crate::tools::cmd::truncate_output(&String::from_utf8_lossy(&output.stderr));
 
     if !output.status.success() {
         return Err(format!("pnpm {} failed: {}", script, stderr).into());
