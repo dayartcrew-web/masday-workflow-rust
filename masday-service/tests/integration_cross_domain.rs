@@ -54,6 +54,7 @@ async fn test_cross_domain_workflow_task_plan_lifecycle(
         "Cross-domain test task".to_string(),
         Some("test-agent".to_string()),
         None,
+        None,
     )
     .await?;
     let task_id = task.id;
@@ -144,6 +145,7 @@ async fn test_cross_domain_review_after_task(
         plan.id,
         "Review test task".to_string(),
         Some("test-agent".to_string()),
+        None,
         None,
     )
     .await?;
