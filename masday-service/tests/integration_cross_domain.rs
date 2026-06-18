@@ -167,7 +167,7 @@ async fn test_cross_domain_review_after_task(
     assert_eq!(review.task_id, task_id);
 
     // Get latest review
-    let latest = ReviewService::get_latest_review(&pool, &task_id).await?;
+    let latest = ReviewService::get_latest_review(&pool, &workflow_id, &task_id).await?;
     assert!(latest.is_some());
     assert_eq!(latest.unwrap().decision, "APPROVED");
 

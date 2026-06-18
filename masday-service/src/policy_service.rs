@@ -107,7 +107,7 @@ impl PolicyService {
         // Check if task requires review
         if task.requires_tdd.unwrap_or(false) {
             // Check if review exists and is approved
-            let review = service.review_repo.get_latest(task_id).await?;
+            let review = service.review_repo.get_latest(workflow_id, task_id).await?;
 
             match review {
                 Some(review_decision) => {
