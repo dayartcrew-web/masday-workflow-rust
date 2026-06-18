@@ -14,6 +14,7 @@ pub fn task_routes() -> Router<AppState> {
     Router::new()
         .route("/tasks/{id}/start", post(start_task))
         .route("/tasks/{id}/complete", post(complete_task))
+        .route("/tasks/{id}/fail", post(fail_task))
         .route("/tasks/{id}/progress", post(save_progress))
         .route("/tasks/{id}", get(get_task))
 }
@@ -43,6 +44,23 @@ async fn complete_task(
     let result = payload.get("result").cloned();
     let task =
         masday_service::TaskService::complete_task(&state.pool, workflow_id, &id, result).await?;
+    Ok(Json(serde_json::json!(task)))
+}
+
+async fn fail_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let workflow_id = payload
+        .get("workflow_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let error = payload
+        .get("error")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let task = masday_service::TaskService::fail_task(&state.pool, workflow_id, &id, error).await?;
     Ok(Json(serde_json::json!(task)))
 }
 

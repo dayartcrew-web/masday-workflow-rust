@@ -360,11 +360,32 @@ impl WorkflowService {
 
         // Update status in database
         let new_status_str = state_to_status(&new_status);
-        service
+        let updated = service
             .repo
             .update_status(id, &new_status_str)
             .await
-            .map_err(|e| AppError::database(format!("Failed to transition workflow: {}", e)))
+            .map_err(|e| AppError::database(format!("Failed to transition workflow: {}", e)))?;
+
+        // FIX-reset: re-entering EXECUTE from FIX resets FAILED tasks → PENDING so the
+        // re-execute loop can retry them (completes the C2.10/C2.11 failure→FIX recovery).
+        if current_state == WorkflowState::Fix && new_status == WorkflowState::Execute {
+            match crate::task_service::TaskService::reset_failed_tasks_for_reexecute(pool, id).await
+            {
+                Ok(count) if count > 0 => {
+                    info!(
+                        "Reset {} FAILED task(s) to PENDING for workflow {} re-execution",
+                        count, id
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => warn!(
+                    "Failed to reset FAILED tasks for workflow {} re-execution: {}",
+                    id, e
+                ),
+            }
+        }
+
+        Ok(updated)
     }
 
     /// Get a workflow by ID
