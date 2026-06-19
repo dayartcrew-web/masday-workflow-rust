@@ -383,6 +383,26 @@ fn auto_store_memory_sqlite(
         warn!("auto_store_memory_sqlite: failed for workflow {}: {e}", workflow_id);
     } else {
         info!("Auto-stored {} memory for workflow {}", memory_type, workflow_id);
+        // C2.17: sync the auto-stored memory to PostgreSQL so the task/workflow
+        // completion audit trail is present in PG, not just SQLite. Fire-and-
+        // forget; no-op without a PG pool. The tuple holds OWNED data only —
+        // the borrowed `conn` is deliberately not captured (a spawned future
+        // must be 'static, and touching the SQLite Mutex from here would risk
+        // a deadlock). Mirrors the memory_store sync (@2094-2111).
+        let pg_args = (
+            id,
+            Some(workflow_id.to_string()),
+            task_id.map(|s| s.to_string()),
+            memory_type.to_string(),
+            summary.to_string(),
+            content.to_string(),
+            importance,
+            "system".to_string(),
+            tags_json,
+        );
+        tokio::spawn(async move {
+            crate::direct_pg::memory_owned(pg_args).await;
+        });
     }
 }
 
