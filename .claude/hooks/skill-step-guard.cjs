@@ -384,42 +384,81 @@ function saveState(state) {
 
 // ── Skill Detection ─────────────────────────────────────────────────────────
 
-function detectActiveSkill(toolName, toolInput) {
-  const input = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput || {});
+// Skill names the guard tracks when the Skill tool is invoked (round-1 L4:
+// extracted from the old hand-written substring if-chain so detection is
+// data-driven). Detection now matches the INVOKED skill exactly (via
+// toolInput.skill) instead of substring-scanning the whole stringified input —
+// which previously caused (a) content bleed: a skill name mentioned in args,
+// a description, or a file path falsely activated that skill's guard; and
+// (b) an ordering/prefix race where a shorter name checked first shadowed a
+// longer one (e.g. masday-research vs masday-web-research / -parallel-research,
+// masday-create-skill vs masday-create-mcp-skill).
+const SKILL_DETECT_NAMES = [
+  "masday-tdd",
+  "masday-workflow-new",
+  "masday-workflow-plan",
+  "masday-workflow-run",
+  "masday-workflow-init",
+  "masday-workflow-fix",
+  "masday-workflow-verify",
+  "masday-workflow-audit",
+  "masday-workflow-add-task",
+  "masday-workflow-discipline",
+  "masday-workflow-continue",
+  "masday-workflow-next",
+  "masday-research",
+  "masday-web-research",
+  "masday-code-analyze",
+  "masday-context-retrieval",
+  "masday-memory-search",
+  "masday-create-agent",
+  "masday-create-skill",
+  "masday-create-command",
+  "masday-create-mcp-skill",
+  "masday-parallel-execution",
+  "masday-parallel-research",
+  "masday-deploy-check",
+  "masday-docker-ops",
+  "masday-cicd-ops",
+  "masday-git-workflow",
+  "masday-github-flow",
+  "masday-github-pr",
+  "masday-autopilot",
+  "masday-sequential-thinking",
+  "masday-e2e",
+];
+const SKILL_DETECT_SET = new Set(SKILL_DETECT_NAMES);
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function detectActiveSkill(toolName, toolInput) {
   if (toolName === "Skill") {
-    if (input.includes("masday-tdd")) return "masday-tdd";
-    if (input.includes("masday-workflow-new")) return "masday-workflow-new";
-    if (input.includes("masday-workflow-plan")) return "masday-workflow-plan";
-    if (input.includes("masday-workflow-run")) return "masday-workflow-run";
-    if (input.includes("masday-workflow-init")) return "masday-workflow-init";
-    if (input.includes("masday-workflow-fix")) return "masday-workflow-fix";
-    if (input.includes("masday-workflow-verify")) return "masday-workflow-verify";
-    if (input.includes("masday-workflow-audit")) return "masday-workflow-audit";
-    if (input.includes("masday-workflow-add-task")) return "masday-workflow-add-task";
-    if (input.includes("masday-workflow-discipline")) return "masday-workflow-discipline";
-    if (input.includes("masday-workflow-continue")) return "masday-workflow-continue";
-    if (input.includes("masday-workflow-next")) return "masday-workflow-next";
-    if (input.includes("masday-research")) return "masday-research";
-    if (input.includes("masday-web-research")) return "masday-web-research";
-    if (input.includes("masday-code-analyze")) return "masday-code-analyze";
-    if (input.includes("masday-context-retrieval")) return "masday-context-retrieval";
-    if (input.includes("masday-memory-search")) return "masday-memory-search";
-    if (input.includes("masday-create-agent")) return "masday-create-agent";
-    if (input.includes("masday-create-skill")) return "masday-create-skill";
-    if (input.includes("masday-create-command")) return "masday-create-command";
-    if (input.includes("masday-create-mcp-skill")) return "masday-create-mcp-skill";
-    if (input.includes("masday-parallel-execution")) return "masday-parallel-execution";
-    if (input.includes("masday-parallel-research")) return "masday-parallel-research";
-    if (input.includes("masday-deploy-check")) return "masday-deploy-check";
-    if (input.includes("masday-docker-ops")) return "masday-docker-ops";
-    if (input.includes("masday-cicd-ops")) return "masday-cicd-ops";
-    if (input.includes("masday-git-workflow")) return "masday-git-workflow";
-    if (input.includes("masday-github-flow")) return "masday-github-flow";
-    if (input.includes("masday-github-pr")) return "masday-github-pr";
-    if (input.includes("masday-autopilot")) return "masday-autopilot";
-    if (input.includes("masday-sequential-thinking")) return "masday-sequential-thinking";
-    if (input.includes("masday-e2e")) return "masday-e2e";
+    // Primary: the Skill tool is invoked FOR a specific skill — match it
+    // exactly. If a skill was explicitly named we trust it and do NOT scan the
+    // rest of the payload (round-1 L4): a tracked name → that skill; an
+    // untracked/unknown name → nothing active (no bleed from args/description).
+    const skillField =
+      toolInput && (toolInput.skill || toolInput.skillName || toolInput.name);
+    if (skillField !== undefined && skillField !== null && skillField !== "") {
+      const invoked = String(skillField).trim();
+      return invoked && SKILL_DETECT_SET.has(invoked) ? invoked : null;
+    }
+
+    // Fallback (no explicit skill field — legacy/unknown payload shape):
+    // boundary-aware match, longest names first, so a name can never be
+    // shadowed by its own prefix/substring.
+    const input = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput || {});
+    const names = [...SKILL_DETECT_NAMES].sort((a, b) => b.length - a.length);
+    for (const name of names) {
+      const re = new RegExp(
+        "(?:^|[^a-z0-9-])" + escapeRegex(name) + "(?![a-z0-9-])",
+        "i"
+      );
+      if (re.test(input)) return name;
+    }
+    return null;
   }
 
   if (toolName.includes("tests_run")) return "masday-tdd";
@@ -943,4 +982,6 @@ module.exports = {
   // round-1 M3: exported for unit testing (per-session state isolation)
   resolveStateDir,
   hashKey,
+  // round-1 L4: exported for unit testing (skill detection)
+  detectActiveSkill,
 };
