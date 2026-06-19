@@ -211,6 +211,59 @@ pub async fn task_create(
     .await;
 }
 
+/// Sync a task status change to PostgreSQL (5s timeout). UPDATEs an existing
+/// task row (created via `task_create`); the row must already exist in PG.
+/// Mirrors `workflow_status`, additionally propagating `progress_percent`,
+/// `result`, and `completed_at` so a locally-completed task reads DONE
+/// consistently in the API/dashboard. `completed=true` stamps `completed_at`.
+pub async fn task_status(
+    id: &str,
+    status: &str,
+    progress_percent: i32,
+    result: Option<&str>,
+    completed: bool,
+) {
+    let id = id.to_string();
+    let status = status.to_string();
+    // result arrives as a JSON string (or null) from SQLite; normalize JSON
+    // nulls to SQL NULL.
+    let result_json: Option<serde_json::Value> = result
+        .and_then(|s| serde_json::from_str(s).ok())
+        .filter(|v: &serde_json::Value| !v.is_null());
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+
+        if let Ok(client) = pool.get().await {
+            let q = if completed {
+                r#"
+                    UPDATE tasks SET status=$1, progress_percent=$2, result=$3,
+                                      completed_at=NOW(), updated_at=NOW()
+                    WHERE id=$4
+                "#
+            } else {
+                r#"
+                    UPDATE tasks SET status=$1, progress_percent=$2, result=$3,
+                                      updated_at=NOW()
+                    WHERE id=$4
+                "#
+            };
+            if let Err(e) = client
+                .execute(q, &[&status, &progress_percent, &result_json, &id])
+                .await
+            {
+                tracing::warn!("PG task status sync failed {}: {}", id, e);
+            } else {
+                tracing::debug!("Synced task {} status {} to PostgreSQL", id, status);
+            }
+        }
+    })
+    .await;
+}
+
 /// Bulk sync workflows from SQLite to PostgreSQL (15s timeout for bulk).
 /// Reads from SQLite synchronously, then writes to PostgreSQL.
 pub async fn workflows_bulk(workflow_ids: &[String]) -> bool {
