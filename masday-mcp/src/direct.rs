@@ -2593,6 +2593,16 @@ pub async fn memory_update(args: Value) -> Result<Value, Box<dyn std::error::Err
         }
     }
 
+    // sync: propagate the update to PostgreSQL so PG stays consistent with
+    // SQLite (content and/or importance_score). Fire-and-forget; no-op without
+    // a pool. Mirrors the C2.16 memory_delete sync.
+    let pg_id = id.to_string();
+    let pg_content = content.map(|s| s.to_string());
+    let pg_importance = importance;
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::memory_update(&pg_id, pg_content.as_deref(), pg_importance).await;
+    });
+
     Ok(json!({"updated": id}))
 }
 
