@@ -1297,6 +1297,13 @@ pub async fn workflow_add_task(
     let pg_title = title.to_string();
     let pg_owner = owner_agent.map(|s| s.to_string());
     let pg_deps = deps.clone();
+    // C2-context-sync: carry the caller-supplied context fields (#58) into the
+    // PG task row so the dashboard matches local creation. Owned clones for the
+    // async move; parsed back to JSONB inside task_create.
+    let pg_skill = skill.map(|s| s.to_string());
+    let pg_input = input.clone();
+    let pg_acceptance_criteria = acceptance_criteria.clone();
+    let pg_required_context = required_context.clone();
     crate::pg_sync::spawn(async move {
         if let Some((p_status, p_summary, p_content, p_version, p_created_by)) = plan_row {
             crate::direct_pg::plan_create(
@@ -1321,6 +1328,10 @@ pub async fn workflow_add_task(
             pg_deps.as_deref(),
             0,
             requires_tdd != 0,
+            pg_skill.as_deref(),
+            pg_input.as_deref(),
+            pg_acceptance_criteria.as_deref(),
+            pg_required_context.as_deref(),
         )
         .await;
     });
