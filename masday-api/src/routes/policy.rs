@@ -145,13 +145,52 @@ async fn check_session_readiness(Json(_payload): Json<Value>) -> Json<Value> {
     Json(serde_json::json!({"ready": true}))
 }
 
-async fn require_context_refresh(Json(payload): Json<Value>) -> Json<Value> {
+async fn require_context_refresh(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Json<Value> {
     let workflow_id = payload
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let task_id = payload
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // Baseline = the task's recorded context fingerprint (None if no context).
+    let baseline = if task_id.is_empty() {
+        None
+    } else {
+        masday_db::repos::TaskRepo::new(state.pool.clone())
+            .get_by_id(task_id)
+            .await
+            .ok()
+            .and_then(|t| t.context_fingerprint)
+    };
+
+    // Observed: a caller-supplied last_fingerprint wins; otherwise compute it
+    // from the observed context fields the caller declares.
+    let observed = payload
+        .get("last_fingerprint")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            masday_service::compute_context_fingerprint(
+                payload.get("skill").and_then(|v| v.as_str()),
+                payload.get("input").filter(|v| !v.is_null()),
+                payload.get("acceptance_criteria").filter(|v| !v.is_null()),
+                payload.get("required_context").filter(|v| !v.is_null()),
+            )
+        });
+
+    let result = masday_service::evaluate_context_drift(baseline.as_deref(), observed.as_deref());
     Json(serde_json::json!({
-        "refresh_required": false,
-        "workflow_id": workflow_id
+        "workflow_id": workflow_id,
+        "task_id": task_id,
+        "refresh_required": result.refresh_required,
+        "reason": result.reason,
+        "baseline_fingerprint": result.baseline_fingerprint,
+        "observed_fingerprint": result.observed_fingerprint,
     }))
 }

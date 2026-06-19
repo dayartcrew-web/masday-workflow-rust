@@ -27,8 +27,9 @@ pub struct TaskService {
 /// the persisted [`NewTask`]; [`TaskContext::default`] (all `None`) preserves
 /// the historical behavior for callers that supply none of them.
 ///
-/// `context_fingerprint` is intentionally NOT here: computing it needs
-/// `ContextService::build_context_pack`, which is deferred to its own slice.
+/// `context_fingerprint` is NOT carried on `TaskContext`: it is derived from
+/// the context fields by [`compute_context_fingerprint`] at creation time, so
+/// the persisted column is non-`None` whenever the task carries any context.
 #[derive(Debug, Clone, Default)]
 pub struct TaskContext {
     /// Skill the task is scoped to (e.g. `masday-tdd`).
@@ -40,6 +41,113 @@ pub struct TaskContext {
     pub required_context: Option<serde_json::Value>,
     /// Free-form task input / payload.
     pub input: Option<serde_json::Value>,
+}
+
+/// Outcome of comparing an observed context against a task's recorded baseline
+/// fingerprint. Pure — produced by [`evaluate_context_drift`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContextDriftResult {
+    /// `true` when the observed context differs from the recorded baseline.
+    pub refresh_required: bool,
+    /// Human-readable explanation of the verdict.
+    pub reason: String,
+    /// The task's stored `context_fingerprint` (the baseline), if any.
+    pub baseline_fingerprint: Option<String>,
+    /// The fingerprint derived from the caller's observed context, if supplied.
+    pub observed_fingerprint: Option<String>,
+}
+
+/// Compute a content-based fingerprint over a task's defining context
+/// (`skill` / `input` / `acceptance_criteria` / `required_context`).
+///
+/// Returns `None` when **all four** fields are absent/empty/null, so tasks that
+/// carry no context (e.g. legacy rows) keep `context_fingerprint = None` and are
+/// unaffected. Otherwise returns `"ctx-{016x}"`.
+///
+/// Deterministic for equal content: JSON values are hashed via their canonical
+/// `to_string()` form — `serde_json` does not enable `preserve_order`, so object
+/// keys are sorted, and PostgreSQL `jsonb` canonicalizes on read, so a
+/// creation-time hash and a later validation-time hash agree.
+pub fn compute_context_fingerprint(
+    skill: Option<&str>,
+    input: Option<&serde_json::Value>,
+    acceptance_criteria: Option<&serde_json::Value>,
+    required_context: Option<&serde_json::Value>,
+) -> Option<String> {
+    let skill = skill.filter(|s| !s.is_empty());
+    let input = input.filter(|v| !v.is_null());
+    let acceptance_criteria = acceptance_criteria.filter(|v| !v.is_null());
+    let required_context = required_context.filter(|v| !v.is_null());
+
+    if skill.is_none()
+        && input.is_none()
+        && acceptance_criteria.is_none()
+        && required_context.is_none()
+    {
+        return None;
+    }
+
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    // Tag-prefixed fields prevent concatenation collisions across field
+    // boundaries; absent JSON fields hash as the empty string.
+    0u8.hash(&mut hasher);
+    skill.hash(&mut hasher);
+    1u8.hash(&mut hasher);
+    canonical_json(input).hash(&mut hasher);
+    2u8.hash(&mut hasher);
+    canonical_json(acceptance_criteria).hash(&mut hasher);
+    3u8.hash(&mut hasher);
+    canonical_json(required_context).hash(&mut hasher);
+    Some(format!("ctx-{:016x}", hasher.finish()))
+}
+
+/// Canonical string form of an optional JSON value (`None` → empty string).
+fn canonical_json(value: Option<&serde_json::Value>) -> String {
+    value.map(|v| v.to_string()).unwrap_or_default()
+}
+
+/// Compare an observed context fingerprint against a task's stored baseline.
+///
+/// Pure decision logic (no I/O) so it is unit-testable without a database. The
+/// caller resolves `observed` either from a supplied `last_fingerprint` or by
+/// running [`compute_context_fingerprint`] over its declared context.
+pub fn evaluate_context_drift(
+    baseline: Option<&str>,
+    observed: Option<&str>,
+) -> ContextDriftResult {
+    let baseline_owned = baseline.map(|s| s.to_string());
+    let observed_owned = observed.map(|s| s.to_string());
+    match (baseline_owned.as_deref(), observed_owned.as_deref()) {
+        (None, _) => ContextDriftResult {
+            refresh_required: false,
+            reason: "Task has no recorded context fingerprint; nothing to compare against."
+                .to_string(),
+            baseline_fingerprint: None,
+            observed_fingerprint: observed_owned,
+        },
+        (Some(_), None) => ContextDriftResult {
+            refresh_required: false,
+            reason: "No observed context or last_fingerprint supplied.".to_string(),
+            baseline_fingerprint: baseline_owned,
+            observed_fingerprint: None,
+        },
+        (Some(b), Some(o)) if b == o => ContextDriftResult {
+            refresh_required: false,
+            reason: "Observed context matches the task baseline.".to_string(),
+            baseline_fingerprint: baseline_owned,
+            observed_fingerprint: observed_owned,
+        },
+        (Some(_), Some(_)) => ContextDriftResult {
+            refresh_required: true,
+            reason:
+                "Observed context differs from the task baseline; a context refresh is required."
+                    .to_string(),
+            baseline_fingerprint: baseline_owned,
+            observed_fingerprint: observed_owned,
+        },
+    }
 }
 
 impl TaskService {
@@ -129,6 +237,15 @@ impl TaskService {
             dependencies.as_ref(),
         );
 
+        // Compute the content fingerprint before the `NewTask` literal below
+        // moves the context fields (non-None whenever any context is supplied).
+        let context_fingerprint = compute_context_fingerprint(
+            context.skill.as_deref(),
+            context.input.as_ref(),
+            context.acceptance_criteria.as_ref(),
+            required_context.as_ref(),
+        );
+
         let new_task = NewTask {
             workflow_id,
             plan_id,
@@ -142,8 +259,7 @@ impl TaskService {
             acceptance_criteria: context.acceptance_criteria,
             required_context,
             verification_steps: None,
-            // Deferred: compute via ContextService::build_context_pack (H1 follow-up).
-            context_fingerprint: None,
+            context_fingerprint,
             progress_percent: Some(0),
             requires_tdd,
             input: context.input,
@@ -1066,5 +1182,95 @@ mod tests {
         // DONE tasks must survive the reset untouched.
         let done_survives = statuses.iter().filter(|s| **s == "DONE").count();
         assert_eq!(done_survives, 2, "DONE tasks must be preserved");
+    }
+
+    // compute_context_fingerprint (audit round-1 H1 item #3): content-based hash
+    // over the task's defining context. None when all fields are absent;
+    // otherwise a deterministic, canonical (key-order-independent) "ctx-…" hash.
+
+    #[test]
+    fn compute_context_fingerprint_none_when_all_absent() {
+        assert_eq!(compute_context_fingerprint(None, None, None, None), None);
+        // JSON null is treated as absent, so all-null is still None.
+        assert_eq!(
+            compute_context_fingerprint(
+                None,
+                Some(&serde_json::Value::Null),
+                Some(&serde_json::Value::Null),
+                Some(&serde_json::Value::Null),
+            ),
+            None,
+        );
+        // An empty skill string is treated as absent.
+        assert_eq!(
+            compute_context_fingerprint(Some(""), None, None, None),
+            None
+        );
+    }
+
+    #[test]
+    fn compute_context_fingerprint_is_deterministic() {
+        let ac = serde_json::json!({"must": "pass lint"});
+        let a = compute_context_fingerprint(Some("masday-tdd"), None, Some(&ac), None);
+        let b = compute_context_fingerprint(Some("masday-tdd"), None, Some(&ac), None);
+        assert_eq!(a, b);
+        assert!(a.unwrap().starts_with("ctx-"));
+    }
+
+    #[test]
+    fn compute_context_fingerprint_differs_when_context_changes() {
+        let ac1 = serde_json::json!({"must": "pass lint"});
+        let ac2 = serde_json::json!({"must": "pass lint and tests"});
+        let fp1 = compute_context_fingerprint(Some("masday-tdd"), None, Some(&ac1), None);
+        let fp2 = compute_context_fingerprint(Some("masday-tdd"), None, Some(&ac2), None);
+        assert_ne!(fp1, fp2);
+
+        // Changing the skill also changes the fingerprint.
+        let fp3 = compute_context_fingerprint(Some("masday-debug"), None, Some(&ac1), None);
+        assert_ne!(fp1, fp3);
+    }
+
+    #[test]
+    fn compute_context_fingerprint_is_canonical_key_order() {
+        // serde_json sorts object keys (preserve_order is off), so semantically
+        // equal JSON with different key order must hash identically.
+        let ordered = serde_json::json!({"a": 1, "b": 2});
+        let reversed = serde_json::json!({"b": 2, "a": 1});
+        let fp_a = compute_context_fingerprint(None, None, Some(&ordered), None);
+        let fp_b = compute_context_fingerprint(None, None, Some(&reversed), None);
+        assert_eq!(fp_a, fp_b);
+    }
+
+    // evaluate_context_drift: pure comparison logic for the
+    // require_context_refresh consumer. Four terminal cases.
+
+    #[test]
+    fn evaluate_context_drift_baseline_none_is_not_required() {
+        let r = evaluate_context_drift(None, Some("ctx-1"));
+        assert!(!r.refresh_required);
+        assert_eq!(r.baseline_fingerprint, None);
+        assert_eq!(r.observed_fingerprint.as_deref(), Some("ctx-1"));
+    }
+
+    #[test]
+    fn evaluate_context_drift_no_observed_is_not_required() {
+        let r = evaluate_context_drift(Some("ctx-1"), None);
+        assert!(!r.refresh_required);
+        assert_eq!(r.baseline_fingerprint.as_deref(), Some("ctx-1"));
+        assert_eq!(r.observed_fingerprint, None);
+    }
+
+    #[test]
+    fn evaluate_context_drift_matching_is_not_required() {
+        let r = evaluate_context_drift(Some("ctx-1"), Some("ctx-1"));
+        assert!(!r.refresh_required);
+    }
+
+    #[test]
+    fn evaluate_context_drift_mismatch_is_required() {
+        let r = evaluate_context_drift(Some("ctx-1"), Some("ctx-2"));
+        assert!(r.refresh_required);
+        assert_eq!(r.baseline_fingerprint.as_deref(), Some("ctx-1"));
+        assert_eq!(r.observed_fingerprint.as_deref(), Some("ctx-2"));
     }
 }

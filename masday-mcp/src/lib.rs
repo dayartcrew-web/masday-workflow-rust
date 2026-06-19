@@ -530,7 +530,16 @@ fn register_policy_tools(r: &mut ToolRegistry) {
         r,
         "policy_require_context_refresh",
         "Require context refresh",
-        schema!("workflow_id", "plan_id?", "task_id?", "last_fingerprint?"),
+        schema!(
+            "workflow_id",
+            "task_id?",
+            "plan_id?",
+            "skill?",
+            "input?",
+            "acceptance_criteria?",
+            "required_context?",
+            "last_fingerprint?"
+        ),
         p::policy_require_context_refresh
     );
 }
@@ -1494,7 +1503,16 @@ fn register_policy_tools_stdio(r: &mut ToolRegistry) {
         r,
         "policy_require_context_refresh",
         "Require context refresh",
-        schema!("workflow_id", "plan_id?", "task_id?", "last_fingerprint?"),
+        schema!(
+            "workflow_id",
+            "task_id?",
+            "plan_id?",
+            "skill?",
+            "input?",
+            "acceptance_criteria?",
+            "required_context?",
+            "last_fingerprint?"
+        ),
         d::policy_require_context_refresh
     );
 }

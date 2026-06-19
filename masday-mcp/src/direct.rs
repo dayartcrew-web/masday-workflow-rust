@@ -4,6 +4,7 @@
 //! Takes `serde_json::Value` args, returns `Result<Value, Box<dyn Error + Send + Sync>>`.
 
 use masday_core::WorkflowState;
+use masday_service::{compute_context_fingerprint, evaluate_context_drift};
 use rusqlite::params;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -1157,7 +1158,7 @@ pub async fn workflow_add_task(
     // column convention). `required_context` mirrors #56's precedence: an
     // explicit value wins (JSON null = absent), otherwise fall back to the
     // historical deps-derived `{"dependencies": [...]}`. `context_fingerprint`
-    // stays NULL (deferred — needs build_context_pack, same as the PG path).
+    // is derived from these context fields below (mirrors the PG path).
     let skill = args.get("skill").and_then(|v| v.as_str());
     let input = args
         .get("input")
@@ -1265,9 +1266,20 @@ pub async fn workflow_add_task(
         )));
     }
 
+    // Content-based fingerprint over the task's defining context — mirrors the
+    // PG path (task_service::add_task). Parse the JSON-text fields back to
+    // Values so the hash is canonical and matches PG's JSONB form. None when the
+    // task carries no context.
+    let context_fingerprint = compute_context_fingerprint(
+        skill,
+        parse_json_value(input.as_deref()).as_ref(),
+        parse_json_value(acceptance_criteria.as_deref()).as_ref(),
+        parse_json_value(required_context.as_deref()).as_ref(),
+    );
+
     conn.execute(
-        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, requires_tdd, skill, input, acceptance_criteria, required_context, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8,?9,?10,?11,?12,?13)",
-        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, skill, input, acceptance_criteria, required_context, &t, &t],
+        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, requires_tdd, skill, input, acceptance_criteria, required_context, context_fingerprint, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8,?9,?10,?11,?12,?13,?14)",
+        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, skill, input, acceptance_criteria, required_context, context_fingerprint, &t, &t],
     ).map_err(|e| err(e))?;
 
     // C2.14: sync the new task (and its plan) to PostgreSQL so the API/
@@ -2930,6 +2942,14 @@ pub async fn search_hybrid_context_pack(
     )
 }
 
+/// Parse an optional JSON-text field back into an optional Value, dropping
+/// `null`. Used to feed the stored (TEXT) context fields into the canonical
+/// content-fingerprint helper.
+fn parse_json_value(raw: Option<&str>) -> Option<Value> {
+    raw.and_then(|s| serde_json::from_str(s).ok())
+        .filter(|v: &Value| !v.is_null())
+}
+
 /// Compute deterministic SHA-256 fingerprint from context data
 fn compute_fingerprint(
     workflow_id: &str,
@@ -3292,9 +3312,49 @@ pub async fn policy_detect_scope_drift(
 }
 
 pub async fn policy_require_context_refresh(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"require_refresh": false, "reason": "No stale context detected"}))
+    let conn = crate::sqlite::conn();
+    let workflow_id = args["workflow_id"].as_str().unwrap_or("");
+    let task_id = args["task_id"].as_str().unwrap_or("");
+
+    // Baseline = the task's recorded context fingerprint (None if no context).
+    let baseline: Option<String> = if task_id.is_empty() {
+        None
+    } else {
+        conn.query_row(
+            "SELECT context_fingerprint FROM tasks WHERE id=?1",
+            params![task_id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .ok()
+        .flatten()
+    };
+
+    // Observed: a caller-supplied last_fingerprint wins; otherwise compute it
+    // from the observed context fields the caller declares.
+    let observed: Option<String> = args
+        .get("last_fingerprint")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            compute_context_fingerprint(
+                args.get("skill").and_then(|v| v.as_str()),
+                args.get("input").filter(|v| !v.is_null()),
+                args.get("acceptance_criteria").filter(|v| !v.is_null()),
+                args.get("required_context").filter(|v| !v.is_null()),
+            )
+        });
+
+    let result = evaluate_context_drift(baseline.as_deref(), observed.as_deref());
+    Ok(json!({
+        "workflow_id": workflow_id,
+        "task_id": task_id,
+        "refresh_required": result.refresh_required,
+        "reason": result.reason,
+        "baseline_fingerprint": result.baseline_fingerprint,
+        "observed_fingerprint": result.observed_fingerprint,
+    }))
 }
 
 pub async fn policy_check_session_readiness(
