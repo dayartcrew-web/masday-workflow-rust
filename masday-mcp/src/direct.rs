@@ -4,8 +4,11 @@
 //! Takes `serde_json::Value` args, returns `Result<Value, Box<dyn Error + Send + Sync>>`.
 
 use masday_core::WorkflowState;
-use masday_db::schema::{Workflow, WorkflowReminder};
-use masday_service::{compute_context_fingerprint, evaluate_context_drift, ReminderService};
+use masday_db::schema::{Task, Workflow, WorkflowReminder};
+use masday_service::{
+    compute_context_fingerprint, evaluate_context_drift,
+    reminder_service::DEFAULT_STUCK_TASK_THRESHOLD, ReminderService,
+};
 use rusqlite::params;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -3475,7 +3478,64 @@ pub async fn reminder_check(
     // always empty and acknowledge() could never match. Now, like the API path,
     // freshly-detected reminders are persisted with stable UUIDs.
     let now_ts = chrono::Utc::now();
-    let fresh = ReminderService::compute_new_reminders(&active, &existing, &now_ts);
+    let mut fresh = ReminderService::compute_new_reminders(&active, &existing, &now_ts);
+
+    // Stuck-task pass — mirror of the PG-side TaskRepo::find_stuck +
+    // compute_stuck_task_reminders wired into ReminderService::check_reminders
+    // (PR #72). A task RUNNING past the threshold with no updated_at refresh
+    // yields a STUCK_TASK reminder. As with workflows.updated_at, the SQLite
+    // tasks.updated_at column holds mixed timestamp formats, so parse_ts + a
+    // Rust-side threshold compare is used rather than a raw SQL string compare.
+    // Only id/workflow_id/title are read by the helper; the remaining Task
+    // fields are placeholders.
+    let mut stuck_stmt = conn
+        .prepare("SELECT id, workflow_id, title, updated_at FROM tasks WHERE status='RUNNING'")
+        .map_err(err)?;
+    let stuck: Vec<Task> = stuck_stmt
+        .query_map([], |row| {
+            let updated_raw: String = row.get(3)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                parse_ts(&updated_raw),
+            ))
+        })
+        .map_err(err)?
+        .filter_map(|r| r.ok())
+        .filter(|(_, _, _, updated_at)| {
+            now_ts.signed_duration_since(*updated_at) > DEFAULT_STUCK_TASK_THRESHOLD
+        })
+        .map(|(id, workflow_id, title, updated_at)| Task {
+            id,
+            workflow_id,
+            plan_id: String::new(),
+            title,
+            status: "RUNNING".to_string(),
+            priority: None,
+            owner_agent: None,
+            skill: None,
+            description: None,
+            dependencies: None,
+            acceptance_criteria: None,
+            required_context: None,
+            verification_steps: None,
+            context_fingerprint: None,
+            progress_percent: None,
+            requires_tdd: None,
+            input: None,
+            result: None,
+            test_evidence: None,
+            metadata: None,
+            created_at: updated_at,
+            started_at: None,
+            completed_at: None,
+            updated_at,
+        })
+        .collect();
+    fresh.extend(ReminderService::compute_stuck_task_reminders(
+        &stuck, &existing,
+    ));
 
     for new in &fresh {
         let id = new_id();
@@ -5804,5 +5864,64 @@ mod tests {
             acked, 1,
             "the acknowledged row must be flipped to acknowledged=1"
         );
+    }
+
+    // ===== Stuck-task SQLite mirror (PG #72): detect RUNNING + stale =====
+
+    #[tokio::test]
+    async fn test_reminder_check_detects_stuck_task() {
+        // Mirror of PG #72 on the stdio/SQLite path: a task RUNNING past the
+        // threshold with no updated_at refresh yields a STUCK_TASK reminder
+        // (previously STUCK_TASK existed only as a message string on this path —
+        // nothing produced it). The workflow itself is fresh so only the
+        // stuck-task signal fires, exercising parse_ts + the Rust-side threshold
+        // compare on the mixed-format tasks.updated_at column.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let stuck_task_id = uuid::Uuid::new_v4().to_string();
+        let fresh_task_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            // Active workflow, updated just now → no STALE_* reminder.
+            conn.execute(
+                "INSERT INTO workflows (id, name, status, updated_at) \
+                 VALUES (?1, ?2, 'EXECUTE', datetime('now'))",
+                params![&wf_id, "stuck-wf"],
+            )
+            .unwrap();
+            // Stuck task: RUNNING, updated 3h ago (> 60min threshold).
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, updated_at) \
+                 VALUES (?1, ?2, 'plan', 'stuck-task', 'RUNNING', datetime('now','-3 hours'))",
+                params![&stuck_task_id, &wf_id],
+            )
+            .unwrap();
+            // Fresh RUNNING task: updated just now → NOT stuck.
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, updated_at) \
+                 VALUES (?1, ?2, 'plan', 'fresh-task', 'RUNNING', datetime('now'))",
+                params![&fresh_task_id, &wf_id],
+            )
+            .unwrap();
+        }
+
+        let res = reminder_check(json!({})).await.unwrap();
+        let stuck: Vec<&Value> = res["reminders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["workflowId"] == wf_id && r["type"] == "STUCK_TASK")
+            .collect();
+        assert_eq!(
+            stuck.len(),
+            1,
+            "exactly one STUCK_TASK reminder for the workflow with a stuck task"
+        );
+        let msg = stuck[0]["message"].as_str().unwrap();
+        assert!(
+            msg.contains("stuck-task") && msg.contains(&stuck_task_id),
+            "message should reference the stuck task title + id: {msg}"
+        );
+        assert_eq!(stuck[0]["acknowledged"], false);
     }
 }
