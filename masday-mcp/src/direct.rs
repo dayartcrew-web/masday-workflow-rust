@@ -1114,6 +1114,19 @@ pub async fn workflow_delete(
 
     conn.execute("DELETE FROM workflows WHERE id=?1", params![id])
         .map_err(err)?;
+
+    // C2.15: cascade-delete the workflow (and its children) from PostgreSQL so
+    // a locally-deleted workflow doesn't linger immortal in PG with orphan
+    // tasks/memories. The PG schema cascades ON DELETE CASCADE to plans/tasks/
+    // memories/reviews/etc., so one row delete cleans the whole tree. Fire-and-
+    // forget; no-op without a pool. Scoped to THIS workflow id only — never
+    // batch or project-scoped (see audit-scope-mistake). Worst case (no pool /
+    // failure) is the current behavior (lingers), so strictly-better-or-neutral.
+    let pg_id = id.to_string();
+    tokio::spawn(async move {
+        crate::direct_pg::workflow_delete(&pg_id).await;
+    });
+
     Ok(json!({"deleted": id}))
 }
 
