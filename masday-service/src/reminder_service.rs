@@ -14,7 +14,12 @@ use tracing::{info, warn};
 /// stuck. The `stuckTaskMinutes` MCP param is advertised but not yet wired
 /// through the route→service call chain (deferred to a thin follow-up);
 /// detection uses this default until then.
-const DEFAULT_STUCK_TASK_THRESHOLD: Duration = Duration::minutes(60);
+///
+/// Public so the standalone stdio/SQLite path (`masday-mcp` `direct.rs`) reuses
+/// the exact same threshold — single source of truth for what "stuck" means
+/// (mirrors how `compute_new_reminders` / `compute_stuck_task_reminders` are
+/// already shared across both paths).
+pub const DEFAULT_STUCK_TASK_THRESHOLD: Duration = Duration::minutes(60);
 
 /// Reminder service
 pub struct ReminderService {
