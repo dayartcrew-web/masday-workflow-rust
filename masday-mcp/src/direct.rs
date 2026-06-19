@@ -1109,6 +1109,13 @@ pub async fn workflow_add_task(
     let title = args["name"].as_str().ok_or_else(|| err("missing name"))?;
     let owner_agent = args.get("agent").and_then(|v| v.as_str());
     let deps = args.get("dependencies").map(|v| v.to_string());
+    // C2.9 (SQLite mirror of PG #43): thread `requires_tdd` so a task can opt
+    // into the review-gated completion path enforced in `workflow_complete_task`.
+    let requires_tdd: i64 = i64::from(
+        args.get("requires_tdd")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+    );
     let t = now();
 
     // VALIDATION 1: Check plan_id is not empty (unless it's the default "default" string)
@@ -1198,12 +1205,12 @@ pub async fn workflow_add_task(
     }
 
     conn.execute(
-        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8)",
-        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, &t, &t],
+        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, requires_tdd, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8,?9)",
+        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, &t, &t],
     ).map_err(|e| err(e))?;
 
     Ok(
-        json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0}),
+        json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0, "requiresTdd": requires_tdd == 1}),
     )
 }
 
@@ -1301,9 +1308,41 @@ pub async fn workflow_complete_task(
     let result: Option<String> = args.get("result").map(|v| v.to_string());
     let t = now();
 
-    // TODO(C2.7/C2.8): Gate completion with policy_validate_completion before updating task status.
-    // This requires review_repo fix to properly query review_decisions in SQLite mode.
-    // See audit bug C2.5 — current implementation allows bypassing validation.
+    // C2.7/C2.8 (SQLite mirror of PG #43): enforce the review/TDD completion
+    // gate BEFORE marking DONE — mirrors `PolicyService::validate_completion`.
+    // A task with requires_tdd=1 cannot complete until its latest review is
+    // APPROVED. Tasks with requires_tdd=0/NULL (all pre-existing tasks, since
+    // `workflow_add_task` previously left it at the default) are unaffected →
+    // backward compatible. Depends on the review_decisions query scoped by
+    // (workflow_id, task_id) fixed in #42.
+    let requires_tdd: i64 = conn
+        .query_row(
+            "SELECT requires_tdd FROM tasks WHERE id=?1",
+            params![task_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if requires_tdd != 0 {
+        let latest_review: Option<String> = match conn.query_row(
+            "SELECT decision FROM review_decisions WHERE workflow_id=?1 AND task_id=?2 ORDER BY created_at DESC LIMIT 1",
+            params![wf_id, task_id],
+            |r| r.get::<_, String>(0),
+        ) {
+            Ok(d) => Some(d),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => return Err(err(e)),
+        };
+        if latest_review.as_deref() != Some("APPROVED") {
+            return Err(err(match latest_review {
+                Some(d) => format!(
+                    "Task {task_id} requires review (requires_tdd) but latest review is {d} (not APPROVED)"
+                ),
+                None => format!(
+                    "Task {task_id} requires review (requires_tdd) but no review found"
+                ),
+            }));
+        }
+    }
 
     conn.execute("UPDATE tasks SET status='DONE', result=?1, progress_percent=100, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
         params![result, &t, &t, task_id, wf_id]).map_err(|e| err(e))?;
@@ -5002,5 +5041,118 @@ mod tests {
         let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
         assert!(res.is_ok(), "{:?}", res);
         assert_eq!(read_workflow_status(&wf_id), "FAILED");
+    }
+
+    // ===== C2.7/C2.8/C2.9 regression: SQLite completion review-gate (mirror of PG #43) =====
+
+    /// Insert a review_decision row for (workflow, task) with the given decision.
+    fn insert_review(wf_id: &str, task_id: &str, decision: &str) {
+        let conn = crate::sqlite::conn();
+        conn.execute(
+            "INSERT INTO review_decisions (id, workflow_id, task_id, reviewer_agent, decision, notes, gaps, created_at)
+             VALUES (?1, ?2, ?3, 'tester', ?4, '', '', ?5)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                wf_id,
+                task_id,
+                decision,
+                now()
+            ],
+        )
+        .unwrap();
+    }
+
+    /// Flip a task into the review-gated completion path (requires_tdd = 1).
+    fn require_review(task_id: &str) {
+        crate::sqlite::conn()
+            .execute(
+                "UPDATE tasks SET requires_tdd=1 WHERE id=?1",
+                params![task_id],
+            )
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_blocks_when_requires_tdd_and_no_review() {
+        // A requires_tdd task cannot complete without an APPROVED review.
+        // Completion is rejected and the task must NOT be marked DONE.
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+        require_review(&task_id);
+
+        let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
+        assert!(res.is_err(), "completion should be blocked without review");
+
+        let status: String = crate::sqlite::conn()
+            .query_row(
+                "SELECT status FROM tasks WHERE id=?1",
+                params![task_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "PENDING", "task must remain non-DONE when blocked");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_allows_with_approved_review() {
+        // With requires_tdd=1 AND an APPROVED review, completion proceeds and
+        // the workflow walks the legal path to DONE.
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+        require_review(&task_id);
+        insert_review(&wf_id, &task_id, "APPROVED");
+
+        let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
+        assert!(res.is_ok(), "{:?}", res);
+        assert_eq!(read_workflow_status(&wf_id), "DONE");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_blocks_with_nonapproved_review() {
+        // A latest review that is not APPROVED must block completion.
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+        require_review(&task_id);
+        insert_review(&wf_id, &task_id, "REWORK_REQUIRED");
+
+        let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
+        assert!(
+            res.is_err(),
+            "completion should be blocked by a non-APPROVED review"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_task_threads_requires_tdd() {
+        // C2.9: workflow_add_task persists requires_tdd so a task opts into the
+        // review-gated completion path.
+        let guard = TestDbGuard::new();
+        let (wf_id, _existing) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+        let plan_id: String = crate::sqlite::conn()
+            .query_row(
+                "SELECT id FROM plans WHERE workflow_id=?1 ORDER BY version DESC LIMIT 1",
+                params![wf_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let res = workflow_add_task(json!({
+            "workflow_id": wf_id,
+            "plan_id": plan_id,
+            "name": "reviewed-task",
+            "requires_tdd": true,
+        }))
+        .await;
+        assert!(res.is_ok(), "{:?}", res);
+        let new_id = res.unwrap()["id"].as_str().unwrap().to_string();
+
+        let requires_tdd: i64 = crate::sqlite::conn()
+            .query_row(
+                "SELECT requires_tdd FROM tasks WHERE id=?1",
+                params![new_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(requires_tdd, 1, "requires_tdd must be persisted as 1");
     }
 }
