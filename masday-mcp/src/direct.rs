@@ -1448,6 +1448,28 @@ pub async fn workflow_complete_task(
                 &["auto", "workflow-complete"],
             );
         }
+
+        // C2.13: sync the (possibly transitioned) workflow status to PG so the
+        // API/dashboard doesn't keep showing EXECUTE + PENDING tasks forever
+        // after a local completion. Fire-and-forget, mirroring the execute-path
+        // sync (`direct_pg::workflow_status`). The workflow row exists in PG
+        // (synced at create), so this UPDATE lands. Task-row sync (creation
+        // C2.14 + per-task completion) is a follow-up slice — it depends on
+        // task creation reaching PG first.
+        let final_status: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![wf_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
+        if !final_status.is_empty() {
+            let pg_id = wf_id.to_string();
+            let pg_status = final_status;
+            tokio::spawn(async move {
+                crate::direct_pg::workflow_status(&pg_id, &pg_status).await;
+            });
+        }
     }
 
     Ok(json!({"status": "DONE", "task_id": task_id}))
