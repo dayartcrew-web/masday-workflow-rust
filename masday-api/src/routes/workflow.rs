@@ -202,6 +202,27 @@ async fn add_task(
             });
     let requires_tdd = payload.get("requires_tdd").and_then(|v| v.as_bool());
 
+    // H1: forward optional context fields the payload may carry. Previously
+    // these were dropped here, so task.input / acceptance_criteria / skill /
+    // required_context were always None downstream — reviewers and policy/drift
+    // checks keyed on them were silent no-ops. JSON nulls are filtered out so an
+    // explicit null behaves like "not provided".
+    let context = masday_service::TaskContext {
+        skill: payload
+            .get("skill")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        acceptance_criteria: payload
+            .get("acceptance_criteria")
+            .cloned()
+            .filter(|v| !v.is_null()),
+        required_context: payload
+            .get("required_context")
+            .cloned()
+            .filter(|v| !v.is_null()),
+        input: payload.get("input").cloned().filter(|v| !v.is_null()),
+    };
+
     let task = masday_service::TaskService::add_task(
         &state.pool,
         id,
@@ -210,6 +231,7 @@ async fn add_task(
         agent,
         deps,
         requires_tdd,
+        context,
     )
     .await?;
     Ok(Json(serde_json::json!(task)))
