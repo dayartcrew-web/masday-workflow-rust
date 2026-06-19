@@ -75,6 +75,24 @@ pub async fn run(
     // Create a minimal registry - the serve command handles proper tool initialization
     let registry = masday_mcp::registry::ToolRegistry::new();
     let mcp_handler = masday_mcp::handler::McpHandler::new(registry);
+
+    // Background reminder sweeper (audit round-2 leverage #7b): periodically run
+    // ReminderService::check_reminders so stale workflows get reminders even when
+    // no client is polling the endpoint. check_reminders is idempotent (dedupes +
+    // persists, see #7a), so a periodic tick only ever adds newly-stale rows.
+    // Errors are logged, never panicked — a failed tick must not kill the task.
+    let sweeper_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        interval.tick().await; // consume the immediate first tick so cadence starts at boot+300s
+        loop {
+            interval.tick().await;
+            if let Err(e) = masday_service::ReminderService::check_reminders(&sweeper_pool).await {
+                tracing::warn!("reminder sweeper tick failed: {}", e);
+            }
+        }
+    });
+
     let state = AppState::new(pool, mcp_handler);
     let app = build_router(state);
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
