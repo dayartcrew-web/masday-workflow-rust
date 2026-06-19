@@ -2445,6 +2445,15 @@ pub async fn memory_delete(args: Value) -> Result<Value, Box<dyn std::error::Err
     if count == 0 {
         return Err(format!("Memory not found: {}", id).into());
     }
+
+    // C2.16: propagate the delete to PostgreSQL so the memory doesn't linger
+    // in PG and get resurrected by memories_bulk_pull (which re-inserts any PG
+    // id absent from SQLite). Fire-and-forget; no-op without a pool.
+    let pg_id = id.to_string();
+    tokio::spawn(async move {
+        crate::direct_pg::memory_delete(&pg_id).await;
+    });
+
     Ok(json!({"deleted": id}))
 }
 
@@ -2465,6 +2474,14 @@ pub async fn memory_delete_by_workflow(
     if count == 0 {
         return Err(format!("No memories found for workflow: {}", workflow_id).into());
     }
+
+    // C2.16: propagate the workflow's memory delete to PostgreSQL (scoped to
+    // this workflow_id). Fire-and-forget; no-op without a pool.
+    let pg_wid = workflow_id.to_string();
+    tokio::spawn(async move {
+        crate::direct_pg::memory_delete_by_workflow(&pg_wid).await;
+    });
+
     Ok(json!({"deleted": count, "workflow_id": workflow_id}))
 }
 
