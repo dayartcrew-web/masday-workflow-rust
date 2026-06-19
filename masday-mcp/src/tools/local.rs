@@ -61,6 +61,44 @@ fn sanitize_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
+/// Sanitize a `local_save_artifact` path segment (`category` or `filename`) so it
+/// cannot escape the `.masday/` artifact root. This is a *containment* check, not
+/// a character whitelist: legitimate filenames need `.` (e.g. `report.md`) and
+/// categories may nest (e.g. `state/workflows`), so only the traversal vectors
+/// are blocked — standalone `..` components, absolute paths, Windows drive
+/// letters, and NUL bytes. `Path::Component::ParentDir` matches only a true `..`
+/// path segment, so `foo..bar.md` (harmless) passes while `../etc` and
+/// `a/../../etc` are rejected. Without this, `category: "../../etc"` or an
+/// absolute `filename` would write outside `.masday/` (round-1 M5).
+fn sanitize_artifact_segment(segment: &str, field: &str) -> Result<String, String> {
+    if segment.is_empty() {
+        return Err(format!("'{}' cannot be empty", field));
+    }
+    if segment.contains('\0') {
+        return Err(format!("'{}' must not contain a NUL byte", field));
+    }
+    // An absolute path (Unix or Windows UNC) replaces the base on `Path::join`.
+    if segment.starts_with('/') || segment.starts_with('\\') {
+        return Err(format!("'{}' must not be an absolute path", field));
+    }
+    // A Windows drive letter (e.g. `C:\...`) likewise escapes the base.
+    let bytes = segment.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return Err(format!("'{}' must not be a drive path", field));
+    }
+    // Reject any standalone `..` component — the actual traversal vector.
+    if std::path::Path::new(segment)
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "'{}' must not contain a '..' path component",
+            field
+        ));
+    }
+    Ok(segment.to_string())
+}
+
 /// Generate embedding vector for text content.
 ///
 /// Provider taxonomy mirrors masday-service (`embedding_service.rs`):
@@ -545,11 +583,13 @@ pub async fn local_save_artifact(
         .get("category")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'category' argument")?;
+    let category = sanitize_artifact_segment(category, "category")?;
 
     let filename = args
         .get("filename")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'filename' argument")?;
+    let filename = sanitize_artifact_segment(filename, "filename")?;
 
     let content = args
         .get("content")
@@ -558,8 +598,8 @@ pub async fn local_save_artifact(
 
     let artifact_path = std::path::Path::new(cwd)
         .join(".masday")
-        .join(category)
-        .join(filename);
+        .join(&category)
+        .join(&filename);
 
     // Ensure directory exists
     if let Some(parent) = artifact_path.parent() {
@@ -606,6 +646,108 @@ mod tests {
         assert!(sanitize_id("abc..123").is_err());
         assert!(sanitize_id("abc@123").is_err());
         assert!(sanitize_id("abc def").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_artifact_segment_valid() {
+        // Filenames legitimately contain dots; categories may nest.
+        assert_eq!(
+            sanitize_artifact_segment("notes", "category").unwrap(),
+            "notes"
+        );
+        assert_eq!(
+            sanitize_artifact_segment("report.md", "filename").unwrap(),
+            "report.md"
+        );
+        assert_eq!(
+            sanitize_artifact_segment("2026-06-18.json", "filename").unwrap(),
+            "2026-06-18.json"
+        );
+        assert_eq!(
+            sanitize_artifact_segment("state/workflows", "category").unwrap(),
+            "state/workflows"
+        );
+        // ".." inside a name is harmless; only a standalone `..` component is traversal.
+        assert_eq!(
+            sanitize_artifact_segment("foo..bar.md", "filename").unwrap(),
+            "foo..bar.md"
+        );
+        assert_eq!(sanitize_artifact_segment("...", "filename").unwrap(), "...");
+    }
+
+    #[test]
+    fn test_sanitize_artifact_segment_rejects_traversal() {
+        // Empty / NUL.
+        assert!(sanitize_artifact_segment("", "category").is_err());
+        assert!(sanitize_artifact_segment("a\0b", "filename").is_err());
+        // Standalone `..` components — the actual traversal vector.
+        assert!(sanitize_artifact_segment("..", "category").is_err());
+        assert!(sanitize_artifact_segment("../etc", "category").is_err());
+        assert!(sanitize_artifact_segment("a/../../etc", "filename").is_err());
+        assert!(sanitize_artifact_segment("notes/..", "category").is_err());
+        // Absolute paths replace the base on join.
+        assert!(sanitize_artifact_segment("/etc/passwd", "filename").is_err());
+        assert!(sanitize_artifact_segment("\\windows\\sys", "filename").is_err());
+        // Windows drive letter.
+        assert!(sanitize_artifact_segment("C:evil", "filename").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_local_save_artifact_writes_within_masday() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cwd = temp_dir.path().to_str().unwrap();
+
+        let args = json!({
+            "cwd": cwd,
+            "category": "notes",
+            "filename": "report.md",
+            "content": "# hi"
+        });
+        let result = local_save_artifact(args).await;
+        assert!(result.is_ok());
+        let result_json = result.unwrap();
+        assert_eq!(result_json["saved"], true);
+
+        let written = temp_dir
+            .path()
+            .join(".masday")
+            .join("notes")
+            .join("report.md");
+        assert!(
+            written.exists(),
+            "artifact should be written under .masday/"
+        );
+        assert_eq!(std::fs::read_to_string(&written).unwrap(), "# hi");
+    }
+
+    #[tokio::test]
+    async fn test_local_save_artifact_rejects_traversal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cwd = temp_dir.path().to_str().unwrap();
+
+        // A traversal category must be rejected and must NOT write outside .masday/.
+        let args = json!({
+            "cwd": cwd,
+            "category": "../evil",
+            "filename": "x.md",
+            "content": "pwn"
+        });
+        let result = local_save_artifact(args).await;
+        assert!(result.is_err(), "traversal category must be rejected");
+        assert!(
+            !temp_dir.path().join("evil").exists(),
+            "nothing may be written outside .masday/"
+        );
+
+        // Same for an absolute filename.
+        let args = json!({
+            "cwd": cwd,
+            "category": "notes",
+            "filename": "/etc/masday-m5-escape-test",
+            "content": "pwn"
+        });
+        let result = local_save_artifact(args).await;
+        assert!(result.is_err(), "absolute filename must be rejected");
     }
 
     #[tokio::test]
