@@ -413,12 +413,11 @@ Agents are markdown role descriptions with `## Step Checkpoint Protocol` section
 
 ### 11.3 Step Enforcement Hooks (`.claude/settings.json`)
 
-Two JS hooks enforce skill/agent step ordering. These **stay as JavaScript** because they run inside the Claude Code Node.js runtime, not in our application.
+One JS hook enforces skill/agent step ordering. It **stays as JavaScript** because it runs inside the Claude Code Node.js runtime, not in our application.
 
 | Hook | File | Purpose | Change |
 |------|------|---------|--------|
-| `masday-skill-checkpoint.js` | PreToolUse | Tracks MCP tool call sequences, blocks `workflow_execute` without steps 1-6 | **None** — hooks intercept tool calls at Claude Code level, before they reach MCP |
-| `skill-step-guard.cjs` | PreToolUse | Validates TDD RED→GREEN→REFACTOR, workflow GATE transitions | **None** — same mechanism |
+| `skill-step-guard.cjs` | PreToolUse | Validates step ordering — TDD RED→GREEN→REFACTOR and workflow GATE transitions; blocks `workflow_execute` until steps 1-6 complete | **None** — the hook intercepts tool calls at the Claude Code level, before they reach MCP |
 
 Hooks don't need updating because:
 1. They run in Claude Code's process, not in our MCP server
