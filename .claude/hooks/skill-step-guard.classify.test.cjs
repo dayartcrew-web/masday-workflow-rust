@@ -11,6 +11,7 @@
 // classification + state-isolation + detection contracts for regression
 // protection.
 
+const path = require("path");
 const {
   getSourceExtension,
   isTestFile,
@@ -19,6 +20,9 @@ const {
   resolveStateDir,
   hashKey,
   detectActiveSkill,
+  isGuardDisabled,
+  buildFailClosedOutput,
+  STEP_GUARD_DISABLE_VALUES,
 } = require("./skill-step-guard.cjs");
 
 let passed = 0;
@@ -191,6 +195,102 @@ assert(
   "masday-web-research"
 );
 assertNullFn("fallback no tracked name → null", detectActiveSkill("Skill", "just some text"));
+
+// ── isGuardDisabled (M4) ─────────────────────────────────────────────────────
+// The guard is fail-closed by default; only an explicit env value disables it
+// (the recovery escape from a fail-closed lockout).
+assertTrue("disabled → true", isGuardDisabled({ MASDAY_STEP_GUARD: "disabled" }));
+assertTrue("off → true", isGuardDisabled({ MASDAY_STEP_GUARD: "off" }));
+assertTrue("1 → true", isGuardDisabled({ MASDAY_STEP_GUARD: "1" }));
+assertTrue("true → true", isGuardDisabled({ MASDAY_STEP_GUARD: "true" }));
+assertTrue("case-insensitive (TRUE)", isGuardDisabled({ MASDAY_STEP_GUARD: "TRUE" }));
+assertTrue("case-insensitive (Disabled)", isGuardDisabled({ MASDAY_STEP_GUARD: "Disabled" }));
+assertTrue(
+  "alt var MASDAY_DISABLE_STEP_GUARD=1",
+  isGuardDisabled({ MASDAY_DISABLE_STEP_GUARD: "1" })
+);
+assertFalse("0 → false", isGuardDisabled({ MASDAY_STEP_GUARD: "0" }));
+assertFalse("enabled → false", isGuardDisabled({ MASDAY_STEP_GUARD: "enabled" }));
+assertFalse("empty string → false", isGuardDisabled({ MASDAY_STEP_GUARD: "" }));
+assertFalse("no env → false (fail-closed default)", isGuardDisabled({}));
+assertFalse("undefined env → false", isGuardDisabled(undefined));
+
+assertTrue(
+  "disable-values set covers disabled/off/1/true",
+  ["disabled", "off", "1", "true"].every((v) => STEP_GUARD_DISABLE_VALUES.has(v))
+);
+assertFalse("disable-values set excludes enabled", STEP_GUARD_DISABLE_VALUES.has("enabled"));
+
+// ── buildFailClosedOutput (M4) ────────────────────────────────────────────────
+// The error path MUST block (never allow) and carry an actionable recovery hint.
+const errOut = buildFailClosedOutput(new Error("state dir not writable"));
+assert("error output blocks", errOut.decision, "block");
+assertTrue(
+  "error output includes the error message",
+  errOut.reason.includes("state dir not writable")
+);
+assertTrue(
+  "error output announces fail-closed",
+  errOut.reason.toLowerCase().includes("fail") && errOut.reason.toLowerCase().includes("closed")
+);
+assertTrue(
+  "error output advertises env recovery",
+  errOut.reason.includes("MASDAY_STEP_GUARD=disabled")
+);
+assertTrue(
+  "error output advertises settings.json recovery",
+  errOut.reason.includes("settings.json")
+);
+// Non-Error throwables (strings) are stringified and still block.
+const strOut = buildFailClosedOutput("boom");
+assert("string error blocks", strOut.decision, "block");
+assertTrue("string error includes message", strOut.reason.includes("boom"));
+
+// ── Integration: real subprocess fail-closed (M4) ────────────────────────────
+// Pins the end-to-end contract: a main() throw (bad stdin) reaches the catch
+// and emits a block; the env escape short-circuits BEFORE the throw.
+const { spawnSync } = require("child_process");
+const hookPath = path.join(__dirname, "skill-step-guard.cjs");
+
+function runHook(stdin, envOverride) {
+  const env = { ...process.env, ...(envOverride || {}) };
+  const res = spawnSync(process.execPath, [hookPath], {
+    input: stdin,
+    env,
+    encoding: "utf8",
+  });
+  return res.stdout;
+}
+
+// Bad stdin → readJsonFromStdin rejects → main() throws → catch → fail-closed.
+let badParsed = null;
+try {
+  badParsed = JSON.parse(runHook("not-valid-json{{{"));
+} catch (e) {
+  badParsed = null;
+}
+assertTrue("integration: bad stdin → JSON output", badParsed !== null);
+if (badParsed) {
+  assert("integration: bad stdin → decision block", badParsed.decision, "block");
+  assertTrue(
+    "integration: bad stdin → recovery hint",
+    badParsed.reason && badParsed.reason.includes("MASDAY_STEP_GUARD=disabled")
+  );
+}
+
+// Env escape: even with bad stdin, disabled → allow ({}) — no throw, no block.
+let escParsed = null;
+try {
+  escParsed = JSON.parse(
+    runHook("not-valid-json{{{", { MASDAY_STEP_GUARD: "disabled" })
+  );
+} catch (e) {
+  escParsed = null;
+}
+assertTrue("integration: env disabled → JSON output", escParsed !== null);
+if (escParsed) {
+  assertFalse("integration: env disabled → NOT blocked", escParsed.decision === "block");
+}
 
 // helpers
 function assertEmpty(name, actual) {
