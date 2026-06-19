@@ -192,6 +192,27 @@ pub async fn workflow_save_progress(
     .await
 }
 
+/// Fail task — mark a task FAILED and auto-transition its workflow to FIX for
+/// recovery (leverage #6). The service method + `POST /tasks/{id}/fail` route
+/// shipped in #44; this exposes them to MCP clients. Targets the task-scoped
+/// fail route: `task_id` selects the task (path), `workflow_id` + optional
+/// `error` travel in the body (the service needs `workflow_id` for the FIX
+/// auto-transition and the best-effort failure memory).
+pub async fn workflow_fail_task(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let task_id = args
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing task_id".to_string())?;
+
+    if !validate_uuid(task_id) {
+        return Err(format!("Invalid task_id format: '{}'", task_id).into());
+    }
+
+    client::api_post(&format!("/api/tasks/{}/fail", task_id), args).await
+}
+
 /// Create plan
 pub async fn workflow_create_plan(
     args: Value,
