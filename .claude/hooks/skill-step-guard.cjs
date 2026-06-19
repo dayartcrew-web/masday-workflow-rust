@@ -395,6 +395,64 @@ function detectActiveSkill(toolName, toolInput) {
   return null;
 }
 
+// ── Stack-agnostic file classification ──────────────────────────────────────
+// round-1 M2: TDD enforcement was `.ts`-only. Writing a Rust / Python / Go /
+// PHP / .tsx / .vue / .svelte source file during the RED phase was NOT blocked,
+// and non-`.ts` source writes were never recorded as evidence — silently
+// disabling TDD for every non-TypeScript stack. These helpers classify files
+// across all supported stacks. Test detection is broadened too: otherwise a Go
+// `foo_test.go` or Python `test_foo.py` would be misclassified as source and
+// wrongly blocked by the RED guard.
+const SOURCE_EXTENSIONS = [
+  // TS / JS family
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts",
+  // Rust
+  ".rs",
+  // Python
+  ".py",
+  // Go
+  ".go",
+  // PHP
+  ".php",
+  // Component frameworks
+  ".vue", ".svelte", ".astro",
+  // JVM
+  ".java", ".kt", ".kts", ".scala",
+  // Ruby / C-family
+  ".rb", ".c", ".h", ".cpp", ".cc", ".hpp", ".cs",
+];
+
+function getSourceExtension(filePath) {
+  const lower = (filePath || "").toLowerCase();
+  for (const ext of SOURCE_EXTENSIONS) {
+    if (lower.endsWith(ext)) return ext;
+  }
+  return "";
+}
+
+function isTestFile(filePath) {
+  const lower = (filePath || "").toLowerCase();
+  const base = lower.split(/[\\/]/).pop() || lower;
+  return (
+    // Infix markers (TS/JS/Vue/Svelte, Jest/Vitest)
+    lower.includes(".test.") ||
+    lower.includes(".spec.") ||
+    // Suffix _test.<ext> (Go foo_test.go, Rust foo_test.rs, Python foo_test.py)
+    /_test\.[a-z0-9]+$/.test(base) ||
+    // Prefix test_<name> / test-<name> / test.<name> (pytest, some JS runners)
+    /^test[._-]/.test(base)
+  );
+}
+
+function isSourceCodeFile(filePath) {
+  // Recognized source-code extension that is NOT a test file. Non-code files
+  // (.md/.json/.toml/.yml/...) are excluded so docs/config never trip the guard.
+  // Note: Rust inline `#[cfg(test)] mod tests` lives inside a .rs source file,
+  // so a fresh lib.rs is treated as source — inline-test-in-RED is unusual; the
+  // conventional RED artifact is a separate *_test.rs / tests/ file.
+  return getSourceExtension(filePath) !== "" && !isTestFile(filePath);
+}
+
 // ── Evidence Collection ─────────────────────────────────────────────────────
 
 function collectEvidence(toolName, toolInput, toolResult) {
@@ -403,10 +461,9 @@ function collectEvidence(toolName, toolInput, toolResult) {
   // File evidence from Write tool
   if (toolName === "Write" || toolName === "write") {
     const filePath = toolInput?.file_path || toolInput?.path || "";
-    if (filePath.includes(".test.") || filePath.includes(".spec.")) {
+    if (isTestFile(filePath)) {
       evidence.testFileWritten = filePath;
-    }
-    if (filePath.includes(".ts") && !filePath.includes(".test.") && !filePath.includes(".spec.")) {
+    } else if (isSourceCodeFile(filePath)) {
       evidence.sourceFileWritten = filePath;
     }
   }
@@ -414,7 +471,7 @@ function collectEvidence(toolName, toolInput, toolResult) {
   // Edit evidence
   if (toolName === "Edit" || toolName === "edit") {
     const filePath = toolInput?.file_path || toolInput?.path || "";
-    if (filePath.includes(".test.") || filePath.includes(".spec.")) {
+    if (isTestFile(filePath)) {
       evidence.testFileEdited = filePath;
     } else {
       evidence.sourceFileEdited = filePath;
@@ -726,7 +783,7 @@ async function main() {
     if (skillName === "masday-tdd" && state.currentStep === "RED") {
       if (toolName === "Write" || toolName === "Edit") {
         const filePath = toolInput?.file_path || toolInput?.path || "";
-        if (!filePath.includes(".test.") && !filePath.includes(".spec.") && filePath.endsWith(".ts")) {
+        if (isSourceCodeFile(filePath)) {
           process.stdout.write(
             JSON.stringify({
               decision: "block",
@@ -734,7 +791,7 @@ async function main() {
                 `BLOCKED by masday-tdd RED phase guard. ` +
                 `Writing source code before tests violates TDD.\n` +
                 `Current step: RED (Write failing tests first)\n` +
-                `Required: Write a .test.ts or .spec.ts file first.`,
+                `Required: Write a test file first (e.g. *.test.ts, *_test.go, test_*.py, *_spec.rb).`,
             })
           );
           return;
@@ -836,4 +893,14 @@ if (require.main === module) {
   });
 }
 
-module.exports = { SKILL_STEPS, loadState, saveState, clearAllStates };
+module.exports = {
+  SKILL_STEPS,
+  loadState,
+  saveState,
+  clearAllStates,
+  // round-1 M2: exported for unit testing (see skill-step-guard.classify.test.cjs)
+  SOURCE_EXTENSIONS,
+  getSourceExtension,
+  isTestFile,
+  isSourceCodeFile,
+};
