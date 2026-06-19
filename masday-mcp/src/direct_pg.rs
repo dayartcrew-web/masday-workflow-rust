@@ -264,6 +264,33 @@ pub async fn task_status(
     .await;
 }
 
+/// Delete a workflow (and its children via cascade FKs) from PostgreSQL
+/// (5s timeout). Mirrors the SQLite `DELETE FROM workflows WHERE id=?1` in
+/// `direct.rs::workflow_delete`. The PG schema cascades `ON DELETE CASCADE`
+/// to plans/tasks/memories/reviews/etc., so a single-row delete cleans the
+/// whole workflow tree. No-op if no PG pool. Scoped to ONE workflow id —
+/// never batch or project-scoped.
+pub async fn workflow_delete(id: &str) {
+    let id = id.to_string();
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+
+        if let Ok(client) = pool.get().await {
+            let q = "DELETE FROM workflows WHERE id=$1";
+            if let Err(e) = client.execute(q, &[&id]).await {
+                tracing::warn!("PG workflow delete sync failed {}: {}", id, e);
+            } else {
+                tracing::info!("Deleted workflow {} from PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
 /// Bulk sync workflows from SQLite to PostgreSQL (15s timeout for bulk).
 /// Reads from SQLite synchronously, then writes to PostgreSQL.
 pub async fn workflows_bulk(workflow_ids: &[String]) -> bool {
