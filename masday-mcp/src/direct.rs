@@ -1209,6 +1209,61 @@ pub async fn workflow_add_task(
         params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, &t, &t],
     ).map_err(|e| err(e))?;
 
+    // C2.14: sync the new task (and its plan) to PostgreSQL so the API/
+    // dashboard reflects local task creation. Fire-and-forget, mirroring the
+    // workflow-create sync (@768). The plan is synced FIRST (within the same
+    // spawned task) to satisfy the `tasks.plan_id` foreign key — plans are
+    // otherwise absent from PG in stdio/local mode. No-op when no PG pool is
+    // configured. This unblocks per-task DONE sync (rest of C2.13).
+    let plan_row: Option<(String, String, String, i64, String)> = conn
+        .query_row(
+            "SELECT status, summary, content, version, created_by_agent FROM plans WHERE id=?1",
+            params![resolved_plan_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            },
+        )
+        .ok();
+    let pg_wid = workflow_id.to_string();
+    let pg_task_id = id.clone();
+    let pg_plan_id = resolved_plan_id.clone();
+    let pg_title = title.to_string();
+    let pg_owner = owner_agent.map(|s| s.to_string());
+    let pg_deps = deps.clone();
+    tokio::spawn(async move {
+        if let Some((p_status, p_summary, p_content, p_version, p_created_by)) = plan_row {
+            crate::direct_pg::plan_create(
+                &pg_plan_id,
+                &pg_wid,
+                p_version as i32,
+                &p_status,
+                &p_summary,
+                &p_content,
+                &p_created_by,
+            )
+            .await;
+        }
+        crate::direct_pg::task_create(
+            &pg_task_id,
+            &pg_wid,
+            &pg_plan_id,
+            &pg_title,
+            "PENDING",
+            "MEDIUM",
+            pg_owner.as_deref(),
+            pg_deps.as_deref(),
+            0,
+            requires_tdd != 0,
+        )
+        .await;
+    });
+
     Ok(
         json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0, "requiresTdd": requires_tdd == 1}),
     )

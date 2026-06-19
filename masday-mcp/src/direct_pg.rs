@@ -77,6 +77,140 @@ pub async fn workflow_status(id: &str, status: &str) {
     .await;
 }
 
+/// Sync a plan row to PostgreSQL (5s timeout). Upsert by id. Plans are
+/// otherwise absent from PostgreSQL in stdio/local mode, so this must run
+/// before `task_create` to satisfy the `tasks.plan_id` foreign key when a
+/// task is synced from local mode.
+pub async fn plan_create(
+    id: &str,
+    workflow_id: &str,
+    version: i32,
+    status: &str,
+    summary: &str,
+    content: &str,
+    created_by_agent: &str,
+) {
+    let id = id.to_string();
+    let workflow_id = workflow_id.to_string();
+    let status = status.to_string();
+    let summary = summary.to_string();
+    let content_json: serde_json::Value =
+        serde_json::from_str(content).unwrap_or(serde_json::json!({}));
+    let created_by_agent = created_by_agent.to_string();
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+
+        if let Ok(client) = pool.get().await {
+            let q = r#"
+                INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    version = EXCLUDED.version, status = EXCLUDED.status,
+                    summary = EXCLUDED.summary, content = EXCLUDED.content
+            "#;
+            if let Err(e) = client
+                .execute(
+                    q,
+                    &[
+                        &id,
+                        &workflow_id,
+                        &version,
+                        &status,
+                        &summary,
+                        &content_json,
+                        &created_by_agent,
+                    ],
+                )
+                .await
+            {
+                tracing::warn!("PG plan create sync failed {}: {}", id, e);
+            } else {
+                tracing::debug!("Synced plan {} to PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
+/// Sync a new task row to PostgreSQL (5s timeout). Upsert by id. Mirrors the
+/// SQLite INSERT in `direct.rs::workflow_add_task`. The referenced plan must
+/// already exist in PostgreSQL — callers sync it via `plan_create` first.
+#[allow(clippy::too_many_arguments)]
+pub async fn task_create(
+    id: &str,
+    workflow_id: &str,
+    plan_id: &str,
+    title: &str,
+    status: &str,
+    priority: &str,
+    owner_agent: Option<&str>,
+    dependencies: Option<&str>,
+    progress_percent: i32,
+    requires_tdd: bool,
+) {
+    let id = id.to_string();
+    let workflow_id = workflow_id.to_string();
+    let plan_id = plan_id.to_string();
+    let title = title.to_string();
+    let status = status.to_string();
+    let priority = priority.to_string();
+    let owner_agent = owner_agent.map(|s| s.to_string());
+    // dependencies arrives as a JSON array string (or null) from SQLite;
+    // normalize to a JSON value, dropping JSON nulls to SQL NULL.
+    let deps_json: Option<serde_json::Value> = dependencies
+        .and_then(|s| serde_json::from_str(s).ok())
+        .filter(|v: &serde_json::Value| !v.is_null());
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+
+        if let Ok(client) = pool.get().await {
+            let q = r#"
+                INSERT INTO tasks (id, workflow_id, plan_id, title, status, priority,
+                                   owner_agent, dependencies, progress_percent,
+                                   requires_tdd, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    title = EXCLUDED.title, status = EXCLUDED.status,
+                    priority = EXCLUDED.priority, owner_agent = EXCLUDED.owner_agent,
+                    dependencies = EXCLUDED.dependencies,
+                    progress_percent = EXCLUDED.progress_percent,
+                    requires_tdd = EXCLUDED.requires_tdd, updated_at = NOW()
+            "#;
+            if let Err(e) = client
+                .execute(
+                    q,
+                    &[
+                        &id,
+                        &workflow_id,
+                        &plan_id,
+                        &title,
+                        &status,
+                        &priority,
+                        &owner_agent,
+                        &deps_json,
+                        &progress_percent,
+                        &requires_tdd,
+                    ],
+                )
+                .await
+            {
+                tracing::warn!("PG task create sync failed {}: {}", id, e);
+            } else {
+                tracing::info!("Synced task {} to PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
 /// Bulk sync workflows from SQLite to PostgreSQL (15s timeout for bulk).
 /// Reads from SQLite synchronously, then writes to PostgreSQL.
 pub async fn workflows_bulk(workflow_ids: &[String]) -> bool {
