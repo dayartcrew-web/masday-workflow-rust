@@ -11,7 +11,7 @@ use masday_db::pool::{create_pool, DbPool};
 use masday_service::memory_service::{MemoryService, StoreMemoryParams};
 use masday_service::plan_service::PlanService;
 use masday_service::review_service::ReviewService;
-use masday_service::task_service::TaskService;
+use masday_service::task_service::{TaskContext, TaskService};
 use masday_service::workflow_service::WorkflowService;
 
 fn get_pool() -> DbPool {
@@ -55,6 +55,7 @@ async fn test_cross_domain_workflow_task_plan_lifecycle(
         Some("test-agent".to_string()),
         None,
         None,
+        TaskContext::default(),
     )
     .await?;
     let task_id = task.id;
@@ -147,6 +148,7 @@ async fn test_cross_domain_review_after_task(
         Some("test-agent".to_string()),
         None,
         None,
+        TaskContext::default(),
     )
     .await?;
     let task_id = task.id;

@@ -22,7 +22,7 @@ pub use policy_service::PolicyService;
 pub use reminder_service::ReminderService;
 pub use review_service::ReviewService;
 pub use search_service::SearchService;
-pub use task_service::TaskService;
+pub use task_service::{TaskContext, TaskService};
 pub use workflow_service::WorkflowService;
 
 #[cfg(test)]

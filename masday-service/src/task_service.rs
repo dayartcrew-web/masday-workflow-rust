@@ -17,6 +17,31 @@ pub struct TaskService {
     repo: TaskRepo,
 }
 
+/// Optional context attached to a new task (audit round-1 H1).
+///
+/// Previously `add_task` hardcoded `skill`, `acceptance_criteria`,
+/// `required_context`, and `input` to `None`, so those task columns were always
+/// empty — even when an API/MCP caller sent them. Reviewers and policy/drift
+/// checks keyed on `acceptance_criteria` / `required_context` were therefore
+/// silent no-ops. `TaskContext` carries the caller-supplied values through to
+/// the persisted [`NewTask`]; [`TaskContext::default`] (all `None`) preserves
+/// the historical behavior for callers that supply none of them.
+///
+/// `context_fingerprint` is intentionally NOT here: computing it needs
+/// `ContextService::build_context_pack`, which is deferred to its own slice.
+#[derive(Debug, Clone, Default)]
+pub struct TaskContext {
+    /// Skill the task is scoped to (e.g. `masday-tdd`).
+    pub skill: Option<String>,
+    /// Structured acceptance criteria the task must satisfy to be reviewable.
+    pub acceptance_criteria: Option<serde_json::Value>,
+    /// Explicit required context. When `None`, `add_task` falls back to the
+    /// deps-derived `{"dependencies": [...]}` used historically.
+    pub required_context: Option<serde_json::Value>,
+    /// Free-form task input / payload.
+    pub input: Option<serde_json::Value>,
+}
+
 impl TaskService {
     /// Create a new task service
     pub fn new(pool: DbPool) -> Self {
@@ -36,9 +61,12 @@ impl TaskService {
     /// * `dependencies` - Optional list of task IDs this task depends on
     /// * `requires_tdd` - When true, the task cannot be completed until an APPROVED
     ///   review exists (enforced by `complete_task` via `validate_completion`)
+    /// * `context` - Optional task context (skill / acceptance_criteria /
+    ///   required_context / input). See [`TaskContext`]. Defaults to all-`None`.
     ///
     /// # Returns
     /// * `Result<Task>` - The created task
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_task(
         pool: &DbPool,
         workflow_id: String,
@@ -47,6 +75,7 @@ impl TaskService {
         agent: Option<String>,
         dependencies: Option<Vec<String>>,
         requires_tdd: Option<bool>,
+        context: TaskContext,
     ) -> Result<Task> {
         info!("Adding task '{}' to workflow {}", name, workflow_id);
 
@@ -88,11 +117,17 @@ impl TaskService {
 
         let service = Self::new(pool.clone());
 
-        // Create metadata with dependencies if provided
-        let required_context = dependencies
-            .as_ref()
-            .map(|deps| serde_json::json!({ "dependencies": deps }));
+        // Serialize dependencies once for both the `dependencies` column and the
+        // deps-derived `required_context` fallback.
         let dependencies_json = dependencies.as_ref().map(|d| serde_json::json!(d));
+
+        // required_context: an explicit value (H1) wins; otherwise fall back to
+        // the historical deps-derived `{"dependencies": [...]}` so callers that
+        // only pass dependencies see no behavior change.
+        let required_context = Self::resolve_required_context(
+            context.required_context.as_ref(),
+            dependencies.as_ref(),
+        );
 
         let new_task = NewTask {
             workflow_id,
@@ -101,16 +136,17 @@ impl TaskService {
             status: "PENDING".to_string(),
             priority: Some("MEDIUM".to_string()),
             owner_agent: agent,
-            skill: None,
+            skill: context.skill,
             description: None,
             dependencies: dependencies_json,
-            acceptance_criteria: None,
+            acceptance_criteria: context.acceptance_criteria,
             required_context,
             verification_steps: None,
+            // Deferred: compute via ContextService::build_context_pack (H1 follow-up).
             context_fingerprint: None,
             progress_percent: Some(0),
             requires_tdd,
-            input: None,
+            input: context.input,
             result: None,
             test_evidence: None,
             metadata: None,
@@ -120,6 +156,23 @@ impl TaskService {
         debug!("Task created with ID: {}", task.id);
 
         Ok(task)
+    }
+
+    /// Resolve the persisted `required_context` for a new task.
+    ///
+    /// An explicit caller-supplied value (H1) wins; a JSON `null` is treated as
+    /// absent. When no explicit value is given, fall back to the historical
+    /// deps-derived `{"dependencies": [...]}` so callers that only pass
+    /// dependencies are unaffected. Pure (no I/O) so the precedence rule is
+    /// unit-testable without a database.
+    fn resolve_required_context(
+        explicit: Option<&serde_json::Value>,
+        dependencies: Option<&Vec<String>>,
+    ) -> Option<serde_json::Value> {
+        explicit
+            .filter(|v| !v.is_null())
+            .cloned()
+            .or_else(|| dependencies.map(|deps| serde_json::json!({ "dependencies": deps })))
     }
 
     /// Start a task (PENDING → RUNNING)
@@ -575,6 +628,52 @@ impl TaskService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // resolve_required_context precedence/fallback (audit round-1 H1):
+    // an explicit value wins; otherwise fall back to deps-derived; JSON null is
+    // treated as absent so an explicit null behaves like "not provided".
+
+    #[test]
+    fn resolve_required_context_explicit_wins_over_deps() {
+        let explicit = serde_json::json!({"prd_ref": "doc-123"});
+        let deps = vec!["t1".to_string(), "t2".to_string()];
+        let out = TaskService::resolve_required_context(Some(&explicit), Some(&deps));
+        assert_eq!(
+            out,
+            Some(explicit),
+            "explicit context must override the deps-derived default"
+        );
+    }
+
+    #[test]
+    fn resolve_required_context_falls_back_to_deps() {
+        let deps = vec!["t1".to_string(), "t2".to_string()];
+        let out = TaskService::resolve_required_context(None, Some(&deps));
+        assert_eq!(
+            out,
+            Some(serde_json::json!({"dependencies": ["t1", "t2"]})),
+            "without an explicit value, deps-derived context must be used (historical behavior)"
+        );
+    }
+
+    #[test]
+    fn resolve_required_context_none_when_both_absent() {
+        let out = TaskService::resolve_required_context(None, None);
+        assert!(out.is_none(), "no context and no deps ⇒ None");
+    }
+
+    #[test]
+    fn resolve_required_context_explicit_null_is_absent() {
+        let null = serde_json::Value::Null;
+        let deps = vec!["t1".to_string()];
+        // Explicit null should fall through to the deps-derived value.
+        let out = TaskService::resolve_required_context(Some(&null), Some(&deps));
+        assert_eq!(out, Some(serde_json::json!({"dependencies": ["t1"]})));
+
+        // Explicit null with no deps ⇒ None.
+        let out = TaskService::resolve_required_context(Some(&null), None);
+        assert!(out.is_none());
+    }
 
     #[test]
     fn test_transition_path_from_execute() {
