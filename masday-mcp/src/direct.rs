@@ -1402,6 +1402,20 @@ pub async fn workflow_complete_task(
     conn.execute("UPDATE tasks SET status='DONE', result=?1, progress_percent=100, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
         params![result, &t, &t, task_id, wf_id]).map_err(|e| err(e))?;
 
+    // C2.13 (rest): sync this task's completion to PostgreSQL so the API/
+    // dashboard reflects the local DONE. Fire-and-forget; no-op without a PG
+    // pool. The task row exists in PG (synced at creation in
+    // `workflow_add_task` via `direct_pg::task_create`), so this UPDATE lands.
+    // Independent of the workflow-status sync below (different row).
+    {
+        let pg_task_id = task_id.to_string();
+        let pg_result = result.clone();
+        tokio::spawn(async move {
+            crate::direct_pg::task_status(&pg_task_id, "DONE", 100, pg_result.as_deref(), true)
+                .await;
+        });
+    }
+
     // Auto-store task result as experience memory (best-effort)
     {
         let task_title: String = conn
