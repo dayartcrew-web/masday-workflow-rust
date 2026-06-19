@@ -1,4 +1,5 @@
-// Stack-agnostic classification tests for skill-step-guard.cjs (round-1 M2).
+// Stack-agnostic classification + per-session state-isolation tests for
+// skill-step-guard.cjs (round-1 M2 + M3).
 //
 // Not registered as a Claude Code hook and NOT bundled by masday-cli/build.rs
 // (the project-hooks copy filter only matches masday-*.{cjs,js}, run.sh, or the
@@ -7,13 +8,15 @@
 //     node .claude/hooks/skill-step-guard.classify.test.cjs
 //
 // There is no JS test runner wired into CI for hooks today; this file pins the
-// classification contract for regression protection and documents the M2 fix.
+// classification + state-isolation contracts for regression protection.
 
 const {
   getSourceExtension,
   isTestFile,
   isSourceCodeFile,
   SOURCE_EXTENSIONS,
+  resolveStateDir,
+  hashKey,
 } = require("./skill-step-guard.cjs");
 
 let passed = 0;
@@ -88,6 +91,40 @@ assertFalse("yml is NOT source", isSourceCodeFile(".github/workflows/ci.yml"));
 // ── SOURCE_EXTENSIONS sanity ─────────────────────────────────────────────────
 assertTrue("covers masday stacks (rust/ts/py/go/php)",
   [".rs", ".ts", ".py", ".go", ".php"].every((e) => SOURCE_EXTENSIONS.includes(e)));
+
+// ── hashKey (M3) ─────────────────────────────────────────────────────────────
+assert("hashKey deterministic", hashKey("session-abc"), hashKey("session-abc"));
+assertTrue("hashKey differs per input", hashKey("a") !== hashKey("b"));
+assertTrue("hashKey is hex segment", /^[0-9a-f]+$/.test(hashKey("anything")));
+assertTrue("hashKey has no slashes", !hashKey("/home/user/project").includes("/"));
+
+// ── resolveStateDir (M3) ─────────────────────────────────────────────────────
+// session_id isolates by session; cwd by project/worktree; session wins over cwd.
+const sessADir = resolveStateDir({ session_id: "sess-A" });
+const sessBDir = resolveStateDir({ session_id: "sess-B" });
+const sessADirAgain = resolveStateDir({ session_id: "sess-A" });
+assertTrue("session dir is under base", sessADir.includes("masday-step-guard"));
+assertTrue("session dir uses s- segment", sessADir.includes("s-"));
+assertTrue("different sessions → different dirs", sessADir !== sessBDir);
+assert("same session → stable dir", sessADir, sessADirAgain);
+
+const cwdADir = resolveStateDir({ cwd: "/home/me/project-a" });
+const cwdBDir = resolveStateDir({ cwd: "/home/me/project-b" });
+assertTrue("cwd dir uses c- segment", cwdADir.includes("c-"));
+assertTrue("different cwds → different dirs", cwdADir !== cwdBDir);
+
+// session_id takes priority over cwd
+const bothDir = resolveStateDir({ session_id: "sess-A", cwd: "/anywhere" });
+assert("session wins over cwd", bothDir, sessADir);
+
+// different worktrees of the same project (distinct paths) are isolated
+assertTrue("worktree isolation",
+  resolveStateDir({ cwd: "/repo/.claude/worktrees/fix-a" }) !==
+  resolveStateDir({ cwd: "/repo/.claude/worktrees/fix-b" }));
+
+// Empty payload falls back to process.cwd() (c- segment) in a real shell
+const fallback = resolveStateDir({});
+assertTrue("empty payload falls back to cwd-scoped dir", fallback.includes("c-"));
 
 // helpers
 function assertEmpty(name, actual) {

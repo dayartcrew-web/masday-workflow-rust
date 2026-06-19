@@ -13,7 +13,13 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const STATE_DIR = path.join(os.tmpdir(), "masday-step-guard");
+// Step-state directory. round-1 M3: this used to be a single flat dir shared
+// across ALL projects/worktrees/sessions, so concurrent runs contaminated each
+// other's TDD/workflow step state. It is now resolved per invocation (session
+// id → cwd) in main() via resolveStateDir(). DEFAULT_STATE_DIR is the fallback
+// for direct (non-hook) callers of the exported state helpers.
+const DEFAULT_STATE_DIR = path.join(os.tmpdir(), "masday-step-guard");
+let STATE_DIR = DEFAULT_STATE_DIR;
 
 // ── Skill Step Definitions ──────────────────────────────────────────────────
 // Each skill defines ordered steps with validation criteria.
@@ -320,6 +326,34 @@ const SKILL_STEPS = {
 };
 
 // ── State Management ────────────────────────────────────────────────────────
+
+// FNV-1a 32-bit hash → short, stable, filesystem-safe directory segment. Used
+// to derive a per-session/per-cwd state subdir without putting raw ids/paths
+// (which contain slashes) on the filesystem (round-1 M3).
+function hashKey(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+// Resolve a per-invocation state dir so concurrent projects / worktrees /
+// sessions do not share or clobber each other's step state (round-1 M3).
+// session_id (Claude Code hook payload) isolates by session; cwd isolates by
+// project+worktree path when no session id is present (falling back to the
+// process cwd). Returns the shared legacy dir only if neither is available.
+function resolveStateDir(input) {
+  const base = DEFAULT_STATE_DIR;
+  const session = input && (input.session_id || input.sessionId);
+  if (session) return path.join(base, "s-" + hashKey(String(session)));
+  const cwd =
+    (input && (input.cwd || input.workingDir)) ||
+    (typeof process.cwd === "function" ? process.cwd() : "");
+  if (cwd) return path.join(base, "c-" + hashKey(String(cwd)));
+  return base;
+}
 
 function getStateFile(skillName) {
   if (!fs.existsSync(STATE_DIR)) {
@@ -718,6 +752,9 @@ function readJsonFromStdin() {
 
 async function main() {
   const input = await readJsonFromStdin();
+  // round-1 M3: isolate step state per session/project/worktree so concurrent
+  // runs no longer share one flat state dir.
+  STATE_DIR = resolveStateDir(input);
   const toolName = input.tool_name || "";
   const toolInput = input.tool_input || {};
   const toolResult = input.tool_result || null;
@@ -903,4 +940,7 @@ module.exports = {
   getSourceExtension,
   isTestFile,
   isSourceCodeFile,
+  // round-1 M3: exported for unit testing (per-session state isolation)
+  resolveStateDir,
+  hashKey,
 };
