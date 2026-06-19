@@ -458,6 +458,58 @@ pub async fn memory(data: &MemoryData<'_>) {
     .await;
 }
 
+/// Delete a memory from PostgreSQL by id (5s timeout). Mirrors the SQLite
+/// `DELETE FROM memories WHERE id=?1`. No-op if no PG pool. Propagating the
+/// delete is what stops `memories_bulk_pull` from resurrecting a locally-
+/// deleted memory (it re-inserts any PG id absent from SQLite).
+pub async fn memory_delete(id: &str) {
+    let id = id.to_string();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+        if let Ok(client) = pool.get().await {
+            let q = "DELETE FROM memories WHERE id=$1";
+            if let Err(e) = client.execute(q, &[&id]).await {
+                tracing::warn!("PG memory delete sync failed {}: {}", id, e);
+            } else {
+                tracing::debug!("Deleted memory {} from PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
+/// Delete all memories for a workflow from PostgreSQL (5s timeout). Mirrors
+/// the SQLite `DELETE FROM memories WHERE workflow_id=?1`. Scoped to ONE
+/// workflow id (not project-scoped). No-op if no PG pool.
+pub async fn memory_delete_by_workflow(workflow_id: &str) {
+    let workflow_id = workflow_id.to_string();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+        if let Ok(client) = pool.get().await {
+            let q = "DELETE FROM memories WHERE workflow_id=$1";
+            if let Err(e) = client.execute(q, &[&workflow_id]).await {
+                tracing::warn!(
+                    "PG memory delete-by-workflow sync failed {}: {}",
+                    workflow_id,
+                    e
+                );
+            } else {
+                tracing::debug!(
+                    "Deleted memories for workflow {} from PostgreSQL",
+                    workflow_id
+                );
+            }
+        }
+    })
+    .await;
+}
+
 // ─── Bulk Memory Sync ────────────────────────────────────────────────
 
 /// Bulk push memories from SQLite to PostgreSQL.
