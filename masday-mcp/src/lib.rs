@@ -1142,7 +1142,16 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
         r,
         "workflow_addTask",
         "Add task to workflow",
-        schema!("workflow_id", "name", "agent", "skill", "dependencies?"),
+        schema!(
+            "workflow_id",
+            "name",
+            "agent",
+            "skill",
+            "dependencies?",
+            "input?",
+            "acceptance_criteria?",
+            "required_context?"
+        ),
         d::workflow_add_task
     );
     reg!(
