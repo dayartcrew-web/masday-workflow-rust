@@ -4,7 +4,8 @@
 //! Takes `serde_json::Value` args, returns `Result<Value, Box<dyn Error + Send + Sync>>`.
 
 use masday_core::WorkflowState;
-use masday_service::{compute_context_fingerprint, evaluate_context_drift};
+use masday_db::schema::{Workflow, WorkflowReminder};
+use masday_service::{compute_context_fingerprint, evaluate_context_drift, ReminderService};
 use rusqlite::params;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -185,6 +186,27 @@ fn now() -> String {
 /// New UUID string.
 fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+/// Parse a workflow `updated_at`/`created_at` TEXT value into a UTC `DateTime`.
+///
+/// The column can hold EITHER shape: explicit writes store RFC 3339 via
+/// [`now`] (`2026-06-20T12:34:56.789+00:00`), but the schema default is
+/// `datetime('now')` (`2026-06-20 12:34:56`). A raw string compare across the
+/// two is WRONG (the `T` vs space separator breaks lexicographic ordering), so
+/// we parse to a real `DateTime<Utc>` and let `chrono` do the arithmetic. Every
+/// known shape is tried before falling back to "now" — a garbage value is
+/// treated as fresh so a malformed row never false-alerts as stale.
+fn parse_ts(raw: &str) -> chrono::DateTime<chrono::Utc> {
+    use chrono::TimeZone;
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
+        return dt.with_timezone(&chrono::Utc);
+    }
+    // SQLite datetime('now') → "%Y-%m-%d %H:%M:%S" (with optional fractionals).
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S%.f") {
+        return chrono::Utc.from_utc_datetime(&ndt);
+    }
+    chrono::Utc::now()
 }
 
 /// Error helper — converts any error to the boxed type the registry expects.
@@ -3391,14 +3413,99 @@ pub async fn reminder_check(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
 
-    // Find stale tasks (RUNNING for >1 hour — simplified check)
-    let mut stmt = conn.prepare(
-        "SELECT id, workflow_id, title FROM tasks WHERE status='RUNNING' AND updated_at < datetime('now', '-1 hour')"
-    ).map_err(err)?;
+    // Active workflows (mirrors the PG-side WorkflowRepo::get_active, which
+    // excludes DONE/FAILED). Only id/name/status/updated_at are read by the
+    // staleness helper; the other Workflow fields are left None.
+    let mut active_stmt = conn
+        .prepare(
+            "SELECT id, name, status, updated_at FROM workflows WHERE status NOT IN ('DONE','FAILED')",
+        )
+        .map_err(err)?;
+    let active: Vec<Workflow> = active_stmt
+        .query_map([], |row| {
+            let updated_raw: String = row.get(3)?;
+            // The column holds EITHER RFC 3339 (explicit now() writes) OR the
+            // schema default datetime('now') ("%Y-%m-%d %H:%M:%S"). parse_ts
+            // handles both; a raw string compare would be wrong (T vs space).
+            let updated_at = parse_ts(&updated_raw);
+            Ok(Workflow {
+                id: row.get::<_, String>(0)?,
+                name: row.get::<_, String>(1)?,
+                status: row.get::<_, String>(2)?,
+                updated_at,
+                description: None,
+                project_path: None,
+                trace_id: None,
+                current_plan_id: None,
+                current_task_id: None,
+                metadata: None,
+                created_at: updated_at,
+            })
+        })
+        .map_err(err)?
+        .filter_map(|r| r.ok())
+        .collect();
 
-    let rows = stmt.query_map([], |row| {
-        Ok(json!({"id": row.get::<_, String>(0)?, "workflow_id": row.get::<_, String>(1)?, "title": row.get::<_, String>(2)?, "type": "stale"}))
-    }).map_err(|e| err(e))?;
+    // Existing unacknowledged reminders, for the dedup gate. compute_new_reminders
+    // only reads workflow_id + reminder_type, so the remaining fields are
+    // placeholders.
+    let mut existing_stmt = conn
+        .prepare("SELECT workflow_id, reminder_type FROM workflow_reminders WHERE acknowledged=0")
+        .map_err(err)?;
+    let existing: Vec<WorkflowReminder> = existing_stmt
+        .query_map([], |row| {
+            Ok(WorkflowReminder {
+                id: String::new(),
+                workflow_id: row.get::<_, String>(0)?,
+                task_id: None,
+                reminder_type: row.get::<_, String>(1)?,
+                severity: String::new(),
+                message: String::new(),
+                acknowledged: Some(false),
+                created_at: chrono::Utc::now(),
+            })
+        })
+        .map_err(err)?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Reuse the PG-side pure helper — single source of truth for the staleness
+    // thresholds + dedup. Previously this stdio handler did a one-shot SELECT on
+    // stale tasks and returned ephemeral JSON keyed by task id, so list() was
+    // always empty and acknowledge() could never match. Now, like the API path,
+    // freshly-detected reminders are persisted with stable UUIDs.
+    let now_ts = chrono::Utc::now();
+    let fresh = ReminderService::compute_new_reminders(&active, &existing, &now_ts);
+
+    for new in &fresh {
+        let id = new_id();
+        if let Err(e) = conn.execute(
+            "INSERT INTO workflow_reminders (id, workflow_id, task_id, reminder_type, severity, message, acknowledged, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            params![id, new.workflow_id, new.task_id, new.reminder_type, new.severity, new.message, 0i64, now()],
+        ) {
+            warn!("Failed to persist reminder for {}: {}", new.workflow_id, e);
+        }
+    }
+
+    // Return the full outstanding set with stable, acknowledge-able ids — same
+    // shape as reminder_list, so callers can acknowledge immediately.
+    let mut out_stmt = conn
+        .prepare(
+            "SELECT id, workflow_id, reminder_type, severity, message, acknowledged FROM workflow_reminders WHERE acknowledged=0 ORDER BY created_at DESC",
+        )
+        .map_err(err)?;
+    let rows = out_stmt
+        .query_map([], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "workflowId": row.get::<_, String>(1)?,
+                "type": row.get::<_, String>(2)?,
+                "severity": row.get::<_, String>(3)?,
+                "message": row.get::<_, String>(4)?,
+                "acknowledged": row.get::<_, i64>(5)? == 1,
+            }))
+        })
+        .map_err(err)?;
 
     let reminders: Vec<Value> = collect_rows(rows);
     Ok(json!({"reminders": reminders}))
@@ -5586,5 +5693,116 @@ mod tests {
             )
             .unwrap();
         assert_eq!(requires_tdd, 1, "requires_tdd must be persisted as 1");
+    }
+
+    // ===== Leverage #7 SQLite mirror: persist + dedup + acknowledge =====
+
+    #[test]
+    fn test_parse_ts_handles_both_timestamp_formats() {
+        // RFC 3339 (explicit now() writes).
+        let rfc = parse_ts("2026-06-20T12:00:00+00:00");
+        assert_eq!(rfc.to_rfc3339(), "2026-06-20T12:00:00+00:00");
+        // SQLite datetime('now') default shape ("%Y-%m-%d %H:%M:%S").
+        let dt = parse_ts("2026-06-20 12:00:00");
+        assert_eq!(dt.to_rfc3339(), "2026-06-20T12:00:00+00:00");
+        // Garbage → falls back to ~now (never panics, never false-alerts stale).
+        let fallback = parse_ts("not-a-timestamp");
+        let drift = chrono::Utc::now()
+            .signed_duration_since(fallback)
+            .num_seconds()
+            .abs();
+        assert!(
+            drift < 5,
+            "garbage should fall back to ~now (drift {drift}s)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reminder_check_persists_dedups_and_acknowledges() {
+        // Mirror of PG #7a/#7b on the stdio/SQLite path: a freshly detected
+        // stale-workflow reminder must be PERSISTED with a stable id (was
+        // theater — check returned ephemeral task ids, list() was always empty,
+        // acknowledge() could never match). Uses the datetime('now') shape so
+        // parse_ts's non-RFC-3339 arm is exercised end-to-end.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            // EXECUTE, updated >4h ago → STALE_EXECUTE.
+            conn.execute(
+                "INSERT INTO workflows (id, name, status, updated_at) \
+                 VALUES (?1, ?2, 'EXECUTE', datetime('now','-5 hours'))",
+                params![&wf_id, "stale-wf"],
+            )
+            .unwrap();
+        }
+
+        // 1st check → persists exactly one STALE_EXECUTE for this workflow,
+        // with a real reminder id (NOT the workflow id).
+        let res = reminder_check(json!({})).await.unwrap();
+        let ours: Vec<&Value> = res["reminders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["workflowId"] == wf_id)
+            .collect();
+        assert_eq!(
+            ours.len(),
+            1,
+            "one reminder persisted for the stale workflow"
+        );
+        let rem_id = ours[0]["id"].as_str().unwrap().to_string();
+        assert_ne!(
+            rem_id, wf_id,
+            "reminder id must be a stable UUID, not the workflow id"
+        );
+        assert_eq!(ours[0]["type"], "STALE_EXECUTE");
+        assert_eq!(ours[0]["acknowledged"], false);
+
+        // reminder_list surfaces the same persisted row (always empty before).
+        let listed = reminder_list(json!({ "workflow_id": &wf_id }))
+            .await
+            .unwrap();
+        let listed_ours: Vec<&Value> = listed["reminders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["workflowId"] == wf_id)
+            .collect();
+        assert_eq!(listed_ours.len(), 1);
+        assert_eq!(listed_ours[0]["id"].as_str().unwrap(), rem_id);
+
+        // 2nd check → dedup: no duplicate row for (wf, STALE_EXECUTE).
+        let _ = reminder_check(json!({})).await.unwrap();
+        let count: i64 = crate::sqlite::conn()
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_reminders WHERE workflow_id=?1",
+                params![&wf_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "re-checking must not duplicate the reminder");
+
+        // acknowledge() now matches a REAL row id and flips acknowledged=1 on
+        // that exact row (was a silent no-op before — the old check returned the
+        // task id as `id`, so the UPDATE matched zero rows). NB: acknowledging
+        // does NOT resolve staleness, so a still-stale workflow is correctly
+        // re-detected on the next check — matching the PG path, whose
+        // ReminderRepo::check_reminders also loads only unacknowledged rows.
+        let ack = reminder_acknowledge(json!({ "id": &rem_id }))
+            .await
+            .unwrap();
+        assert_eq!(ack["acknowledged"], rem_id);
+        let acked: i64 = crate::sqlite::conn()
+            .query_row(
+                "SELECT acknowledged FROM workflow_reminders WHERE id=?1",
+                params![&rem_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            acked, 1,
+            "the acknowledged row must be flipped to acknowledged=1"
+        );
     }
 }

@@ -71,7 +71,11 @@ impl ReminderService {
     /// A reminder is produced only when the workflow is stale AND no
     /// unacknowledged reminder of the same `(workflow_id, reminder_type)` already
     /// exists — this is the dedup gate that keeps `check_reminders` idempotent.
-    fn compute_new_reminders(
+    ///
+    /// Public so the standalone stdio/SQLite path (`masday-mcp` `direct.rs`) can
+    /// reuse the exact same staleness thresholds + dedup instead of a divergent
+    /// re-implementation — single source of truth for what "stale" means.
+    pub fn compute_new_reminders(
         active: &[masday_db::schema::Workflow],
         existing: &[WorkflowReminder],
         now: &chrono::DateTime<Utc>,
