@@ -3,7 +3,7 @@
 //! Builds context packs for tasks and computes fingerprints for context validation.
 
 use masday_core::{AppError, Result};
-use masday_db::repos::{MemoryRepo, PlanRepo, TaskRepo};
+use masday_db::repos::{ContextDocumentRepo, MemoryRepo, PlanRepo, TaskRepo};
 use masday_db::DbPool;
 use tracing::{debug, info};
 
@@ -11,6 +11,7 @@ use tracing::{debug, info};
 pub struct ContextService {
     task_repo: TaskRepo,
     plan_repo: PlanRepo,
+    context_document_repo: ContextDocumentRepo,
     memory_repo: MemoryRepo,
 }
 
@@ -20,6 +21,7 @@ impl ContextService {
         Self {
             task_repo: TaskRepo::new(pool.clone()),
             plan_repo: PlanRepo::new(pool.clone()),
+            context_document_repo: ContextDocumentRepo::new(pool.clone()),
             memory_repo: MemoryRepo::new(pool),
         }
     }
@@ -64,6 +66,18 @@ impl ContextService {
             .await
             .unwrap_or_default();
 
+        // Get related context documents (round-1 M6: previously ignored — the
+        // ContextDocument table was write-only from execution). Bounded to 100
+        // (consistent with memories); non-fatal on error.
+        let context_documents = service
+            .context_document_repo
+            .list_by_workflow(workflow_id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .take(100)
+            .collect::<Vec<_>>();
+
         // Build context pack
         let context_pack = serde_json::json!({
             "workflow_id": workflow_id,
@@ -86,6 +100,7 @@ impl ContextService {
                 "content": plan.content
             },
             "memories": memories,
+            "context_documents": context_documents,
             "fingerprint": Self::compute_fingerprint(workflow_id, plan_id, task_id),
             "built_at": chrono::Utc::now().to_rfc3339()
         });
@@ -145,5 +160,39 @@ mod tests {
     #[test]
     fn test_validate() {
         // Placeholder test
+    }
+
+    #[test]
+    fn test_context_document_serializes_without_embedding() {
+        // round-1 M6: build_context_pack now embeds Vec<ContextDocument> directly.
+        // Pin the serde contract so the pack never bloats with the embedding vector
+        // (#[serde(skip)] on the field) and the document fields are present.
+        use chrono::Utc;
+        use masday_db::schema::ContextDocument;
+
+        let doc = ContextDocument {
+            id: "doc-1".into(),
+            workflow_id: Some("wf-1".into()),
+            source_type: "analysis".into(),
+            source_ref: None,
+            title: Some("Analysis Summary".into()),
+            content: "summary text".into(),
+            metadata: None,
+            fingerprint: Some("ctx-deadbeef".into()),
+            embedding: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let map = serde_json::to_value(&doc).unwrap();
+        let obj = map.as_object().unwrap();
+        assert_eq!(obj["id"], "doc-1");
+        assert_eq!(obj["source_type"], "analysis");
+        assert_eq!(obj["title"], "Analysis Summary");
+        assert_eq!(obj["content"], "summary text");
+        assert_eq!(obj["fingerprint"], "ctx-deadbeef");
+        assert!(
+            !obj.contains_key("embedding"),
+            "embedding must be skipped so it never enters the context pack"
+        );
     }
 }
