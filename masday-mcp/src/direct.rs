@@ -400,7 +400,7 @@ fn auto_store_memory_sqlite(
             "system".to_string(),
             tags_json,
         );
-        tokio::spawn(async move {
+        crate::pg_sync::spawn(async move {
             crate::direct_pg::memory_owned(pg_args).await;
         });
     }
@@ -785,7 +785,7 @@ pub async fn workflow_create(
     }; // conn dropped
 
     // Fire-and-forget PG sync — non-blocking
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         crate::direct_pg::workflow_create(
             &pg_info.0,
             &pg_info.1,
@@ -966,7 +966,7 @@ pub async fn workflow_execute(
     // Fire-and-forget PG sync — non-blocking
     let pg_id = id_str.clone();
     let pg_status = final_status.clone();
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         crate::direct_pg::workflow_status(&pg_id, &pg_status).await;
     });
 
@@ -1123,7 +1123,7 @@ pub async fn workflow_delete(
     // batch or project-scoped (see audit-scope-mistake). Worst case (no pool /
     // failure) is the current behavior (lingers), so strictly-better-or-neutral.
     let pg_id = id.to_string();
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         crate::direct_pg::workflow_delete(&pg_id).await;
     });
 
@@ -1269,7 +1269,7 @@ pub async fn workflow_add_task(
     let pg_title = title.to_string();
     let pg_owner = owner_agent.map(|s| s.to_string());
     let pg_deps = deps.clone();
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         if let Some((p_status, p_summary, p_content, p_version, p_created_by)) = plan_row {
             crate::direct_pg::plan_create(
                 &pg_plan_id,
@@ -1443,7 +1443,7 @@ pub async fn workflow_complete_task(
     {
         let pg_task_id = task_id.to_string();
         let pg_result = result.clone();
-        tokio::spawn(async move {
+        crate::pg_sync::spawn(async move {
             crate::direct_pg::task_status(&pg_task_id, "DONE", 100, pg_result.as_deref(), true)
                 .await;
         });
@@ -1568,7 +1568,7 @@ pub async fn workflow_complete_task(
         if !final_status.is_empty() {
             let pg_id = wf_id.to_string();
             let pg_status = final_status;
-            tokio::spawn(async move {
+            crate::pg_sync::spawn(async move {
                 crate::direct_pg::workflow_status(&pg_id, &pg_status).await;
             });
         }
@@ -2139,7 +2139,7 @@ pub async fn memory_store(args: Value) -> Result<Value, Box<dyn std::error::Erro
     }; // conn dropped
 
     // Fire-and-forget PG sync — non-blocking
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         crate::direct_pg::memory_owned(pg_args).await;
     });
 
@@ -2450,7 +2450,7 @@ pub async fn memory_delete(args: Value) -> Result<Value, Box<dyn std::error::Err
     // in PG and get resurrected by memories_bulk_pull (which re-inserts any PG
     // id absent from SQLite). Fire-and-forget; no-op without a pool.
     let pg_id = id.to_string();
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         crate::direct_pg::memory_delete(&pg_id).await;
     });
 
@@ -2478,7 +2478,7 @@ pub async fn memory_delete_by_workflow(
     // C2.16: propagate the workflow's memory delete to PostgreSQL (scoped to
     // this workflow_id). Fire-and-forget; no-op without a pool.
     let pg_wid = workflow_id.to_string();
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         crate::direct_pg::memory_delete_by_workflow(&pg_wid).await;
     });
 
@@ -3941,7 +3941,7 @@ pub async fn local_push(args: Value) -> Result<Value, Box<dyn std::error::Error 
     // Previous code awaited the spawn, which blocked the tool response
     // when PG bulk sync was slow (1221+ memories).
     let wf_ids = pushed_workflows.clone();
-    tokio::spawn(async move {
+    crate::pg_sync::spawn(async move {
         // Workflow sync with 15s timeout
         let wf_ok = crate::direct_pg::workflows_bulk(&wf_ids).await;
         // Memory bulk push with 30s timeout
