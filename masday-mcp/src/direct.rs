@@ -4241,7 +4241,17 @@ async fn local_sync_all(cwd: &str) -> Result<Value, Box<dyn std::error::Error + 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Registry tests serialize on this lock. `resolve_registry_path` resolves
+    // to the GLOBAL `~/.claude/registry.json` first when it exists (which it
+    // does in any real masday install), so every registry test load-modify-
+    // writes the SAME file. Under parallel test threads that produced torn
+    // reads -> `serde_json::from_str(...).unwrap()` panics intermittently
+    // (the "registry write gap" flake). The guard makes those tests run one at
+    // a time; each one's load-modify-write is then atomic w.r.t. the others.
+    static REGISTRY_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
     async fn test_local_sync_invalid_workflow_id() {
@@ -4922,6 +4932,7 @@ mod tests {
 
     #[test]
     fn test_write_registry_entry_round_trip() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path().to_str().unwrap();
 
@@ -5027,6 +5038,7 @@ mod tests {
 
     #[test]
     fn test_write_registry_entry_skills() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path().to_str().unwrap();
 
