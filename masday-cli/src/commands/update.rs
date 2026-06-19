@@ -299,12 +299,6 @@ fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
     );
     println!();
 
-    let home =
-        home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
-    let masday_dir = home.join(".masday");
-    let install_dir = masday_dir.join("bin");
-    let config_path = masday_dir.join("config.toml");
-
     let current = current_version();
     let target_version = if let Some(ref version) = args.version {
         let normalized = normalize_version(version);
@@ -314,9 +308,27 @@ fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
         fetch_latest_version()?
     };
 
+    render_dry_run_preview(args, &current, &target_version)
+}
+
+/// Render the dry-run preview for already-resolved versions.
+///
+/// Pure (no network) so the update unit tests don't depend on the live GitHub
+/// API. Previously `run_dry_run` did the version fetch inline, so the two
+/// dry-run tests transitively called `fetch_latest_version` and flaked in CI on a
+/// transient network/rate-limit blip (see the PR #72 Test-job red, which
+/// self-cleared on the master push). The fetch stays in `run_dry_run`; the
+/// preview logic lives here so it can be exercised deterministically.
+fn render_dry_run_preview(args: &UpdateArgs, current: &str, target_version: &str) -> Result<()> {
+    let home =
+        home::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
+    let masday_dir = home.join(".masday");
+    let install_dir = masday_dir.join("bin");
+    let config_path = masday_dir.join("config.toml");
+
     println!("{}", style("Version information:").cyan());
-    println!("  Current: {}", style(&current).cyan());
-    println!("  Target:  {}", style(&target_version).green());
+    println!("  Current: {}", style(current).cyan());
+    println!("  Target:  {}", style(target_version).green());
     println!();
 
     if !args.skip_binary {
@@ -369,7 +381,7 @@ fn run_dry_run(args: &UpdateArgs, _project_dir: &Path) -> Result<()> {
     println!("  Asset sync: yes");
     println!();
 
-    if version_compare(&target_version, &current) == std::cmp::Ordering::Equal && !args.force {
+    if version_compare(target_version, current) == std::cmp::Ordering::Equal && !args.force {
         println!(
             "{}",
             style("⚠ Already up-to-date (use --force to reinstall)").yellow()
@@ -798,7 +810,6 @@ mod tests {
     #[test]
     fn test_dry_run_creates_no_files() {
         let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path();
 
         // Create initial state
         let masday_dir = temp_dir.path().join(".masday");
@@ -809,8 +820,10 @@ mod tests {
             ..Default::default()
         };
 
-        // Run dry_run (should not create any files)
-        let result = run_dry_run(&args, project_dir);
+        // Run the pure preview (no network) — the full run_dry_run also hits the
+        // GitHub API for the version, which is inherently flaky in CI; the preview
+        // is what the test is actually exercising.
+        let result = render_dry_run_preview(&args, "1.0.0", "1.1.0");
         assert!(result.is_ok(), "Dry run should succeed");
 
         // Verify no files were created
@@ -827,10 +840,8 @@ mod tests {
             ..Default::default()
         };
 
-        let temp_dir = TempDir::new().unwrap();
-        let project_dir = temp_dir.path();
-
-        let result = run_dry_run(&args, project_dir);
+        // Use the pure preview (no GitHub API) — see test_dry_run_creates_no_files.
+        let result = render_dry_run_preview(&args, "1.0.0", "1.1.0");
         assert!(result.is_ok());
 
         // In dry_run mode, skip_binary should be reflected in output

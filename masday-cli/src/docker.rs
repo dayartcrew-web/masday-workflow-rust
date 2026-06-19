@@ -381,6 +381,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a Docker daemon and spawns a masday-redis container; run via `cargo test -- --ignored`"]
     fn test_start_all_infra_db_provided_only() {
         let db_url = "postgresql://user:pass@remotehost:5432/db";
 
@@ -393,6 +394,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a Docker daemon and spawns a masday-postgres container; run via `cargo test -- --ignored`"]
     fn test_start_all_infra_redis_provided_only() {
         let redis_url = "redis://remotehost:6379";
 
@@ -404,6 +406,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a Docker daemon and spawns masday-postgres + masday-redis containers; run via `cargo test -- --ignored`"]
     fn test_start_all_infra_neither_provided() {
         // This test would require Docker to be available to start both containers
         let result = start_all_infra(None, None);
