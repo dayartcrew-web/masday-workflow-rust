@@ -143,6 +143,33 @@ impl TaskRepo {
         Ok(Some(Task::from_row(&rows[0])))
     }
 
+    /// Find tasks that have been `RUNNING` longer than `threshold` without an
+    /// `updated_at` refresh — candidates for `STUCK_TASK` reminders.
+    ///
+    /// Uses `updated_at` (not `started_at`): on the PG path `started_at` is only
+    /// written by a few transitions, so it is frequently NULL even for RUNNING
+    /// tasks, whereas `updated_at` advances on every status change and progress
+    /// save. A RUNNING task whose `updated_at` is older than the threshold has
+    /// made no observable progress in that window = stuck.
+    pub async fn find_stuck(&self, threshold: chrono::Duration) -> Result<Vec<Task>> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let minutes = threshold.num_minutes().max(0) as i32;
+        let query = r#"SELECT * FROM tasks
+            WHERE status = 'RUNNING' AND updated_at < NOW() - ($1 * INTERVAL '1 minute')
+            ORDER BY updated_at ASC"#;
+        let rows = client
+            .query(query, &[&minutes])
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to find stuck tasks: {}", e)))?;
+
+        Ok(rows.iter().map(Task::from_row).collect())
+    }
+
     /// Update task status
     pub async fn update_status(&self, id: &str, status: &str) -> Result<Task> {
         let client = self

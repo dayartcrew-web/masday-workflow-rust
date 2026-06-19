@@ -5,15 +5,22 @@
 use chrono::Duration;
 use chrono::Utc;
 use masday_core::Result;
-use masday_db::repos::{ReminderRepo, WorkflowRepo};
-use masday_db::schema::{NewWorkflowReminder, WorkflowReminder};
+use masday_db::repos::{ReminderRepo, TaskRepo, WorkflowRepo};
+use masday_db::schema::{NewWorkflowReminder, Task, WorkflowReminder};
 use masday_db::DbPool;
 use tracing::{info, warn};
+
+/// A task RUNNING longer than this with no `updated_at` refresh is considered
+/// stuck. The `stuckTaskMinutes` MCP param is advertised but not yet wired
+/// through the route→service call chain (deferred to a thin follow-up);
+/// detection uses this default until then.
+const DEFAULT_STUCK_TASK_THRESHOLD: Duration = Duration::minutes(60);
 
 /// Reminder service
 pub struct ReminderService {
     reminder_repo: ReminderRepo,
     workflow_repo: WorkflowRepo,
+    task_repo: TaskRepo,
 }
 
 impl ReminderService {
@@ -21,7 +28,8 @@ impl ReminderService {
     pub fn new(pool: DbPool) -> Self {
         Self {
             reminder_repo: ReminderRepo::new(pool.clone()),
-            workflow_repo: WorkflowRepo::new(pool),
+            workflow_repo: WorkflowRepo::new(pool.clone()),
+            task_repo: TaskRepo::new(pool),
         }
     }
 
@@ -47,7 +55,19 @@ impl ReminderService {
         // was always empty and acknowledge() could never match an id — the whole
         // reminder subsystem was theater. See audit round-2 leverage #7.
         let existing = service.reminder_repo.check_reminders().await?;
-        let fresh = Self::compute_new_reminders(&active_workflows, &existing, &now);
+        let mut fresh = Self::compute_new_reminders(&active_workflows, &existing, &now);
+
+        // Stuck-task pass: a task RUNNING past the threshold with no updated_at
+        // refresh yields a STUCK_TASK reminder (one per workflow, deduped against
+        // the outstanding set). Previously STUCK_TASK existed only as a message
+        // string — nothing produced it and TaskRepo had no stuck query, so the
+        // /reminders/stuck route was pure theater.
+        let stuck = service
+            .task_repo
+            .find_stuck(DEFAULT_STUCK_TASK_THRESHOLD)
+            .await?;
+        fresh.extend(Self::compute_stuck_task_reminders(&stuck, &existing));
+
         for new in &fresh {
             if let Err(e) = service.reminder_repo.create(new).await {
                 warn!("Failed to persist reminder for {}: {}", new.workflow_id, e);
@@ -55,7 +75,7 @@ impl ReminderService {
         }
 
         // Return the full outstanding set so callers see stable, acknowledge-able
-        // IDs. (Stuck-task detection is still unimplemented — deferred.)
+        // IDs.
         info!("Found {} active reminders", existing.len() + fresh.len());
         if fresh.is_empty() {
             Ok(existing)
@@ -103,6 +123,50 @@ impl ReminderService {
                     });
                 }
             }
+        }
+        out
+    }
+
+    /// Decide which NEW `STUCK_TASK` reminders to create from a set of stuck
+    /// tasks, deduped against reminders already outstanding (unacknowledged) in
+    /// the DB. Pure (no I/O) so the per-workflow dedup is unit-testable without
+    /// PostgreSQL.
+    ///
+    /// One reminder per workflow that has at least one stuck task — keyed by
+    /// `(workflow_id, "STUCK_TASK")` to match [`compute_new_reminders`]'s dedup
+    /// granularity. `task_id` captures the first stuck task found in that
+    /// workflow (any subsequent stuck task in the same workflow is a duplicate).
+    pub fn compute_stuck_task_reminders(
+        stuck: &[Task],
+        existing: &[WorkflowReminder],
+    ) -> Vec<NewWorkflowReminder> {
+        use std::collections::HashSet;
+
+        let have: HashSet<String> = existing
+            .iter()
+            .filter(|r| r.reminder_type == "STUCK_TASK")
+            .map(|r| r.workflow_id.clone())
+            .collect();
+
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut out = Vec::new();
+        for task in stuck {
+            // First stuck task per workflow wins; skip workflows that already
+            // have an outstanding STUCK_TASK reminder.
+            if !seen.insert(task.workflow_id.clone()) || have.contains(&task.workflow_id) {
+                continue;
+            }
+            out.push(NewWorkflowReminder {
+                workflow_id: task.workflow_id.clone(),
+                task_id: Some(task.id.clone()),
+                reminder_type: "STUCK_TASK".to_string(),
+                severity: "warning".to_string(),
+                message: format!(
+                    "Task '{}' ({}) is stuck — RUNNING with no progress",
+                    task.title, task.id
+                ),
+                acknowledged: Some(false),
+            });
         }
         out
     }
@@ -250,5 +314,86 @@ mod tests {
         let ok = workflow("wf-1", "EXECUTE", now - Duration::minutes(10));
         let out = ReminderService::compute_new_reminders(&[ok], &[], &now);
         assert!(out.is_empty(), "a fresh workflow must not yield a reminder");
+    }
+
+    fn task(id: &str, workflow_id: &str, title: &str) -> Task {
+        let now = Utc::now();
+        Task {
+            id: id.to_string(),
+            workflow_id: workflow_id.to_string(),
+            plan_id: "plan".to_string(),
+            title: title.to_string(),
+            status: "RUNNING".to_string(),
+            priority: None,
+            owner_agent: None,
+            skill: None,
+            description: None,
+            dependencies: None,
+            acceptance_criteria: None,
+            required_context: None,
+            verification_steps: None,
+            context_fingerprint: None,
+            progress_percent: None,
+            requires_tdd: None,
+            input: None,
+            result: None,
+            test_evidence: None,
+            metadata: None,
+            created_at: now,
+            started_at: None,
+            completed_at: None,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn compute_stuck_task_reminders_empty_when_no_stuck() {
+        let out = ReminderService::compute_stuck_task_reminders(&[], &[]);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn compute_stuck_task_reminders_one_per_workflow() {
+        let a = task("t-1", "wf-1", "build");
+        let out = ReminderService::compute_stuck_task_reminders(&[a], &[]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].workflow_id, "wf-1");
+        assert_eq!(out[0].task_id.as_deref(), Some("t-1"));
+        assert_eq!(out[0].reminder_type, "STUCK_TASK");
+        assert!(out[0].message.contains("build"));
+    }
+
+    #[test]
+    fn compute_stuck_task_reminders_dedups_within_workflow() {
+        // Two stuck tasks in the same workflow -> a single STUCK_TASK reminder.
+        let a = task("t-1", "wf-1", "build");
+        let b = task("t-2", "wf-1", "test");
+        let out = ReminderService::compute_stuck_task_reminders(&[a, b], &[]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            out[0].task_id.as_deref(),
+            Some("t-1"),
+            "first stuck task wins"
+        );
+    }
+
+    #[test]
+    fn compute_stuck_task_reminders_emits_distinct_workflows() {
+        let a = task("t-1", "wf-1", "build");
+        let b = task("t-2", "wf-2", "test");
+        let out = ReminderService::compute_stuck_task_reminders(&[a, b], &[]);
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn compute_stuck_task_reminders_skips_already_outstanding() {
+        // wf-1 already has an unacknowledged STUCK_TASK -> not re-created.
+        let a = task("t-1", "wf-1", "build");
+        let existing = vec![existing_reminder("wf-1", "STUCK_TASK")];
+        let out = ReminderService::compute_stuck_task_reminders(&[a], &existing);
+        assert!(
+            out.is_empty(),
+            "must not duplicate an outstanding STUCK_TASK"
+        );
     }
 }
