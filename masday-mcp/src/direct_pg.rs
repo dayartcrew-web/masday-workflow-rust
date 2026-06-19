@@ -139,6 +139,15 @@ pub async fn plan_create(
 /// Sync a new task row to PostgreSQL (5s timeout). Upsert by id. Mirrors the
 /// SQLite INSERT in `direct.rs::workflow_add_task`. The referenced plan must
 /// already exist in PostgreSQL — callers sync it via `plan_create` first.
+/// Parse a JSON-text field (arriving as a serialized JSON string from SQLite)
+/// into a JSON value, dropping JSON `null` to SQL NULL. Shared by the JSONB
+/// task columns (dependencies / input / acceptance_criteria / required_context).
+/// Invalid JSON also collapses to SQL NULL (sync is best-effort).
+fn parse_json_text(raw: Option<&str>) -> Option<serde_json::Value> {
+    raw.and_then(|s| serde_json::from_str(s).ok())
+        .filter(|v: &serde_json::Value| !v.is_null())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn task_create(
     id: &str,
@@ -151,6 +160,10 @@ pub async fn task_create(
     dependencies: Option<&str>,
     progress_percent: i32,
     requires_tdd: bool,
+    skill: Option<&str>,
+    input: Option<&str>,
+    acceptance_criteria: Option<&str>,
+    required_context: Option<&str>,
 ) {
     let id = id.to_string();
     let workflow_id = workflow_id.to_string();
@@ -159,11 +172,13 @@ pub async fn task_create(
     let status = status.to_string();
     let priority = priority.to_string();
     let owner_agent = owner_agent.map(|s| s.to_string());
-    // dependencies arrives as a JSON array string (or null) from SQLite;
-    // normalize to a JSON value, dropping JSON nulls to SQL NULL.
-    let deps_json: Option<serde_json::Value> = dependencies
-        .and_then(|s| serde_json::from_str(s).ok())
-        .filter(|v: &serde_json::Value| !v.is_null());
+    let skill = skill.map(|s| s.to_string());
+    // JSON-text fields arrive serialized from SQLite (or null); normalize each
+    // to a JSON value, dropping JSON nulls to SQL NULL.
+    let deps_json = parse_json_text(dependencies);
+    let input_json = parse_json_text(input);
+    let acceptance_criteria_json = parse_json_text(acceptance_criteria);
+    let required_context_json = parse_json_text(required_context);
 
     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
         let pool = match crate::pg::get_pool().await {
@@ -175,14 +190,18 @@ pub async fn task_create(
             let q = r#"
                 INSERT INTO tasks (id, workflow_id, plan_id, title, status, priority,
                                    owner_agent, dependencies, progress_percent,
-                                   requires_tdd, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                                   requires_tdd, skill, input, acceptance_criteria,
+                                   required_context, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     title = EXCLUDED.title, status = EXCLUDED.status,
                     priority = EXCLUDED.priority, owner_agent = EXCLUDED.owner_agent,
                     dependencies = EXCLUDED.dependencies,
                     progress_percent = EXCLUDED.progress_percent,
-                    requires_tdd = EXCLUDED.requires_tdd, updated_at = NOW()
+                    requires_tdd = EXCLUDED.requires_tdd, skill = EXCLUDED.skill,
+                    input = EXCLUDED.input,
+                    acceptance_criteria = EXCLUDED.acceptance_criteria,
+                    required_context = EXCLUDED.required_context, updated_at = NOW()
             "#;
             if let Err(e) = client
                 .execute(
@@ -198,6 +217,10 @@ pub async fn task_create(
                         &deps_json,
                         &progress_percent,
                         &requires_tdd,
+                        &skill,
+                        &input_json,
+                        &acceptance_criteria_json,
+                        &required_context_json,
                     ],
                 )
                 .await
@@ -912,4 +935,45 @@ fn read_sqlite_memories() -> Vec<MemoryRow> {
 /// Get current timestamp string.
 fn pg_now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_json_text;
+    use serde_json::json;
+
+    #[test]
+    fn parse_json_text_none_for_absent() {
+        assert_eq!(parse_json_text(None), None);
+    }
+
+    #[test]
+    fn parse_json_text_drops_json_null() {
+        // A literal JSON null must collapse to SQL NULL (None), not a stored null.
+        assert_eq!(parse_json_text(Some("null")), None);
+    }
+
+    #[test]
+    fn parse_json_text_parses_object() {
+        let v = parse_json_text(Some(r#"{"dependencies":["t1","t2"]}"#));
+        assert_eq!(v, Some(json!({"dependencies": ["t1", "t2"]})));
+    }
+
+    #[test]
+    fn parse_json_text_parses_array() {
+        let v = parse_json_text(Some(r#"["a","b"]"#));
+        assert_eq!(v, Some(json!(["a", "b"])));
+    }
+
+    #[test]
+    fn parse_json_text_invalid_json_is_none() {
+        // Malformed JSON collapses to None (sync is best-effort).
+        assert_eq!(parse_json_text(Some("not-json")), None);
+    }
+
+    #[test]
+    fn parse_json_text_preserves_string_value() {
+        // A JSON string value is a valid value, not null — keep it.
+        assert_eq!(parse_json_text(Some(r#""hello""#)), Some(json!("hello")));
+    }
 }
