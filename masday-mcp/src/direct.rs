@@ -1605,6 +1605,116 @@ pub async fn workflow_complete_task(
     Ok(json!({"status": "DONE", "task_id": task_id}))
 }
 
+/// Fail a task — mark it FAILED and route its workflow into FIX for recovery
+/// (leverage #6, SQLite mirror of PG #44). Only RUNNING/PENDING tasks can
+/// fail. A best-effort failure memory is stored (experience, 0.7). If the
+/// workflow is in a state that can reach FIX (EXECUTE/VERIFY), it is
+/// auto-transitioned there so the failure is actionable; the recovery loop is
+/// closed by the `FIX` arm in `workflow_execute`, which resets FAILED tasks
+/// → PENDING on re-entry to EXECUTE. Fire-and-forget PG sync mirrors the
+/// complete-task path (no-op without a pool).
+pub async fn workflow_fail_task(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let conn = crate::sqlite::conn();
+    let wf_id = args["workflow_id"]
+        .as_str()
+        .ok_or_else(|| err("missing workflow_id"))?;
+    let task_id = args["task_id"]
+        .as_str()
+        .ok_or_else(|| err("missing task_id"))?;
+    let error: Option<String> = args
+        .get("error")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let t = now();
+
+    // Load the task to validate ownership + current status.
+    let (task_wf, task_status, task_title): (String, String, String) = conn
+        .query_row(
+            "SELECT workflow_id, status, title FROM tasks WHERE id=?1",
+            params![task_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|_| err(format!("Task {} not found", task_id)))?;
+
+    if task_wf != wf_id {
+        return Err(err(format!(
+            "Task {} does not belong to workflow {}",
+            task_id, wf_id
+        )));
+    }
+
+    // Only active tasks can fail (mirrors #44's RUNNING/PENDING gate).
+    if task_status != "RUNNING" && task_status != "PENDING" {
+        return Err(err(format!(
+            "Cannot fail task with status: {} (only RUNNING/PENDING tasks can fail)",
+            task_status
+        )));
+    }
+
+    // C2.10 (SQLite mirror): mark the task FAILED.
+    conn.execute(
+        "UPDATE tasks SET status='FAILED', updated_at=?1 WHERE id=?2 AND workflow_id=?3",
+        params![&t, task_id, wf_id],
+    )
+    .map_err(|e| err(e))?;
+
+    // Best-effort failure memory (mirrors complete_task's result memory).
+    let content = error.as_deref().unwrap_or("Task failed");
+    auto_store_memory_sqlite(
+        &conn,
+        wf_id,
+        Some(task_id),
+        "experience",
+        &format!("Task failed: {}", task_title),
+        content,
+        0.7,
+        &["auto", "task-failed"],
+    );
+
+    // Sync the FAILED task to PG (no-op without a pool). The task row exists in
+    // PG (synced at creation via direct_pg::task_create), so this lands.
+    {
+        let pg_task_id = task_id.to_string();
+        crate::pg_sync::spawn(async move {
+            crate::direct_pg::task_status(&pg_task_id, "FAILED", 0, None, false).await;
+        });
+    }
+
+    // C2.11 (SQLite mirror): route the workflow into FIX so the failure is
+    // actionable. EXECUTE/VERIFY → FIX is legal; other states are left as-is.
+    let current: String = conn
+        .query_row(
+            "SELECT status FROM workflows WHERE id=?1",
+            params![wf_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    let mut final_wf_status = current.clone();
+    if let Some(state) = parse_workflow_state(&current) {
+        if state.can_transition_to(&WorkflowState::Fix) {
+            conn.execute(
+                "UPDATE workflows SET status='FIX', updated_at=?1 WHERE id=?2",
+                params![&t, wf_id],
+            )
+            .map_err(|e| err(e))?;
+            final_wf_status = "FIX".to_string();
+            // Sync the workflow status to PG (no-op without a pool).
+            let pg_id = wf_id.to_string();
+            crate::pg_sync::spawn(async move {
+                crate::direct_pg::workflow_status(&pg_id, "FIX").await;
+            });
+        }
+    }
+
+    Ok(json!({
+        "status": "FAILED",
+        "task_id": task_id,
+        "workflow_status": final_wf_status,
+    }))
+}
+
 pub async fn workflow_save_progress(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -5188,6 +5298,16 @@ mod tests {
         .unwrap()
     }
 
+    fn read_task_status(task_id: &str) -> String {
+        let conn = crate::sqlite::conn();
+        conn.query_row(
+            "SELECT status FROM tasks WHERE id=?1",
+            params![task_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
     #[tokio::test]
     async fn test_complete_task_transitions_execute_to_done() {
         // Smoke: completing the last task of an EXECUTE workflow reaches DONE.
@@ -5222,6 +5342,56 @@ mod tests {
         let res = workflow_complete_task(json!({ "workflow_id": wf_id, "task_id": task_id })).await;
         assert!(res.is_ok(), "{:?}", res);
         assert_eq!(read_workflow_status(&wf_id), "FAILED");
+    }
+
+    // ===== Leverage #6 / #44 mirror: SQLite failure→FIX recovery =====
+    //
+    // NOTE: this PR ships the failure side only — `workflow_fail_task` (mark a
+    // task FAILED + best-effort memory + route the workflow into FIX). The
+    // FIX→EXECUTE *reset* side is deferred: `workflow_execute` idempotency-
+    // returns for FIX (matching the PG service layer), so resetting FAILED
+    // tasks back to PENDING needs a general-transition surface in `direct.rs`
+    // mirroring the PG `transition_status` — its own slice. See memory
+    // `pr44-failure-fix-recovery`.
+
+    #[tokio::test]
+    async fn test_fail_task_rejects_done_task() {
+        // A terminal (DONE) task cannot be failed (mirrors #44's status gate).
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+
+        // Complete the task first → DONE (workflow also walks to DONE).
+        let res =
+            workflow_complete_task(json!({ "workflow_id": &wf_id, "task_id": &task_id })).await;
+        assert!(res.is_ok(), "{:?}", res);
+        assert_eq!(read_task_status(&task_id), "DONE");
+
+        // Failing it now must be rejected before any state mutation.
+        let res = workflow_fail_task(json!({ "workflow_id": &wf_id, "task_id": &task_id })).await;
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("only RUNNING/PENDING tasks can fail"));
+    }
+
+    #[tokio::test]
+    async fn test_fail_task_transitions_execute_to_fix() {
+        // Failing a task of an EXECUTE workflow marks it FAILED and routes the
+        // workflow into FIX (C2.10/C2.11, mirror of PG #44).
+        let guard = TestDbGuard::new();
+        let (wf_id, task_id) = setup_workflow_with_pending_task(&guard, "EXECUTE");
+
+        let res = workflow_fail_task(
+            json!({ "workflow_id": &wf_id, "task_id": &task_id, "error": "boom" }),
+        )
+        .await;
+        assert!(res.is_ok(), "{:?}", res);
+
+        assert_eq!(read_task_status(&task_id), "FAILED");
+        assert_eq!(read_workflow_status(&wf_id), "FIX");
+        // The FIX intent is surfaced in the response.
+        assert_eq!(res.unwrap()["workflow_status"], "FIX");
     }
 
     // ===== C2.7/C2.8/C2.9 regression: SQLite completion review-gate (mirror of PG #43) =====

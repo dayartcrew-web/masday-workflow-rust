@@ -1170,6 +1170,13 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
     );
     reg!(
         r,
+        "workflow_failTask",
+        "Fail a task (mark FAILED + auto-transition workflow to FIX for recovery)",
+        schema!("task_id", "workflow_id", "error?"),
+        d::workflow_fail_task
+    );
+    reg!(
+        r,
         "workflow_saveProgress",
         "Save task progress",
         schema!("workflow_id", "task_id", "agent_name", "progress_note"),
