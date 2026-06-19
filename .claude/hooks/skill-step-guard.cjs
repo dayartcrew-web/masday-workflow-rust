@@ -789,7 +789,54 @@ function readJsonFromStdin() {
   });
 }
 
+// ── Fail-closed error handling (round-1 M4) ────────────────────────────────
+// A guard that errors must not let a possible step violation through, so the
+// error path emits a block decision (never a silent allow). These pure helpers
+// make that output + the recovery escape hatch unit-testable.
+
+// Env values that explicitly disable the guard (opt-in recovery from a
+// fail-closed lockout). The default stays fail-closed.
+const STEP_GUARD_DISABLE_VALUES = new Set(["disabled", "off", "1", "true"]);
+
+/**
+ * True when the user has explicitly disabled the guard. This is a recovery
+ * escape hatch for the fail-closed error path — it does NOT weaken the default
+ * (the guard is fail-closed unless explicitly set). Accepted vars:
+ * MASDAY_STEP_GUARD or MASDAY_DISABLE_STEP_GUARD.
+ */
+function isGuardDisabled(env) {
+  const raw = (env && (env.MASDAY_STEP_GUARD || env.MASDAY_DISABLE_STEP_GUARD)) || "";
+  return STEP_GUARD_DISABLE_VALUES.has(String(raw).toLowerCase());
+}
+
+/**
+ * Build the fail-closed block output for a hook error. The reason carries an
+ * actionable recovery hint so a persistent error is escapable, not a silent
+ * lockout.
+ */
+function buildFailClosedOutput(error) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  return {
+    decision: "block",
+    reason:
+      "skill-step-guard hook failed CLOSED: " +
+      errMsg +
+      "\n\nThe step-order guard errored and is blocking this call by design (fail-closed). " +
+      "To recover, either fix the underlying error or temporarily disable the guard: " +
+      "set MASDAY_STEP_GUARD=disabled, or remove the skill-step-guard entries from " +
+      "PreToolUse/PostToolUse in .claude/settings.json.",
+  };
+}
+
 async function main() {
+  // round-1 M4: recovery escape hatch for the fail-closed error path. An
+  // explicit env override lets the user recover from a persistent error (e.g. a
+  // per-session state-dir permission issue) without editing settings. It does
+  // NOT weaken the default — the guard stays fail-closed unless disabled.
+  if (isGuardDisabled(process.env)) {
+    process.stdout.write(JSON.stringify({}));
+    return;
+  }
   const input = await readJsonFromStdin();
   // round-1 M3: isolate step state per session/project/worktree so concurrent
   // runs no longer share one flat state dir.
@@ -960,11 +1007,11 @@ function clearAllStates() {
 
 if (require.main === module) {
   main().catch((error) => {
-    process.stdout.write(
-      JSON.stringify({
-        systemMessage: "skill-step-guard hook error: " + (error instanceof Error ? error.message : String(error)),
-      })
-    );
+    // round-1 M4: fail-closed. A guard that errors must not let a possible
+    // step violation through, so emit a block decision (not a silent allow).
+    // The reason carries an actionable recovery hint so a persistent error is
+    // escapable rather than a silent lockout.
+    process.stdout.write(JSON.stringify(buildFailClosedOutput(error)));
     process.exitCode = 0;
   });
 }
@@ -984,4 +1031,8 @@ module.exports = {
   hashKey,
   // round-1 L4: exported for unit testing (skill detection)
   detectActiveSkill,
+  // round-1 M4: exported for unit testing (fail-closed error path)
+  isGuardDisabled,
+  buildFailClosedOutput,
+  STEP_GUARD_DISABLE_VALUES,
 };
