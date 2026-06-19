@@ -1149,6 +1149,34 @@ pub async fn workflow_add_task(
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
     );
+
+    // H1 (SQLite mirror of PG #56): persist caller-supplied task context so the
+    // local/stdio path no longer silently drops it. SQLite `tasks` already has
+    // these TEXT columns (sqlite_schema.rs). `skill` is a plain string; the JSON
+    // fields are stored as serialized JSON text (matching the existing `deps`
+    // column convention). `required_context` mirrors #56's precedence: an
+    // explicit value wins (JSON null = absent), otherwise fall back to the
+    // historical deps-derived `{"dependencies": [...]}`. `context_fingerprint`
+    // stays NULL (deferred — needs build_context_pack, same as the PG path).
+    let skill = args.get("skill").and_then(|v| v.as_str());
+    let input = args
+        .get("input")
+        .filter(|v| !v.is_null())
+        .map(|v| v.to_string());
+    let acceptance_criteria = args
+        .get("acceptance_criteria")
+        .filter(|v| !v.is_null())
+        .map(|v| v.to_string());
+    let required_context = args
+        .get("required_context")
+        .filter(|v| !v.is_null())
+        .map(|v| v.to_string())
+        .or_else(|| {
+            args.get("dependencies")
+                .filter(|v| !v.is_null())
+                .map(|d| json!({ "dependencies": d }).to_string())
+        });
+
     let t = now();
 
     // VALIDATION 1: Check plan_id is not empty (unless it's the default "default" string)
@@ -1238,8 +1266,8 @@ pub async fn workflow_add_task(
     }
 
     conn.execute(
-        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, requires_tdd, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8,?9)",
-        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, &t, &t],
+        "INSERT INTO tasks (id, workflow_id, plan_id, title, status, owner_agent, dependencies, priority, progress_percent, requires_tdd, skill, input, acceptance_criteria, required_context, created_at, updated_at) VALUES (?1,?2,?3,?4,'PENDING',?5,?6,'MEDIUM',0,?7,?8,?9,?10,?11,?12,?13)",
+        params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, skill, input, acceptance_criteria, required_context, &t, &t],
     ).map_err(|e| err(e))?;
 
     // C2.14: sync the new task (and its plan) to PostgreSQL so the API/
