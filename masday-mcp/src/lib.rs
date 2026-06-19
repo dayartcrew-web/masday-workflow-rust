@@ -17,6 +17,8 @@ pub mod mode;
 pub mod pg;
 #[cfg(feature = "sqlite")]
 pub mod pg_code_index;
+#[cfg(feature = "sqlite")]
+pub mod pg_sync;
 pub mod registry;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
@@ -890,7 +892,13 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
     let registry = build_stdio_registry();
 
     let mut server = JsonRpcServer::new(registry);
-    server.run().await
+    let run_result = server.run().await;
+    // C2.12: best-effort flush of in-flight PG-sync spawns before the tokio
+    // runtime drops and aborts them (the last sync of a session otherwise never
+    // reaches PG). Bounded to 5s so shutdown never hangs; near-instant when
+    // nothing is pending.
+    crate::pg_sync::drain(std::time::Duration::from_secs(5)).await;
+    run_result
 }
 
 /// Run the MCP stdio server in local mode.
@@ -945,7 +953,13 @@ pub async fn run_local() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let mut server = JsonRpcServer::new(registry);
-    server.run().await
+    let run_result = server.run().await;
+    // C2.12: best-effort flush of in-flight PG-sync spawns before the tokio
+    // runtime drops and aborts them (the last sync of a session otherwise never
+    // reaches PG). Bounded to 5s so shutdown never hangs; near-instant when
+    // nothing is pending.
+    crate::pg_sync::drain(std::time::Duration::from_secs(5)).await;
+    run_result
 }
 
 /// Print embedding configuration + health to stderr.
