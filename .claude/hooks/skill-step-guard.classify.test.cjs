@@ -1,5 +1,5 @@
-// Stack-agnostic classification + per-session state-isolation tests for
-// skill-step-guard.cjs (round-1 M2 + M3).
+// Stack-agnostic classification + per-session state-isolation + skill-detection
+// tests for skill-step-guard.cjs (round-1 M2 + M3 + L4).
 //
 // Not registered as a Claude Code hook and NOT bundled by masday-cli/build.rs
 // (the project-hooks copy filter only matches masday-*.{cjs,js}, run.sh, or the
@@ -8,7 +8,8 @@
 //     node .claude/hooks/skill-step-guard.classify.test.cjs
 //
 // There is no JS test runner wired into CI for hooks today; this file pins the
-// classification + state-isolation contracts for regression protection.
+// classification + state-isolation + detection contracts for regression
+// protection.
 
 const {
   getSourceExtension,
@@ -17,6 +18,7 @@ const {
   SOURCE_EXTENSIONS,
   resolveStateDir,
   hashKey,
+  detectActiveSkill,
 } = require("./skill-step-guard.cjs");
 
 let passed = 0;
@@ -126,9 +128,76 @@ assertTrue("worktree isolation",
 const fallback = resolveStateDir({});
 assertTrue("empty payload falls back to cwd-scoped dir", fallback.includes("c-"));
 
+// ── detectActiveSkill (L4) ───────────────────────────────────────────────────
+// Primary path: exact match on the invoked skill field.
+assert("exact skill field → that skill", detectActiveSkill("Skill", { skill: "masday-tdd" }), "masday-tdd");
+assert(
+  "exact skill field (workflow-new)",
+  detectActiveSkill("Skill", { skill: "masday-workflow-new" }),
+  "masday-workflow-new"
+);
+
+// Prefix/ordering race RESOLVED: a longer name is no longer shadowed by a
+// shorter one that is a substring of it.
+assert(
+  "masday-web-research not shadowed by masday-research",
+  detectActiveSkill("Skill", { skill: "masday-web-research" }),
+  "masday-web-research"
+);
+assert(
+  "masday-parallel-research not shadowed by masday-research",
+  detectActiveSkill("Skill", { skill: "masday-parallel-research" }),
+  "masday-parallel-research"
+);
+assert(
+  "masday-create-mcp-skill not shadowed by masday-create-skill",
+  detectActiveSkill("Skill", { skill: "masday-create-mcp-skill" }),
+  "masday-create-mcp-skill"
+);
+
+// Content bleed FIXED: a skill name appearing in args/description no longer
+// overrides the actually-invoked skill (old substring code returned masday-tdd
+// here because it was checked first and matched the args text).
+assert(
+  "args mentioning masday-tdd do NOT override invoked skill",
+  detectActiveSkill("Skill", { skill: "masday-workflow-new", args: "use the masday-tdd pattern" }),
+  "masday-workflow-new"
+);
+assert(
+  "skill name in a file path arg does NOT bleed",
+  detectActiveSkill("Skill", { skill: "masday-code-analyze", path: "/docs/masday-tdd-notes.md" }),
+  "masday-code-analyze"
+);
+
+// Unknown / untracked skill → nothing active (no bleed), even if a tracked name
+// appears in the payload.
+assertNullFn(
+  "unknown skill → null",
+  detectActiveSkill("Skill", { skill: "some-other-skill", args: "compare with masday-e2e" })
+);
+assertNullFn("empty skill field → null", detectActiveSkill("Skill", { skill: "" }));
+
+// toolName-based detection (unchanged by L4)
+assert("tests_run tool → masday-tdd", detectActiveSkill("tests_run", {}), "masday-tdd");
+assert("workflow_create → masday-workflow-new", detectActiveSkill("workflow_create", {}), "masday-workflow-new");
+assert("workflow_createPlan → masday-workflow-plan", detectActiveSkill("workflow_createPlan", {}), "masday-workflow-plan");
+assertNullFn("unrelated tool → null", detectActiveSkill("Read", { file_path: "x.rs" }));
+
+// Fallback (no skill field): boundary-aware, longest-first — prefix race still
+// resolved even in the legacy path.
+assert(
+  "fallback blob picks longest match (web-research)",
+  detectActiveSkill("Skill", "running masday-web-research now"),
+  "masday-web-research"
+);
+assertNullFn("fallback no tracked name → null", detectActiveSkill("Skill", "just some text"));
+
 // helpers
 function assertEmpty(name, actual) {
   assert(name, actual, "");
+}
+function assertNullFn(name, actual) {
+  assert(name, actual, null);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
