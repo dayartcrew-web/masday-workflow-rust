@@ -533,6 +533,41 @@ pub async fn memory_delete_by_workflow(workflow_id: &str) {
     .await;
 }
 
+/// Update a memory in PostgreSQL (5s timeout). Mirrors the SQLite
+/// `memory_update`: updates `content` and/or `importance_score` for whichever
+/// were supplied, always bumps `version` + `updated_at`. COALESCE keeps the
+/// existing value when a field wasn't supplied (mirrors the SQLite handler's
+/// per-field branching). No-op if no PG pool or the row is absent (e.g. a
+/// memory never synced to PG). Embeddings are NOT synced here — consistent
+/// with `memory_owned`/`memory` (PG embeddings are managed by the API-side
+/// pipeline). Propagating the update keeps PG from drifting behind SQLite.
+pub async fn memory_update(id: &str, content: Option<&str>, importance: Option<f64>) {
+    let id = id.to_string();
+    let content = content.map(|s| s.to_string());
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+        if let Ok(client) = pool.get().await {
+            let q = r#"
+                UPDATE memories
+                SET content = COALESCE($2, content),
+                    importance_score = COALESCE($3, importance_score),
+                    version = COALESCE(version, 0) + 1,
+                    updated_at = NOW()
+                WHERE id = $1
+            "#;
+            if let Err(e) = client.execute(q, &[&id, &content, &importance]).await {
+                tracing::warn!("PG memory update sync failed {}: {}", id, e);
+            } else {
+                tracing::debug!("Updated memory {} in PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
 // ─── Bulk Memory Sync ────────────────────────────────────────────────
 
 /// Bulk push memories from SQLite to PostgreSQL.
