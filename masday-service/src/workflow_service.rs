@@ -211,22 +211,30 @@ impl WorkflowService {
         Ok(workflow)
     }
 
-    /// Execute a workflow — auto-transitions through intermediate states
+    /// Advance a workflow by exactly one state (with prerequisite validation).
     ///
-    /// If the workflow is in INIT or ANALYZE, automatically advances through
-    /// ANALYZE → PLAN → EXECUTE so the caller doesn't need to step through
-    /// each intermediate state manually.
+    /// Advances a single step along the state machine — `INIT → ANALYZE`,
+    /// `ANALYZE → PLAN`, `PLAN → EXECUTE` — validating prerequisites before each
+    /// transition. If the workflow is already at `EXECUTE` or beyond (`VERIFY`,
+    /// `FIX`, `DONE`), it is a no-op and the current workflow is returned
+    /// unchanged.
     ///
-    /// NOTE: This function now validates prerequisites at each transition.
-    /// - Cannot skip ANALYZE — must complete before PLAN
-    /// - Cannot skip PLAN — must complete before EXECUTE
+    /// # One state per call (round-1 M1)
+    ///
+    /// This advances **exactly one** state per call, not through all
+    /// intermediate states. A caller starting from `INIT` lands in `ANALYZE`
+    /// and must invoke this again to reach `PLAN`, then again for `EXECUTE`.
+    /// The single-step design is intentional: each transition validates the
+    /// prior phase's artifacts (ANALYZE must complete before PLAN; PLAN before
+    /// EXECUTE), and a multi-step jump in one call would skip that validation.
     ///
     /// # Arguments
     /// * `pool` - Database connection pool
     /// * `id` - Workflow ID
     ///
     /// # Returns
-    /// * `Result<Workflow>` - The updated workflow
+    /// * `Result<Workflow>` - The workflow advanced by one step, or unchanged if
+    ///   already at `EXECUTE` or a later state
     pub async fn execute_workflow(pool: &DbPool, id: &str) -> Result<Workflow> {
         info!("Executing workflow: {}", id);
 
