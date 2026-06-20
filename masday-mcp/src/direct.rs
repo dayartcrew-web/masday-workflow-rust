@@ -861,6 +861,87 @@ pub async fn workflow_create(
     Ok(json!({"id": id, "name": name, "status": status}))
 }
 
+/// General workflow state transition (stdio/SQLite mirror of the PG
+/// `POST /workflows/{id}/update` → `transition_status` route).
+///
+/// Unlike `workflow_execute` — which idempotency-returns once a workflow is at
+/// or past EXECUTE, and so can NEVER leave FIX — this advances to an explicit
+/// target state validated against the state machine. The FIX → EXECUTE resume
+/// also resets the workflow's FAILED tasks back to PENDING (mirror of PG
+/// `reset_failed_tasks_for_reexecute`, #44). fail_task → FIX (#59) plus this
+/// FIX → EXECUTE resume complete the failure-recovery loop on the stdio path.
+pub async fn workflow_update_status(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    readiness_gate().await?;
+
+    let id = args
+        .get("id")
+        .or_else(|| args.get("workflow_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| err("missing id"))?;
+    let target_str = args
+        .get("status")
+        .or_else(|| args.get("target_state"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| err("missing status"))?;
+    let target = masday_service::workflow_service::status_to_state(target_str).map_err(err)?;
+    let new_status = target_str.to_uppercase();
+
+    let (id_out, new_status_out, reset_count) = {
+        let conn = crate::sqlite::conn();
+        let current: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .map_err(|_| err(format!("workflow not found: {}", id)))?;
+        let current_state =
+            masday_service::workflow_service::status_to_state(&current).map_err(err)?;
+        if !masday_service::workflow_service::can_transition(&current_state, &target) {
+            return Err(err(format!(
+                "illegal transition {} -> {} (not allowed by state machine)",
+                current, new_status
+            )));
+        }
+
+        let t = now();
+        conn.execute(
+            "UPDATE workflows SET status=?1, updated_at=?2 WHERE id=?3",
+            params![&new_status, &t, id],
+        )
+        .map_err(|e| err(e))?;
+
+        // FIX → EXECUTE resume: reset FAILED tasks to PENDING so they re-execute
+        // (mirror of PG reset_failed_tasks_for_reexecute; DONE/other tasks kept).
+        let reset_count: u64 =
+            if current_state == WorkflowState::Fix && target == WorkflowState::Execute {
+                conn.execute(
+                    "UPDATE tasks SET status='PENDING', updated_at=?1 \
+                 WHERE workflow_id=?2 AND status='FAILED'",
+                    params![&t, id],
+                )
+                .map_err(|e| err(e))? as u64
+            } else {
+                0
+            };
+        (id.to_string(), new_status.clone(), reset_count)
+    }; // conn dropped
+
+    // Fire-and-forget PG sync of the new status (the task reset is handled PG-side
+    // by transition_status when PG is the source of truth).
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::workflow_status(&id_out, &new_status_out).await;
+    });
+
+    Ok(json!({
+        "id": id,
+        "status": new_status,
+        "reset_failed_tasks": reset_count,
+    }))
+}
+
 pub async fn workflow_execute(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -6225,5 +6306,78 @@ mod tests {
         assert_eq!(count, 0, "no PRD → no context_documents row");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_update_status_fix_to_execute_resets_failed_tasks() {
+        // FIX→EXECUTE resume must reset FAILED tasks to PENDING (mirror of PG
+        // reset_failed_tasks_for_reexecute). Completes the stdio failure loop:
+        // fail_task→FIX (#59) then this FIX→EXECUTE+reset.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, 'FIX')",
+                params![&wf_id, "wf"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status) VALUES (?1, ?2, ?3, ?4, 'FAILED')",
+                params![uuid::Uuid::new_v4().to_string(), &wf_id, "p1", "failed-task"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status) VALUES (?1, ?2, ?3, ?4, 'DONE')",
+                params![uuid::Uuid::new_v4().to_string(), &wf_id, "p1", "done-task"],
+            )
+            .unwrap();
+        }
+
+        let res = workflow_update_status(json!({ "workflow_id": &wf_id, "status": "EXECUTE" }))
+            .await
+            .expect("transition ok");
+        assert_eq!(res["status"], "EXECUTE");
+        assert_eq!(res["reset_failed_tasks"], 1);
+
+        let conn = crate::sqlite::conn();
+        let wf_status: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![&wf_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(wf_status, "EXECUTE");
+        let mut statuses: Vec<String> = conn
+            .prepare("SELECT status FROM tasks WHERE workflow_id=?1 ORDER BY title")
+            .unwrap()
+            .query_map(params![&wf_id], |r| r.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        drop(conn);
+        statuses.sort();
+        // failed-task → PENDING, done-task → DONE (preserved).
+        assert_eq!(statuses, vec!["DONE".to_string(), "PENDING".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_update_status_rejects_illegal_transition() {
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, 'DONE')",
+                params![&wf_id, "wf"],
+            )
+            .unwrap();
+        }
+        // DONE → EXECUTE is not allowed by the state machine.
+        let res =
+            workflow_update_status(json!({ "workflow_id": &wf_id, "status": "EXECUTE" })).await;
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("illegal transition"));
     }
 }

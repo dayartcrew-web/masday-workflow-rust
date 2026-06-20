@@ -213,6 +213,26 @@ pub async fn workflow_fail_task(
     client::api_post(&format!("/api/tasks/{}/fail", task_id), args).await
 }
 
+/// Transition a workflow to an explicit target state (general transition — the
+/// FIX→EXECUTE resume path, since workflow_execute idempotency-returns once at
+/// EXECUTE+). Thin wrapper over `POST /api/workflows/{id}/update`, which runs
+/// the validated `transition_status` (incl. the FIX→EXECUTE FAILED-task reset).
+pub async fn workflow_update_status(
+    args: Value,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let id = args
+        .get("id")
+        .or_else(|| args.get("workflow_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing id or workflow_id".to_string())?;
+
+    if !validate_uuid(id) {
+        return Err(format!("Invalid id format: '{}'", id).into());
+    }
+
+    client::api_post(&format!("/api/workflows/{}/update", id), args).await
+}
+
 /// Create plan
 pub async fn workflow_create_plan(
     args: Value,

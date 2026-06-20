@@ -135,6 +135,13 @@ fn register_workflow_tools(r: &mut ToolRegistry) {
     );
     reg!(
         r,
+        "workflow_update_status",
+        "Transition a workflow to an explicit target state (validated). FIX->EXECUTE resumes after a failure and resets the workflow's FAILED tasks to PENDING.",
+        schema!("workflow_id", "status"),
+        w::workflow_update_status
+    );
+    reg!(
+        r,
         "workflow_getStatus",
         "Get workflow status",
         schema!("workflow_id"),
@@ -1260,6 +1267,13 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
         "Get resume suggestion",
         schema!("workflow_id"),
         d::workflow_resume_suggestion
+    );
+    reg!(
+        r,
+        "workflow_update_status",
+        "Transition a workflow to an explicit target state (validated). FIX->EXECUTE resumes after a failure and resets the workflow's FAILED tasks to PENDING.",
+        schema!("workflow_id", "status"),
+        d::workflow_update_status
     );
     reg!(
         r,
