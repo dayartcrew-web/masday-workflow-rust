@@ -2931,6 +2931,30 @@ pub async fn session_patch_state(
 // Context/Search Tools (5)
 // ============================================================================
 
+/// Best-effort retrieval-log INSERT (SQLite). Log-and-continue: a failure is
+/// warned and swallowed so it never affects the search result. Acquires the
+/// global SQLite connection — callers that already hold the connection guard
+/// must drop it first to avoid the non-reentrant mutex deadlock.
+fn log_retrieval_sqlite(
+    workflow_id: Option<&str>,
+    task_id: Option<&str>,
+    agent_name: &str,
+    query: &str,
+    source: &str,
+    results: Option<&Value>,
+) {
+    let conn = crate::sqlite::conn();
+    let id = new_id();
+    let ts = now();
+    let results_text = results.map(|v| v.to_string());
+    if let Err(e) = conn.execute(
+        "INSERT INTO retrieval_logs (id, workflow_id, task_id, agent_name, query, source, results, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![id, workflow_id, task_id, agent_name, query, source, results_text, ts],
+    ) {
+        warn!("Failed to persist retrieval log ({}): {}", source, e);
+    }
+}
+
 pub async fn search_hybrid_context_pack(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -2972,6 +2996,39 @@ pub async fn search_hybrid_context_pack(
             params![&fingerprint, &chrono::Utc::now().to_rfc3339(), task_id],
         );
     }
+
+    // Log the context-pack retrieval (best-effort; never affects the result).
+    // The connection guard is no longer needed, so drop it before
+    // log_retrieval_sqlite re-acquires the (non-reentrant) global mutex.
+    let summary = json!({
+        "memory_count": memories.len(),
+        "task_count": tasks.len(),
+        "fingerprint": fingerprint,
+    });
+    let task_id_log = if task_id.is_empty() {
+        None
+    } else {
+        Some(task_id)
+    };
+    let query = if task_id.is_empty() {
+        workflow_id
+    } else {
+        task_id
+    };
+    // The prepared statements borrow `conn` and drop at function end; drop them
+    // explicitly so the guard can be released before log_retrieval_sqlite
+    // re-acquires the (non-reentrant) global mutex.
+    drop(stmt2);
+    drop(stmt);
+    drop(conn);
+    log_retrieval_sqlite(
+        Some(workflow_id),
+        task_id_log,
+        "mcp",
+        query,
+        "hybrid_context_pack",
+        Some(&summary),
+    );
 
     Ok(
         json!({"context_pack": {"memories": memories, "tasks": tasks, "fingerprint": fingerprint, "workflow_id": workflow_id, "plan_id": plan_id, "task_id": task_id}}),
@@ -3025,6 +3082,33 @@ pub async fn search_context_fingerprint(
     let plan_id = args["plan_id"].as_str().unwrap_or("");
     let task_id = args["task_id"].as_str().unwrap_or("");
     let fingerprint = compute_fingerprint(workflow_id, plan_id, task_id, &[], &[]);
+
+    // Log the fingerprint retrieval (best-effort; never affects the result).
+    let summary = json!({ "fingerprint": fingerprint });
+    let wf_log = if workflow_id.is_empty() {
+        None
+    } else {
+        Some(workflow_id)
+    };
+    let task_id_log = if task_id.is_empty() {
+        None
+    } else {
+        Some(task_id)
+    };
+    let query = if task_id.is_empty() {
+        workflow_id
+    } else {
+        task_id
+    };
+    log_retrieval_sqlite(
+        wf_log,
+        task_id_log,
+        "mcp",
+        query,
+        "context_fingerprint",
+        Some(&summary),
+    );
+
     Ok(json!({"fingerprint": fingerprint}))
 }
 
@@ -3036,14 +3120,43 @@ pub async fn semantic_search_code_search(
         .get("project_path")
         .and_then(|v| v.as_str())
         .unwrap_or(".");
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as i64;
 
+    let result = resolve_code_search(query, project_path, limit).await?;
+
+    // Log the retrieval (best-effort; never affects the result). The inner
+    // resolver tags every result with a `source`; fall back to "code_search".
+    let source = result
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("code_search");
+    let summary = masday_service::summarize_retrieval_results(&result);
+    log_retrieval_sqlite(
+        args.get("workflow_id").and_then(|v| v.as_str()),
+        args.get("task_id").and_then(|v| v.as_str()),
+        "mcp",
+        query,
+        source,
+        Some(&summary),
+    );
+
+    Ok(result)
+}
+
+/// Resolve a code-search result across the pgvector → API → SQLite-fallback
+/// priorities. Factored out of [`semantic_search_code_search`] so the caller can
+/// log the retrieval on a single `Ok` path regardless of which backend served it.
+async fn resolve_code_search(
+    query: &str,
+    project_path: &str,
+    limit: i64,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     // Priority 1: pgvector over indexed `code_chunks` (MCP PG-direct).
     // Reads ~/.masday/config.toml for the Ollama embedding provider. Falls through
     // silently on any PG/embedding failure so the API/SQLite paths stay usable.
     // Requires the `sqlite` feature (reuses code_index chunking + local embeddings).
     #[cfg(feature = "sqlite")]
     {
-        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as i64;
         if let Some(result) = pgvector_code_search(query, project_path, limit).await {
             return Ok(result);
         }
@@ -5955,5 +6068,50 @@ mod tests {
             "message should reference the stuck task title + id: {msg}"
         );
         assert_eq!(stuck[0]["acknowledged"], false);
+    }
+
+    #[tokio::test]
+    async fn test_search_writes_retrieval_log() {
+        // retrieval_logs had full CRUD + a read API but NO producer — search never
+        // logged retrievals. Now search_context_fingerprint INSERTs a row
+        // (log-and-continue) attributed to the workflow/task it was asked about,
+        // completing the search-writes → API-reads loop.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, 'EXECUTE')",
+                params![&wf_id, "wf"],
+            )
+            .unwrap();
+        }
+
+        let res = search_context_fingerprint(json!({
+            "workflow_id": &wf_id,
+            "plan_id": "p1",
+            "task_id": &task_id,
+        }))
+        .await
+        .unwrap();
+        // The search result is returned normally — logging is a side-effect.
+        assert!(res["fingerprint"].as_str().is_some());
+
+        // Exactly one row, attributed correctly, with the fingerprint summary.
+        let (source, agent, results_text): (String, String, String) = crate::sqlite::conn()
+            .query_row(
+                "SELECT source, agent_name, results FROM retrieval_logs \
+                     WHERE workflow_id=?1 AND task_id=?2",
+                params![&wf_id, &task_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(source, "context_fingerprint");
+        assert_eq!(agent, "mcp");
+        assert!(
+            results_text.contains("fingerprint"),
+            "results summary should carry the fingerprint: {results_text}"
+        );
     }
 }
