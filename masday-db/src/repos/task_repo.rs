@@ -188,6 +188,29 @@ impl TaskRepo {
         Ok(Task::from_row(&row))
     }
 
+    /// Bump `tasks.updated_at` without changing status. Called after a progress
+    /// save so the stuck-task detector (`find_stuck`, which keys on `updated_at`)
+    /// does not flag an actively-progressing RUNNING task as stuck. Matches the
+    /// invariant documented on `find_stuck` ("updated_at advances on every
+    /// status change and progress save").
+    pub async fn touch_updated_at(&self, id: &str) -> Result<()> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        client
+            .execute(
+                "UPDATE tasks SET updated_at = $1 WHERE id = $2",
+                &[&now, &id],
+            )
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to touch task updated_at: {}", e)))?;
+        Ok(())
+    }
+
     /// Complete a task with result
     pub async fn complete(&self, id: &str, result: serde_json::Value) -> Result<Task> {
         let client = self

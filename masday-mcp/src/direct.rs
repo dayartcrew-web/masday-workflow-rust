@@ -1907,6 +1907,21 @@ pub async fn workflow_save_progress(
         params![id, wf_id, task_id, agent, note, evidence, &t],
     ).map_err(|e| err(e))?;
 
+    // Bump `tasks.updated_at` so the stuck-task detector (reminder_check, which
+    // keys on tasks.updated_at) does not flag an actively-progressing RUNNING
+    // task as stuck. Matches the invariant documented on PG `find_stuck`.
+    // Best-effort: the progress log is the primary record, so a bump failure is
+    // logged rather than failing the save.
+    if let Err(e) = conn.execute(
+        "UPDATE tasks SET updated_at=?1 WHERE id=?2",
+        params![&t, task_id],
+    ) {
+        warn!(
+            "failed to bump tasks.updated_at on progress save for task {}: {}",
+            task_id, e
+        );
+    }
+
     Ok(json!({"saved": true, "task_id": task_id}))
 }
 
@@ -6379,5 +6394,55 @@ mod tests {
             workflow_update_status(json!({ "workflow_id": &wf_id, "status": "EXECUTE" })).await;
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("illegal transition"));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_save_progress_bumps_tasks_updated_at() {
+        // The stuck-task detector (reminder_check) keys on tasks.updated_at. A
+        // RUNNING task actively reporting progress must have its updated_at
+        // advanced by workflow_save_progress, else it is falsely flagged STUCK
+        // once stuckTaskMinutes elapses since the last STATUS change
+        // (start_task) — defeating leverage #7's stuck-task feature.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        // A stale RUNNING task: started in 2020, no progress since.
+        let stale_ts = "2020-01-01T00:00:00Z".to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, 'EXECUTE')",
+                params![&wf_id, "wf"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 'RUNNING', ?5, ?5)",
+                params![&task_id, &wf_id, "p1", "running-task", &stale_ts],
+            )
+            .unwrap();
+        }
+
+        workflow_save_progress(json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id,
+            "agent_name": "tester",
+            "progress_note": "still working",
+        }))
+        .await
+        .expect("progress saved");
+
+        let conn = crate::sqlite::conn();
+        let updated_at: String = conn
+            .query_row(
+                "SELECT updated_at FROM tasks WHERE id=?1",
+                params![&task_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        drop(conn);
+        assert_ne!(
+            updated_at, stale_ts,
+            "save_progress must bump tasks.updated_at or the stuck-task detector false-positives"
+        );
     }
 }
