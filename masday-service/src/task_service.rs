@@ -594,6 +594,18 @@ impl TaskService {
 
         let log = service.repo.save_progress(&new_log).await?;
 
+        // Bump `tasks.updated_at` so the stuck-task detector (`find_stuck`,
+        // which keys on updated_at) does not flag this actively-progressing
+        // RUNNING task as stuck — matches the invariant documented on
+        // `find_stuck`. Best-effort: the progress log is the primary record, so
+        // a bump failure is logged rather than failing the save.
+        if let Err(e) = service.repo.touch_updated_at(task_id).await {
+            warn!(
+                "Failed to bump tasks.updated_at on progress save for task {}: {}",
+                task_id, e
+            );
+        }
+
         debug!("Progress log created with ID: {}", log.id);
         Ok(log)
     }
