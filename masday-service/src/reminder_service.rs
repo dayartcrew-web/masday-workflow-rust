@@ -21,6 +21,16 @@ use tracing::{info, warn};
 /// already shared across both paths).
 pub const DEFAULT_STUCK_TASK_THRESHOLD: Duration = Duration::minutes(60);
 
+/// A workflow in the EXECUTE phase longer than this with no `updated_at`
+/// refresh is considered stale (`STALE_EXECUTE`). Used as the fallback when a
+/// caller omits the `staleExecutionMinutes` MCP param (or passes a value too
+/// small to be meaningful — see [`resolve_stale_execute_threshold`]).
+///
+/// Public for the same reason as [`DEFAULT_STUCK_TASK_THRESHOLD`]: the
+/// standalone stdio/SQLite path (`masday-mcp` `direct.rs`) reuses the exact
+/// same threshold — single source of truth for what "stale execution" means.
+pub const DEFAULT_STALE_EXECUTE_THRESHOLD: Duration = Duration::hours(4);
+
 /// Resolve a caller-supplied `stuckTaskMinutes` value to a `Duration`.
 ///
 /// Returns [`DEFAULT_STUCK_TASK_THRESHOLD`] when the caller omitted the param
@@ -36,6 +46,36 @@ pub fn resolve_stuck_task_threshold(stuck_task_minutes: Option<i64>) -> Duration
     match stuck_task_minutes {
         Some(m) if m >= 1 => Duration::minutes(m),
         _ => DEFAULT_STUCK_TASK_THRESHOLD,
+    }
+}
+
+/// Resolve a caller-supplied `staleExecutionMinutes` value to a `Duration`.
+///
+/// Returns [`DEFAULT_STALE_EXECUTE_THRESHOLD`] when the caller omitted the param
+/// (`None`) — preserving legacy behavior — or passed a value `< 1` minute (a
+/// 0/negative threshold would flag every EXECUTE workflow as stale immediately,
+/// which is never the intent). Otherwise honors the explicit value.
+///
+/// Pure (no I/O) and shared by both the HTTP/API path and the stdio/SQLite
+/// path, so the clamping rule is identical everywhere — mirrors
+/// [`resolve_stuck_task_threshold`].
+pub fn resolve_stale_execute_threshold(stale_execution_minutes: Option<i64>) -> Duration {
+    match stale_execution_minutes {
+        Some(m) if m >= 1 => Duration::minutes(m),
+        _ => DEFAULT_STALE_EXECUTE_THRESHOLD,
+    }
+}
+
+/// Render a staleness threshold as a human span for reminder messages: whole
+/// hours (`"4 hours"`) when the value divides evenly, otherwise minutes
+/// (`"90 minutes"`). Pure so it is unit-testable and reusable by both the PG
+/// and stdio message builders.
+fn fmt_threshold_span(threshold: Duration) -> String {
+    let mins = threshold.num_minutes();
+    if mins >= 60 && mins % 60 == 0 {
+        format!("{} hours", mins / 60)
+    } else {
+        format!("{} minutes", mins)
     }
 }
 
@@ -69,7 +109,13 @@ impl ReminderService {
     /// # Returns
     /// * `Result<Vec<WorkflowReminder>>` - List of active reminders
     pub async fn check_reminders(pool: &DbPool) -> Result<Vec<WorkflowReminder>> {
-        Self::check_reminders_with_options(pool, DEFAULT_STUCK_TASK_THRESHOLD, false).await
+        Self::check_reminders_with_options(
+            pool,
+            DEFAULT_STUCK_TASK_THRESHOLD,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+            false,
+        )
+        .await
     }
 
     /// Check for reminders using a caller-supplied stuck-task threshold.
@@ -81,22 +127,32 @@ impl ReminderService {
         pool: &DbPool,
         stuck_task_threshold: Duration,
     ) -> Result<Vec<WorkflowReminder>> {
-        Self::check_reminders_with_options(pool, stuck_task_threshold, false).await
+        Self::check_reminders_with_options(
+            pool,
+            stuck_task_threshold,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+            false,
+        )
+        .await
     }
 
-    /// Check for reminders with a caller-supplied stuck-task threshold and an
+    /// Check for reminders with caller-supplied thresholds and an
     /// `include_failed` flag.
     ///
     /// `stuck_task_threshold` tunes the stuck-task window (the `stuckTaskMinutes`
-    /// MCP param). `include_failed` is the advertised `includeFailed` MCP param:
-    /// when true, FAILED workflows are also fetched ([`WorkflowRepo::get_failed`])
-    /// and checked against the FAILED-staleness threshold — a workflow that
-    /// failed and has sat unresolved surfaces a `FAILED_STALE` reminder. When
-    /// false (default), FAILED workflows are excluded exactly as before
+    /// MCP param). `stale_execute_threshold` tunes the EXECUTE-phase staleness
+    /// window (the `staleExecutionMinutes` MCP param) — a workflow in EXECUTE
+    /// longer than this surfaces `STALE_EXECUTE`. `include_failed` is the
+    /// advertised `includeFailed` MCP param: when true, FAILED workflows are
+    /// also fetched ([`WorkflowRepo::get_failed`]) and checked against the
+    /// FAILED-staleness threshold — a workflow that failed and has sat
+    /// unresolved surfaces a `FAILED_STALE` reminder. When false (default),
+    /// FAILED workflows are excluded exactly as before
     /// ([`WorkflowRepo::get_active`] drops them), so legacy behavior is unchanged.
     pub async fn check_reminders_with_options(
         pool: &DbPool,
         stuck_task_threshold: Duration,
+        stale_execute_threshold: Duration,
         include_failed: bool,
     ) -> Result<Vec<WorkflowReminder>> {
         info!("Checking for workflow reminders");
@@ -121,7 +177,12 @@ impl ReminderService {
         // was always empty and acknowledge() could never match an id — the whole
         // reminder subsystem was theater. See audit round-2 leverage #7.
         let existing = service.reminder_repo.check_reminders().await?;
-        let mut fresh = Self::compute_new_reminders(&active_workflows, &existing, &now);
+        let mut fresh = Self::compute_new_reminders(
+            &active_workflows,
+            &existing,
+            &now,
+            stale_execute_threshold,
+        );
 
         // Stuck-task pass: a task RUNNING past the threshold with no updated_at
         // refresh yields a STUCK_TASK reminder (one per workflow, deduped against
@@ -162,6 +223,7 @@ impl ReminderService {
         active: &[masday_db::schema::Workflow],
         existing: &[WorkflowReminder],
         now: &chrono::DateTime<Utc>,
+        stale_execute_threshold: Duration,
     ) -> Vec<NewWorkflowReminder> {
         use std::collections::HashSet;
 
@@ -172,10 +234,16 @@ impl ReminderService {
 
         let mut out = Vec::new();
         for workflow in active {
-            if let Some(reminder_type) = Self::check_workflow_staleness(workflow, now) {
+            if let Some(reminder_type) =
+                Self::check_workflow_staleness(workflow, now, stale_execute_threshold)
+            {
                 // HashSet::insert returns true only for a brand-new key.
                 if have.insert((workflow.id.clone(), reminder_type.clone())) {
-                    let message = Self::get_reminder_message(workflow, &reminder_type);
+                    let message = Self::get_reminder_message(
+                        workflow,
+                        &reminder_type,
+                        stale_execute_threshold,
+                    );
                     out.push(NewWorkflowReminder {
                         workflow_id: workflow.id.clone(),
                         task_id: None,
@@ -253,10 +321,13 @@ impl ReminderService {
     fn check_workflow_staleness(
         workflow: &masday_db::schema::Workflow,
         now: &chrono::DateTime<Utc>,
+        stale_execute_threshold: Duration,
     ) -> Option<String> {
         let updated_age = now.signed_duration_since(workflow.updated_at);
 
-        // Different thresholds based on status
+        // Different thresholds based on status. Only the EXECUTE window is
+        // caller-tunable (the `staleExecutionMinutes` MCP param); the others are
+        // fixed policy.
         match workflow.status.as_str() {
             status
                 if matches!(status, "INIT" | "ANALYZE" | "PLAN")
@@ -264,7 +335,7 @@ impl ReminderService {
             {
                 Some("STALE_EARLY".to_string())
             }
-            "EXECUTE" if updated_age > Duration::hours(4) => Some("STALE_EXECUTE".to_string()),
+            "EXECUTE" if updated_age > stale_execute_threshold => Some("STALE_EXECUTE".to_string()),
             "VERIFY" if updated_age > Duration::minutes(30) => Some("STALE_VERIFY".to_string()),
             "FIX" if updated_age > Duration::hours(2) => Some("STALE_FIX".to_string()),
             "PAUSED" if updated_age > Duration::hours(24) => Some("PAUSED_LONG".to_string()),
@@ -277,15 +348,20 @@ impl ReminderService {
     }
 
     /// Get reminder message for a workflow
-    fn get_reminder_message(workflow: &masday_db::schema::Workflow, reminder_type: &str) -> String {
+    fn get_reminder_message(
+        workflow: &masday_db::schema::Workflow,
+        reminder_type: &str,
+        stale_execute_threshold: Duration,
+    ) -> String {
         match reminder_type {
             "STALE_EARLY" => format!(
                 "Workflow '{}' has been idle in {} phase for over 1 hour",
                 workflow.name, workflow.status
             ),
             "STALE_EXECUTE" => format!(
-                "Workflow '{}' has been executing for over 4 hours",
-                workflow.name
+                "Workflow '{}' has been executing for over {}",
+                workflow.name,
+                fmt_threshold_span(stale_execute_threshold)
             ),
             "STALE_VERIFY" => format!(
                 "Workflow '{}' has been in verification for over 30 minutes",
@@ -348,7 +424,12 @@ mod tests {
         let now = Utc::now();
         let stale = workflow("wf-1", "EXECUTE", now - Duration::hours(5)); // > 4h threshold
         let fresh = workflow("wf-2", "EXECUTE", now - Duration::minutes(10)); // under threshold
-        let out = ReminderService::compute_new_reminders(&[stale, fresh], &[], &now);
+        let out = ReminderService::compute_new_reminders(
+            &[stale, fresh],
+            &[],
+            &now,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+        );
         assert_eq!(out.len(), 1, "only the stale workflow yields a reminder");
         assert_eq!(out[0].workflow_id, "wf-1");
         assert_eq!(out[0].reminder_type, "STALE_EXECUTE");
@@ -359,7 +440,12 @@ mod tests {
         let now = Utc::now();
         let stale = workflow("wf-1", "EXECUTE", now - Duration::hours(5));
         let existing = vec![existing_reminder("wf-1", "STALE_EXECUTE")];
-        let out = ReminderService::compute_new_reminders(&[stale], &existing, &now);
+        let out = ReminderService::compute_new_reminders(
+            &[stale],
+            &existing,
+            &now,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+        );
         assert!(
             out.is_empty(),
             "must not duplicate a reminder type already outstanding for the workflow"
@@ -371,7 +457,12 @@ mod tests {
         let now = Utc::now();
         let a = workflow("wf-1", "EXECUTE", now - Duration::hours(5)); // STALE_EXECUTE
         let b = workflow("wf-2", "VERIFY", now - Duration::minutes(45)); // STALE_VERIFY (>30m)
-        let out = ReminderService::compute_new_reminders(&[a, b], &[], &now);
+        let out = ReminderService::compute_new_reminders(
+            &[a, b],
+            &[],
+            &now,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+        );
         assert_eq!(
             out.len(),
             2,
@@ -383,7 +474,12 @@ mod tests {
     fn compute_new_reminders_skips_non_stale() {
         let now = Utc::now();
         let ok = workflow("wf-1", "EXECUTE", now - Duration::minutes(10));
-        let out = ReminderService::compute_new_reminders(&[ok], &[], &now);
+        let out = ReminderService::compute_new_reminders(
+            &[ok],
+            &[],
+            &now,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+        );
         assert!(out.is_empty(), "a fresh workflow must not yield a reminder");
     }
 
@@ -395,7 +491,12 @@ mod tests {
         let now = Utc::now();
         let old_failed = workflow("wf-1", "FAILED", now - Duration::hours(25));
         let fresh_failed = workflow("wf-2", "FAILED", now - Duration::minutes(10));
-        let out = ReminderService::compute_new_reminders(&[old_failed, fresh_failed], &[], &now);
+        let out = ReminderService::compute_new_reminders(
+            &[old_failed, fresh_failed],
+            &[],
+            &now,
+            DEFAULT_STALE_EXECUTE_THRESHOLD,
+        );
         assert_eq!(
             out.len(),
             1,
@@ -517,5 +618,74 @@ mod tests {
             resolve_stuck_task_threshold(Some(-5)),
             DEFAULT_STUCK_TASK_THRESHOLD
         );
+    }
+
+    #[test]
+    fn resolve_stale_execute_threshold_defaults_when_absent() {
+        // Omitted param (the legacy/no-arg path) -> default 4-hour window.
+        assert_eq!(
+            resolve_stale_execute_threshold(None),
+            DEFAULT_STALE_EXECUTE_THRESHOLD
+        );
+    }
+
+    #[test]
+    fn resolve_stale_execute_threshold_honors_explicit_value() {
+        // A caller-supplied staleExecutionMinutes=120 wins (the whole point of
+        // wiring the param).
+        assert_eq!(
+            resolve_stale_execute_threshold(Some(120)),
+            Duration::minutes(120)
+        );
+    }
+
+    #[test]
+    fn resolve_stale_execute_threshold_clamps_non_positive() {
+        // 0 / negative would flag every EXECUTE workflow immediately; fall back
+        // to the default rather than producing a degenerate window.
+        assert_eq!(
+            resolve_stale_execute_threshold(Some(0)),
+            DEFAULT_STALE_EXECUTE_THRESHOLD
+        );
+        assert_eq!(
+            resolve_stale_execute_threshold(Some(-5)),
+            DEFAULT_STALE_EXECUTE_THRESHOLD
+        );
+    }
+
+    #[test]
+    fn compute_new_reminders_stale_execute_honors_custom_threshold() {
+        // Proves the threshold param is actually wired into the EXECUTE arm: the
+        // SAME workflow (EXECUTE, updated 3.5h ago) fires STALE_EXECUTE when the
+        // threshold is 3h but not when it is 5h. Pre-wiring this was impossible —
+        // the window was a hardcoded 4h.
+        let now = Utc::now();
+        let wf = workflow("wf-1", "EXECUTE", now - Duration::minutes(210)); // 3.5h ago
+
+        let fires = ReminderService::compute_new_reminders(
+            std::slice::from_ref(&wf),
+            &[],
+            &now,
+            Duration::minutes(180),
+        );
+        assert_eq!(fires.len(), 1, "3.5h > 3h threshold -> STALE_EXECUTE");
+        assert_eq!(fires[0].reminder_type, "STALE_EXECUTE");
+
+        let quiet = ReminderService::compute_new_reminders(
+            std::slice::from_ref(&wf),
+            &[],
+            &now,
+            Duration::minutes(300),
+        );
+        assert!(quiet.is_empty(), "3.5h < 5h threshold -> no reminder");
+    }
+
+    #[test]
+    fn fmt_threshold_span_renders_hours_and_minutes() {
+        // Whole hours collapse to "N hours"; sub-hour spans stay in minutes.
+        assert_eq!(fmt_threshold_span(Duration::hours(4)), "4 hours");
+        assert_eq!(fmt_threshold_span(Duration::minutes(240)), "4 hours");
+        assert_eq!(fmt_threshold_span(Duration::minutes(90)), "90 minutes");
+        assert_eq!(fmt_threshold_span(Duration::minutes(30)), "30 minutes");
     }
 }

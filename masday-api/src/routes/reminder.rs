@@ -19,6 +19,11 @@ use crate::AppState;
 #[derive(Debug, Default, Deserialize)]
 struct ReminderQuery {
     stuck_task_minutes: Option<i64>,
+    /// Advertised as the `staleExecutionMinutes` MCP param — a workflow in
+    /// EXECUTE longer than this (minutes) surfaces `STALE_EXECUTE`. Absent (or
+    /// `< 1`) falls back to the 4-hour default via
+    /// [`masday_service::reminder_service::resolve_stale_execute_threshold`].
+    stale_execution_minutes: Option<i64>,
     /// Advertised as the `includeFailed` MCP param — when true, FAILED workflows
     /// are also checked against the FAILED-staleness threshold. Defaults to
     /// false (legacy behavior: FAILED workflows are excluded).
@@ -38,12 +43,16 @@ async fn check_reminders(
     State(state): State<AppState>,
     Query(q): Query<ReminderQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let threshold =
+    let stuck_threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let stale_execute_threshold = masday_service::reminder_service::resolve_stale_execute_threshold(
+        q.stale_execution_minutes,
+    );
     let include_failed = q.include_failed.unwrap_or(false);
     let reminders = masday_service::ReminderService::check_reminders_with_options(
         &state.pool,
-        threshold,
+        stuck_threshold,
+        stale_execute_threshold,
         include_failed,
     )
     .await?;
@@ -54,12 +63,16 @@ async fn get_stale(
     State(state): State<AppState>,
     Query(q): Query<ReminderQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let threshold =
+    let stuck_threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let stale_execute_threshold = masday_service::reminder_service::resolve_stale_execute_threshold(
+        q.stale_execution_minutes,
+    );
     let include_failed = q.include_failed.unwrap_or(false);
     let reminders = masday_service::ReminderService::check_reminders_with_options(
         &state.pool,
-        threshold,
+        stuck_threshold,
+        stale_execute_threshold,
         include_failed,
     )
     .await?;
@@ -70,12 +83,16 @@ async fn get_stuck(
     State(state): State<AppState>,
     Query(q): Query<ReminderQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let threshold =
+    let stuck_threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let stale_execute_threshold = masday_service::reminder_service::resolve_stale_execute_threshold(
+        q.stale_execution_minutes,
+    );
     let include_failed = q.include_failed.unwrap_or(false);
     let reminders = masday_service::ReminderService::check_reminders_with_options(
         &state.pool,
-        threshold,
+        stuck_threshold,
+        stale_execute_threshold,
         include_failed,
     )
     .await?;
@@ -94,12 +111,16 @@ async fn list_reminders(
     State(state): State<AppState>,
     Query(q): Query<ReminderQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let threshold =
+    let stuck_threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let stale_execute_threshold = masday_service::reminder_service::resolve_stale_execute_threshold(
+        q.stale_execution_minutes,
+    );
     let include_failed = q.include_failed.unwrap_or(false);
     let reminders = masday_service::ReminderService::check_reminders_with_options(
         &state.pool,
-        threshold,
+        stuck_threshold,
+        stale_execute_threshold,
         include_failed,
     )
     .await?;
