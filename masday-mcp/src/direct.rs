@@ -3881,13 +3881,43 @@ pub async fn reminder_list(args: Value) -> Result<Value, Box<dyn std::error::Err
         .get("workflow_id")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let acknowledged = args.get("acknowledged").and_then(|v| v.as_bool());
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_i64())
+        .filter(|&n| n >= 0);
 
-    let mut stmt = conn.prepare(
-        "SELECT id, workflow_id, reminder_type, severity, message, acknowledged FROM workflow_reminders WHERE workflow_id=?1"
-    ).map_err(err)?;
+    // Honor the advertised optional filters (`acknowledged?`, `limit?`) and treat
+    // `workflow_id?` as truly optional. Previously the handler read only
+    // `workflow_id` and always filtered `WHERE workflow_id=?1` — so omitting it
+    // queried `WHERE workflow_id=''` and silently returned nothing (the column is
+    // NOT NULL), and the `acknowledged`/`limit` filters were dropped entirely.
+    //
+    // Only structural SQL fragments are interpolated from Option presence; every
+    // user value is a bound parameter (no injection surface).
+    let mut sql = String::from(
+        "SELECT id, workflow_id, reminder_type, severity, message, acknowledged \
+         FROM workflow_reminders WHERE 1=1",
+    );
+    let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if !workflow_id.is_empty() {
+        sql.push_str(" AND workflow_id = ?");
+        binds.push(Box::new(workflow_id.to_string()));
+    }
+    if let Some(ack) = acknowledged {
+        sql.push_str(" AND acknowledged = ?");
+        binds.push(Box::new(if ack { 1i64 } else { 0i64 }));
+    }
+    sql.push_str(" ORDER BY created_at DESC");
+    if let Some(n) = limit {
+        sql.push_str(" LIMIT ?");
+        binds.push(Box::new(n));
+    }
+    let bind_refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
 
+    let mut stmt = conn.prepare(&sql).map_err(err)?;
     let rows = stmt
-        .query_map(params![workflow_id], |row| {
+        .query_map(bind_refs.as_slice(), |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
                 "workflowId": row.get::<_, String>(1)?,
@@ -6078,6 +6108,95 @@ mod tests {
         assert!(
             drift < 5,
             "garbage should fall back to ~now (drift {drift}s)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reminder_list_honors_acknowledged_and_limit_filters() {
+        // Round-N audit: reminder_list advertised `acknowledged?`/`limit?` but
+        // dropped them, and treated optional `workflow_id?` as required
+        // (`WHERE workflow_id=''` → empty result when omitted). Verify all three
+        // now behave as advertised.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, 'EXECUTE')",
+                params![&wf_id, "r-wf"],
+            )
+            .unwrap();
+            // Two unacknowledged, one acknowledged.
+            for (i, ack) in [("a", 0i64), ("b", 0i64), ("c", 1i64)] {
+                conn.execute(
+                    "INSERT INTO workflow_reminders \
+                     (id, workflow_id, reminder_type, severity, message, acknowledged) \
+                     VALUES (?1, ?2, 'STALE_EXECUTE', 'HIGH', ?3, ?4)",
+                    params![i, &wf_id, format!("msg-{i}"), ack],
+                )
+                .unwrap();
+            }
+        }
+
+        // TestDbGuard shares the global SQLite conn across parallel tests, so a
+        // result with no `workflow_id` filter may include other tests' rows. Every
+        // assertion is therefore scoped to OUR unique workflow_id.
+
+        // Omitting workflow_id must NOT return empty (previously filtered
+        // `WHERE workflow_id=''` and returned nothing for a NOT NULL column).
+        let all = reminder_list(json!({})).await.unwrap();
+        let arr = all["reminders"].as_array().unwrap();
+        assert!(
+            !arr.is_empty(),
+            "omitting workflow_id must not return empty"
+        );
+        assert_eq!(arr.iter().filter(|r| r["workflowId"] == wf_id).count(), 3);
+
+        // acknowledged=true → only our one acknowledged row ("c").
+        let ackd = reminder_list(json!({ "acknowledged": true }))
+            .await
+            .unwrap();
+        assert_eq!(
+            ackd["reminders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| r["workflowId"] == wf_id)
+                .count(),
+            1
+        );
+
+        // acknowledged=false → our two unacknowledged rows ("a","b").
+        let unack = reminder_list(json!({ "acknowledged": false }))
+            .await
+            .unwrap();
+        assert_eq!(
+            unack["reminders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| r["workflowId"] == wf_id)
+                .count(),
+            2
+        );
+
+        // limit caps the result (our own 3 rows guarantee >=3 in the table, so
+        // LIMIT 2 always yields exactly 2).
+        let lim = reminder_list(json!({ "limit": 2 })).await.unwrap();
+        assert_eq!(lim["reminders"].as_array().unwrap().len(), 2);
+
+        // workflow_id filter still scopes exactly to our workflow.
+        let scoped = reminder_list(json!({ "workflow_id": &wf_id }))
+            .await
+            .unwrap();
+        assert_eq!(
+            scoped["reminders"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| r["workflowId"] == wf_id)
+                .count(),
+            3
         );
     }
 
