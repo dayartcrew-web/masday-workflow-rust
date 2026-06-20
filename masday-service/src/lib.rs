@@ -26,7 +26,7 @@ pub use task_service::{
     compute_context_fingerprint, evaluate_context_drift, ContextDriftResult, TaskContext,
     TaskService,
 };
-pub use workflow_service::WorkflowService;
+pub use workflow_service::{resolve_prd_source, PrdSource, WorkflowService};
 
 #[cfg(test)]
 mod tests {

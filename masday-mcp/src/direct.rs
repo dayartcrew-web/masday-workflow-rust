@@ -811,6 +811,38 @@ pub async fn workflow_create(
         )
     }; // conn dropped
 
+    // Best-effort PRD ingestion (round-1 H1 gap 3): if the project ships a PRD
+    // under `.masday/context/`, persist it as a context document linked to this
+    // workflow so it flows into every context pack. No-op when none exists.
+    // (`project_path` is captured in `pg_info.3`; the binding is block-scoped.)
+    let prd = masday_service::resolve_prd_source(pg_info.3.as_deref());
+    if let Some(ref prd) = prd {
+        let conn = crate::sqlite::conn();
+        let prd_id = new_id();
+        let t = now();
+        let prd_meta = json!({ "ingested_at_create": true });
+        if let Err(e) = conn.execute(
+            "INSERT INTO context_documents (id, workflow_id, source_type, source_ref, title, content, metadata, fingerprint, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,NULL,?8,?9)",
+            params![&prd_id, &id, "prd", &prd.source_ref, &prd.title, &prd.content, prd_meta.to_string(), &t, &t],
+        ) {
+            warn!("PRD ingest failed for workflow {}: {}", id, e);
+        } else {
+            info!("Ingested PRD {} for workflow {}", prd.source_ref, id);
+        }
+        drop(conn);
+    }
+
+    // Owned PRD payload for the fire-and-forget PG sync. The doc id is generated
+    // here so `direct_pg` needs no uuid dependency.
+    let prd_pg = prd.as_ref().map(|p| {
+        (
+            new_id(),
+            p.source_ref.clone(),
+            p.title.clone(),
+            p.content.clone(),
+        )
+    });
+
     // Fire-and-forget PG sync — non-blocking
     crate::pg_sync::spawn(async move {
         crate::direct_pg::workflow_create(
@@ -819,6 +851,9 @@ pub async fn workflow_create(
             pg_info.2.as_deref(),
             pg_info.3.as_deref(),
             &pg_info.4,
+            prd_pg
+                .as_ref()
+                .map(|(d, s, t, c)| (d.as_str(), s.as_str(), t.as_str(), c.as_str())),
         )
         .await;
     });
@@ -6113,5 +6148,82 @@ mod tests {
             results_text.contains("fingerprint"),
             "results summary should carry the fingerprint: {results_text}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_workflow_create_ingests_prd_document() {
+        // H1 gap 3: create_workflow must read the project PRD under
+        // .masday/context/ and attach it as a context document. The doc then
+        // flows into every context pack (build_context_pack surfaces
+        // context_documents).
+        let _guard = TestDbGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "masday-prd-wf-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".masday/context")).unwrap();
+        std::fs::write(
+            dir.join(".masday/context/prd.md"),
+            "# Goal\nBuild the thing",
+        )
+        .unwrap();
+
+        let res = workflow_create(json!({
+            "name": "prd-ingest-test",
+            "project_path": dir.to_str().unwrap(),
+        }))
+        .await
+        .expect("workflow_create ok");
+        let wf_id = res["id"].as_str().expect("id present").to_string();
+
+        // Exactly one ingested PRD row, correctly attributed + with full content.
+        let (source_type, source_ref, content): (String, String, String) = crate::sqlite::conn()
+            .query_row(
+                "SELECT source_type, source_ref, content FROM context_documents \
+                         WHERE workflow_id=?1",
+                params![&wf_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .expect("one prd context_documents row");
+        assert_eq!(source_type, "prd");
+        assert_eq!(source_ref, ".masday/context/prd.md");
+        assert_eq!(content, "# Goal\nBuild the thing");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_create_without_prd_is_noop() {
+        // No PRD file present → workflow is created normally and NO
+        // context_documents row is written (zero behavior change).
+        let _guard = TestDbGuard::new();
+        let dir = std::env::temp_dir().join(format!(
+            "masday-prd-noprd-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap(); // no .masday/context
+
+        let res = workflow_create(json!({
+            "name": "prd-noop-test",
+            "project_path": dir.to_str().unwrap(),
+        }))
+        .await
+        .expect("workflow_create ok");
+        let wf_id = res["id"].as_str().expect("id present").to_string();
+
+        let count: i64 = crate::sqlite::conn()
+            .query_row(
+                "SELECT COUNT(*) FROM context_documents WHERE workflow_id=?1",
+                params![&wf_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        assert_eq!(count, 0, "no PRD → no context_documents row");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

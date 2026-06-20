@@ -6,7 +6,7 @@
 
 use masday_core::{AppError, Result, WorkflowState};
 use masday_db::repos::{ContextDocumentRepo, MemoryRepo, PlanRepo, TaskRepo, WorkflowRepo};
-use masday_db::schema::{NewWorkflow, Workflow};
+use masday_db::schema::{NewContextDocument, NewWorkflow, Workflow};
 use masday_db::DbPool;
 use tracing::{debug, info, warn};
 
@@ -190,6 +190,10 @@ impl WorkflowService {
             serde_json::Value::Null
         };
 
+        // Resolve a project PRD *before* `project_path` is moved into NewWorkflow.
+        // No-op when none exists (zero behavior change). See `resolve_prd_source`.
+        let prd = resolve_prd_source(project_path.as_deref());
+
         let new_workflow = NewWorkflow {
             name,
             description: description.clone(),
@@ -207,6 +211,30 @@ impl WorkflowService {
 
         let workflow = repo.create(&new_workflow).await?;
         debug!("Workflow created with ID: {}", workflow.id);
+
+        // Best-effort PRD ingestion (round-1 H1 gap 3): attach the project PRD as
+        // a context document so it flows into every context pack for this workflow
+        // (build_context_pack already surfaces context_documents). Strictly
+        // additive — log-and-continue; a read or DB error never fails creation.
+        if let Some(prd) = prd {
+            let doc = NewContextDocument {
+                workflow_id: Some(workflow.id.clone()),
+                source_type: "prd".to_string(),
+                source_ref: Some(prd.source_ref.clone()),
+                title: Some(prd.title.clone()),
+                content: prd.content,
+                metadata: Some(serde_json::json!({ "ingested_at_create": true })),
+                fingerprint: None,
+                embedding: None,
+            };
+            match ContextDocumentRepo::new(pool.clone()).create(&doc).await {
+                Ok(_) => info!(
+                    "Ingested PRD {} for workflow {}",
+                    prd.source_ref, workflow.id
+                ),
+                Err(e) => warn!("PRD ingest failed for workflow {}: {}", workflow.id, e),
+            }
+        }
 
         Ok(workflow)
     }
@@ -564,6 +592,77 @@ pub async fn auto_store_context_document(
     }
 }
 
+// ─── Project PRD ingestion (round-1 H1 gap 3) ───────────────────────
+//
+// `create_workflow` historically stored only name/description/project_path and
+// never read the project's PRD. These helpers locate + read an optional PRD
+// under `.masday/context/` so it can be attached as a context document at
+// creation time. They are no-ops when no PRD exists (zero behavior change) and
+// never propagate I/O errors — workflow creation must not depend on a PRD.
+
+/// Ordered candidate PRD file paths, relative to the workflow's project root.
+/// `prd.md` is canonical; `requirements.md` is a common synonym. The first
+/// existing file wins.
+pub fn prd_candidates() -> &'static [&'static str] {
+    &[".masday/context/prd.md", ".masday/context/requirements.md"]
+}
+
+/// A resolved PRD file ready to ingest as a context document.
+#[derive(Debug, Clone)]
+pub struct PrdSource {
+    /// Project-relative path that was read (e.g. `.masday/context/prd.md`).
+    pub source_ref: String,
+    /// Human-readable title (the file stem, e.g. `prd`).
+    pub title: String,
+    /// File contents (UTF-8 text).
+    pub content: String,
+}
+
+/// Pure path resolution: given a project root, return the first existing PRD
+/// candidate path, or `None`. No I/O beyond `is_file`, so it is unit-testable.
+pub fn resolve_prd_at(base: &std::path::Path) -> Option<std::path::PathBuf> {
+    for candidate in prd_candidates() {
+        let path = base.join(candidate);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Resolve and read the project PRD, if any. The project root is `project_path`
+/// when provided, else the process working directory. A read error is logged
+/// and the next candidate tried; absent/unreadable PRDs return `None` so the
+/// caller can no-op.
+pub fn resolve_prd_source(project_path: Option<&str>) -> Option<PrdSource> {
+    let base = match project_path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+    };
+    let path = resolve_prd_at(&base)?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("PRD read failed at {}: {}", path.display(), e);
+            return None;
+        }
+    };
+    let source_ref = path
+        .strip_prefix(&base)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string());
+    let title = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "prd".to_string());
+    Some(PrdSource {
+        source_ref,
+        title,
+        content,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -757,5 +856,79 @@ mod tests {
         let error_no_done = "Cannot advance to VERIFY: no tasks completed. Execute tasks first.";
         assert!(error_no_done.contains("no tasks completed"));
         assert!(error_no_done.contains("Execute tasks"));
+    }
+
+    // ─── PRD ingestion helper tests (round-1 H1 gap 3) ───────────────
+
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static PRD_TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    /// A unique scratch dir so parallel FS tests never collide. Cleaned up on
+    /// return; leftover dirs under the system temp dir are harmless regardless.
+    fn unique_prd_test_dir(label: &str) -> PathBuf {
+        let n = PRD_TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir =
+            std::env::temp_dir().join(format!("masday-prd-{}-{}-{}", label, std::process::id(), n));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    #[test]
+    fn test_prd_candidates_canonical_order() {
+        assert_eq!(
+            prd_candidates(),
+            [".masday/context/prd.md", ".masday/context/requirements.md"]
+        );
+    }
+
+    #[test]
+    fn test_resolve_prd_at_none_when_absent() {
+        let dir = unique_prd_test_dir("absent");
+        assert!(resolve_prd_at(&dir).is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_prd_at_finds_prd_md() {
+        let dir = unique_prd_test_dir("prdmd");
+        fs::create_dir_all(dir.join(".masday/context")).unwrap();
+        fs::write(dir.join(".masday/context/prd.md"), "# PRD").unwrap();
+        let resolved = resolve_prd_at(&dir).expect("prd.md should resolve");
+        assert!(resolved.ends_with(".masday/context/prd.md"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_prd_at_requirements_fallback() {
+        let dir = unique_prd_test_dir("reqmd");
+        fs::create_dir_all(dir.join(".masday/context")).unwrap();
+        fs::write(dir.join(".masday/context/requirements.md"), "# Req").unwrap();
+        let resolved = resolve_prd_at(&dir).expect("requirements.md should resolve");
+        assert!(resolved.ends_with(".masday/context/requirements.md"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_prd_source_reads_content_and_metadata() {
+        let dir = unique_prd_test_dir("read");
+        fs::create_dir_all(dir.join(".masday/context")).unwrap();
+        fs::write(dir.join(".masday/context/prd.md"), "Build a foo").unwrap();
+        let prd = resolve_prd_source(Some(dir.to_str().unwrap())).expect("prd should resolve");
+        assert_eq!(prd.source_ref, ".masday/context/prd.md");
+        assert_eq!(prd.title, "prd");
+        assert_eq!(prd.content, "Build a foo");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_prd_source_none_when_no_prd() {
+        let dir = unique_prd_test_dir("none");
+        // Empty project dir — no .masday/context at all.
+        assert!(resolve_prd_source(Some(dir.to_str().unwrap())).is_none());
+        let _ = fs::remove_dir_all(&dir);
     }
 }

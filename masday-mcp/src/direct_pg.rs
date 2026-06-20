@@ -15,6 +15,7 @@ pub async fn workflow_create(
     description: Option<&str>,
     project_path: Option<&str>,
     metadata: &str,
+    prd: Option<(&str, &str, &str, &str)>,
 ) {
     let id = id.to_string();
     let name = name.to_string();
@@ -40,16 +41,36 @@ pub async fn workflow_create(
                     name = EXCLUDED.name, description = EXCLUDED.description,
                     metadata = EXCLUDED.metadata, updated_at = NOW()
             "#;
-            if let Err(e) = client
+            match client
                 .execute(
                     q,
                     &[&id, &name, &description, &project_path, &meta_json],
                 )
                 .await
             {
-                tracing::warn!("PG workflow create sync failed {}: {}", id, e);
-            } else {
-                tracing::info!("Synced workflow {} to PostgreSQL", id);
+                Ok(_) => {
+                    tracing::info!("Synced workflow {} to PostgreSQL", id);
+                    // Ingest the project PRD as a context document (H1 gap 3).
+                    // Only on workflow-insert success so we never create an
+                    // orphan doc referencing a missing workflow (FK).
+                    if let Some((doc_id, source_ref, title, content)) = prd {
+                        let q2 = r#"
+                            INSERT INTO context_documents (id, workflow_id, source_type, source_ref, title, content, metadata, fingerprint, embedding, created_at, updated_at)
+                            VALUES ($1, $2, 'prd', $3, $4, $5, $6, NULL, NULL, NOW(), NOW())
+                            ON CONFLICT (id) DO NOTHING
+                        "#;
+                        let prd_meta = serde_json::json!({ "ingested_at_create": true });
+                        if let Err(e) = client
+                            .execute(q2, &[&doc_id, &id, &source_ref, &title, &content, &prd_meta])
+                            .await
+                        {
+                            tracing::warn!("PG PRD ingest sync failed {}: {}", id, e);
+                        } else {
+                            tracing::info!("Synced PRD context document for workflow {}", id);
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!("PG workflow create sync failed {}: {}", id, e),
             }
         }
     })
