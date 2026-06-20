@@ -1,14 +1,15 @@
-//! Context routes — wired to ContextService and SearchService via ApiError
+//! Context routes — wired to ContextService via ApiError
 
 use axum::routing::{get, post};
 use axum::{
     extract::{Path, Query, State},
     Json, Router,
 };
-use masday_db::repos::RetrievalLogRepo;
+use masday_db::repos::{CodeChunkRepo, RetrievalLogRepo};
 use masday_db::schema::NewRetrievalLog;
+use masday_service::embedding_service::EmbeddingService;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tracing::warn;
 
 use crate::middleware::error_handler::ApiError;
@@ -108,40 +109,122 @@ struct SearchQuery {
     task_id: Option<String>,
     #[serde(default)]
     agent_name: Option<String>,
+    /// Project path scoping the `code_chunks` index. Defaults to "." (whole project).
+    /// Callers should forward the canonical absolute path (the stdio MCP resolver does).
+    #[serde(default)]
+    project_path: Option<String>,
+    /// Max results. Defaults to 20, clamped to [1, 50].
+    #[serde(default)]
+    limit: Option<u64>,
 }
 
-/// Code search — uses filesystem + BM25 search
+/// Code search — pgvector semantic search over the shared PostgreSQL `code_chunks`
+/// index. Falls back to an empty `pgvector_unavailable` body (HTTP 200) when no
+/// embedding service is configured or embedding/vector search fails — semantic
+/// search being unavailable is not a request error. Mirrors the embed→vector_search
+/// pattern used by memory search (`routes/memory.rs`).
 async fn code_search(
     State(state): State<AppState>,
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let results = masday_service::SearchService::code_search(&params.query, ".")
-        .await
-        .map_err(|e| masday_core::AppError::internal(e.to_string()))?;
-    let count = results
-        .get("results")
-        .and_then(|v| v.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
+    let project_path = params.project_path.as_deref().unwrap_or(".");
+    // Clamp limit to a reasonable range; default 20.
+    let limit = params.limit.unwrap_or(20).clamp(1, 50) as i64;
+
+    let (body, source) = code_search_inner(&state.pool, &params.query, project_path, limit).await;
 
     // Log the retrieval (best-effort; never affects the response).
-    let summary = masday_service::summarize_retrieval_results(&results);
+    let summary = masday_service::summarize_retrieval_results(&body);
     log_retrieval(
         &state.pool,
         params.workflow_id.clone(),
         params.task_id.clone(),
         params.agent_name.as_deref(),
         &params.query,
-        "code_search",
+        source,
         Some(summary),
     )
     .await;
 
-    Ok(Json(serde_json::json!({
-        "query": params.query,
-        "results": results.get("results").cloned().unwrap_or(serde_json::json!([])),
-        "count": count
-    })))
+    Ok(Json(body))
+}
+
+/// Core of [`code_search`], factored out so the embed→vector_search flow is
+/// distinct from the graceful-degradation path. Returns `(response_body, source_tag)`
+/// where `source_tag` feeds both the JSON `source` field and retrieval logging.
+async fn code_search_inner(
+    pool: &masday_db::DbPool,
+    query: &str,
+    project_path: &str,
+    limit: i64,
+) -> (Value, &'static str) {
+    // Canonicalize the same way the indexer does so the `WHERE project_path = $2`
+    // lookup matches. On the API server the path usually isn't on the local fs, so
+    // canonicalize fails and the (already-canonical) input is returned unchanged.
+    let canonical = masday_db::repos::normalize_project_path(project_path);
+
+    if let Some(service) = EmbeddingService::cached() {
+        match service.embed(query).await {
+            Ok(vec) if !vec.is_empty() => {
+                let repo = CodeChunkRepo::new(pool.clone());
+                match repo.vector_search(&vec, &canonical, limit).await {
+                    Ok(results) => {
+                        let mapped: Vec<Value> = results
+                            .into_iter()
+                            .map(|r| {
+                                json!({
+                                    "file_path": r.file_path,
+                                    "language": r.language,
+                                    "chunk_type": r.chunk_type,
+                                    "name": r.name,
+                                    "start_line": r.start_line,
+                                    "end_line": r.end_line,
+                                    "content": r.content,
+                                    "similarity": r.similarity,
+                                })
+                            })
+                            .collect();
+                        let count = mapped.len();
+                        let body = json!({
+                            "query": query,
+                            "project_path": canonical,
+                            "results": mapped,
+                            "count": count,
+                            "source": "pgvector",
+                        });
+                        return (body, "pgvector");
+                    }
+                    Err(e) => warn!(
+                        "code_chunks vector_search failed for project {}: {}",
+                        canonical, e
+                    ),
+                }
+            }
+            Ok(_) => warn!("code_search: embedding service returned an empty vector"),
+            Err(e) => warn!("code_search: query embedding failed: {}", e),
+        }
+    }
+
+    // Degradation: semantic search unavailable. HTTP 200, not an error.
+    (degradation_body(query, &canonical), "pgvector_unavailable")
+}
+
+/// Graceful-degradation response body. Pure (no I/O) so it is unit-testable
+/// without a database pool or a configured embedding service.
+fn degradation_body(query: &str, canonical_project_path: &str) -> Value {
+    let reason = if EmbeddingService::cached().is_none() {
+        "embedding service not configured"
+    } else {
+        "embedding generation or vector search failed (see logs)"
+    };
+    json!({
+        "query": query,
+        "project_path": canonical_project_path,
+        "results": [],
+        "count": 0,
+        "source": "pgvector_unavailable",
+        "reason": reason,
+    })
 }
 
 #[derive(Deserialize)]
@@ -273,4 +356,45 @@ async fn fingerprint_search(
         "planId": input.plan_id,
         "taskId": input.task_id
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use masday_service::embedding_service::EmbeddingService;
+
+    /// When no embedding service is configured (the usual unit-test state —
+    /// `EMBEDDING_PROVIDER` unset → `EmbeddingService::cached()` is None),
+    /// `degradation_body` must report `pgvector_unavailable` with empty results
+    /// and the "not configured" reason. Pure helper — no DB pool needed.
+    #[test]
+    fn degradation_body_when_no_embedding_service() {
+        if EmbeddingService::cached().is_some() {
+            // A provider is configured in this environment; the "not configured"
+            // branch can't be exercised — skip rather than spuriously fail.
+            eprintln!("skipped: embedding service configured in this env");
+            return;
+        }
+        let body = degradation_body("async runtime", "/abs/project");
+        assert_eq!(body["source"], "pgvector_unavailable");
+        assert_eq!(body["count"], 0);
+        assert_eq!(body["query"], "async runtime");
+        assert_eq!(body["project_path"], "/abs/project");
+        assert_eq!(
+            body["reason"], "embedding service not configured",
+            "reason must reflect the no-service case"
+        );
+        assert_eq!(body["results"].as_array().unwrap().len(), 0);
+    }
+
+    /// `degradation_body` shape is consistent regardless of why search degraded:
+    /// source/count/results are identical; only the reason wording differs.
+    #[test]
+    fn degradation_body_shape_is_consistent() {
+        let body = degradation_body("q", "/p");
+        assert_eq!(body["source"], "pgvector_unavailable");
+        assert_eq!(body["count"], 0);
+        assert!(body["results"].as_array().unwrap().is_empty());
+        assert!(body["reason"].as_str().is_some());
+    }
 }

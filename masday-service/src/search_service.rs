@@ -1,101 +1,22 @@
-//! Filesystem code search.
+//! Shared retrieval-result helper.
 //!
-//! Historically this module also held pgvector/BM25 memory search, a
-//! context-pack builder, codebase indexing, and a SHA-256 fingerprint helper.
-//! All of those were dead — superseded by `ContextService` (context packs and
-//! the live `compute_fingerprint`) and the pgvector code-search path in
-//! `masday-mcp::direct` — and have been removed. What remains is the live
-//! filesystem `code_search` (reached by the `GET /context/search` route) plus
-//! the shared `summarize_retrieval_results` helper used by both the HTTP and
-//! stdio retrieval-log call sites.
+//! Historically this module also held a filesystem `code_search` (a substring
+//! scan over the project directory), pgvector/BM25 memory search, a context-pack
+//! builder, codebase indexing, and a SHA-256 fingerprint helper. All of those
+//! were dead or superseded:
+//! - code search now runs over the shared PostgreSQL `code_chunks` index. The
+//!   HTTP route (`masday_api::routes::context::code_search`) embeds the query
+//!   via `EmbeddingService` and calls `CodeChunkRepo::vector_search` directly;
+//!   the stdio MCP resolver (`masday_mcp::direct::resolve_code_search`) owns the
+//!   pgvector → API → SQLite priority chain. The filesystem scan served no live
+//!   caller — in remote/HTTP mode the API server has none of the client's files
+//!   — so it has been removed along with the now-empty `SearchService`.
+//! - context packs and the live `compute_fingerprint` live in `ContextService`.
+//!
+//! What remains is the shared `summarize_retrieval_results` helper used by both
+//! the HTTP and stdio retrieval-log call sites.
 
 use serde_json::{json, Value};
-use tokio::fs;
-use tracing::info;
-
-/// Filesystem code search.
-pub struct SearchService;
-
-impl SearchService {
-    /// Code search — walks project directory, searches file contents
-    pub async fn code_search(
-        query: &str,
-        project_path: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Starting code search for query: {}", query);
-
-        // Filesystem search — direct, no DB required
-        let fs_results = Self::filesystem_code_search(query, project_path).await?;
-
-        Ok(json!({
-            "query": query,
-            "results": fs_results,
-            "source": "filesystem"
-        }))
-    }
-
-    /// Filesystem-based code search (boxed for recursion)
-    async fn filesystem_code_search(
-        query: &str,
-        project_path: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        Self::filesystem_code_search_inner(query, project_path).await
-    }
-
-    /// Inner recursive function
-    async fn filesystem_code_search_inner(
-        query: &str,
-        project_path: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let mut matches = Vec::new();
-
-        let mut entries = fs::read_dir(project_path).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-
-            if path.is_dir() {
-                // Skip common directories
-                if let Some(name) = path.file_name() {
-                    let name_str = name.to_string_lossy();
-                    let skip_dirs = ["target", "node_modules", ".git", "dist", "build"];
-                    if skip_dirs.iter().any(|&d| name_str.contains(d)) {
-                        continue;
-                    }
-                }
-
-                // Recursively search subdirectories (boxed)
-                let boxed = Box::pin(Self::filesystem_code_search_inner(
-                    query,
-                    path.to_str().unwrap_or(""),
-                ));
-                if let Ok(sub_matches) = boxed.await {
-                    if let Some(arr) = sub_matches.as_array() {
-                        matches.extend(arr.clone());
-                    }
-                }
-            } else if let Some(ext) = path.extension() {
-                let ext_str = ext.to_string_lossy();
-                let allowed_exts = ["rs", "ts", "js", "json", "md", "toml"];
-                if allowed_exts.iter().any(|&e| ext_str.contains(e)) {
-                    if let Ok(content) = fs::read_to_string(&path).await {
-                        let content_lower = content.to_lowercase();
-                        let query_lower = query.to_lowercase();
-
-                        if content_lower.contains(&query_lower) {
-                            matches.push(json!({
-                                "file_path": path.to_str().unwrap_or(""),
-                                "language": ext_str,
-                                "matches": 1
-                            }));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(json!(matches))
-    }
-}
 
 /// Compact summary of a retrieval-result body for the `retrieval_logs.results`
 /// column. Keeps the row small — the match count plus a handful of sample

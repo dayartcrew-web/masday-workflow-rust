@@ -10,10 +10,18 @@ use masday_service::{
     reminder_service::{resolve_stale_execute_threshold, resolve_stuck_task_threshold},
     ReminderService,
 };
+use percent_encoding::{percent_encode, AsciiSet};
 use rusqlite::params;
 use serde_json::{json, Value};
 use std::path::Path;
 use tracing::{error, info, warn};
+
+/// RFC 3986 unreserved set for URL query values (mirrors `tools/workflow.rs`).
+const QUERY_ENCODE_SET: &AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 /// Load the capability registry from `.claude/registry.json`.
 /// Checks project dir first, then falls back to `~/.claude/registry.json` (global).
@@ -3373,10 +3381,19 @@ async fn resolve_code_search(
     }
 
     // Priority 2: PostgreSQL via the API server (remote / local-with-API parity).
+    // Forward the canonical project_path + limit so the remote search is scoped to
+    // this project instead of returning unattributed results. Query and path are
+    // percent-encoded (the query may contain spaces / & / # / ?).
     if let Some(api_url) = crate::client::try_get_api_url() {
         if !api_url.is_empty() {
-            let api_result =
-                crate::client::api_get(&format!("/api/context/search?query={}", query)).await;
+            let canonical = masday_db::repos::normalize_project_path(project_path);
+            let path = format!(
+                "/api/context/search?query={}&project_path={}&limit={}",
+                percent_encode(query.as_bytes(), QUERY_ENCODE_SET),
+                percent_encode(canonical.as_bytes(), QUERY_ENCODE_SET),
+                limit,
+            );
+            let api_result = crate::client::api_get(&path).await;
             if let Ok(val) = api_result {
                 if val["results"].as_array().is_some_and(|a| !a.is_empty()) {
                     return Ok(
@@ -3416,7 +3433,7 @@ async fn pgvector_code_search(query: &str, project_path: &str, limit: i64) -> Op
     use masday_db::repos::CodeChunkRepo;
 
     let pool = crate::pg::get_pool_wait(std::time::Duration::from_secs(5)).await?;
-    let canonical = crate::pg_code_index::normalize_project_path(project_path);
+    let canonical = masday_db::repos::normalize_project_path(project_path);
     let repo = CodeChunkRepo::new(pool);
 
     // Lazy index: no embedded chunks yet → kick off a background index and fall

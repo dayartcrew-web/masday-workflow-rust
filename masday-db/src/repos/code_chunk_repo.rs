@@ -18,6 +18,21 @@ pub struct CodeChunkRepo {
     pool: DbPool,
 }
 
+/// Normalize a project path to an absolute canonical form so that ".",
+/// relative paths, and symlinked variants all resolve to the same
+/// `code_chunks.project_path` key used by both the indexer and search queries.
+///
+/// On `canonicalize` failure (e.g. a remote API server that doesn't have the
+/// project on its own filesystem) the input is returned unchanged, so an
+/// already-canonical absolute path coming from a client still matches the
+/// indexed key rather than being silently rewritten.
+pub fn normalize_project_path(project_path: &str) -> String {
+    std::fs::canonicalize(project_path)
+        .ok()
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| project_path.to_string())
+}
+
 impl CodeChunkRepo {
     pub fn new(pool: DbPool) -> Self {
         Self { pool }
