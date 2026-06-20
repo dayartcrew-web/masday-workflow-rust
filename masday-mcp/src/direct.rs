@@ -2165,6 +2165,15 @@ pub async fn workflow_mark_synthesis_ready(
     )
     .map_err(|e| err(e))?;
 
+    // Fire-and-forget PG sync — non-blocking. Mirrors the VERIFY transition to
+    // PostgreSQL so the dashboard (which reads PG) advances in lockstep with the
+    // stdio/SQLite source of truth. No-op without a pool; matches the sync in
+    // `workflow_execute` (workflow_status spawn) and `workflow_update_status`.
+    let pg_id = wf_id.to_string();
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::workflow_status(&pg_id, "VERIFY").await;
+    });
+
     Ok(json!({"status": "VERIFY", "workflow_id": wf_id}))
 }
 
@@ -2204,6 +2213,15 @@ pub async fn workflow_mark_verification_ready(
         params![&t, wf_id],
     )
     .map_err(|e| err(e))?;
+
+    // Fire-and-forget PG sync — non-blocking. Mirrors the DONE transition to
+    // PostgreSQL so the dashboard (which reads PG) reflects the completed
+    // workflow. No-op without a pool; matches the sync in `workflow_execute`
+    // (workflow_status spawn) and `workflow_update_status`.
+    let pg_id = wf_id.to_string();
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::workflow_status(&pg_id, "DONE").await;
+    });
 
     Ok(json!({"status": "DONE", "workflow_id": wf_id}))
 }
