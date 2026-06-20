@@ -158,12 +158,20 @@ impl TaskRepo {
             .await
             .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
 
-        let minutes = threshold.num_minutes().max(0) as i32;
+        // Compute the cutoff timestamp on the client and bind it directly as
+        // timestamptz. The previous form `NOW() - ($1 * INTERVAL '1 minute')`
+        // left `$1`'s type to server inference: Postgres has no
+        // `integer * interval` operator (only `double precision * interval`),
+        // so it inferred `$1` as `float8`, then tokio-postgres tried to
+        // serialize the Rust `i32` value as `float8` and failed with
+        // "error serializing parameter 0". A direct timestamp bind has no
+        // arithmetic and no ambiguity.
+        let cutoff: chrono::DateTime<chrono::Utc> = chrono::Utc::now() - threshold;
         let query = r#"SELECT * FROM tasks
-            WHERE status = 'RUNNING' AND updated_at < NOW() - ($1 * INTERVAL '1 minute')
+            WHERE status = 'RUNNING' AND updated_at < $1
             ORDER BY updated_at ASC"#;
         let rows = client
-            .query(query, &[&minutes])
+            .query(query, &[&cutoff])
             .await
             .map_err(|e| AppError::Database(format!("Failed to find stuck tasks: {}", e)))?;
 
