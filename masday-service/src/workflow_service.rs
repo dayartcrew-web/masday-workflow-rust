@@ -498,16 +498,6 @@ impl WorkflowService {
         let service = Self::new(pool.clone());
         service.repo.update_status(id, status).await
     }
-
-    pub async fn update_workflow(
-        pool: &DbPool,
-        id: &str,
-        updates: serde_json::Value,
-    ) -> Result<Workflow> {
-        info!("Updating workflow {} with {:?}", id, updates);
-        let service = Self::new(pool.clone());
-        service.repo.update(id, updates).await
-    }
 }
 
 /// Auto-store an experience memory (best-effort, logs errors but doesn't fail the transition).

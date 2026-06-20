@@ -118,24 +118,6 @@ impl ReminderService {
         .await
     }
 
-    /// Check for reminders using a caller-supplied stuck-task threshold.
-    ///
-    /// Shortcut for [`check_reminders_with_options`] with `include_failed=false`
-    /// — the stale-workflow thresholds are the defaults; only the stuck-task
-    /// window is caller-tunable (the advertised `stuckTaskMinutes` MCP param).
-    pub async fn check_reminders_with_threshold(
-        pool: &DbPool,
-        stuck_task_threshold: Duration,
-    ) -> Result<Vec<WorkflowReminder>> {
-        Self::check_reminders_with_options(
-            pool,
-            stuck_task_threshold,
-            DEFAULT_STALE_EXECUTE_THRESHOLD,
-            false,
-        )
-        .await
-    }
-
     /// Check for reminders with caller-supplied thresholds and an
     /// `include_failed` flag.
     ///
