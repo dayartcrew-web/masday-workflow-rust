@@ -97,12 +97,30 @@ async fn list_templates() -> Json<Value> {
     Json(serde_json::json!([]))
 }
 
-async fn scaffold_feature(Json(_payload): Json<Value>) -> Json<Value> {
-    Json(serde_json::json!({"scaffolded": false, "message": "Not yet implemented"}))
+async fn scaffold_feature(Json(_payload): Json<Value>) -> Result<Json<Value>, ApiError> {
+    // See `create_agent`/`create_skill`: HTTP/remote mode cannot write
+    // `.claude/agents/{name}.md` + `.claude/skills/{name}/SKILL.md` into the
+    // client's project. Fail honestly instead of the former
+    // `{"scaffolded": false, "message": "Not yet implemented"}` non-error stub.
+    Err(ApiError(AppError::Validation(
+        "capability_scaffold_feature is not supported in remote/HTTP mode: the API \
+         server cannot write to your project's .claude/ directory. Use \
+         local/stdio mode (the `masday` CLI's stdio MCP server) to scaffold features."
+            .into(),
+    )))
 }
 
-async fn scaffold_mcp_server(Json(_payload): Json<Value>) -> Json<Value> {
-    Json(serde_json::json!({"scaffolded": false, "message": "Not yet implemented"}))
+async fn scaffold_mcp_server(Json(_payload): Json<Value>) -> Result<Json<Value>, ApiError> {
+    // See `create_agent`: HTTP/remote mode cannot write a new project directory
+    // into the client's filesystem. The stdio path creates `{projectRoot}/{name}/`
+    // locally; the API server has no access to that path. Fail honestly instead
+    // of the former non-error stub.
+    Err(ApiError(AppError::Validation(
+        "capability_scaffold_mcp_server is not supported in remote/HTTP mode: the \
+         API server cannot write to your project's filesystem. Use local/stdio \
+         mode (the `masday` CLI's stdio MCP server) to scaffold an MCP server."
+            .into(),
+    )))
 }
 
 async fn system_readiness(State(state): State<AppState>) -> Json<Value> {
@@ -156,6 +174,42 @@ mod tests {
         assert!(
             res.is_err(),
             "create_skill must fail honestly, not lie success"
+        );
+        match res.unwrap_err() {
+            ApiError(AppError::Validation(msg)) => assert!(
+                msg.contains("not supported in remote/HTTP mode"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected AppError::Validation, got: {other:?}"),
+        }
+    }
+
+    // Regression: scaffold_feature / scaffold_mcp_server used to return
+    // `{"scaffolded": false, ...}` non-error stubs. They must now fail honestly
+    // in remote/HTTP mode (same constraint as create_agent/create_skill).
+
+    #[tokio::test]
+    async fn scaffold_feature_fails_honestly_in_remote_mode() {
+        let res = scaffold_feature(Json(serde_json::json!({"name": "feat"}))).await;
+        assert!(
+            res.is_err(),
+            "scaffold_feature must fail honestly, not lie success"
+        );
+        match res.unwrap_err() {
+            ApiError(AppError::Validation(msg)) => assert!(
+                msg.contains("not supported in remote/HTTP mode"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected AppError::Validation, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn scaffold_mcp_server_fails_honestly_in_remote_mode() {
+        let res = scaffold_mcp_server(Json(serde_json::json!({"name": "srv"}))).await;
+        assert!(
+            res.is_err(),
+            "scaffold_mcp_server must fail honestly, not lie success"
         );
         match res.unwrap_err() {
             ApiError(AppError::Validation(msg)) => assert!(
