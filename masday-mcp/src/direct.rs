@@ -3024,9 +3024,21 @@ pub async fn review_submit(args: Value) -> Result<Value, Box<dyn std::error::Err
         .as_str()
         .or_else(|| args["reviewer"].as_str())
         .ok_or_else(|| err("missing reviewer_agent"))?;
-    let decision = args["decision"]
+    let raw_decision = args["decision"]
         .as_str()
         .ok_or_else(|| err("missing decision"))?;
+    // Normalize + validate, mirroring the PG path (review_service.rs:54). The
+    // completion gate in `complete_task` compares `latest_review.as_deref() !=
+    // Some("APPROVED")` case-sensitively, so storing a raw lowercase "approved"
+    // would permanently brick task completion for that task. Uppercase +
+    // enum-validate before persisting.
+    let decision = raw_decision.to_uppercase();
+    if !matches!(
+        decision.as_str(),
+        "APPROVED" | "REWORK_REQUIRED" | "BLOCKED"
+    ) {
+        return Err(err(format!("Invalid review decision: {}", raw_decision)));
+    }
     let notes = args["notes"].as_str().unwrap_or("");
     let gaps = args.get("gaps").map(|v| v.to_string());
     let t = now();
@@ -6044,6 +6056,75 @@ mod tests {
         assert_eq!(val["valid"], true);
         assert_eq!(val["task_status"], "DONE");
         assert_eq!(val["all_workflow_tasks_terminal"], true);
+    }
+
+    #[tokio::test]
+    async fn test_review_submit_normalizes_decision_case() {
+        let _guard = TestDbGuard::new();
+
+        // Regression: review_submit stored the decision verbatim. The completion
+        // gate compares `latest_review.as_deref() != Some("APPROVED")`
+        // case-sensitively, so a lowercase "approved" permanently bricked task
+        // completion. review_submit now uppercases + enum-validates, mirroring
+        // the PG path (review_service.rs).
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![&task_id, &wf_id, &plan_id, "task1", "DONE"],
+            )
+            .unwrap();
+        }
+
+        // Lowercase "approved" must be accepted and normalized to APPROVED.
+        let args = json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id,
+            "reviewer_agent": "test-agent",
+            "decision": "approved",
+            "notes": "lgtm"
+        });
+        let result = review_submit(args).await;
+        assert!(result.is_ok(), "lowercase decision should be accepted");
+
+        // Verify it was persisted as uppercase APPROVED (what the gate expects).
+        {
+            let conn = crate::sqlite::conn();
+            let stored: String = conn
+                .query_row(
+                    "SELECT decision FROM review_decisions WHERE workflow_id=?1 AND task_id=?2",
+                    params![&wf_id, &task_id],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(stored, "APPROVED");
+        }
+
+        // An invalid decision must be rejected, not silently stored.
+        let bad = json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id,
+            "reviewer_agent": "test-agent",
+            "decision": "MAYBE"
+        });
+        assert!(
+            review_submit(bad).await.is_err(),
+            "invalid decision must be rejected"
+        );
     }
 
     #[tokio::test]
