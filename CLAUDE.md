@@ -67,9 +67,9 @@ masday-mcp  --> masday-service --> masday-db --> masday-core
 masday-api  --> masday-service --> masday-db --> masday-core
 ```
 
-## MCP Server — 20 Tool Domains (92 tools)
+## MCP Server — 20 Tool Domains (92 HTTP / 70 stdio)
 
-Binary: `masday-mcp` (stdio transport)
+Binary: `masday-mcp`. Tool surface is mode-dependent: **92 tools** in HTTP/remote mode (via `masday-api` + PostgreSQL) and **70 tools** in stdio/local mode (`masday mcp` + SQLite). Per-domain counts in the table below are the HTTP/remote superset; the stdio registry registers a subset of each domain.
 
 | Domain | Tools | Module | Description |
 |--------|-------|--------|-------------|
