@@ -610,7 +610,13 @@ fn register_capability_tools(r: &mut ToolRegistry) {
         r,
         "capability_create_agent",
         "Create an agent",
-        schema!("project_root", "name", "role", "description", "instructions"),
+        schema!(
+            "project_root",
+            "name",
+            "role",
+            "description",
+            "instructions"
+        ),
         cap::capability_create_agent
     );
     reg!(
@@ -1587,7 +1593,13 @@ fn register_capability_tools_stdio(r: &mut ToolRegistry) {
         r,
         "capability_create_agent",
         "Create an agent",
-        schema!("project_root", "name", "role", "description", "instructions"),
+        schema!(
+            "project_root",
+            "name",
+            "role",
+            "description",
+            "instructions"
+        ),
         d::capability_create_agent
     );
     reg!(

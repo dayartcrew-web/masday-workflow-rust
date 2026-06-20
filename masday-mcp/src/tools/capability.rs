@@ -313,8 +313,12 @@ mod tests {
 
     #[test]
     fn arg_str_prefers_advertised_key() {
-        let args = serde_json::json!({"task_description": "build api", "taskDescription": "legacy"});
-        assert_eq!(arg_str(&args, "task_description", "taskDescription"), Some("build api"));
+        let args =
+            serde_json::json!({"task_description": "build api", "taskDescription": "legacy"});
+        assert_eq!(
+            arg_str(&args, "task_description", "taskDescription"),
+            Some("build api")
+        );
     }
 
     #[test]

@@ -229,7 +229,8 @@ fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> 
 /// Read a string arg by snake_case key, falling back to the camelCase alias
 /// (backward compat with clients that still send the legacy camelCase name).
 fn argstr2<'a>(args: &'a Value, snake: &str, camel: &str) -> Option<&'a str> {
-    args.get(snake).and_then(|v| v.as_str())
+    args.get(snake)
+        .and_then(|v| v.as_str())
         .or_else(|| args.get(camel).and_then(|v| v.as_str()))
 }
 
@@ -4125,8 +4126,8 @@ pub async fn memory_search_nodes(
 pub async fn capability_list_agents(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let project_root = argstr2(&args, "project_root", "projectRoot")
-        .ok_or_else(|| err("missing project_root"))?;
+    let project_root =
+        argstr2(&args, "project_root", "projectRoot").ok_or_else(|| err("missing project_root"))?;
 
     let registry = load_registry(project_root);
     let agents: Vec<Value> = registry["components"]["agents"]
@@ -4143,8 +4144,8 @@ pub async fn capability_list_agents(
 pub async fn capability_list_skills(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let project_root = argstr2(&args, "project_root", "projectRoot")
-        .ok_or_else(|| err("missing project_root"))?;
+    let project_root =
+        argstr2(&args, "project_root", "projectRoot").ok_or_else(|| err("missing project_root"))?;
 
     let registry = load_registry(project_root);
     let skills: Vec<Value> = registry["components"]["skills"]
