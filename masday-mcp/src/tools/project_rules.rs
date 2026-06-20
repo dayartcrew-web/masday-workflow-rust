@@ -7,9 +7,10 @@ pub async fn projectrules_check(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let project_root = args
-        .get("projectRoot")
+        .get("project_root")
         .and_then(|v| v.as_str())
-        .ok_or("Missing 'projectRoot' argument")?;
+        .or_else(|| args.get("projectRoot").and_then(|v| v.as_str()))
+        .ok_or("Missing 'project_root' argument")?;
 
     let rules_dir = std::path::Path::new(project_root)
         .join(".claude")
@@ -109,7 +110,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let project_root = temp_dir.path().to_str().unwrap();
 
-        let args = json!({ "projectRoot": project_root });
+        let args = json!({ "project_root": project_root });
         let result = projectrules_check(args).await;
 
         assert!(result.is_ok());
@@ -131,7 +132,7 @@ mod tests {
             .unwrap();
 
         let project_root = temp_dir.path().to_str().unwrap();
-        let args = json!({ "projectRoot": project_root });
+        let args = json!({ "project_root": project_root });
         let result = projectrules_check(args).await;
 
         assert!(result.is_ok());
@@ -158,7 +159,7 @@ mod tests {
         tokio::fs::write(&rule_file, "").await.unwrap();
 
         let project_root = temp_dir.path().to_str().unwrap();
-        let args = json!({ "projectRoot": project_root });
+        let args = json!({ "project_root": project_root });
         let result = projectrules_check(args).await;
 
         assert!(result.is_ok());
@@ -180,7 +181,7 @@ mod tests {
             .unwrap();
 
         let project_root = temp_dir.path().to_str().unwrap();
-        let args = json!({ "projectRoot": project_root });
+        let args = json!({ "project_root": project_root });
         let result = projectrules_check(args).await;
 
         assert!(result.is_ok());

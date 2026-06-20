@@ -577,7 +577,7 @@ fn register_reminder_tools(r: &mut ToolRegistry) {
         r,
         "reminder_acknowledge",
         "Acknowledge a reminder",
-        schema!("id?", "workflowId?"),
+        schema!("id?", "workflow_id?"),
         rem::reminder_acknowledge
     );
 }
@@ -610,28 +610,28 @@ fn register_capability_tools(r: &mut ToolRegistry) {
         r,
         "capability_create_agent",
         "Create an agent",
-        schema!("projectRoot", "name", "role", "description", "instructions"),
+        schema!("project_root", "name", "role", "description", "instructions"),
         cap::capability_create_agent
     );
     reg!(
         r,
         "capability_create_skill",
         "Create a skill",
-        schema!("projectRoot", "name", "description", "trigger", "steps"),
+        schema!("project_root", "name", "description", "trigger", "steps"),
         cap::capability_create_skill
     );
     reg!(
         r,
         "capability_list_agents",
         "List registered agents",
-        schema!("projectRoot"),
+        schema!("project_root"),
         cap::capability_list_agents
     );
     reg!(
         r,
         "capability_list_skills",
         "List registered skills",
-        schema!("projectRoot"),
+        schema!("project_root"),
         cap::capability_list_skills
     );
     reg!(
@@ -645,35 +645,35 @@ fn register_capability_tools(r: &mut ToolRegistry) {
         r,
         "capability_match_agent",
         "Match agent for a task",
-        schema!("projectRoot", "taskDescription"),
+        schema!("project_root", "task_description"),
         cap::capability_match_agent
     );
     reg!(
         r,
         "capability_scaffold_feature",
         "Scaffold a new feature",
-        schema!("projectRoot", "name", "description"),
+        schema!("project_root", "name", "description"),
         cap::capability_scaffold_feature
     );
     reg!(
         r,
         "capability_scaffold_mcp_server",
         "Scaffold an MCP server",
-        schema!("projectRoot", "name", "description"),
+        schema!("project_root", "name", "description"),
         cap::capability_scaffold_mcp_server
     );
     reg!(
         r,
         "capability_system_readiness",
         "Check system readiness",
-        schema!("projectRoot"),
+        schema!("project_root"),
         cap::capability_system_readiness
     );
     reg!(
         r,
         "capability_workflow_audit",
         "Audit a workflow",
-        schema!("workflowId"),
+        schema!("workflow_id"),
         cap::capability_workflow_audit
     );
 }
@@ -890,7 +890,7 @@ fn register_project_rules_tools(r: &mut ToolRegistry) {
         r,
         "projectRules_check",
         "Sanity-check that .claude/rules markdown files exist and are well-formed (basic file-format check: directory present, >=1 non-empty .md with markdown headers). NOT a lint or rule-content validator.",
-        schema!("projectRoot?"),
+        schema!("project_root?"),
         pr::projectrules_check
     );
 }
@@ -1556,7 +1556,7 @@ fn register_reminder_tools_stdio(r: &mut ToolRegistry) {
         r,
         "reminder_acknowledge",
         "Acknowledge a reminder",
-        schema!("id?", "workflowId?"),
+        schema!("id?", "workflow_id?"),
         d::reminder_acknowledge
     );
 }
@@ -1587,28 +1587,28 @@ fn register_capability_tools_stdio(r: &mut ToolRegistry) {
         r,
         "capability_create_agent",
         "Create an agent",
-        schema!("projectRoot", "name", "role", "description", "instructions"),
+        schema!("project_root", "name", "role", "description", "instructions"),
         d::capability_create_agent
     );
     reg!(
         r,
         "capability_create_skill",
         "Create a skill",
-        schema!("projectRoot", "name", "description", "trigger", "steps"),
+        schema!("project_root", "name", "description", "trigger", "steps"),
         d::capability_create_skill
     );
     reg!(
         r,
         "capability_list_agents",
         "List registered agents",
-        schema!("projectRoot"),
+        schema!("project_root"),
         d::capability_list_agents
     );
     reg!(
         r,
         "capability_list_skills",
         "List registered skills",
-        schema!("projectRoot"),
+        schema!("project_root"),
         d::capability_list_skills
     );
     reg!(
@@ -1622,35 +1622,35 @@ fn register_capability_tools_stdio(r: &mut ToolRegistry) {
         r,
         "capability_match_agent",
         "Match agent for a task",
-        schema!("projectRoot", "taskDescription"),
+        schema!("project_root", "task_description"),
         d::capability_match_agent
     );
     reg!(
         r,
         "capability_scaffold_feature",
         "Scaffold a new feature",
-        schema!("projectRoot", "name", "description"),
+        schema!("project_root", "name", "description"),
         d::capability_scaffold_feature
     );
     reg!(
         r,
         "capability_scaffold_mcp_server",
         "Scaffold an MCP server",
-        schema!("projectRoot", "name", "description"),
+        schema!("project_root", "name", "description"),
         d::capability_scaffold_mcp_server
     );
     reg!(
         r,
         "capability_system_readiness",
         "Check system readiness",
-        schema!("projectRoot"),
+        schema!("project_root"),
         d::capability_system_readiness
     );
     reg!(
         r,
         "capability_workflow_audit",
         "Audit a workflow",
-        schema!("workflowId"),
+        schema!("workflow_id"),
         d::capability_workflow_audit
     );
 }

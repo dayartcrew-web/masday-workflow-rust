@@ -4,8 +4,8 @@ use crate::client;
 use serde_json::Value;
 
 /// Resolve a string arg by trying the schema-advertised key first, then a legacy
-/// alias. The HTTP capability handlers must read the camelCase keys advertised in
-/// their `schema!` (`taskDescription`, `workflowId`, `projectRoot`) — otherwise a
+/// alias. The HTTP capability handlers must read the snake_case keys advertised in
+/// their `schema!` (`task_description`, `workflow_id`, `project_root`) — otherwise a
 /// client sending the advertised param gets a "Missing …" error. The stdio
 /// handlers in `direct.rs` already read these; this restores parity. The legacy
 /// fallback keeps existing callers working.
@@ -152,10 +152,10 @@ pub async fn capability_create_skill(
 pub async fn capability_list_agents(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Forward the advertised `projectRoot` so the route loads the registry from
+    // Forward the advertised `project_root` so the route loads the registry from
     // the user's project, not the API server's CWD (the route defaults to ".").
-    // Stdio `direct.rs` already reads projectRoot here.
-    let project_root = arg_str(&args, "projectRoot", "project_root").unwrap_or(".");
+    // Stdio `direct.rs` already reads project_root here.
+    let project_root = arg_str(&args, "project_root", "projectRoot").unwrap_or(".");
     client::api_get(&format!(
         "/api/capabilities/agents?project_root={}",
         project_root
@@ -178,11 +178,11 @@ pub async fn capability_list_templates(
 pub async fn capability_match_agent(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Read the schema-advertised `taskDescription` (falls back to legacy `task`).
-    // Without this a client sending `taskDescription` gets "Missing task" — the
+    // Read the schema-advertised `task_description` (falls back to legacy `taskDescription`).
+    // Without this a client sending `task_description` gets "Missing task" — the
     // stdio handler in `direct.rs` already reads both keys.
-    let task = arg_str(&args, "taskDescription", "task")
-        .ok_or_else(|| "Missing taskDescription".to_string())?;
+    let task = arg_str(&args, "task_description", "taskDescription")
+        .ok_or_else(|| "Missing task_description".to_string())?;
     client::api_get(&format!("/api/capabilities/match?task={}", task)).await
 }
 
@@ -207,12 +207,12 @@ pub async fn capability_system_readiness(
 pub async fn capability_workflow_audit(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Read the schema-advertised `workflowId` (falls back to legacy
-    // `workflow_id`). Without this a client sending `workflowId` gets
+    // Read the schema-advertised `workflow_id` (falls back to legacy
+    // `workflowId`). Without this a client sending `workflow_id` gets
     // "Missing workflow_id" — the stdio handler in `direct.rs` already reads
     // both keys.
-    let workflow_id = arg_str(&args, "workflowId", "workflow_id")
-        .ok_or_else(|| "Missing workflowId".to_string())?;
+    let workflow_id = arg_str(&args, "workflow_id", "workflowId")
+        .ok_or_else(|| "Missing workflow_id".to_string())?;
     client::api_get(&format!("/api/capabilities/audit/{}", workflow_id)).await
 }
 
@@ -307,21 +307,21 @@ mod tests {
     }
 
     // arg_str underpins the HTTP capability handlers reading the schema-
-    // advertised camelCase keys (taskDescription/workflowId/projectRoot) with a
+    // advertised snake_case keys (task_description/workflow_id/project_root) with a
     // legacy fallback — see capability_match_agent / capability_workflow_audit /
     // capability_list_agents. The stdio handlers in direct.rs already read both.
 
     #[test]
     fn arg_str_prefers_advertised_key() {
-        let args = serde_json::json!({"taskDescription": "build api", "task": "legacy"});
-        assert_eq!(arg_str(&args, "taskDescription", "task"), Some("build api"));
+        let args = serde_json::json!({"task_description": "build api", "taskDescription": "legacy"});
+        assert_eq!(arg_str(&args, "task_description", "taskDescription"), Some("build api"));
     }
 
     #[test]
     fn arg_str_falls_back_to_legacy() {
-        let args = serde_json::json!({"task": "legacy-only"});
+        let args = serde_json::json!({"taskDescription": "legacy-only"});
         assert_eq!(
-            arg_str(&args, "taskDescription", "task"),
+            arg_str(&args, "task_description", "taskDescription"),
             Some("legacy-only")
         );
     }
@@ -329,24 +329,24 @@ mod tests {
     #[test]
     fn arg_str_none_when_both_absent() {
         let args = serde_json::json!({"other": "x"});
-        assert_eq!(arg_str(&args, "taskDescription", "task"), None);
+        assert_eq!(arg_str(&args, "task_description", "taskDescription"), None);
     }
 
     #[test]
     fn arg_str_none_when_not_a_string() {
         // A non-string value must not satisfy the lookup (matches the .as_str() guard).
-        let args = serde_json::json!({"taskDescription": 123});
-        assert_eq!(arg_str(&args, "taskDescription", "task"), None);
+        let args = serde_json::json!({"task_description": 123});
+        assert_eq!(arg_str(&args, "task_description", "taskDescription"), None);
     }
 
     #[test]
     fn arg_str_workflow_audit_keys() {
-        let advertised = serde_json::json!({"workflowId": "wf-1"});
-        let legacy = serde_json::json!({"workflow_id": "wf-2"});
+        let advertised = serde_json::json!({"workflow_id": "wf-1"});
+        let legacy = serde_json::json!({"workflowId": "wf-2"});
         assert_eq!(
-            arg_str(&advertised, "workflowId", "workflow_id"),
+            arg_str(&advertised, "workflow_id", "workflowId"),
             Some("wf-1")
         );
-        assert_eq!(arg_str(&legacy, "workflowId", "workflow_id"), Some("wf-2"));
+        assert_eq!(arg_str(&legacy, "workflow_id", "workflowId"), Some("wf-2"));
     }
 }

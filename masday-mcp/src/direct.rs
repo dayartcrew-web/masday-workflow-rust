@@ -226,9 +226,16 @@ fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> 
     format!("{}", msg).into()
 }
 
+/// Read a string arg by snake_case key, falling back to the camelCase alias
+/// (backward compat with clients that still send the legacy camelCase name).
+fn argstr2<'a>(args: &'a Value, snake: &str, camel: &str) -> Option<&'a str> {
+    args.get(snake).and_then(|v| v.as_str())
+        .or_else(|| args.get(camel).and_then(|v| v.as_str()))
+}
+
 /// Validate a scaffold name (agent/skill/project directory component).
 ///
-/// The name is joined to `projectRoot` to form filesystem paths, so it must be
+/// The name is joined to `project_root` to form filesystem paths, so it must be
 /// a path-safe identifier: ASCII letters, digits, `-`, `_` only. This rejects
 /// `/`, `\`, `..`, whitespace, and empty strings, preventing path traversal.
 fn validate_scaffold_name(name: &str) -> Result<&str, Box<dyn std::error::Error + Send + Sync>> {
@@ -4019,7 +4026,7 @@ pub async fn reminder_acknowledge(
     let conn = crate::sqlite::conn();
     let id = args
         .get("id")
-        .or_else(|| args.get("workflowId"))
+        .or_else(|| args.get("workflow_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| err("missing id"))?;
 
@@ -4118,10 +4125,8 @@ pub async fn memory_search_nodes(
 pub async fn capability_list_agents(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let project_root = args["projectRoot"]
-        .as_str()
-        .or_else(|| args["project_root"].as_str())
-        .ok_or_else(|| err("missing projectRoot"))?;
+    let project_root = argstr2(&args, "project_root", "projectRoot")
+        .ok_or_else(|| err("missing project_root"))?;
 
     let registry = load_registry(project_root);
     let agents: Vec<Value> = registry["components"]["agents"]
@@ -4138,10 +4143,8 @@ pub async fn capability_list_agents(
 pub async fn capability_list_skills(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let project_root = args["projectRoot"]
-        .as_str()
-        .or_else(|| args["project_root"].as_str())
-        .ok_or_else(|| err("missing projectRoot"))?;
+    let project_root = argstr2(&args, "project_root", "projectRoot")
+        .ok_or_else(|| err("missing project_root"))?;
 
     let registry = load_registry(project_root);
     let skills: Vec<Value> = registry["components"]["skills"]
@@ -4158,14 +4161,9 @@ pub async fn capability_list_skills(
 pub async fn capability_match_agent(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let project_root = args["projectRoot"]
-        .as_str()
-        .or_else(|| args["project_root"].as_str())
-        .unwrap_or(".");
-    let task_desc = args["taskDescription"]
-        .as_str()
-        .or_else(|| args["task_description"].as_str())
-        .ok_or_else(|| err("missing taskDescription"))?;
+    let project_root = argstr2(&args, "project_root", "projectRoot").unwrap_or(".");
+    let task_desc = argstr2(&args, "task_description", "taskDescription")
+        .ok_or_else(|| err("missing task_description"))?;
 
     let registry = load_registry(project_root);
     let agents = registry["components"]["agents"]
@@ -4235,8 +4233,8 @@ pub async fn capability_match_agent(
 pub async fn capability_scaffold_feature(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // projectRoot defaults to "."; name is REQUIRED (schema advertises it).
-    let project_root = args["projectRoot"].as_str().unwrap_or(".");
+    // project_root defaults to "."; name is REQUIRED (schema advertises it).
+    let project_root = argstr2(&args, "project_root", "projectRoot").unwrap_or(".");
     let name = args["name"].as_str().ok_or_else(|| err("missing name"))?;
     let description = args["description"].as_str().unwrap_or("");
 
@@ -4244,9 +4242,9 @@ pub async fn capability_scaffold_feature(
     //    path-safe identifier (rejects traversal like `../`, `/`, `\`).
     validate_scaffold_name(name)?;
 
-    // 2. Validate projectRoot exists ("." always exists). Mirrors system_readiness.
+    // 2. Validate project_root exists ("." always exists). Mirrors system_readiness.
     if !project_root.is_empty() && !Path::new(project_root).exists() {
-        return Err(format!("projectRoot does not exist: {}", project_root).into());
+        return Err(format!("project_root does not exist: {}", project_root).into());
     }
 
     // 3. Write the agent file (mirrors capability_create_agent).
@@ -4308,21 +4306,21 @@ pub async fn capability_scaffold_feature(
 pub async fn capability_scaffold_mcp_server(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // 1. Parse args (projectRoot defaults to ".").
-    let project_root = args["projectRoot"].as_str().unwrap_or(".");
+    // 1. Parse args (project_root defaults to ".").
+    let project_root = argstr2(&args, "project_root", "projectRoot").unwrap_or(".");
     let name_raw = args["name"].as_str().ok_or_else(|| err("missing name"))?;
     let description = args["description"].as_str().unwrap_or("");
 
     // 2. Validate name (path-traversal safe).
     let name = validate_scaffold_name(name_raw)?;
 
-    // 3. Validate projectRoot exists.
+    // 3. Validate project_root exists.
     let root_path = Path::new(project_root);
     if !root_path.exists() {
-        return Err(format!("projectRoot does not exist: {}", project_root).into());
+        return Err(format!("project_root does not exist: {}", project_root).into());
     }
 
-    // 4. Target dir = {projectRoot}/{name}; refuse to clobber existing work.
+    // 4. Target dir = {project_root}/{name}; refuse to clobber existing work.
     let target = root_path.join(name);
     if target.exists() {
         return Err(format!(
@@ -4510,8 +4508,8 @@ mod scaffold_tests {
 pub async fn capability_system_readiness(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Validate projectRoot if provided
-    if let Some(root) = args.get("projectRoot").and_then(|v| v.as_str()) {
+    // Validate project_root if provided
+    if let Some(root) = argstr2(&args, "project_root", "projectRoot") {
         if !root.is_empty() && !std::path::Path::new(root).exists() {
             return Err(format!("projectRoot does not exist: {}", root).into());
         }
@@ -4524,10 +4522,10 @@ pub async fn capability_workflow_audit(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
     let workflow_id = args
-        .get("workflowId")
-        .or_else(|| args.get("workflow_id"))
+        .get("workflow_id")
+        .or_else(|| args.get("workflowId"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| err("missing workflowId"))?;
+        .ok_or_else(|| err("missing workflow_id"))?;
 
     let wf = conn.query_row(
         "SELECT id, name, status FROM workflows WHERE id=?1", params![workflow_id],
@@ -4605,10 +4603,7 @@ pub async fn capability_create_skill(
 pub async fn capability_list_templates(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let project_root = args["projectRoot"]
-        .as_str()
-        .or_else(|| args["project_root"].as_str())
-        .unwrap_or(".");
+    let project_root = argstr2(&args, "project_root", "projectRoot").unwrap_or(".");
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
     let pr = Path::new(project_root);
     let h = Path::new(&home);
