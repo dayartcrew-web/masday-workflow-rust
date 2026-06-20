@@ -2946,6 +2946,34 @@ pub async fn review_submit(args: Value) -> Result<Value, Box<dyn std::error::Err
         params![id, workflow_id, task_id, reviewer, decision, notes, gaps, &t],
     ).map_err(|e| err(e))?;
 
+    // Fire-and-forget PG sync — non-blocking. Mirrors the review decision to
+    // PostgreSQL so the PG-backed dashboard shows stdio-submitted reviews. The
+    // completion gate reads from this same SQLite DB (complete_task queries
+    // review_decisions here), so this does not affect gating — dashboard-only.
+    // No-op without a pool; matches the sync idiom in `workflow_execute`
+    // (workflow_status spawn) and `workflow_update_status`.
+    let pg_id = id.clone();
+    let pg_wf = workflow_id.to_string();
+    let pg_task = task_id.to_string();
+    let pg_reviewer = reviewer.to_string();
+    let pg_decision = decision.to_string();
+    let pg_notes = notes.to_string();
+    let pg_gaps = args.get("gaps").filter(|v| !v.is_null()).cloned();
+    let pg_created = t.clone();
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::review_submit(
+            &pg_id,
+            &pg_wf,
+            &pg_task,
+            &pg_reviewer,
+            &pg_decision,
+            &pg_notes,
+            pg_gaps,
+            &pg_created,
+        )
+        .await;
+    });
+
     Ok(json!({"submitted": true}))
 }
 
