@@ -3,11 +3,24 @@
 use crate::client;
 use serde_json::Value;
 
+/// Build the `?stuck_task_minutes=` query string for the reminder endpoints
+/// from the advertised `stuckTaskMinutes` MCP arg. Returns an empty string when
+/// the caller omitted it (legacy behavior — the API route then uses the default
+/// 60-minute threshold). Pure so the param-forwarding is unit-testable without
+/// hitting the API.
+fn stuck_query_param(args: &Value) -> String {
+    args.get("stuckTaskMinutes")
+        .and_then(|v| v.as_i64())
+        .map(|m| format!("?stuck_task_minutes={}", m))
+        .unwrap_or_default()
+}
+
 pub async fn reminder_check(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let stale = client::api_get("/api/reminders/stale").await?;
-    let stuck = client::api_get("/api/reminders/stuck").await?;
+    let query = stuck_query_param(&args);
+    let stale = client::api_get(&format!("/api/reminders/stale{}", query)).await?;
+    let stuck = client::api_get(&format!("/api/reminders/stuck{}", query)).await?;
     Ok(serde_json::json!({ "stale": stale, "stuck": stuck }))
 }
 
@@ -33,6 +46,7 @@ pub async fn reminder_acknowledge(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use serde_json::json;
 
     #[test]
@@ -71,5 +85,21 @@ mod tests {
         let args = json!({});
         let wid = args.get("workflow_id").and_then(|v| v.as_str());
         assert!(wid.is_none());
+    }
+
+    #[test]
+    fn test_stuck_query_param_present() {
+        // advertised stuckTaskMinutes is forwarded as a query param.
+        assert_eq!(
+            stuck_query_param(&json!({ "stuckTaskMinutes": 10 })),
+            "?stuck_task_minutes=10"
+        );
+    }
+
+    #[test]
+    fn test_stuck_query_param_absent() {
+        // no arg -> empty string -> API uses the default threshold (legacy).
+        assert_eq!(stuck_query_param(&json!({})), "");
+        assert_eq!(stuck_query_param(&Value::Null), "");
     }
 }

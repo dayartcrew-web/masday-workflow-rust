@@ -11,15 +11,33 @@ use masday_db::DbPool;
 use tracing::{info, warn};
 
 /// A task RUNNING longer than this with no `updated_at` refresh is considered
-/// stuck. The `stuckTaskMinutes` MCP param is advertised but not yet wired
-/// through the route→service call chain (deferred to a thin follow-up);
-/// detection uses this default until then.
+/// stuck. Used as the fallback when a caller omits the `stuckTaskMinutes` MCP
+/// param (or passes a value too small to be meaningful — see
+/// [`resolve_stuck_task_threshold`]).
 ///
 /// Public so the standalone stdio/SQLite path (`masday-mcp` `direct.rs`) reuses
 /// the exact same threshold — single source of truth for what "stuck" means
 /// (mirrors how `compute_new_reminders` / `compute_stuck_task_reminders` are
 /// already shared across both paths).
 pub const DEFAULT_STUCK_TASK_THRESHOLD: Duration = Duration::minutes(60);
+
+/// Resolve a caller-supplied `stuckTaskMinutes` value to a `Duration`.
+///
+/// Returns [`DEFAULT_STUCK_TASK_THRESHOLD`] when the caller omitted the param
+/// (`None`) — preserving legacy behavior — or passed a value `< 1` minute (a
+/// 0/negative threshold would flag every RUNNING task as stuck immediately,
+/// which is never the intent). Otherwise honors the explicit value.
+///
+/// Pure (no I/O) and shared by both the HTTP/API path and the stdio/SQLite
+/// path, so the clamping rule is identical everywhere — single source of truth
+/// for the param→threshold translation (mirrors
+/// [`DEFAULT_STUCK_TASK_THRESHOLD`] being shared).
+pub fn resolve_stuck_task_threshold(stuck_task_minutes: Option<i64>) -> Duration {
+    match stuck_task_minutes {
+        Some(m) if m >= 1 => Duration::minutes(m),
+        _ => DEFAULT_STUCK_TASK_THRESHOLD,
+    }
+}
 
 /// Reminder service
 pub struct ReminderService {
@@ -38,7 +56,12 @@ impl ReminderService {
         }
     }
 
-    /// Check for reminders (stale/stuck/failed workflows)
+    /// Check for reminders (stale/stuck/failed workflows) using the default
+    /// stuck-task threshold ([`DEFAULT_STUCK_TASK_THRESHOLD`]).
+    ///
+    /// Backwards-compatible entry point for callers that have no caller-supplied
+    /// threshold — the background sweeper and the reminder routes when no
+    /// `stuckTaskMinutes` param was supplied. Behavior is identical to pre-wiring.
     ///
     /// # Arguments
     /// * `pool` - Database connection pool
@@ -46,6 +69,20 @@ impl ReminderService {
     /// # Returns
     /// * `Result<Vec<WorkflowReminder>>` - List of active reminders
     pub async fn check_reminders(pool: &DbPool) -> Result<Vec<WorkflowReminder>> {
+        Self::check_reminders_with_threshold(pool, DEFAULT_STUCK_TASK_THRESHOLD).await
+    }
+
+    /// Check for reminders using a caller-supplied stuck-task threshold.
+    ///
+    /// Same as [`check_reminders`] but the stuck-task pass uses `stuck_task_threshold`
+    /// instead of the 60-minute default — this is where the advertised
+    /// `stuckTaskMinutes` MCP param lands (resolved via
+    /// [`resolve_stuck_task_threshold`]). The stale-workflow thresholds are
+    /// unaffected (only the stuck-task window is caller-tunable).
+    pub async fn check_reminders_with_threshold(
+        pool: &DbPool,
+        stuck_task_threshold: Duration,
+    ) -> Result<Vec<WorkflowReminder>> {
         info!("Checking for workflow reminders");
 
         let service = Self::new(pool.clone());
@@ -67,10 +104,7 @@ impl ReminderService {
         // the outstanding set). Previously STUCK_TASK existed only as a message
         // string — nothing produced it and TaskRepo had no stuck query, so the
         // /reminders/stuck route was pure theater.
-        let stuck = service
-            .task_repo
-            .find_stuck(DEFAULT_STUCK_TASK_THRESHOLD)
-            .await?;
+        let stuck = service.task_repo.find_stuck(stuck_task_threshold).await?;
         fresh.extend(Self::compute_stuck_task_reminders(&stuck, &existing));
 
         for new in &fresh {
@@ -399,6 +433,39 @@ mod tests {
         assert!(
             out.is_empty(),
             "must not duplicate an outstanding STUCK_TASK"
+        );
+    }
+
+    #[test]
+    fn resolve_stuck_task_threshold_defaults_when_absent() {
+        // Omitted param (the legacy/no-arg path) -> default 60-minute window.
+        assert_eq!(
+            resolve_stuck_task_threshold(None),
+            DEFAULT_STUCK_TASK_THRESHOLD
+        );
+    }
+
+    #[test]
+    fn resolve_stuck_task_threshold_honors_explicit_value() {
+        // A caller-supplied stuckTaskMinutes=10 wins (the whole point of wiring
+        // the param).
+        assert_eq!(
+            resolve_stuck_task_threshold(Some(10)),
+            Duration::minutes(10)
+        );
+    }
+
+    #[test]
+    fn resolve_stuck_task_threshold_clamps_non_positive() {
+        // 0 / negative would flag every RUNNING task immediately; fall back to
+        // the default rather than producing a degenerate window.
+        assert_eq!(
+            resolve_stuck_task_threshold(Some(0)),
+            DEFAULT_STUCK_TASK_THRESHOLD
+        );
+        assert_eq!(
+            resolve_stuck_task_threshold(Some(-5)),
+            DEFAULT_STUCK_TASK_THRESHOLD
         );
     }
 }

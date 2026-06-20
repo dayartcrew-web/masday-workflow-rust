@@ -2,13 +2,24 @@
 
 use axum::routing::{get, post};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json, Router,
 };
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::middleware::error_handler::ApiError;
 use crate::AppState;
+
+/// Optional reminder query params. `stuck_task_minutes` carries the advertised
+/// `stuckTaskMinutes` MCP param through to the service's stuck-task pass;
+/// absent (or `< 1`) falls back to the 60-minute default via
+/// [`masday_service::reminder_service::resolve_stuck_task_threshold`], so a
+/// request with no query string behaves exactly as before.
+#[derive(Debug, Default, Deserialize)]
+struct ReminderQuery {
+    stuck_task_minutes: Option<i64>,
+}
 
 pub fn reminder_routes() -> Router<AppState> {
     Router::new()
@@ -19,18 +30,39 @@ pub fn reminder_routes() -> Router<AppState> {
         .route("/reminders/{id}/acknowledge", post(acknowledge_reminder))
 }
 
-async fn check_reminders(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
+async fn check_reminders(
+    State(state): State<AppState>,
+    Query(q): Query<ReminderQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let threshold =
+        masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let reminders =
+        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
+            .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
 
-async fn get_stale(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
+async fn get_stale(
+    State(state): State<AppState>,
+    Query(q): Query<ReminderQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let threshold =
+        masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let reminders =
+        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
+            .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
 
-async fn get_stuck(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
+async fn get_stuck(
+    State(state): State<AppState>,
+    Query(q): Query<ReminderQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let threshold =
+        masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let reminders =
+        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
+            .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
 
@@ -42,7 +74,14 @@ async fn acknowledge_reminder(
     Ok(Json(serde_json::json!({"acknowledged": id})))
 }
 
-async fn list_reminders(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let reminders = masday_service::ReminderService::check_reminders(&state.pool).await?;
+async fn list_reminders(
+    State(state): State<AppState>,
+    Query(q): Query<ReminderQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let threshold =
+        masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
+    let reminders =
+        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
+            .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
