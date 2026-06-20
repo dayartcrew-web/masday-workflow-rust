@@ -67,7 +67,7 @@ masday-mcp  --> masday-service --> masday-db --> masday-core
 masday-api  --> masday-service --> masday-db --> masday-core
 ```
 
-## MCP Server — 20 Tool Domains (96 tools)
+## MCP Server — 20 Tool Domains (92 tools)
 
 Binary: `masday-mcp` (stdio transport)
 

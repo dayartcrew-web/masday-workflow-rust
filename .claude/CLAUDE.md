@@ -11,6 +11,21 @@
 - **Do NOT create releases with version 0.7x** — use 0.x.x format
 - Source repo: `dayartcrew-web/masday-workflow-rust` (private)
 
+## Workspace Crates
+
+Rust workspace with 6 crates (see root [CLAUDE.md](../CLAUDE.md) for the authoritative descriptions):
+
+| Crate | Role |
+|-------|------|
+| `masday-core` | Shared types (WorkflowState, TaskState, PlanState), error types (AppError) |
+| `masday-db` | PostgreSQL via deadpool-postgres + tokio-postgres, repo modules |
+| `masday-service` | Business logic (workflow state machine, memory, policy), auto-transition |
+| `masday-api` | Axum HTTP server, REST API, WebSocket streaming (remote mode) |
+| `masday-mcp` | MCP server, stdio transport, SQLite-backed (local mode, 20 tool domains) |
+| `masday-cli` | CLI installer — local mode (build+install) + remote mode (download MCP) |
+
+Dependency graph: `masday-cli --> masday-core`; `masday-mcp --> masday-service --> masday-db --> masday-core`; `masday-api --> masday-service`.
+
 ## Masday-First Protocol
 
 1. **masday MCP tools** → `mcp__masday__*` for workflow, memory, search, policy, capability
