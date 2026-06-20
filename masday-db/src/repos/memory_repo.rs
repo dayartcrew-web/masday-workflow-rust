@@ -405,26 +405,6 @@ impl MemoryRepo {
 
         Ok(results)
     }
-
-    /// Update embedding for a memory
-    pub async fn update_embedding(&self, id: &str, embedding: Vec<f32>) -> Result<bool> {
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
-
-        let pgvec = Vector::from(embedding);
-        let rows = client
-            .execute(
-                r#"UPDATE memories SET embedding = $1, updated_at = NOW() WHERE id = $2"#,
-                &[&pgvec, &id],
-            )
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to update embedding: {}", e)))?;
-
-        Ok(rows > 0)
-    }
 }
 
 /// Memory statistics

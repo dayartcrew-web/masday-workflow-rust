@@ -112,27 +112,6 @@ impl ReminderRepo {
         Ok(WorkflowReminder::from_row(&row))
     }
 
-    /// Get reminders by severity
-    pub async fn list_by_severity(&self, severity: &str) -> Result<Vec<WorkflowReminder>> {
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
-
-        let query = r#"
-            SELECT * FROM workflow_reminders
-            WHERE severity = $1 AND COALESCE(acknowledged, false) = false
-            ORDER BY created_at ASC
-        "#;
-
-        let rows = client.query(query, &[&severity]).await.map_err(|e| {
-            AppError::Database(format!("Failed to list reminders by severity: {}", e))
-        })?;
-
-        Ok(rows.iter().map(WorkflowReminder::from_row).collect())
-    }
-
     /// Delete a reminder
     pub async fn delete(&self, id: &str) -> Result<bool> {
         let client = self

@@ -192,28 +192,6 @@ impl GraphRepo {
         Ok(created_edges)
     }
 
-    /// Get edges for a node (both incoming and outgoing)
-    pub async fn get_node_edges(&self, node_id: &str) -> Result<Vec<GraphEdge>> {
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
-
-        let query = r#"
-            SELECT * FROM graph_edges
-            WHERE source_node_id = $1 OR target_node_id = $1
-            ORDER BY created_at DESC
-        "#;
-
-        let rows = client
-            .query(query, &[&node_id])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get node edges: {}", e)))?;
-
-        Ok(rows.iter().map(GraphEdge::from_row).collect())
-    }
-
     /// Delete a node
     pub async fn delete_node(&self, id: &str) -> Result<bool> {
         let client = self

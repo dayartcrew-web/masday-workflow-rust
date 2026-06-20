@@ -110,41 +110,6 @@ impl BranchRepo {
 
         Ok(rows.iter().map(ParallelBranch::from_row).collect())
     }
-
-    /// Get a branch by ID
-    pub async fn get_by_id(&self, id: &str) -> Result<ParallelBranch> {
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
-
-        let query = r#"SELECT * FROM parallel_branches WHERE id = $1"#;
-        let row = client
-            .query_one(query, &[&id])
-            .await
-            .map_err(|_e| AppError::not_found("ParallelBranch", id))?;
-
-        Ok(ParallelBranch::from_row(&row))
-    }
-
-    /// Update branch status
-    pub async fn update_status(&self, id: &str, status: &str) -> Result<ParallelBranch> {
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
-
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-        let query = r#"UPDATE parallel_branches SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *"#;
-        let row = client
-            .query_one(query, &[&status, &now, &id])
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to update branch status: {}", e)))?;
-
-        Ok(ParallelBranch::from_row(&row))
-    }
 }
 
 #[cfg(test)]
