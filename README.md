@@ -1,5 +1,7 @@
 # masday-workflow-rust
 
+Current version: **0.3.74**
+
 [![Rust](https://img.shields.io/badge/Rust-1.85-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.29-green?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMiAydjIwTTIgMTJoMjAiLz48L3N2Zz4=)](https://modelcontextprotocol.io/)
@@ -109,7 +111,7 @@ MASDAY_API_KEY="your-api-key"
 | **masday-db** | Repository layer (sqlx, PostgreSQL, deadpool) |
 | **masday-service** | Business logic (workflow, memory, policy, capability) |
 | **masday-api** | HTTP API layer (Axum, REST endpoints) |
-| **masday-mcp** | MCP server (stdio protocol, SQLite-backed, 96 tools) |
+| **masday-mcp** | MCP server (stdio protocol, SQLite-backed, 92 tools) |
 | **masday-cli** | Command-line interface |
 
 ### Memory Stack
@@ -209,9 +211,9 @@ INIT --> ANALYZE --> PLAN --> EXECUTE --> VERIFY --> DONE
 
 ---
 
-## MCP Tools (96 tools across 20 domains)
+## MCP Tools (92 tools across 20 domains)
 
-The `masday-mcp` crate exposes 90 MCP tools via stdio. Use `masday mcp` to start the server.
+The `masday-mcp` crate exposes 92 MCP tools via stdio. Use `masday mcp` to start the server.
 
 ### Tool Namespaces
 
@@ -323,13 +325,13 @@ cargo clean                         # Remove build artifacts
 
 ```bash
 # Build and release from project root (Linux + Windows)
-bash scripts/release.sh v0.3.39
+bash scripts/release.sh v0.3.74
 
 # Build Linux only
-bash scripts/release.sh v0.3.39 --linux-only
+bash scripts/release.sh v0.3.74 --linux-only
 
 # Test without uploading
-bash scripts/release.sh v0.3.39 --dry-run
+bash scripts/release.sh v0.3.74 --dry-run
 ```
 
 ### Release Artifacts
