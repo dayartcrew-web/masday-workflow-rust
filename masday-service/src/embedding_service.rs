@@ -293,23 +293,6 @@ impl EmbeddingService {
         }
     }
 
-    /// Generate embeddings for multiple texts
-    pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        match self.config.provider.as_str() {
-            #[cfg(feature = "local-embeddings")]
-            "local" => self.embed_batch_local(texts).await,
-            _ => {
-                // Sequential for HTTP providers
-                let mut results = Vec::with_capacity(texts.len());
-                for text in texts {
-                    let embedding = self.embed(text).await?;
-                    results.push(embedding);
-                }
-                Ok(results)
-            }
-        }
-    }
-
     /// Check if the embedding service is healthy
     pub async fn health_check(&self) -> bool {
         match self.config.provider.as_str() {
@@ -370,27 +353,6 @@ impl EmbeddingService {
                 .into_iter()
                 .next()
                 .ok_or_else(|| AppError::Internal("Local model returned no embedding".to_string()))
-        })
-        .await
-        .map_err(|e| AppError::Internal(format!("Blocking task failed: {}", e)))?
-    }
-
-    #[cfg(feature = "local-embeddings")]
-    async fn embed_batch_local(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        let model = self
-            .local_model
-            .as_ref()
-            .ok_or_else(|| AppError::Internal("Local embedding model not loaded".to_string()))?;
-
-        let texts_owned: Vec<String> = texts.iter().map(|s| s.to_string()).collect();
-        let model_arc = Arc::clone(model);
-
-        tokio::task::spawn_blocking(move || {
-            let mut model = model_arc.lock().unwrap();
-            let docs: Vec<&str> = texts_owned.iter().map(|s| s.as_str()).collect();
-            model
-                .embed(docs, None)
-                .map_err(|e| AppError::Internal(format!("Local batch embedding failed: {}", e)))
         })
         .await
         .map_err(|e| AppError::Internal(format!("Blocking task failed: {}", e)))?
