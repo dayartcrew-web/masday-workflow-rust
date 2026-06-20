@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-> **Last updated:** v0.3.74 (2026-06-20) — 92 tools across 20 domains, 243 API routes
+> **Last updated:** v0.3.75 (2026-06-21) — 92 tools (HTTP/remote) / 70 tools (stdio/local) across 20 domains, 243 API routes
 
 This page is the canonical contributor-facing reference for the MCP tool surface. The server is `masday-mcp` (Rust, JSON-RPC 2.0 over stdio) with `masday-api` (Axum HTTP API on port 30101). All tools are connected to PostgreSQL via `tokio-postgres` with repos in `masday-db/src/repos/`.
 
