@@ -5,6 +5,7 @@ use axum::{
     extract::{Path, Query, State},
     Json, Router,
 };
+use masday_core::AppError;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -44,28 +45,31 @@ struct ProjectRootQuery {
     task: Option<String>,
 }
 
-async fn create_agent(Json(payload): Json<Value>) -> Json<Value> {
-    let name = payload
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unnamed");
-    Json(serde_json::json!({
-        "name": name,
-        "created": true,
-        "message": "Agent registered"
-    }))
+async fn create_agent(Json(_payload): Json<Value>) -> Result<Json<Value>, ApiError> {
+    // HTTP/remote mode cannot create agents: the stdio path writes
+    // `.claude/agents/{name}.md` (and updates the registry) inside the *client's*
+    // project, but the API server does not share that filesystem. The former
+    // `{"created": true}` response lied about success — callers believed an agent
+    // was registered when nothing was written. Fail honestly instead; creating
+    // agents/skills requires local/stdio mode (`masday` CLI + stdio MCP server).
+    Err(ApiError(AppError::Validation(
+        "capability_create_agent is not supported in remote/HTTP mode: the API \
+         server cannot write to your project's .claude/ directory. Use \
+         local/stdio mode (the `masday` CLI's stdio MCP server) to create agents."
+            .into(),
+    )))
 }
 
-async fn create_skill(Json(payload): Json<Value>) -> Json<Value> {
-    let name = payload
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unnamed");
-    Json(serde_json::json!({
-        "name": name,
-        "created": true,
-        "message": "Skill registered"
-    }))
+async fn create_skill(Json(_payload): Json<Value>) -> Result<Json<Value>, ApiError> {
+    // See `create_agent`: HTTP/remote mode cannot write `.claude/skills/{name}/`
+    // into the client's project. Fail honestly instead of the former
+    // `{"created": true}` lie.
+    Err(ApiError(AppError::Validation(
+        "capability_create_skill is not supported in remote/HTTP mode: the API \
+         server cannot write to your project's .claude/ directory. Use \
+         local/stdio mode (the `masday` CLI's stdio MCP server) to create skills."
+            .into(),
+    )))
 }
 
 async fn list_agents(Query(query): Query<ProjectRootQuery>) -> Result<Json<Value>, ApiError> {
@@ -119,4 +123,46 @@ async fn workflow_audit(State(_state): State<AppState>, Path(id): Path<String>) 
         "audited": false,
         "message": "Not yet implemented"
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::Json;
+
+    // Regression: create_agent / create_skill used to return `{"created": true}`
+    // while writing nothing (theater-that-lies). They must now fail honestly in
+    // remote/HTTP mode with a Validation error (400).
+
+    #[tokio::test]
+    async fn create_agent_fails_honestly_in_remote_mode() {
+        let res = create_agent(Json(serde_json::json!({"name": "my-agent"}))).await;
+        assert!(
+            res.is_err(),
+            "create_agent must fail honestly, not lie success"
+        );
+        match res.unwrap_err() {
+            ApiError(AppError::Validation(msg)) => assert!(
+                msg.contains("not supported in remote/HTTP mode"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected AppError::Validation, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_skill_fails_honestly_in_remote_mode() {
+        let res = create_skill(Json(serde_json::json!({"name": "my-skill"}))).await;
+        assert!(
+            res.is_err(),
+            "create_skill must fail honestly, not lie success"
+        );
+        match res.unwrap_err() {
+            ApiError(AppError::Validation(msg)) => assert!(
+                msg.contains("not supported in remote/HTTP mode"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected AppError::Validation, got: {other:?}"),
+        }
+    }
 }
