@@ -630,16 +630,39 @@ pub fn resolve_prd_at(base: &std::path::Path) -> Option<std::path::PathBuf> {
     None
 }
 
+/// Upper bound on PRD file size we are willing to ingest at workflow creation.
+/// A real PRD is plain text well under 100 KB; this guards against a
+/// giant/malicious `.masday/context/prd.md` OOMming `resolve_prd_source`.
+const MAX_PRD_BYTES: u64 = 1024 * 1024; // 1 MiB
+
 /// Resolve and read the project PRD, if any. The project root is `project_path`
 /// when provided, else the process working directory. A read error is logged
 /// and the next candidate tried; absent/unreadable PRDs return `None` so the
-/// caller can no-op.
+/// caller can no-op. Files larger than `MAX_PRD_BYTES` are skipped (logged) for
+/// the same reason — defensive against unbounded memory at workflow creation.
 pub fn resolve_prd_source(project_path: Option<&str>) -> Option<PrdSource> {
     let base = match project_path {
         Some(p) => std::path::PathBuf::from(p),
         None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
     };
     let path = resolve_prd_at(&base)?;
+
+    // Defensive size cap: refuse to read files larger than `MAX_PRD_BYTES` so a
+    // giant/malicious prd.md cannot OOM workflow creation. Checked via metadata
+    // *before* reading, so the oversized content is never allocated. Log-and-
+    // continue (skip ingestion), matching the read-error arm below — the workflow
+    // is still created without the PRD.
+    let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    if len > MAX_PRD_BYTES {
+        warn!(
+            "PRD at {} is {} bytes (cap {}); skipping ingestion",
+            path.display(),
+            len,
+            MAX_PRD_BYTES
+        );
+        return None;
+    }
+
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(e) => {
@@ -928,6 +951,19 @@ mod tests {
     fn test_resolve_prd_source_none_when_no_prd() {
         let dir = unique_prd_test_dir("none");
         // Empty project dir — no .masday/context at all.
+        assert!(resolve_prd_source(Some(dir.to_str().unwrap())).is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_prd_source_skips_oversized_file() {
+        let dir = unique_prd_test_dir("oversized");
+        fs::create_dir_all(dir.join(".masday/context")).unwrap();
+        // A PRD larger than the 1 MiB cap must be refused (None) rather than read
+        // into memory — defensive against a giant/malicious prd.md OOMming
+        // workflow creation.
+        let big = "x".repeat((MAX_PRD_BYTES + 1) as usize);
+        fs::write(dir.join(".masday/context/prd.md"), big).unwrap();
         assert!(resolve_prd_source(Some(dir.to_str().unwrap())).is_none());
         let _ = fs::remove_dir_all(&dir);
     }
