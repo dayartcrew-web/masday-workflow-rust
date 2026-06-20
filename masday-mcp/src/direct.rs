@@ -929,11 +929,21 @@ pub async fn workflow_update_status(
         (id.to_string(), new_status.clone(), reset_count)
     }; // conn dropped
 
-    // Fire-and-forget PG sync of the new status (the task reset is handled PG-side
-    // by transition_status when PG is the source of truth).
+    // Fire-and-forget PG sync of the new status.
     crate::pg_sync::spawn(async move {
         crate::direct_pg::workflow_status(&id_out, &new_status_out).await;
     });
+
+    // FIX→EXECUTE also reset FAILED tasks to PENDING locally (reset_count). In
+    // stdio/local mode PG is never the source of truth (`transition_status` is
+    // not invoked), so mirror the reset to keep the dashboard consistent —
+    // otherwise PG keeps those tasks as FAILED after a resume.
+    if reset_count > 0 {
+        let id_for_reset = id.to_string();
+        crate::pg_sync::spawn(async move {
+            crate::direct_pg::reset_failed_tasks(&id_for_reset).await;
+        });
+    }
 
     Ok(json!({
         "id": id,
