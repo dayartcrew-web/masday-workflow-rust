@@ -98,6 +98,32 @@ pub async fn workflow_status(id: &str, status: &str) {
     .await;
 }
 
+/// Mirror the FIX→EXECUTE FAILED→PENDING task reset to PostgreSQL (5s timeout).
+/// In stdio/local mode `direct::workflow_update_status` resets FAILED tasks to
+/// PENDING locally on a FIX→EXECUTE resume, but PG is never the source of truth
+/// there (`transition_status` is not invoked), so without this the dashboard
+/// keeps those tasks as FAILED after a resume. Mirrors the SQLite UPDATE in
+/// `direct::workflow_update_status`.
+pub async fn reset_failed_tasks(workflow_id: &str) {
+    let workflow_id = workflow_id.to_string();
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+
+        if let Ok(client) = pool.get().await {
+            let q = "UPDATE tasks SET status='PENDING', updated_at=NOW() \
+                     WHERE workflow_id=$1 AND status='FAILED'";
+            if let Err(e) = client.execute(q, &[&workflow_id]).await {
+                tracing::warn!("PG reset_failed_tasks sync failed {}: {}", workflow_id, e);
+            }
+        }
+    })
+    .await;
+}
+
 /// Sync a plan row to PostgreSQL (5s timeout). Upsert by id. Plans are
 /// otherwise absent from PostgreSQL in stdio/local mode, so this must run
 /// before `task_create` to satisfy the `tasks.plan_id` foreign key when a
