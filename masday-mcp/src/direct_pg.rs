@@ -124,6 +124,81 @@ pub async fn reset_failed_tasks(workflow_id: &str) {
     .await;
 }
 
+/// Mirror a stdio `review_submit` (SQLite INSERT) to PostgreSQL (5s timeout).
+/// In stdio/local mode reviews land in SQLite only; the completion gate
+/// (`complete_task`) reads from that same SQLite DB, so this does NOT affect
+/// gating — the effect is dashboard-only (hybrid stdio+PG users see
+/// stdio-submitted reviews on the PG-backed dashboard). Mirrors the SQLite
+/// INSERT in `direct::review_submit` and the PG `ReviewRepo::submit` column set
+/// (tests_verified/test_summary left NULL — the stdio path sets neither).
+/// No-op without a pool; warn-on-err.
+#[allow(clippy::too_many_arguments)]
+pub async fn review_submit(
+    id: &str,
+    workflow_id: &str,
+    task_id: &str,
+    reviewer_agent: &str,
+    decision: &str,
+    notes: &str,
+    gaps: Option<serde_json::Value>,
+    created_at: &str,
+) {
+    let id = id.to_string();
+    let workflow_id = workflow_id.to_string();
+    let task_id = task_id.to_string();
+    let reviewer_agent = reviewer_agent.to_string();
+    let decision = decision.to_string();
+    let notes = notes.to_string();
+    let created_at = created_at.to_string();
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+
+        if let Ok(client) = pool.get().await {
+            // `now()` in direct.rs is RFC3339; parse to the native TIMESTAMPTZ
+            // tokio-postgres expects (with-chrono-0_4 enabled). `gaps` is bound
+            // natively to JSONB (with-serde_json-1 enabled), matching
+            // ReviewRepo::submit — no text+cast needed.
+            let created_ts: chrono::DateTime<chrono::Utc> = match created_at.parse() {
+                Ok(t) => t,
+                Err(_) => {
+                    tracing::warn!(
+                        "PG review_submit sync: unparseable created_at '{}' for {}",
+                        created_at,
+                        id
+                    );
+                    return;
+                }
+            };
+            let q = "INSERT INTO review_decisions \
+                     (id, workflow_id, task_id, reviewer_agent, decision, notes, gaps, created_at) \
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)";
+            if let Err(e) = client
+                .execute(
+                    q,
+                    &[
+                        &id,
+                        &workflow_id,
+                        &task_id,
+                        &reviewer_agent,
+                        &decision,
+                        &notes,
+                        &gaps,
+                        &created_ts,
+                    ],
+                )
+                .await
+            {
+                tracing::warn!("PG review_submit sync failed {}: {}", id, e);
+            }
+        }
+    })
+    .await;
+}
+
 /// Sync a plan row to PostgreSQL (5s timeout). Upsert by id. Plans are
 /// otherwise absent from PostgreSQL in stdio/local mode, so this must run
 /// before `task_create` to satisfy the `tasks.plan_id` foreign key when a
