@@ -7,7 +7,8 @@ use masday_core::WorkflowState;
 use masday_db::schema::{Task, Workflow, WorkflowReminder};
 use masday_service::{
     compute_context_fingerprint, evaluate_context_drift,
-    reminder_service::resolve_stuck_task_threshold, ReminderService,
+    reminder_service::{resolve_stale_execute_threshold, resolve_stuck_task_threshold},
+    ReminderService,
 };
 use rusqlite::params;
 use serde_json::{json, Value};
@@ -3423,6 +3424,14 @@ pub async fn reminder_check(
     let stuck_threshold =
         resolve_stuck_task_threshold(args.get("stuckTaskMinutes").and_then(|v| v.as_i64()));
 
+    // The advertised staleExecutionMinutes MCP param overrides the default 4-hour
+    // EXECUTE-phase staleness window. Absent (or < 1) falls back to the default —
+    // the shared resolver is the single source of truth, mirrored from the
+    // API/PG path (previously this was a hardcoded 4h in the shared
+    // check_workflow_staleness helper, so the advertised param was ignored).
+    let stale_execute_threshold =
+        resolve_stale_execute_threshold(args.get("staleExecutionMinutes").and_then(|v| v.as_i64()));
+
     // Advertised includeFailed: when true, FAILED workflows are also checked
     // against the FAILED-staleness threshold (mirrors the PG-side
     // check_reminders_with_options). Absent/false excludes FAILED (legacy).
@@ -3497,7 +3506,12 @@ pub async fn reminder_check(
     // always empty and acknowledge() could never match. Now, like the API path,
     // freshly-detected reminders are persisted with stable UUIDs.
     let now_ts = chrono::Utc::now();
-    let mut fresh = ReminderService::compute_new_reminders(&active, &existing, &now_ts);
+    let mut fresh = ReminderService::compute_new_reminders(
+        &active,
+        &existing,
+        &now_ts,
+        stale_execute_threshold,
+    );
 
     // Stuck-task pass — mirror of the PG-side TaskRepo::find_stuck +
     // compute_stuck_task_reminders wired into ReminderService::check_reminders
