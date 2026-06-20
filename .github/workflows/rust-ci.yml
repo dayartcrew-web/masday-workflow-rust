@@ -62,6 +62,14 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # The ubuntu-latest runner image ships a Microsoft azure-cli apt source
+          # (packages.microsoft.com) that intermittently returns HTTP 403, which
+          # aborts `apt-get update` (exit 100) and fails CI before any test runs.
+          # This job only needs `postgresql-client` from the Ubuntu archive, so
+          # drop any apt source referencing packages.microsoft.com, then update
+          # strictly (no `|| true`) so genuine archive errors still surface.
+          sudo grep -rli 'packages.microsoft.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
