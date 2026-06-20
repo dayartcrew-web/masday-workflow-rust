@@ -3630,9 +3630,17 @@ pub async fn policy_validate_completion(
 }
 
 pub async fn policy_validate_parallel_completion(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"valid": true}))
+    // Mirror the HTTP route: `validate_parallel` (routes/policy.rs) reuses the
+    // same single-task completion validation ("Reuse completion validation for
+    // parallel — same logic applies" → PolicyService::validate_completion). The
+    // former stdio stub ignored every arg and returned `{"valid": true}`, so a
+    // caller could "complete" a parallel branch whose task was still RUNNING /
+    // review-pending / non-terminal. Delegating keeps stdio and HTTP in
+    // lockstep with zero duplicated logic. Both tools advertise the identical
+    // schema (`session_key`, `workflow_id`, `task_id`).
+    policy_validate_completion(args).await
 }
 
 pub async fn policy_detect_scope_drift(
@@ -5686,6 +5694,53 @@ mod tests {
         assert_eq!(val["valid"], true);
         assert_eq!(val["task_status"], "DONE");
         assert_eq!(val["all_workflow_tasks_terminal"], true);
+    }
+
+    #[tokio::test]
+    async fn test_policy_validate_parallel_completion_is_not_a_stub() {
+        let _guard = TestDbGuard::new();
+
+        // Regression: policy_validate_parallel_completion was a `_args` stub that
+        // always returned `{"valid": true}`. It now delegates to
+        // policy_validate_completion (mirroring the HTTP `validate_parallel`
+        // route), so a review-required task without an approved review must come
+        // back invalid — proving it no longer rubber-stamps completion.
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+            // Task DONE with requires_tdd=1 but no review → must be invalid.
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_id, &plan_id, "task1", "DONE", 1],
+            )
+            .unwrap();
+        }
+
+        let result = policy_validate_parallel_completion(json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id
+        }))
+        .await;
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert_eq!(val["valid"], false);
+        assert!(val["reason"]
+            .as_str()
+            .unwrap()
+            .contains("requires review but none found"));
     }
 
     #[test]
