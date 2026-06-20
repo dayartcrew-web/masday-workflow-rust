@@ -3450,8 +3450,10 @@ pub async fn policy_validate_execution(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
-    let workflow_id = args["workflow_id"]
-        .as_str()
+    let workflow_id = args
+        .get("workflow_id")
+        .or_else(|| args.get("session_key"))
+        .and_then(|v| v.as_str())
         .ok_or_else(|| err("missing workflow_id"))?;
     let task_id = args["task_id"]
         .as_str()
@@ -3486,8 +3488,10 @@ pub async fn policy_validate_completion(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
-    let workflow_id = args["workflow_id"]
-        .as_str()
+    let workflow_id = args
+        .get("workflow_id")
+        .or_else(|| args.get("session_key"))
+        .and_then(|v| v.as_str())
         .ok_or_else(|| err("missing workflow_id"))?;
     let task_id = args["task_id"]
         .as_str()
@@ -5483,6 +5487,47 @@ mod tests {
 
         // Empty list -> terminal (edge case)
         assert!(tasks_all_terminal(&[]));
+    }
+
+    #[tokio::test]
+    async fn test_policy_validate_execution_accepts_session_key_alias() {
+        // Round-N audit: the schema advertises `session_key` (first) and
+        // `workflow_id`, but the handler read only workflow_id — a caller passing
+        // the advertised session_key got "missing workflow_id". Both must resolve.
+        let _guard = TestDbGuard::new();
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_id, &plan_id, "task1", "RUNNING", 0],
+            )
+            .unwrap();
+        }
+
+        // workflow_id path still validates.
+        let r = policy_validate_execution(json!({ "workflow_id": &wf_id, "task_id": &task_id }))
+            .await
+            .unwrap();
+        assert_eq!(r["valid"], true);
+
+        // session_key alias resolves to the same workflow (was "missing workflow_id").
+        let r = policy_validate_execution(json!({ "session_key": &wf_id, "task_id": &task_id }))
+            .await
+            .unwrap();
+        assert_eq!(r["valid"], true);
     }
 
     #[tokio::test]
