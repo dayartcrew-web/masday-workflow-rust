@@ -21,7 +21,7 @@ pub use plan_service::PlanService;
 pub use policy_service::PolicyService;
 pub use reminder_service::ReminderService;
 pub use review_service::ReviewService;
-pub use search_service::{summarize_retrieval_results, SearchService};
+pub use search_service::summarize_retrieval_results;
 pub use task_service::{
     compute_context_fingerprint, evaluate_context_drift, ContextDriftResult, TaskContext,
     TaskService,

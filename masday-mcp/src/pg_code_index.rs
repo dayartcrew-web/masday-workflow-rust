@@ -16,7 +16,7 @@
 //! background index completes. Never blocks a tool call.
 
 use crate::code_index::{chunk_file, collect_files, content_hash, ext_to_language};
-use masday_db::repos::CodeChunkRepo;
+use masday_db::repos::{normalize_project_path, CodeChunkRepo};
 use masday_db::schema::NewCodeChunk;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -133,18 +133,9 @@ pub fn trigger_background_index(project_path: &str) {
     });
 }
 
-/// Normalize project_path to an absolute canonical form so "." and the absolute path
-/// resolve to the same `code_chunks.project_path` key (used by both index and search).
-pub fn normalize_project_path(project_path: &str) -> String {
-    std::fs::canonicalize(project_path)
-        .ok()
-        .and_then(|p| p.to_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| project_path.to_string())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use masday_db::repos::normalize_project_path;
 
     #[test]
     fn test_normalize_relative_dot() {

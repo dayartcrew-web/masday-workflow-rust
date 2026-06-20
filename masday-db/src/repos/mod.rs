@@ -19,7 +19,7 @@ pub mod workflow_repo;
 
 // Re-export main repository types
 pub use branch_repo::BranchRepo;
-pub use code_chunk_repo::CodeChunkRepo;
+pub use code_chunk_repo::{normalize_project_path, CodeChunkRepo};
 pub use context_document_repo::ContextDocumentRepo;
 pub use episodic_memory_repo::EpisodicMemoryRepo;
 pub use graph_repo::GraphRepo;
