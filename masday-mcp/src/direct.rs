@@ -7,7 +7,7 @@ use masday_core::WorkflowState;
 use masday_db::schema::{Task, Workflow, WorkflowReminder};
 use masday_service::{
     compute_context_fingerprint, evaluate_context_drift,
-    reminder_service::DEFAULT_STUCK_TASK_THRESHOLD, ReminderService,
+    reminder_service::resolve_stuck_task_threshold, ReminderService,
 };
 use rusqlite::params;
 use serde_json::{json, Value};
@@ -3412,9 +3412,16 @@ pub async fn policy_check_session_readiness(
 // ============================================================================
 
 pub async fn reminder_check(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
+
+    // The advertised stuckTaskMinutes MCP param overrides the default 60-minute
+    // stuck-task window. Absent (or < 1) falls back to the default — the shared
+    // resolver is the single source of truth for the clamp rule, mirrored from
+    // the API/PG path.
+    let stuck_threshold =
+        resolve_stuck_task_threshold(args.get("stuckTaskMinutes").and_then(|v| v.as_i64()));
 
     // Active workflows (mirrors the PG-side WorkflowRepo::get_active, which
     // excludes DONE/FAILED). Only id/name/status/updated_at are read by the
@@ -3486,6 +3493,7 @@ pub async fn reminder_check(
     // yields a STUCK_TASK reminder. As with workflows.updated_at, the SQLite
     // tasks.updated_at column holds mixed timestamp formats, so parse_ts + a
     // Rust-side threshold compare is used rather than a raw SQL string compare.
+    // The threshold honors the caller's stuckTaskMinutes (defaulted above).
     // Only id/workflow_id/title are read by the helper; the remaining Task
     // fields are placeholders.
     let mut stuck_stmt = conn
@@ -3503,9 +3511,7 @@ pub async fn reminder_check(
         })
         .map_err(err)?
         .filter_map(|r| r.ok())
-        .filter(|(_, _, _, updated_at)| {
-            now_ts.signed_duration_since(*updated_at) > DEFAULT_STUCK_TASK_THRESHOLD
-        })
+        .filter(|(_, _, _, updated_at)| now_ts.signed_duration_since(*updated_at) > stuck_threshold)
         .map(|(id, workflow_id, title, updated_at)| Task {
             id,
             workflow_id,
