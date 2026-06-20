@@ -19,6 +19,10 @@ use crate::AppState;
 #[derive(Debug, Default, Deserialize)]
 struct ReminderQuery {
     stuck_task_minutes: Option<i64>,
+    /// Advertised as the `includeFailed` MCP param — when true, FAILED workflows
+    /// are also checked against the FAILED-staleness threshold. Defaults to
+    /// false (legacy behavior: FAILED workflows are excluded).
+    include_failed: Option<bool>,
 }
 
 pub fn reminder_routes() -> Router<AppState> {
@@ -36,9 +40,13 @@ async fn check_reminders(
 ) -> Result<Json<Value>, ApiError> {
     let threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
-    let reminders =
-        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
-            .await?;
+    let include_failed = q.include_failed.unwrap_or(false);
+    let reminders = masday_service::ReminderService::check_reminders_with_options(
+        &state.pool,
+        threshold,
+        include_failed,
+    )
+    .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
 
@@ -48,9 +56,13 @@ async fn get_stale(
 ) -> Result<Json<Value>, ApiError> {
     let threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
-    let reminders =
-        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
-            .await?;
+    let include_failed = q.include_failed.unwrap_or(false);
+    let reminders = masday_service::ReminderService::check_reminders_with_options(
+        &state.pool,
+        threshold,
+        include_failed,
+    )
+    .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
 
@@ -60,9 +72,13 @@ async fn get_stuck(
 ) -> Result<Json<Value>, ApiError> {
     let threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
-    let reminders =
-        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
-            .await?;
+    let include_failed = q.include_failed.unwrap_or(false);
+    let reminders = masday_service::ReminderService::check_reminders_with_options(
+        &state.pool,
+        threshold,
+        include_failed,
+    )
+    .await?;
     Ok(Json(serde_json::json!(reminders)))
 }
 
@@ -80,8 +96,12 @@ async fn list_reminders(
 ) -> Result<Json<Value>, ApiError> {
     let threshold =
         masday_service::reminder_service::resolve_stuck_task_threshold(q.stuck_task_minutes);
-    let reminders =
-        masday_service::ReminderService::check_reminders_with_threshold(&state.pool, threshold)
-            .await?;
+    let include_failed = q.include_failed.unwrap_or(false);
+    let reminders = masday_service::ReminderService::check_reminders_with_options(
+        &state.pool,
+        threshold,
+        include_failed,
+    )
+    .await?;
     Ok(Json(serde_json::json!(reminders)))
 }

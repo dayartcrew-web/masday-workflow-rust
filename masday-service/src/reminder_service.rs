@@ -69,26 +69,50 @@ impl ReminderService {
     /// # Returns
     /// * `Result<Vec<WorkflowReminder>>` - List of active reminders
     pub async fn check_reminders(pool: &DbPool) -> Result<Vec<WorkflowReminder>> {
-        Self::check_reminders_with_threshold(pool, DEFAULT_STUCK_TASK_THRESHOLD).await
+        Self::check_reminders_with_options(pool, DEFAULT_STUCK_TASK_THRESHOLD, false).await
     }
 
     /// Check for reminders using a caller-supplied stuck-task threshold.
     ///
-    /// Same as [`check_reminders`] but the stuck-task pass uses `stuck_task_threshold`
-    /// instead of the 60-minute default — this is where the advertised
-    /// `stuckTaskMinutes` MCP param lands (resolved via
-    /// [`resolve_stuck_task_threshold`]). The stale-workflow thresholds are
-    /// unaffected (only the stuck-task window is caller-tunable).
+    /// Shortcut for [`check_reminders_with_options`] with `include_failed=false`
+    /// — the stale-workflow thresholds are the defaults; only the stuck-task
+    /// window is caller-tunable (the advertised `stuckTaskMinutes` MCP param).
     pub async fn check_reminders_with_threshold(
         pool: &DbPool,
         stuck_task_threshold: Duration,
+    ) -> Result<Vec<WorkflowReminder>> {
+        Self::check_reminders_with_options(pool, stuck_task_threshold, false).await
+    }
+
+    /// Check for reminders with a caller-supplied stuck-task threshold and an
+    /// `include_failed` flag.
+    ///
+    /// `stuck_task_threshold` tunes the stuck-task window (the `stuckTaskMinutes`
+    /// MCP param). `include_failed` is the advertised `includeFailed` MCP param:
+    /// when true, FAILED workflows are also fetched ([`WorkflowRepo::get_failed`])
+    /// and checked against the FAILED-staleness threshold — a workflow that
+    /// failed and has sat unresolved surfaces a `FAILED_STALE` reminder. When
+    /// false (default), FAILED workflows are excluded exactly as before
+    /// ([`WorkflowRepo::get_active`] drops them), so legacy behavior is unchanged.
+    pub async fn check_reminders_with_options(
+        pool: &DbPool,
+        stuck_task_threshold: Duration,
+        include_failed: bool,
     ) -> Result<Vec<WorkflowReminder>> {
         info!("Checking for workflow reminders");
 
         let service = Self::new(pool.clone());
 
-        // Get all active workflows
-        let active_workflows = service.workflow_repo.get_active(None).await?;
+        // Get all active workflows (excludes DONE/FAILED).
+        let mut active_workflows = service.workflow_repo.get_active(None).await?;
+
+        // Opt-in FAILED pass. A FAILED workflow is normally terminal and not
+        // nagged; include_failed surfaces long-stale FAILED workflows too so an
+        // abandoned failure isn't silently forgotten.
+        if include_failed {
+            active_workflows.extend(service.workflow_repo.get_failed(None).await?);
+        }
+
         let now = Utc::now();
 
         // Persist any newly-detected reminders (deduped against the
@@ -244,6 +268,10 @@ impl ReminderService {
             "VERIFY" if updated_age > Duration::minutes(30) => Some("STALE_VERIFY".to_string()),
             "FIX" if updated_age > Duration::hours(2) => Some("STALE_FIX".to_string()),
             "PAUSED" if updated_age > Duration::hours(24) => Some("PAUSED_LONG".to_string()),
+            // Only reachable when the caller opts in via include_failed — FAILED
+            // workflows are excluded by get_active/get_failed gating. A FAILED
+            // workflow unresolved for over 24h is abandoned and worth surfacing.
+            "FAILED" if updated_age > Duration::hours(24) => Some("FAILED_STALE".to_string()),
             _ => None,
         }
     }
@@ -269,6 +297,10 @@ impl ReminderService {
             ),
             "PAUSED_LONG" => format!(
                 "Workflow '{}' has been paused for over 24 hours",
+                workflow.name
+            ),
+            "FAILED_STALE" => format!(
+                "Workflow '{}' failed over 24 hours ago and is still unresolved",
                 workflow.name
             ),
             "STUCK_TASK" => format!("Workflow '{}' has a stuck task", workflow.name),
@@ -353,6 +385,24 @@ mod tests {
         let ok = workflow("wf-1", "EXECUTE", now - Duration::minutes(10));
         let out = ReminderService::compute_new_reminders(&[ok], &[], &now);
         assert!(out.is_empty(), "a fresh workflow must not yield a reminder");
+    }
+
+    #[test]
+    fn compute_new_reminders_failed_stale_when_old() {
+        // A FAILED workflow older than 24h (only reached when the caller opts in
+        // via include_failed — the repo layer gates the fetch) yields
+        // FAILED_STALE; a recently-failed one does not.
+        let now = Utc::now();
+        let old_failed = workflow("wf-1", "FAILED", now - Duration::hours(25));
+        let fresh_failed = workflow("wf-2", "FAILED", now - Duration::minutes(10));
+        let out = ReminderService::compute_new_reminders(&[old_failed, fresh_failed], &[], &now);
+        assert_eq!(
+            out.len(),
+            1,
+            "only the long-stale FAILED workflow yields a reminder"
+        );
+        assert_eq!(out[0].workflow_id, "wf-1");
+        assert_eq!(out[0].reminder_type, "FAILED_STALE");
     }
 
     fn task(id: &str, workflow_id: &str, title: &str) -> Task {

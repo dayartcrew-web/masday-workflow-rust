@@ -3,22 +3,30 @@
 use crate::client;
 use serde_json::Value;
 
-/// Build the `?stuck_task_minutes=` query string for the reminder endpoints
-/// from the advertised `stuckTaskMinutes` MCP arg. Returns an empty string when
-/// the caller omitted it (legacy behavior — the API route then uses the default
-/// 60-minute threshold). Pure so the param-forwarding is unit-testable without
-/// hitting the API.
-fn stuck_query_param(args: &Value) -> String {
-    args.get("stuckTaskMinutes")
-        .and_then(|v| v.as_i64())
-        .map(|m| format!("?stuck_task_minutes={}", m))
-        .unwrap_or_default()
+/// Build the query string for the reminder endpoints from the advertised MCP
+/// args. Forwards `stuckTaskMinutes` → `stuck_task_minutes` and
+/// `includeFailed` → `include_failed`. Returns an empty string when neither is
+/// supplied (legacy behavior — the API route then uses the defaults). Pure so
+/// the param-forwarding is unit-testable without hitting the API.
+fn reminder_query_string(args: &Value) -> String {
+    let mut params: Vec<String> = Vec::new();
+    if let Some(m) = args.get("stuckTaskMinutes").and_then(|v| v.as_i64()) {
+        params.push(format!("stuck_task_minutes={}", m));
+    }
+    if args.get("includeFailed").and_then(|v| v.as_bool()) == Some(true) {
+        params.push("include_failed=true".to_string());
+    }
+    if params.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", params.join("&"))
+    }
 }
 
 pub async fn reminder_check(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let query = stuck_query_param(&args);
+    let query = reminder_query_string(&args);
     let stale = client::api_get(&format!("/api/reminders/stale{}", query)).await?;
     let stuck = client::api_get(&format!("/api/reminders/stuck{}", query)).await?;
     Ok(serde_json::json!({ "stale": stale, "stuck": stuck }))
@@ -88,18 +96,40 @@ mod tests {
     }
 
     #[test]
-    fn test_stuck_query_param_present() {
+    fn test_reminder_query_string_stuck_only() {
         // advertised stuckTaskMinutes is forwarded as a query param.
         assert_eq!(
-            stuck_query_param(&json!({ "stuckTaskMinutes": 10 })),
+            reminder_query_string(&json!({ "stuckTaskMinutes": 10 })),
             "?stuck_task_minutes=10"
         );
     }
 
     #[test]
-    fn test_stuck_query_param_absent() {
-        // no arg -> empty string -> API uses the default threshold (legacy).
-        assert_eq!(stuck_query_param(&json!({})), "");
-        assert_eq!(stuck_query_param(&Value::Null), "");
+    fn test_reminder_query_string_include_failed() {
+        // includeFailed=true forwarded; false/absent omitted.
+        assert_eq!(
+            reminder_query_string(&json!({ "includeFailed": true })),
+            "?include_failed=true"
+        );
+        assert_eq!(
+            reminder_query_string(&json!({ "includeFailed": false })),
+            ""
+        );
+    }
+
+    #[test]
+    fn test_reminder_query_string_both_params() {
+        // both params combine with stable ordering (stuck first).
+        assert_eq!(
+            reminder_query_string(&json!({ "stuckTaskMinutes": 10, "includeFailed": true })),
+            "?stuck_task_minutes=10&include_failed=true"
+        );
+    }
+
+    #[test]
+    fn test_reminder_query_string_absent() {
+        // no args -> empty string -> API uses defaults (legacy).
+        assert_eq!(reminder_query_string(&json!({})), "");
+        assert_eq!(reminder_query_string(&Value::Null), "");
     }
 }

@@ -134,6 +134,36 @@ impl WorkflowRepo {
         Ok(rows.iter().map(Workflow::from_row).collect())
     }
 
+    /// Fetch FAILED workflows — for the opt-in FAILED staleness pass in
+    /// [`masday_service::reminder_service::ReminderService::check_reminders_with_options`].
+    /// Mirrors [`get_active`]'s shape but scoped to `status='FAILED'` (which
+    /// `get_active` deliberately excludes, so FAILED workflows are only seen
+    /// when a caller opts in via `includeFailed`).
+    pub async fn get_failed(&self, project_path: Option<&str>) -> Result<Vec<Workflow>> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to get connection: {}", e)))?;
+
+        let rows = if let Some(pp) = project_path {
+            let query = r#"SELECT * FROM workflows WHERE status = 'FAILED' AND project_path = $1 ORDER BY created_at DESC"#;
+            client
+                .query(query, &[&pp])
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to get failed workflows: {}", e)))?
+        } else {
+            let query =
+                r#"SELECT * FROM workflows WHERE status = 'FAILED' ORDER BY created_at DESC"#;
+            client
+                .query(query, &[])
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to get failed workflows: {}", e)))?
+        };
+
+        Ok(rows.iter().map(Workflow::from_row).collect())
+    }
+
     /// Update workflow status
     pub async fn update_status(&self, id: &str, status: &str) -> Result<Workflow> {
         let client = self

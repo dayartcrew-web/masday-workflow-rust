@@ -3423,14 +3423,26 @@ pub async fn reminder_check(
     let stuck_threshold =
         resolve_stuck_task_threshold(args.get("stuckTaskMinutes").and_then(|v| v.as_i64()));
 
+    // Advertised includeFailed: when true, FAILED workflows are also checked
+    // against the FAILED-staleness threshold (mirrors the PG-side
+    // check_reminders_with_options). Absent/false excludes FAILED (legacy).
+    let include_failed = args
+        .get("includeFailed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     // Active workflows (mirrors the PG-side WorkflowRepo::get_active, which
     // excludes DONE/FAILED). Only id/name/status/updated_at are read by the
-    // staleness helper; the other Workflow fields are left None.
-    let mut active_stmt = conn
-        .prepare(
-            "SELECT id, name, status, updated_at FROM workflows WHERE status NOT IN ('DONE','FAILED')",
-        )
-        .map_err(err)?;
+    // staleness helper; the other Workflow fields are left None. When
+    // include_failed is set, FAILED workflows are included too (PG path uses
+    // a separate get_failed fetch + extend; here a single broader query is
+    // equivalent since the staleness helper classifies by status).
+    let active_sql = if include_failed {
+        "SELECT id, name, status, updated_at FROM workflows WHERE status NOT IN ('DONE')"
+    } else {
+        "SELECT id, name, status, updated_at FROM workflows WHERE status NOT IN ('DONE','FAILED')"
+    };
+    let mut active_stmt = conn.prepare(active_sql).map_err(err)?;
     let active: Vec<Workflow> = active_stmt
         .query_map([], |row| {
             let updated_raw: String = row.get(3)?;
