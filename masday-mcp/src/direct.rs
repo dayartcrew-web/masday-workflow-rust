@@ -218,6 +218,29 @@ fn err(msg: impl std::fmt::Display) -> Box<dyn std::error::Error + Send + Sync> 
     format!("{}", msg).into()
 }
 
+/// Validate a scaffold name (agent/skill/project directory component).
+///
+/// The name is joined to `projectRoot` to form filesystem paths, so it must be
+/// a path-safe identifier: ASCII letters, digits, `-`, `_` only. This rejects
+/// `/`, `\`, `..`, whitespace, and empty strings, preventing path traversal.
+fn validate_scaffold_name(name: &str) -> Result<&str, Box<dyn std::error::Error + Send + Sync>> {
+    if name.is_empty() {
+        return Err(err("name must not be empty"));
+    }
+    if name.len() > 100 {
+        return Err(err("name must be 100 characters or less"));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(err(
+            "name must contain only ASCII alphanumeric characters, hyphens, and underscores",
+        ));
+    }
+    Ok(name)
+}
+
 /// Parse a stored workflow status string into a WorkflowState.
 ///
 /// SQLite stores status as an UPPERCASE string; this maps it to the canonical
@@ -4193,15 +4216,278 @@ pub async fn capability_match_agent(
 }
 
 pub async fn capability_scaffold_feature(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"scaffold": "feature_scaffold_v1", "description": "Feature scaffold template"}))
+    // projectRoot defaults to "."; name is REQUIRED (schema advertises it).
+    let project_root = args["projectRoot"].as_str().unwrap_or(".");
+    let name = args["name"].as_str().ok_or_else(|| err("missing name"))?;
+    let description = args["description"].as_str().unwrap_or("");
+
+    // 1. Validate name: written verbatim into filesystem paths, so it must be a
+    //    path-safe identifier (rejects traversal like `../`, `/`, `\`).
+    validate_scaffold_name(name)?;
+
+    // 2. Validate projectRoot exists ("." always exists). Mirrors system_readiness.
+    if !project_root.is_empty() && !Path::new(project_root).exists() {
+        return Err(format!("projectRoot does not exist: {}", project_root).into());
+    }
+
+    // 3. Write the agent file (mirrors capability_create_agent).
+    let agents_dir = Path::new(project_root).join(".claude/agents");
+    std::fs::create_dir_all(&agents_dir).map_err(err)?;
+    let agent_content = format!(
+        "---\nname: {}\nrole: general\n---\n\n# {}\n\n{}",
+        name, description, description
+    );
+    let agent_path = agents_dir.join(format!("{}.md", name));
+    std::fs::write(&agent_path, agent_content).map_err(err)?;
+
+    // 4. Write the skill directory + SKILL.md (mirrors capability_create_skill).
+    let skill_dir = Path::new(project_root).join(format!(".claude/skills/{}", name));
+    std::fs::create_dir_all(&skill_dir).map_err(err)?;
+    let skill_content = format!(
+        "---\nname: {}\ndescription: {}\n---\n\n# {}",
+        name, description, name
+    );
+    let skill_path = skill_dir.join("SKILL.md");
+    std::fs::write(&skill_path, skill_content).map_err(err)?;
+
+    // 5. Update BOTH registries (non-fatal: log-and-continue; .md is source of truth).
+    write_registry_entry(
+        project_root,
+        "agents",
+        name,
+        json!({
+            "name": name,
+            "file": format!(".claude/agents/{}.md", name),
+            "model": "sonnet",
+            "category": "general",
+            "description": description
+        }),
+    );
+    write_registry_entry(
+        project_root,
+        "skills",
+        name,
+        json!({
+            "name": name,
+            "directory": format!(".claude/skills/{}", name),
+            "category": "general",
+            "description": description
+        }),
+    );
+
+    // 6. Return the canonical result with created file paths.
+    Ok(json!({
+        "scaffolded": true,
+        "name": name,
+        "created_files": [
+            format!(".claude/agents/{}.md", name),
+            format!(".claude/skills/{}/SKILL.md", name)
+        ]
+    }))
 }
 
 pub async fn capability_scaffold_mcp_server(
-    _args: Value,
+    args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(json!({"scaffold": "mcp_server_scaffold_v1", "description": "MCP server scaffold template"}))
+    // 1. Parse args (projectRoot defaults to ".").
+    let project_root = args["projectRoot"].as_str().unwrap_or(".");
+    let name_raw = args["name"].as_str().ok_or_else(|| err("missing name"))?;
+    let description = args["description"].as_str().unwrap_or("");
+
+    // 2. Validate name (path-traversal safe).
+    let name = validate_scaffold_name(name_raw)?;
+
+    // 3. Validate projectRoot exists.
+    let root_path = Path::new(project_root);
+    if !root_path.exists() {
+        return Err(format!("projectRoot does not exist: {}", project_root).into());
+    }
+
+    // 4. Target dir = {projectRoot}/{name}; refuse to clobber existing work.
+    let target = root_path.join(name);
+    if target.exists() {
+        return Err(format!(
+            "cannot scaffold: directory already exists at {} (refusing to overwrite; \
+             choose a different name or remove the directory first)",
+            target.display()
+        )
+        .into());
+    }
+    std::fs::create_dir_all(&target).map_err(err)?;
+
+    // 5. Write files (package.json + index.ts + tsconfig.json + README.md).
+    let package_json = scaffold_mcp_package_json(name, description);
+    let files: [(&str, String); 4] = [
+        ("package.json", package_json),
+        ("index.ts", SCAFFOLD_MCP_INDEX_TS.to_string()),
+        ("tsconfig.json", SCAFFOLD_MCP_TSCONFIG_JSON.to_string()),
+        ("README.md", scaffold_mcp_readme(name, description)),
+    ];
+    let mut created_files: Vec<String> = Vec::with_capacity(files.len());
+    for (fname, body) in files {
+        std::fs::write(target.join(fname), body).map_err(err)?;
+        created_files.push(format!("{}/{}", name, fname));
+    }
+
+    // 6. Return manifest (do NOT touch the agents/skills registry — new project).
+    Ok(json!({
+        "scaffolded": true,
+        "name": name,
+        "directory": name,
+        "created_files": created_files,
+        "next_steps": [
+            format!("cd {}", name),
+            "npm install".to_string(),
+            "npm run build".to_string(),
+            "npm start".to_string(),
+        ],
+    }))
+}
+
+/// Build `package.json` for the scaffolded MCP server.
+fn scaffold_mcp_package_json(name: &str, description: &str) -> String {
+    // @modelcontextprotocol/sdk ^1.x (high-level McpServer + transports), ESM,
+    // Node >= 18. zod is required by the SDK's typed-tool overload.
+    let escaped_desc = description.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        r#"{{
+  "name": "{name}",
+  "version": "0.1.0",
+  "description": "{escaped_desc}",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {{
+    "{name}": "dist/index.js"
+  }},
+  "scripts": {{
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  }},
+  "engines": {{
+    "node": ">=18"
+  }},
+  "dependencies": {{
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  }},
+  "devDependencies": {{
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  }}
+}}
+"#
+    )
+}
+
+/// Build a short `README.md` for the scaffolded MCP server.
+fn scaffold_mcp_readme(name: &str, description: &str) -> String {
+    let desc = if description.is_empty() {
+        format!("An MCP server named `{}`.", name)
+    } else {
+        description.to_string()
+    };
+    format!(
+        r#"# {name}
+
+{desc}
+
+A minimal [Model Context Protocol](https://modelcontextprotocol.io) server scaffolded by `masday`.
+
+## Getting started
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+The server speaks MCP over stdio. Connect to it from an MCP client (e.g. Claude
+Desktop or the `masday` CLI) by pointing its stdio command at `dist/index.js`.
+
+## Extending
+
+Register more tools by calling `server.tool(...)` on the `McpServer` instance.
+See https://modelcontextprotocol.io for the full API.
+"#
+    )
+}
+
+/// `index.ts` body — idiomatic high-level MCP server (McpServer + StdioServerTransport).
+const SCAFFOLD_MCP_INDEX_TS: &str = r#"#!/usr/bin/env node
+// Minimal MCP server (stdio transport) scaffolded by masday.
+// Uses the high-level McpServer API from @modelcontextprotocol/sdk.
+// After `npm install && npm run build`, run with: `npm start`.
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+const server = new McpServer({
+  name: "my-mcp-server",
+  version: "0.1.0",
+});
+
+// Example tool — extend or replace with your own.
+server.tool(
+  "hello",
+  "Greet a name. Returns a friendly greeting.",
+  { name: z.string().describe("Name to greet") },
+  async ({ name }) => ({
+    content: [{ type: "text" as const, text: `Hello, ${name}!` }],
+  }),
+);
+
+// Connect over stdio and run until the client disconnects.
+const transport = new StdioServerTransport();
+await server.connect(transport);
+"#;
+
+/// `tsconfig.json` body — strict TypeScript, ESM, NodeNext modules.
+const SCAFFOLD_MCP_TSCONFIG_JSON: &str = r#"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["index.ts"]
+}
+"#;
+
+#[cfg(test)]
+mod scaffold_tests {
+    use super::*;
+
+    #[test]
+    fn validate_scaffold_name_rejects_traversal_and_unsafe_chars() {
+        // Valid identifiers pass.
+        assert_eq!(
+            validate_scaffold_name("my-feature_1").unwrap(),
+            "my-feature_1"
+        );
+        // Path-traversal / unsafe inputs are rejected (security-critical).
+        assert!(validate_scaffold_name("").is_err());
+        assert!(validate_scaffold_name("../etc").is_err());
+        assert!(validate_scaffold_name("a/b").is_err());
+        assert!(validate_scaffold_name("a\\b").is_err());
+        assert!(validate_scaffold_name("a b").is_err());
+        assert!(validate_scaffold_name("..").is_err());
+        assert!(validate_scaffold_name("a.b").is_err());
+        // Over-length rejected.
+        assert!(validate_scaffold_name(&"a".repeat(101)).is_err());
+    }
 }
 
 pub async fn capability_system_readiness(
