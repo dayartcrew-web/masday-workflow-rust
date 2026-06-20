@@ -286,6 +286,7 @@ pub async fn task_create(
     input: Option<&str>,
     acceptance_criteria: Option<&str>,
     required_context: Option<&str>,
+    context_fingerprint: Option<&str>,
 ) {
     let id = id.to_string();
     let workflow_id = workflow_id.to_string();
@@ -301,6 +302,7 @@ pub async fn task_create(
     let input_json = parse_json_text(input);
     let acceptance_criteria_json = parse_json_text(acceptance_criteria);
     let required_context_json = parse_json_text(required_context);
+    let context_fingerprint = context_fingerprint.map(|s| s.to_string());
 
     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
         let pool = match crate::pg::get_pool().await {
@@ -313,8 +315,8 @@ pub async fn task_create(
                 INSERT INTO tasks (id, workflow_id, plan_id, title, status, priority,
                                    owner_agent, dependencies, progress_percent,
                                    requires_tdd, skill, input, acceptance_criteria,
-                                   required_context, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+                                   required_context, context_fingerprint, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     title = EXCLUDED.title, status = EXCLUDED.status,
                     priority = EXCLUDED.priority, owner_agent = EXCLUDED.owner_agent,
@@ -323,7 +325,8 @@ pub async fn task_create(
                     requires_tdd = EXCLUDED.requires_tdd, skill = EXCLUDED.skill,
                     input = EXCLUDED.input,
                     acceptance_criteria = EXCLUDED.acceptance_criteria,
-                    required_context = EXCLUDED.required_context, updated_at = NOW()
+                    required_context = EXCLUDED.required_context,
+                    context_fingerprint = EXCLUDED.context_fingerprint, updated_at = NOW()
             "#;
             if let Err(e) = client
                 .execute(
@@ -343,6 +346,7 @@ pub async fn task_create(
                         &input_json,
                         &acceptance_criteria_json,
                         &required_context_json,
+                        &context_fingerprint,
                     ],
                 )
                 .await
@@ -350,6 +354,98 @@ pub async fn task_create(
                 tracing::warn!("PG task create sync failed {}: {}", id, e);
             } else {
                 tracing::info!("Synced task {} to PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
+/// Sync a parallel-branch row to PostgreSQL (5s timeout). Upsert by id.
+/// Mirrors the SQLite INSERT in `direct.rs::workflow_create_parallel_branches`
+/// so the dashboard's branch/synthesis view reflects local branch creation —
+/// branches are otherwise absent from PG in stdio/local mode. `input` is
+/// JSONB NOT NULL in PG, so an absent/invalid input defaults to `{}`.
+#[allow(clippy::too_many_arguments)]
+pub async fn parallel_branch_create(
+    id: &str,
+    workflow_id: &str,
+    task_id: &str,
+    branch_key: &str,
+    role: &str,
+    status: &str,
+    input: Option<&str>,
+) {
+    let id = id.to_string();
+    let workflow_id = workflow_id.to_string();
+    let task_id = task_id.to_string();
+    let branch_key = branch_key.to_string();
+    let role = role.to_string();
+    let status = status.to_string();
+    let input_json: serde_json::Value = input
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+        if let Ok(client) = pool.get().await {
+            let q = r#"
+                INSERT INTO parallel_branches
+                    (id, workflow_id, task_id, branch_key, role, status, input, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    status = EXCLUDED.status, input = EXCLUDED.input, updated_at = NOW()
+            "#;
+            if let Err(e) = client
+                .execute(
+                    q,
+                    &[
+                        &id,
+                        &workflow_id,
+                        &task_id,
+                        &branch_key,
+                        &role,
+                        &status,
+                        &input_json,
+                    ],
+                )
+                .await
+            {
+                tracing::warn!("PG parallel-branch create sync failed {}: {}", id, e);
+            } else {
+                tracing::debug!("Synced parallel branch {} to PostgreSQL", id);
+            }
+        }
+    })
+    .await;
+}
+
+/// Mark a parallel branch DONE in PostgreSQL (5s timeout). Mirrors the SQLite
+/// UPDATE in `direct.rs::workflow_complete_parallel_branch` so PG-side
+/// synthesis/VERIFY gating keyed on branch completion sees stdio branches reach
+/// DONE. `output` is JSONB (nullable); an absent/invalid output becomes SQL
+/// NULL.
+pub async fn parallel_branch_complete(id: &str, output: Option<&str>) {
+    let id = id.to_string();
+    let output_json: Option<serde_json::Value> = output.and_then(|s| serde_json::from_str(s).ok());
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
+        let pool = match crate::pg::get_pool().await {
+            Some(p) => p,
+            None => return,
+        };
+        if let Ok(client) = pool.get().await {
+            let q = r#"
+                UPDATE parallel_branches
+                SET status = 'DONE', output = $1, updated_at = NOW()
+                WHERE id = $2
+            "#;
+            if let Err(e) = client.execute(q, &[&output_json, &id]).await {
+                tracing::warn!("PG parallel-branch complete sync failed {}: {}", id, e);
+            } else {
+                tracing::debug!("Synced parallel branch {} DONE to PostgreSQL", id);
             }
         }
     })

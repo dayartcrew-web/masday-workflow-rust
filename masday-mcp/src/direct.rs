@@ -1507,6 +1507,7 @@ pub async fn workflow_add_task(
     let pg_input = input.clone();
     let pg_acceptance_criteria = acceptance_criteria.clone();
     let pg_required_context = required_context.clone();
+    let pg_context_fingerprint = context_fingerprint.clone();
     crate::pg_sync::spawn(async move {
         if let Some((p_status, p_summary, p_content, p_version, p_created_by)) = plan_row {
             crate::direct_pg::plan_create(
@@ -1535,6 +1536,7 @@ pub async fn workflow_add_task(
             pg_input.as_deref(),
             pg_acceptance_criteria.as_deref(),
             pg_required_context.as_deref(),
+            pg_context_fingerprint.as_deref(),
         )
         .await;
     });
@@ -2003,6 +2005,26 @@ pub async fn workflow_create_plan(
         params![id, workflow_id, version, &format!("Plan v{}", version), &content, &t],
     ).map_err(|e| err(e))?;
 
+    // Mirror the new plan to PostgreSQL so the dashboard's plan view reflects
+    // local plan creation. Plans are otherwise absent from PG in stdio/local
+    // mode until a task is added. Fire-and-forget, no-op without a pool.
+    let pg_plan_id = id.clone();
+    let pg_wf_id = workflow_id.to_string();
+    let pg_summary = format!("Plan v{}", version);
+    let pg_content = content.clone();
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::plan_create(
+            &pg_plan_id,
+            &pg_wf_id,
+            version as i32,
+            "ACTIVE",
+            &pg_summary,
+            &pg_content,
+            "masday-mcp",
+        )
+        .await;
+    });
+
     Ok(json!({"id": id, "workflow_id": workflow_id, "status": "ACTIVE", "version": version}))
 }
 
@@ -2112,6 +2134,27 @@ pub async fn workflow_create_parallel_branches(
             params![id, wf_id, task_id, branch_key, role, &input, &t, &t],
         ).map_err(|e| err(e))?;
 
+        // Mirror the new branch to PostgreSQL so the dashboard reflects local
+        // parallel-branch creation. Fire-and-forget, no-op without a pool.
+        let pg_b_id = id.clone();
+        let pg_b_wf = wf_id.to_string();
+        let pg_b_task = task_id.to_string();
+        let pg_b_key = branch_key.to_string();
+        let pg_b_role = role.to_string();
+        let pg_b_input = input.clone();
+        crate::pg_sync::spawn(async move {
+            crate::direct_pg::parallel_branch_create(
+                &pg_b_id,
+                &pg_b_wf,
+                &pg_b_task,
+                &pg_b_key,
+                &pg_b_role,
+                "ACTIVE",
+                Some(pg_b_input.as_str()),
+            )
+            .await;
+        });
+
         created.push(json!({"id": id, "branch_key": branch_key, "status": "ACTIVE"}));
     }
 
@@ -2134,6 +2177,14 @@ pub async fn workflow_complete_parallel_branch(
         params![&output, &t, branch_id],
     )
     .map_err(|e| err(e))?;
+
+    // Mirror the branch completion to PostgreSQL so PG-side synthesis/VERIFY
+    // gating keyed on branch completion sees this branch reach DONE.
+    let pg_branch_id = branch_id.to_string();
+    let pg_output = output.clone();
+    crate::pg_sync::spawn(async move {
+        crate::direct_pg::parallel_branch_complete(&pg_branch_id, Some(pg_output.as_str())).await;
+    });
 
     Ok(json!({"completed": branch_id}))
 }
