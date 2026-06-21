@@ -181,7 +181,7 @@ TOOLS = [
     ("policy_detect_scope_drift", json.dumps({"workflow_id": FAKE_WF})),
     ("policy_require_context_refresh", json.dumps({"workflow_id": FAKE_WF})),
     ("capability_workflow_audit", json.dumps({"workflow_id": FAKE_WF})),
-    ("memory_create_entities", json.dumps({"entities": json.dumps([{"name": "t", "entity_type": "concept", "properties": "{}"}])})),
+    ("memory_create_entities", json.dumps({"entities": json.dumps([{"name": "t", "entityType": "concept", "properties": "{}"}])})),
     ("capability_scaffold_feature", json.dumps({"project_root": TMPP, "name": "test-feature", "description": "x"})),
     ("capability_scaffold_mcp_server", json.dumps({"project_root": TMPP, "name": "test-mcp", "description": "x"})),
     ("capability_create_agent", json.dumps({"project_root": TMPP, "name": "test-agent", "role": "tester", "description": "x", "instructions": "x"})),
