@@ -473,8 +473,8 @@ fn register_context_tools(r: &mut ToolRegistry) {
     reg!(
         r,
         "semantic-search_code_search",
-        "Search codebase",
-        schema!("query"),
+        "Search codebase (semantic/pgvector). Optional project_path scopes to a different folder (lazy-indexed on first use); #limit caps results.",
+        schema!("query", "project_path?", "#limit?"),
         c::semantic_search_code_search
     );
     reg!(
@@ -1471,8 +1471,8 @@ fn register_context_tools_stdio(r: &mut ToolRegistry) {
     reg!(
         r,
         "semantic-search_code_search",
-        "Search codebase",
-        schema!("query"),
+        "Search codebase (semantic/pgvector). Optional project_path scopes to a different folder (lazy-indexed on first use); #limit caps results.",
+        schema!("query", "project_path?", "#limit?"),
         d::semantic_search_code_search
     );
     reg!(
