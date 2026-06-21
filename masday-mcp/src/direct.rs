@@ -3729,10 +3729,14 @@ pub async fn policy_validate_completion(
         .unwrap_or(0);
 
     if requires_tdd != 0 {
-        // Query latest review for this task
+        // Query latest review for this task, scoped by (workflow_id, task_id).
+        // Scoped for consistency with `complete_task` (fixed in #42) and as
+        // defense-in-depth: a `review_decisions` row whose workflow_id disagrees
+        // with its task_id (a data-integrity edge a buggy caller could create)
+        // is ignored rather than treated as this task's verdict.
         let review_result = conn.query_row(
-            "SELECT decision FROM review_decisions WHERE task_id=?1 ORDER BY created_at DESC LIMIT 1",
-            params![task_id],
+            "SELECT decision FROM review_decisions WHERE workflow_id=?1 AND task_id=?2 ORDER BY created_at DESC LIMIT 1",
+            params![workflow_id, task_id],
             |r| r.get::<_, String>(0),
         );
 
@@ -6105,6 +6109,85 @@ mod tests {
         assert_eq!(val["valid"], true);
         assert_eq!(val["task_status"], "DONE");
         assert_eq!(val["all_workflow_tasks_terminal"], true);
+    }
+
+    #[tokio::test]
+    async fn test_policy_validate_completion_ignores_mismatched_workflow_review() {
+        let _guard = TestDbGuard::new();
+
+        // Defense-in-depth regression for the scoped review lookup.
+        //
+        // `tasks.id` is a global UUID PK, so under normal operation a task_id
+        // resolves to exactly one workflow and the old unscoped
+        // `WHERE task_id=?1` was behaviorally identical to the scoped
+        // `(workflow_id, task_id)` query — there is no exploitable cross-workflow
+        // collision. The scoped query still earns its keep as defense-in-depth
+        // against a data-integrity edge: a `review_decisions` row whose
+        // `workflow_id` column disagrees with the workflow the task actually
+        // belongs to. Such a mismatched row (insertable by a buggy caller; the
+        // normal insert path never creates one, and `foreign_keys=OFF` does not
+        // prevent it) must NOT satisfy this task's review gate.
+        //
+        // Here we construct exactly that: task under wf_a with an APPROVED
+        // review_decisions row that *claims* workflow_id=wf_b. The scoped query
+        // must ignore it → valid=false, "requires review but none found". (The
+        // old unscoped query would have matched it → APPROVED → valid=true.)
+        let wf_a = uuid::Uuid::new_v4().to_string();
+        let wf_b = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let mismatched_review_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_a, "test-workflow-a", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_a, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+            // Task belongs to wf_a, requires review, is DONE.
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_a, &plan_id, "task1", "DONE", 1],
+            )
+            .unwrap();
+            // Mismatched APPROVED review: same task_id, but workflow_id=wf_b.
+            // No wf_b workflow row is needed (foreign_keys=OFF allows this),
+            // but a real id is used so the row is well-formed.
+            conn.execute(
+                "INSERT INTO review_decisions (id, workflow_id, task_id, reviewer_agent, decision, notes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    &mismatched_review_id,
+                    &wf_b,
+                    &task_id,
+                    "test-agent",
+                    "APPROVED",
+                    "belongs to a different workflow"
+                ],
+            )
+            .unwrap();
+            // Lock is dropped here
+        }
+
+        let args = json!({
+            "workflow_id": &wf_a,
+            "task_id": &task_id
+        });
+
+        let result = policy_validate_completion(args).await;
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        // The mismatched (wf_b) APPROVED review must NOT count for wf_a's task.
+        assert_eq!(val["valid"], false);
+        assert!(val["reason"]
+            .as_str()
+            .unwrap()
+            .contains("requires review but none found"));
     }
 
     #[tokio::test]
