@@ -347,6 +347,38 @@ fn collect_files_inner(dir: &str, files: &mut Vec<(String, String)>) {
     }
 }
 
+/// Maximum on-disk size (bytes) of a file we will read for indexing.
+///
+/// Files larger than this are skipped during indexing. The cap bounds memory:
+/// `read_to_string` loads the whole file into a `String`, so without a cap a
+/// single multi-GB generated artifact, vendored data blob, or minified bundle
+/// (all reachable via `collect_files`, which only filters by extension) would
+/// OOM the process — a remote-API DoS vector. 1 MiB comfortably covers any
+/// realistic source file (a file this large already produces unwieldy chunks)
+/// while rejecting pathological inputs. The check uses `metadata().len()` so
+/// the file is never loaded just to be rejected.
+const MAX_INDEX_FILE_SIZE: u64 = 1024 * 1024;
+
+/// Read a file for indexing, subject to [`MAX_INDEX_FILE_SIZE`].
+///
+/// Returns `None` (→ caller treats as "skip this file") when the path is
+/// missing, is not valid UTF-8, or exceeds the size cap. The size is checked
+/// via `metadata()` *before* reading, so an oversized file is rejected without
+/// ever being loaded into memory. Shared by the SQLite (`index_project`/
+/// `check_for_changes`) and PostgreSQL (`pg_code_index`) indexing paths so the
+/// cap is enforced everywhere a project file is slurped.
+pub(crate) fn read_indexable(path: &str) -> Option<String> {
+    let len = std::fs::metadata(path).ok()?.len();
+    if len > MAX_INDEX_FILE_SIZE {
+        info!(
+            "Skipping oversized file for indexing ({} bytes > {} cap): {}",
+            len, MAX_INDEX_FILE_SIZE, path
+        );
+        return None;
+    }
+    std::fs::read_to_string(path).ok()
+}
+
 /// Index a project: walk files, chunk, embed, store in SQLite.
 ///
 /// Uses content hashing for incremental updates — only re-indexes changed files.
@@ -362,7 +394,7 @@ pub fn index_project(
     for (file_path, ext) in &files {
         let language = ext_to_language(ext).to_string();
 
-        let Ok(content) = std::fs::read_to_string(file_path) else {
+        let Some(content) = read_indexable(file_path) else {
             continue;
         };
 
@@ -436,9 +468,12 @@ fn refresh_stale_chunks(
         .collect();
 
     for (file_path, stored_hash, _indexed_at) in &rows {
-        // Check if file still exists
-        let Ok(content) = std::fs::read_to_string(file_path) else {
-            // File deleted — remove its chunks
+        // Re-read the file to detect changes. `read_indexable` returns None for
+        // missing files AND for files now exceeding the size cap; both mean the
+        // file is no longer indexable, so drop its stale chunks (matches the
+        // previous "file deleted" behavior).
+        let Some(content) = read_indexable(file_path) else {
+            // File gone or oversized — remove its chunks
             let _ = conn.execute("DELETE FROM code_chunks WHERE file_path = ?1", [file_path]);
             continue;
         };
@@ -643,6 +678,79 @@ mod tests {
         let h1 = content_hash("hello");
         let h2 = content_hash("world");
         assert_ne!(h1, h2, "Different content must produce different hash");
+    }
+
+    /// `read_indexable` enforces the size cap so the indexer never loads an
+    /// oversized file into memory (OOM / remote DoS vector). The cap is checked
+    /// via `metadata().len()` *before* reading, so a file just over the limit is
+    /// rejected without being slurped. Names include the PID so parallel test
+    /// processes don't collide on the temp file.
+    #[test]
+    fn test_read_indexable_skips_oversized_and_missing() {
+        use std::io::Write;
+
+        let pid = std::process::id();
+        let dir = std::env::temp_dir();
+
+        // Missing path → None.
+        let missing = dir.join(format!("masday_idx_missing_{pid}.txt"));
+        let _ = std::fs::remove_file(&missing);
+        assert!(read_indexable(missing.to_str().unwrap()).is_none());
+
+        // Small file → Some(content).
+        let small = dir.join(format!("masday_idx_small_{pid}.txt"));
+        let _ = std::fs::remove_file(&small);
+        {
+            let mut f = std::fs::File::create(&small).unwrap();
+            f.write_all(b"fn main() {}").unwrap();
+        }
+        let got = read_indexable(small.to_str().unwrap()).expect("small file should be read");
+        assert_eq!(got, "fn main() {}");
+
+        // File just over the cap → None (rejected via metadata, not loaded).
+        let big = dir.join(format!("masday_idx_big_{pid}.txt"));
+        let _ = std::fs::remove_file(&big);
+        {
+            let mut f = std::fs::File::create(&big).unwrap();
+            // One byte over the cap.
+            let over = MAX_INDEX_FILE_SIZE + 1;
+            let mut remaining = over;
+            let chunk = vec![b' '; 64 * 1024];
+            while remaining > 0 {
+                let take = remaining.min(chunk.len() as u64) as usize;
+                f.write_all(&chunk[..take]).unwrap();
+                remaining -= take as u64;
+            }
+        }
+        assert!(
+            read_indexable(big.to_str().unwrap()).is_none(),
+            "file over the {}-byte cap must be skipped",
+            MAX_INDEX_FILE_SIZE
+        );
+
+        // Exactly at the cap → still readable (boundary is exclusive).
+        let at_cap = dir.join(format!("masday_idx_atcap_{pid}.txt"));
+        let _ = std::fs::remove_file(&at_cap);
+        {
+            let mut f = std::fs::File::create(&at_cap).unwrap();
+            let mut remaining = MAX_INDEX_FILE_SIZE;
+            let chunk = vec![b' '; 64 * 1024];
+            while remaining > 0 {
+                let take = remaining.min(chunk.len() as u64) as usize;
+                f.write_all(&chunk[..take]).unwrap();
+                remaining -= take as u64;
+            }
+        }
+        assert!(
+            read_indexable(at_cap.to_str().unwrap()).is_some(),
+            "file exactly at the cap ({}) must still be readable",
+            MAX_INDEX_FILE_SIZE
+        );
+
+        // Cleanup.
+        for p in [small, big, at_cap] {
+            let _ = std::fs::remove_file(&p);
+        }
     }
 
     #[test]

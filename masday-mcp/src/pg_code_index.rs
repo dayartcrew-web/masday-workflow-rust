@@ -48,7 +48,7 @@ pub async fn index_project_pg(project_path: &str) -> Result<Value, String> {
 
     for (file_path, ext) in &files {
         let language = ext_to_language(ext).to_string();
-        let Ok(content) = std::fs::read_to_string(file_path) else {
+        let Some(content) = crate::code_index::read_indexable(file_path) else {
             continue;
         };
         files_indexed += 1;
