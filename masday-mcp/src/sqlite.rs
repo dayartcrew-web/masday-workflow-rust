@@ -4,7 +4,7 @@
 //! Schema is auto-created on first run. Thread-safe via `Mutex`.
 
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tracing::info;
 
@@ -95,12 +95,103 @@ fn backfill_embeddings(conn: &Connection) {
     info!("Backfilled {} embeddings", processed);
 }
 
+// ── Backup (migration-only) + retention ──────────────────────────────────────
+//
+// A backup guards against a bad schema migration — so it is taken ONLY when a
+// migration is actually about to run ([`migrations_pending`]), never on a plain
+// startup. `init_sqlite` runs on every stdio MCP process spawn (each AI client
+// starts its own `masday mcp`), so taking a 24 MB copy on every spawn flooded
+// `~/.masday/` with near-identical backups (one install had 176 of them, ~4 GB).
+// Retention is bounded to the newest few regardless.
+
+/// Maximum number of timestamped backups to keep. Older extras are deleted on
+/// every backup, so the directory self-cleans even from legacy clutter.
+const BACKUP_KEEP: usize = 5;
+
+/// Filename prefix for timestamped backups (`data.db.backup.YYYYMMDD-HHMMSS`).
+const BACKUP_PREFIX: &str = "data.db.backup.";
+
+/// Return `data.db.backup.*` files in `dir`, newest-first by modification time.
+fn list_backups(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(PathBuf, std::time::SystemTime)> = rd
+        .filter_map(std::result::Result::ok)
+        .filter_map(|e| {
+            if !e.file_name().to_string_lossy().starts_with(BACKUP_PREFIX) {
+                return None;
+            }
+            let mtime = e.metadata().ok()?.modified().ok()?;
+            Some((e.path(), mtime))
+        })
+        .collect();
+    out.sort_by_key(|b| std::cmp::Reverse(b.1)); // newest first
+    out
+}
+
+/// Delete every backup past the newest [`BACKUP_KEEP`]. Idempotent and best-effort
+/// (a failed unlink is logged, never fatal). Returns the survivors, newest-first.
+fn prune_old_backups(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
+    let backups = list_backups(dir);
+    for (path, _) in backups.iter().skip(BACKUP_KEEP) {
+        match std::fs::remove_file(path) {
+            Ok(()) => info!("Pruned stale backup {}", path.display()),
+            Err(e) => info!("Could not prune {}: {}", path.display(), e),
+        }
+    }
+    backups.into_iter().take(BACKUP_KEEP).collect()
+}
+
+/// Take a timestamped copy of the database, then prune to [`BACKUP_KEEP`]. Called
+/// only when a migration is pending (see [`init_sqlite`]); a plain startup never
+/// creates a backup. Best-effort: a copy failure is logged and swallowed (it must
+/// never block startup — the migration still runs).
+fn backup_db(db_path: &Path) {
+    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let backup_path = db_path.with_extension(format!("db.backup.{}", timestamp));
+    match std::fs::copy(db_path, &backup_path) {
+        Ok(bytes) => info!(
+            "Database backed up to {} ({} bytes)",
+            backup_path.display(),
+            bytes
+        ),
+        Err(e) => {
+            info!("Backup failed (continuing anyway): {}", e);
+            return;
+        }
+    }
+
+    // Prune older extras so retention stays bounded.
+    if let Some(parent) = db_path.parent() {
+        prune_old_backups(parent);
+    }
+}
+
+/// Return true if a schema migration would actually run against `conn` (the DB is
+/// at an older schema version). Used to gate the pre-migration backup so it fires
+/// only on a real schema change — not on every startup.
+fn migrations_pending(conn: &Connection) -> bool {
+    // Migration 001: the `memories.embedding` column. `pragma_table_info` returns
+    // 0 rows for a missing table, so COUNT(*)=0 there also reads as "pending".
+    let has_embedding: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name='embedding'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    has_embedding == 0
+}
+
 /// Initialize the SQLite database.
 ///
 /// Creates `~/.masday/data.db` if it doesn't exist, then runs the embedded schema.
-/// If the database already exists, creates a timestamped backup before applying
-/// any schema changes. Existing data is never deleted — `CREATE TABLE IF NOT EXISTS`
-/// is used throughout.
+/// If the database already exists AND a schema migration is pending, takes a
+/// timestamped backup (retaining only the newest few) just before applying it —
+/// a backup guards a real schema change, and since `init_sqlite` runs on every
+/// MCP process spawn it must NOT fire on a plain startup. Existing data is never
+/// deleted — `CREATE TABLE IF NOT EXISTS` is used throughout.
 pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db_path = db_path()?;
 
@@ -112,17 +203,6 @@ pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db_exists = db_path.exists() && db_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
 
     if db_exists {
-        // Backup existing database before any schema operations
-        let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-        let backup_path = db_path.with_extension(format!("db.backup.{}", timestamp));
-        match std::fs::copy(&db_path, &backup_path) {
-            Ok(bytes) => info!(
-                "Existing database backed up to {} ({} bytes)",
-                backup_path.display(),
-                bytes
-            ),
-            Err(e) => info!("Backup failed (continuing anyway): {}", e),
-        }
         info!("Opening existing SQLite database at {}", db_path.display());
     } else {
         info!("Creating new SQLite database at {}", db_path.display());
@@ -135,6 +215,13 @@ pub fn init_sqlite() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Create schema (safe — uses IF NOT EXISTS throughout)
     conn.execute_batch(crate::sqlite_schema::SCHEMA)?;
+
+    // Back up ONLY when a real schema migration is pending — not on every
+    // startup (init_sqlite runs per MCP process spawn). The copy captures the
+    // pre-migration state, taken just before run_migrations applies it.
+    if db_exists && migrations_pending(&conn) {
+        backup_db(&db_path);
+    }
 
     // Run migrations for existing databases
     run_migrations(&conn)?;
@@ -847,6 +934,91 @@ mod tests {
             original_embedding.unwrap().len(),
             3072,
             "Original embedding should be unchanged"
+        );
+    }
+
+    // ── backup (migration-only) + retention ───────────────────────────────────
+    use std::time::{Duration, SystemTime};
+
+    /// Stamp a file's mtime to `now - secs_ago` so retention ordering is
+    /// deterministic without sleeping. (`File::set_modified`, stable since 1.75.)
+    fn age_file(path: &Path, secs_ago: u64) {
+        let time = SystemTime::now() - Duration::from_secs(secs_ago);
+        let f = std::fs::File::options().write(true).open(path).unwrap();
+        f.set_modified(time).unwrap();
+    }
+
+    fn touch_backup(dir: &Path, name: &str) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, b"backup-bytes").unwrap();
+        p
+    }
+
+    #[test]
+    fn prune_keeps_newest_n_and_deletes_rest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        // 8 backups; i=7 is newest (smallest secs_ago), i=0 oldest.
+        for i in (0..8u64).rev() {
+            let p = touch_backup(dir, &format!("data.db.backup.{i}"));
+            age_file(&p, 1000 - i);
+        }
+        prune_old_backups(dir);
+        let remaining = list_backups(dir);
+        assert_eq!(remaining.len(), BACKUP_KEEP);
+        let names: Vec<String> = remaining
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        for kept_i in 3..=7u64 {
+            assert!(
+                names.contains(&format!("data.db.backup.{kept_i}")),
+                "expected newest backup {kept_i} to survive, got {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn backup_db_creates_one_then_prunes_to_keep() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        let db = dir.join("data.db");
+        std::fs::write(&db, b"real-db").unwrap();
+        // Pre-existing clutter beyond BACKUP_KEEP.
+        for i in 0..(BACKUP_KEEP + 3) as u64 {
+            let p = touch_backup(dir, &format!("data.db.backup.{i}"));
+            age_file(&p, 1000 - i);
+        }
+        backup_db(&db);
+        // backup_db added one more, then pruned back to BACKUP_KEEP.
+        assert_eq!(list_backups(dir).len(), BACKUP_KEEP);
+    }
+
+    #[test]
+    fn migrations_pending_true_when_embedding_column_missing() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE memories (id TEXT PRIMARY KEY, content TEXT)",
+            [],
+        )
+        .unwrap();
+        assert!(
+            migrations_pending(&conn),
+            "a migration must be pending when the embedding column is absent"
+        );
+    }
+
+    #[test]
+    fn migrations_pending_false_when_embedding_column_present() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE memories (id TEXT PRIMARY KEY, content TEXT, embedding BLOB)",
+            [],
+        )
+        .unwrap();
+        assert!(
+            !migrations_pending(&conn),
+            "no migration pending when the embedding column already exists"
         );
     }
 }
