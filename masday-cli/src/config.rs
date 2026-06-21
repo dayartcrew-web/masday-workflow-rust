@@ -166,6 +166,17 @@ impl MasdayConfig {
         if let Some(dims) = self.embedding_dimensions {
             std::env::set_var("EMBEDDING_DIMENSIONS", dims.to_string());
         }
+        // base_url + api_key are required for non-default Ollama hosts and for
+        // OpenAI. Without forwarding them, `masday serve` builds an
+        // EmbeddingService whose embed() errors (OpenAI: api_key missing) or
+        // hits the wrong host (custom Ollama base_url) → /api/context/search
+        // silently degrades to empty `pgvector_unavailable` results.
+        if let Some(ref base_url) = self.embedding_base_url {
+            std::env::set_var("EMBEDDING_BASE_URL", base_url);
+        }
+        if let Some(ref api_key) = self.embedding_api_key {
+            std::env::set_var("EMBEDDING_API_KEY", api_key);
+        }
         // Port config → env vars (so hooks, docker, and sub-processes can read them)
         std::env::set_var("MASDAY_API_PORT", self.api_port.to_string());
         std::env::set_var("MASDAY_DB_PORT", self.db_port.to_string());
@@ -249,6 +260,8 @@ mod tests {
             embedding_provider: Some("local".to_string()),
             embedding_model: Some("test-model".to_string()),
             embedding_dimensions: Some(384),
+            embedding_base_url: Some("http://ollama.example:11434".to_string()),
+            embedding_api_key: Some("sk-test".to_string()),
             database_url: Some("postgresql://localhost/db".to_string()),
             redis_url: Some("redis://localhost:6379".to_string()),
             ..MasdayConfig::default()
@@ -264,11 +277,21 @@ mod tests {
             std::env::var("EMBEDDING_PROVIDER").ok(),
             Some("local".to_string())
         );
+        assert_eq!(
+            std::env::var("EMBEDDING_BASE_URL").ok(),
+            Some("http://ollama.example:11434".to_string())
+        );
+        assert_eq!(
+            std::env::var("EMBEDDING_API_KEY").ok(),
+            Some("sk-test".to_string())
+        );
 
         // Cleanup
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("EMBEDDING_PROVIDER");
         std::env::remove_var("EMBEDDING_MODEL");
         std::env::remove_var("EMBEDDING_DIMENSIONS");
+        std::env::remove_var("EMBEDDING_BASE_URL");
+        std::env::remove_var("EMBEDDING_API_KEY");
     }
 }
