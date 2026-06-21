@@ -1350,9 +1350,86 @@ pub async fn workflow_delete(
     Ok(json!({"deleted": id}))
 }
 
+/// Outcome of the synchronous (SQLite-only) phase of [`workflow_add_task`].
+/// Kept as a struct so the async wrapper can do the PG syncs without any
+/// `!Send` SQLite guard crossing the await. Carries all owned data needed
+/// for the plan_create and task_create PostgreSQL mirrors.
+struct AddTaskOutcome {
+    task_id: String,
+    wf_id: String,
+    plan_id: String,
+    title: String,
+    owner: Option<String>,
+    deps: Option<String>,
+    requires_tdd: bool,
+    skill: Option<String>,
+    input: Option<String>,
+    acceptance_criteria: Option<String>,
+    required_context: Option<String>,
+    context_fingerprint: Option<String>,
+    /// Plan row data for PG sync, if the plan exists in SQLite. Tuple shape:
+    /// (status, summary, content, version, created_by_agent).
+    plan_row: Option<(String, String, String, i64, String)>,
+    /// Response value to return to the MCP caller (task creation confirmation).
+    response: serde_json::Value,
+}
+
 pub async fn workflow_add_task(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    // Phase 2 — PostgreSQL plan+task sync. Done OUTSIDE the SQLite-holding helper
+    // so the `!Send` `sqlite::conn()` guard never crosses an `.await`. The same
+    // rationale as `workflow_complete_task` (see that function's comments). Both
+    // `plan_create` and `task_create` are internally bounded by a 5s timeout and
+    // warn on error; if PG is unavailable they no-op (pool None) and local task
+    // creation still succeeds, so this never blocks on PG.
+    let o = add_task_sqlite(&args)?;
+
+    // Sync the plan row first (if it exists) to satisfy the tasks.plan_id FK.
+    if let Some((p_status, p_summary, p_content, p_version, p_created_by)) = o.plan_row {
+        crate::direct_pg::plan_create(
+            &o.plan_id,
+            &o.wf_id,
+            p_version as i32,
+            &p_status,
+            &p_summary,
+            &p_content,
+            &p_created_by,
+        )
+        .await;
+    }
+
+    // Sync the task row to PG (awaited, same rationale as workflow_status above).
+    // The plan is already synced (or doesn't exist), so the FK is satisfied.
+    crate::direct_pg::task_create(
+        &o.task_id,
+        &o.wf_id,
+        &o.plan_id,
+        &o.title,
+        "PENDING",
+        "MEDIUM",
+        o.owner.as_deref(),
+        o.deps.as_deref(),
+        0,
+        o.requires_tdd,
+        o.skill.as_deref(),
+        o.input.as_deref(),
+        o.acceptance_criteria.as_deref(),
+        o.required_context.as_deref(),
+        o.context_fingerprint.as_deref(),
+    )
+    .await;
+
+    Ok(o.response)
+}
+
+/// All SQLite work for task creation: validation, plan auto-creation, task INSERT,
+/// and plan-row read for PG sync. Purely synchronous so the `sqlite::conn()` guard
+/// is confined here and never crosses an `.await`. The PG syncs run in the async
+/// wrapper `workflow_add_task` AFTER this helper returns.
+fn add_task_sqlite(
+    args: &Value,
+) -> Result<AddTaskOutcome, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
     let id = new_id();
     let workflow_id = args["workflow_id"]
@@ -1501,12 +1578,9 @@ pub async fn workflow_add_task(
         params![id, workflow_id, resolved_plan_id, title, owner_agent, deps, requires_tdd, skill, input, acceptance_criteria, required_context, context_fingerprint, &t, &t],
     ).map_err(|e| err(e))?;
 
-    // C2.14: sync the new task (and its plan) to PostgreSQL so the API/
-    // dashboard reflects local task creation. Fire-and-forget, mirroring the
-    // workflow-create sync (@768). The plan is synced FIRST (within the same
-    // spawned task) to satisfy the `tasks.plan_id` foreign key — plans are
-    // otherwise absent from PG in stdio/local mode. No-op when no PG pool is
-    // configured. This unblocks per-task DONE sync (rest of C2.13).
+    // C2.14: read the plan row for PG sync (if it exists). The sync happens in
+    // the async wrapper `workflow_add_task` AFTER this helper returns — keeping
+    // the `!Send` SQLite guard out of the await.
     let plan_row: Option<(String, String, String, i64, String)> = conn
         .query_row(
             "SELECT status, summary, content, version, created_by_agent FROM plans WHERE id=?1",
@@ -1522,56 +1596,23 @@ pub async fn workflow_add_task(
             },
         )
         .ok();
-    let pg_wid = workflow_id.to_string();
-    let pg_task_id = id.clone();
-    let pg_plan_id = resolved_plan_id.clone();
-    let pg_title = title.to_string();
-    let pg_owner = owner_agent.map(|s| s.to_string());
-    let pg_deps = deps.clone();
-    // C2-context-sync: carry the caller-supplied context fields (#58) into the
-    // PG task row so the dashboard matches local creation. Owned clones for the
-    // async move; parsed back to JSONB inside task_create.
-    let pg_skill = skill.map(|s| s.to_string());
-    let pg_input = input.clone();
-    let pg_acceptance_criteria = acceptance_criteria.clone();
-    let pg_required_context = required_context.clone();
-    let pg_context_fingerprint = context_fingerprint.clone();
-    crate::pg_sync::spawn(async move {
-        if let Some((p_status, p_summary, p_content, p_version, p_created_by)) = plan_row {
-            crate::direct_pg::plan_create(
-                &pg_plan_id,
-                &pg_wid,
-                p_version as i32,
-                &p_status,
-                &p_summary,
-                &p_content,
-                &p_created_by,
-            )
-            .await;
-        }
-        crate::direct_pg::task_create(
-            &pg_task_id,
-            &pg_wid,
-            &pg_plan_id,
-            &pg_title,
-            "PENDING",
-            "MEDIUM",
-            pg_owner.as_deref(),
-            pg_deps.as_deref(),
-            0,
-            requires_tdd != 0,
-            pg_skill.as_deref(),
-            pg_input.as_deref(),
-            pg_acceptance_criteria.as_deref(),
-            pg_required_context.as_deref(),
-            pg_context_fingerprint.as_deref(),
-        )
-        .await;
-    });
 
-    Ok(
-        json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0, "requiresTdd": requires_tdd == 1}),
-    )
+    Ok(AddTaskOutcome {
+        task_id: id.clone(),
+        wf_id: workflow_id.to_string(),
+        plan_id: resolved_plan_id,
+        title: title.to_string(),
+        owner: owner_agent.map(|s| s.to_string()),
+        deps,
+        requires_tdd: requires_tdd != 0,
+        skill: skill.map(|s| s.to_string()),
+        input,
+        acceptance_criteria,
+        required_context,
+        context_fingerprint,
+        plan_row,
+        response: json!({"id": id, "title": title, "status": "PENDING", "priority": "MEDIUM", "progressPercent": 0, "requiresTdd": requires_tdd == 1}),
+    })
 }
 
 pub async fn workflow_start_task(
@@ -1672,6 +1713,18 @@ pub async fn workflow_complete_task(
     if !outcome.final_status.is_empty() {
         crate::direct_pg::workflow_status(&outcome.wf_id, &outcome.final_status).await;
     }
+    // Mirror the task→DONE to PG (awaited, same rationale as workflow_status above).
+    // The task row exists in PG (synced at creation in `workflow_add_task` via
+    // `direct_pg::task_create`), so this UPDATE lands. Independent of the workflow
+    // status sync (different row). No-op without a PG pool.
+    crate::direct_pg::task_status(
+        &outcome.task_id,
+        "DONE",
+        100,
+        outcome.result.as_deref(),
+        true,
+    )
+    .await;
     Ok(json!({"status": "DONE", "task_id": outcome.task_id}))
 }
 
@@ -1684,6 +1737,8 @@ struct CompleteTaskOutcome {
     /// Workflow status to mirror to PG. Empty when the workflow status did not
     /// change (a non-final task completed) → the wrapper skips the sync.
     final_status: String,
+    /// Task result to mirror to PG via `task_status` sync.
+    result: Option<String>,
 }
 
 /// All SQLite work for task completion: review/TDD gate, task→DONE, auto memory,
@@ -1740,20 +1795,6 @@ fn complete_task_sqlite(
 
     conn.execute("UPDATE tasks SET status='DONE', result=?1, progress_percent=100, completed_at=?2, updated_at=?3 WHERE id=?4 AND workflow_id=?5",
         params![result, &t, &t, task_id, wf_id]).map_err(|e| err(e))?;
-
-    // C2.13 (rest): sync this task's completion to PostgreSQL so the API/
-    // dashboard reflects the local DONE. Fire-and-forget; no-op without a PG
-    // pool. The task row exists in PG (synced at creation in
-    // `workflow_add_task` via `direct_pg::task_create`), so this UPDATE lands.
-    // Independent of the workflow-status sync below (different row).
-    {
-        let pg_task_id = task_id.to_string();
-        let pg_result = result.clone();
-        crate::pg_sync::spawn(async move {
-            crate::direct_pg::task_status(&pg_task_id, "DONE", 100, pg_result.as_deref(), true)
-                .await;
-        });
-    }
 
     // Auto-store task result as experience memory (best-effort)
     {
@@ -1875,6 +1916,7 @@ fn complete_task_sqlite(
             task_id: task_id.to_string(),
             wf_id: wf_id.to_string(),
             final_status,
+            result,
         });
     }
 
@@ -1885,6 +1927,7 @@ fn complete_task_sqlite(
         task_id: task_id.to_string(),
         wf_id: wf_id.to_string(),
         final_status: String::new(),
+        result,
     })
 }
 
@@ -7572,5 +7615,141 @@ mod tests {
             )
             .unwrap();
         assert_eq!(task_status, "DONE", "local task status must be DONE");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_awaits_task_status_sync() {
+        // Regression: completeTask task-status sync must be AWAITED (not
+        // fire-and-forget) so the task row reaches PG. The sync runs in the async
+        // wrapper (`workflow_complete_task`) AFTER the SQLite work returns from
+        // `complete_task_sqlite` — this split keeps the `!Send` sqlite guard out
+        // of the await. We don't require a live PG pool: with no pool,
+        // `direct_pg::task_status` no-ops (returns immediately), so we verify the
+        // call still succeeds and local state is DONE.
+        let _guard = TestDbGuard::new();
+
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        // Create a workflow and task in local SQLite. Guard is released before
+        // the await below — do NOT hold a `!Send` MutexGuard across `.await`.
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, priority, progress_percent, requires_tdd, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'), datetime('now'))",
+                params![&task_id, &wf_id, "plan-123", "test-task", "RUNNING", "MEDIUM", 50, 0],
+            )
+            .unwrap();
+        }
+
+        // Complete the task — the task-status sync inside must be awaited
+        let result = workflow_complete_task(json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id,
+            "result": "{\"summary\": \"Task complete\"}"
+        }))
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "complete_task should succeed even if PG sync fails/times out"
+        );
+
+        // Verify local state is DONE (the primary write)
+        let conn = crate::sqlite::conn();
+        let task_status: String = conn
+            .query_row(
+                "SELECT status FROM tasks WHERE id=?1",
+                params![&task_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_status, "DONE", "local task status must be DONE");
+
+        // Verify result was stored
+        let result_str: Option<String> = conn
+            .query_row(
+                "SELECT result FROM tasks WHERE id=?1",
+                params![&task_id],
+                |r| r.get(0),
+            )
+            .ok();
+        assert!(result_str.is_some(), "task result should be stored");
+    }
+
+    #[tokio::test]
+    async fn test_add_task_awaits_task_create_sync() {
+        // Regression: addTask plan+task sync must be AWAITED (not fire-and-forget)
+        // so the task (and plan) rows reach PG. The syncs run in the async wrapper
+        // (`workflow_add_task`) AFTER the SQLite work returns from `add_task_sqlite`
+        // — this split keeps the `!Send` sqlite guard out of the await. We don't
+        // require a live PG pool: with no pool, `plan_create`/`task_create` no-op
+        // (return immediately), so we verify the call still succeeds and local
+        // state is correct.
+        let _guard = TestDbGuard::new();
+
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+
+        // Create a workflow and plan in local SQLite. Guard is released before
+        // the await below — do NOT hold a `!Send` MutexGuard across `.await`.
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "INIT"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent, created_at) VALUES (?1, ?2, 1, 'ACTIVE', 'Test plan', '{}', 'system', datetime('now'))",
+                params![&plan_id, &wf_id],
+            )
+            .unwrap();
+        }
+
+        // Add a task — the plan+task syncs inside must be awaited
+        let result = workflow_add_task(json!({
+            "workflow_id": &wf_id,
+            "plan_id": &plan_id,
+            "name": "test-task",
+            "agent": "test-agent",
+            "dependencies": json!(["dep1", "dep2"]),
+            "requires_tdd": false,
+            "skill": "test-skill",
+            "input": json!({"key": "value"}),
+            "acceptance_criteria": json!({"criteria": "pass"}),
+            "required_context": json!({"context": "data"}),
+        }))
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "add_task should succeed even if PG sync fails/times out"
+        );
+
+        // Verify local state is correct (the primary writes)
+        let conn = crate::sqlite::conn();
+        let task_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE workflow_id=?1",
+                params![&wf_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_count, 1, "exactly one task should exist");
+
+        let task_title: String = conn
+            .query_row(
+                "SELECT title FROM tasks WHERE workflow_id=?1",
+                params![&wf_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_title, "test-task", "task title should match");
     }
 }
