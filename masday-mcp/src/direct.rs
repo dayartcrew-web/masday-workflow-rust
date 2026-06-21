@@ -1658,6 +1658,40 @@ pub async fn workflow_start_task(
 pub async fn workflow_complete_task(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    // Phase 2 — PostgreSQL workflow-status sync. Done OUTSIDE the SQLite-holding
+    // helper below so the `!Send` `sqlite::conn()` guard never crosses an `.await`
+    // (the handler future is stored as `Box<dyn Future + Send>` in the registry;
+    // holding the guard across the await fails to compile, and `drop()` does not
+    // satisfy the generator's Send analysis — only ending the binding's scope does).
+    // Awaiting here (instead of the prior fire-and-forget `pg_sync::spawn`) makes
+    // the DONE flip reach PG before we return — the single most dashboard-critical
+    // write. `direct_pg::workflow_status` is internally bounded by a 5s timeout and
+    // warns on error; if PG is unavailable it no-ops (pool None) and local
+    // completion still succeeds, so this never blocks on PG.
+    let outcome = complete_task_sqlite(&args)?;
+    if !outcome.final_status.is_empty() {
+        crate::direct_pg::workflow_status(&outcome.wf_id, &outcome.final_status).await;
+    }
+    Ok(json!({"status": "DONE", "task_id": outcome.task_id}))
+}
+
+/// Outcome of the synchronous (SQLite-only) phase of [`workflow_complete_task`].
+/// Kept as a small struct so the async wrapper can do the PG sync without any
+/// `!Send` SQLite guard crossing the await.
+struct CompleteTaskOutcome {
+    task_id: String,
+    wf_id: String,
+    /// Workflow status to mirror to PG. Empty when the workflow status did not
+    /// change (a non-final task completed) → the wrapper skips the sync.
+    final_status: String,
+}
+
+/// All SQLite work for task completion: review/TDD gate, task→DONE, auto memory,
+/// workflow auto-transition, and the final-status read. Purely synchronous so the
+/// `sqlite::conn()` guard is confined here and never crosses an `.await`.
+fn complete_task_sqlite(
+    args: &Value,
+) -> Result<CompleteTaskOutcome, Box<dyn std::error::Error + Send + Sync>> {
     let conn = crate::sqlite::conn();
     let wf_id = args["workflow_id"]
         .as_str()
@@ -1823,13 +1857,13 @@ pub async fn workflow_complete_task(
             );
         }
 
-        // C2.13: sync the (possibly transitioned) workflow status to PG so the
-        // API/dashboard doesn't keep showing EXECUTE + PENDING tasks forever
-        // after a local completion. Fire-and-forget, mirroring the execute-path
-        // sync (`direct_pg::workflow_status`). The workflow row exists in PG
-        // (synced at create), so this UPDATE lands. Task-row sync (creation
-        // C2.14 + per-task completion) is a follow-up slice — it depends on
-        // task creation reaching PG first.
+        // C2.13: read the (possibly transitioned) workflow status so the async
+        // wrapper can mirror it to PG. The workflow row exists in PG (synced at
+        // create), so the UPDATE in `direct_pg::workflow_status` lands. The
+        // actual PG sync runs in `workflow_complete_task` AFTER this helper
+        // returns — keeping the `!Send` SQLite guard out of the await. Task-row
+        // sync (creation C2.14 + per-task completion) remains fire-and-forget;
+        // tracked as a follow-up slice.
         let final_status: String = conn
             .query_row(
                 "SELECT status FROM workflows WHERE id=?1",
@@ -1837,16 +1871,21 @@ pub async fn workflow_complete_task(
                 |r| r.get(0),
             )
             .unwrap_or_default();
-        if !final_status.is_empty() {
-            let pg_id = wf_id.to_string();
-            let pg_status = final_status;
-            crate::pg_sync::spawn(async move {
-                crate::direct_pg::workflow_status(&pg_id, &pg_status).await;
-            });
-        }
+        return Ok(CompleteTaskOutcome {
+            task_id: task_id.to_string(),
+            wf_id: wf_id.to_string(),
+            final_status,
+        });
     }
 
-    Ok(json!({"status": "DONE", "task_id": task_id}))
+    // pending != 0: a non-final task completed and the workflow status is
+    // unchanged (stays EXECUTE), so there is no status flip to mirror. The
+    // task→DONE mirror was already fired above via `direct_pg::task_status`.
+    Ok(CompleteTaskOutcome {
+        task_id: task_id.to_string(),
+        wf_id: wf_id.to_string(),
+        final_status: String::new(),
+    })
 }
 
 /// Fail a task — mark it FAILED and route its workflow into FIX for recovery
@@ -7469,5 +7508,69 @@ mod tests {
             )
             .unwrap();
         assert_eq!(wf_present, 0, "workflow row itself must be deleted");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_awaits_workflow_status_sync() {
+        // Regression: completeTask workflow-status sync must be AWAITED (not
+        // fire-and-forget) so the status flip reaches PG before returning DONE.
+        // The sync runs in the async wrapper (`workflow_complete_task`) AFTER the
+        // SQLite work returns from `complete_task_sqlite` — this split keeps the
+        // `!Send` sqlite guard out of the await. We don't require a live PG pool:
+        // with no pool, `direct_pg::workflow_status` no-ops (returns immediately),
+        // so we verify the call still succeeds and local state is DONE.
+        let _guard = TestDbGuard::new();
+
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        // Create a workflow and task in local SQLite. The guard is released before
+        // the await below — do NOT hold a `!Send` MutexGuard across `.await`.
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, priority, progress_percent, requires_tdd, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'), datetime('now'))",
+                params![&task_id, &wf_id, "plan-123", "test-task", "RUNNING", "MEDIUM", 50, 0],
+            )
+            .unwrap();
+        }
+
+        // Complete the task — the workflow-status sync inside must be awaited
+        let result = workflow_complete_task(json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id,
+            "result": "{\"summary\": \"Task complete\"}"
+        }))
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "complete_task should succeed even if PG sync fails/times out"
+        );
+
+        // Verify local state is DONE (the primary write)
+        let conn = crate::sqlite::conn();
+        let wf_status: String = conn
+            .query_row(
+                "SELECT status FROM workflows WHERE id=?1",
+                params![&wf_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(wf_status, "DONE", "local workflow status must be DONE");
+
+        let task_status: String = conn
+            .query_row(
+                "SELECT status FROM tasks WHERE id=?1",
+                params![&task_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_status, "DONE", "local task status must be DONE");
     }
 }
