@@ -112,7 +112,11 @@ impl SessionRepo {
         // Map JSON snake_case keys to DB snake_case column names
         let mut set_clauses = vec![r#"updated_at = $2"#.to_string()];
         let mut param_count = 2;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+        // NOTE: `+ Send + Sync` (not just `+ Sync`) is required so the param
+        // Vec stays `Send` while held across the `query_one(...).await` below —
+        // otherwise this repo method's future is `!Send` and any axum handler
+        // that awaits it fails the `Handler` bound (Fut: Send).
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Send + Sync>> =
             vec![Box::new(session_key.to_string()), Box::new(now)];
 
         let column_map: std::collections::HashMap<&str, &str> = [
@@ -151,8 +155,10 @@ impl SessionRepo {
 
         debug!("Executing session patch query: {}", sql);
 
-        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params
+            .iter()
+            .map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
 
         let row = client
             .query_one(&sql, params_refs.as_slice())
