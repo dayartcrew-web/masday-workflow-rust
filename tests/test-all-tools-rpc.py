@@ -22,6 +22,10 @@ Verdict per tool:
 OK and TOOL_ERR are both healthy (most tools are exercised with deliberately
 fake ids / missing preconditions, so a clean TOOL_ERR is the expected pass).
 RPC_ERROR / TIMEOUT / CRASH are real problems and cause a non-zero exit.
+A tool in MUST_OK must return OK; a TOOL_ERR from one is a real regression and
+also fails the run. (tests_run is excluded — it shells out to `cargo test`,
+compiling the whole workspace, which is neither fast nor deterministic in a
+smoke gate; its dispatch + arg-injection guard are unit-tested in tests.rs.)
 
 Environment:
   MCP_BIN         path to the masday-mcp binary (else auto-resolved from the repo)
@@ -66,7 +70,6 @@ FAKE_T = "00000000-0000-0000-0000-000000000001"
 
 # Tools that shell out to slow CLI / network calls get the larger budget.
 SLOW_TOOLS = {
-    "tests_run",
     "docker_build",
     "docker_run",
     "cicd_pipeline_trigger",
@@ -76,8 +79,38 @@ SLOW_TOOLS = {
     "git_commit",
 }
 
+# Tools exercised with VALID args and no CI-absent external dependency. These
+# MUST return OK — a graceful TOOL_ERR here would mean a real regression (a core
+# read/write path broke), so main() counts any non-OK verdict as a failure.
+# Deliberately excluded:
+#   - fake-id tools (expected TOOL_ERR even when they happen to no-op-OK);
+#   - CLI/network/embedding/recursive tools (docker/cicd/github/npm/git_commit;
+#     semantic-search needs an embedding service; local_sync/local_push touch
+#     the DB) whose failure modes are environment-dependent;
+#   - capability_*/projectRules_check: they read .claude/registry.json /
+#     .claude/rules, which are NOT committed (absent in a fresh CI checkout) and
+#     also live under ~/.claude — so they are not deterministic in CI.
+MUST_OK = {
+    # read-only core: SQLite-local, committed files, or the git repo itself.
+    "workflow_ping", "workflow_list", "workflow_getActive",
+    "memory_stats", "memory_recall_recent", "memory_search", "memory_search_nodes",
+    "filesystem_read", "filesystem_list", "filesystem_stat",
+    "git_status", "git_diff",
+    "reminder_check", "reminder_list",
+    "session_get_state", "policy_check_session_readiness",
+    "use_masday",
+    # core writes: valid args, local SQLite store or files under /tmp.
+    "workflow_create", "memory_store", "memory_store_research",
+    "session_init_context", "local_init", "local_save_artifact",
+    "filesystem_write", "filesystem_delete",
+}
+
 # (tool_name, args_as_json_string). Most use deliberately fake ids so the
 # expected verdict is a graceful TOOL_ERR; a few are read-only and return OK.
+# NOTE: `tests_run` is intentionally NOT exercised — it shells out to
+# `cargo test`, compiling the whole workspace, which is neither fast nor
+# deterministic inside a smoke gate (it is redundant with the CI `test` job,
+# and its dispatch + arg-injection guard are unit-tested in tools/tests.rs).
 TOOLS = [
     ("workflow_ping", "{}"),
     ("workflow_list", "{}"),
@@ -101,7 +134,6 @@ TOOLS = [
     ("cicd_runs_view", "{}"),
     ("github_pr_list", "{}"),
     ("github_issue_list", "{}"),
-    ("tests_run", '{"pattern":"__nonexistent_marker_xyz__"}'),  # slow: compiles, then no match
     ("projectRules_check", json.dumps({"project_root": PROJ})),
     ("reminder_check", "{}"),
     ("reminder_list", "{}"),
@@ -256,6 +288,17 @@ def main():
     print("═══════════════════════════════════════════════════════════════════")
     # OK + TOOL_ERR (graceful) are healthy; RPC_ERROR/TIMEOUT/CRASH are problems.
     bad = counts["RPC_ERROR"] + counts["TIMEOUT"] + counts["CRASH"]
+    # Positive assertion: tools exercised with valid args and no external dep
+    # (MUST_OK) must return OK. A silent TOOL_ERR there is a real regression,
+    # not an expected graceful failure (those tools use fake ids / missing CLIs
+    # and stay out of MUST_OK), so it also fails the run.
+    must_ok_violations = [(name, verdict) for name, verdict, _ in rows
+                          if name in MUST_OK and verdict != "OK"]
+    for name, verdict in must_ok_violations:
+        print(f"  !! MUST_OK {name:<40} returned {verdict} (expected OK)")
+    if must_ok_violations:
+        print(f"  -> {len(must_ok_violations)} MUST_OK tool(s) regressed (non-OK)")
+    bad += len(must_ok_violations)
     sys.exit(0 if bad == 0 else 1)
 
 

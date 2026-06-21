@@ -10,7 +10,8 @@
 # ahead of it ever returned.)
 #
 # Verdict per tool: OK / TOOL_ERR (graceful) / RPC_ERROR / TIMEOUT / CRASH.
-# Exit code is non-zero iff any RPC_ERROR / TIMEOUT / CRASH occurred.
+# Exit code is non-zero iff any RPC_ERROR / TIMEOUT / CRASH occurred, OR any
+# tool in MUST_OK (see test-all-tools-rpc.py) returned a non-OK verdict.
 #
 # Environment:
 #   MCP_BIN         path to the masday-mcp binary (else auto-resolved from repo target/)
