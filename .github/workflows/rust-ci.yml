@@ -86,11 +86,6 @@ jobs:
           DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test ${{ env.CARGO_FLAGS }} --test '*'
 
-      - name: Run benchmarks
-        env:
-          DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
-        run: cargo test ${{ env.CARGO_FLAGS }} --test benchmarks --release
-
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
