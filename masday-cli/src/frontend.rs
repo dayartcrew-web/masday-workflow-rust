@@ -1,6 +1,12 @@
 //! Embedded frontend static file serving.
 //!
-//! Uses `rust-embed` to embed the Next.js static export at compile time.
+//! Currently serves a committed placeholder page (`frontend-assets/index.html`)
+//! because the dashboard is not yet feature-ready enough to bundle into the
+//! binary. To re-bundle the real dashboard:
+//!   1. set `#[folder = "../apps/dashboard/out/"]` again, AND
+//!   2. add a CI step that runs `next build` (in `apps/dashboard`) before
+//!      `cargo build`, so the export exists in every fresh checkout.
+//!
 //! Falls back to `index.html` for SPA client-side routing.
 
 use axum::body::Body;
@@ -9,7 +15,7 @@ use axum::response::Response;
 use rust_embed::Embed;
 
 #[derive(Embed)]
-#[folder = "../apps/dashboard/out/"]
+#[folder = "frontend-assets/"]
 struct FrontendAssets;
 
 /// Serve a static file from the embedded frontend assets.
