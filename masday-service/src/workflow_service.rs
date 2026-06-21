@@ -55,24 +55,18 @@ pub async fn validate_transition_prerequisites(
     match (from, to) {
         // ANALYZE → PLAN: Verify analysis was done
         (WorkflowState::Analyze, WorkflowState::Plan) => {
-            let context_doc_repo = ContextDocumentRepo::new(pool.clone());
-            let doc_count = context_doc_repo
+            // #8: propagate DB errors instead of coercing to 0 (a DB outage
+            // used to read as "no artifacts" → false validation failure).
+            let doc_count = ContextDocumentRepo::new(pool.clone())
                 .count_by_workflow(workflow_id)
                 .await
-                .unwrap_or(0);
-
-            let memory_repo = MemoryRepo::new(pool.clone());
-            let memories = memory_repo
+                .map_err(|e| AppError::database(format!("Failed to count analysis docs: {}", e)))?;
+            let mem_count = MemoryRepo::new(pool.clone())
                 .recall_by_workflow(workflow_id, 1)
                 .await
-                .unwrap_or_default();
-            let mem_count = memories.len() as i64;
-
-            if doc_count == 0 && mem_count == 0 {
-                return Err(AppError::validation(
-                    "Cannot advance to PLAN: no analysis artifacts found. Run analysis first.",
-                ));
-            }
+                .map_err(|e| AppError::database(format!("Failed to recall memories: {}", e)))?
+                .len() as i64;
+            require_analysis_artifacts(doc_count, mem_count)?;
         }
         // PLAN → EXECUTE: Verify plan exists with tasks
         (WorkflowState::Plan, WorkflowState::Execute) => {
@@ -88,31 +82,54 @@ pub async fn validate_transition_prerequisites(
                 ));
             }
 
-            let task_repo = TaskRepo::new(pool.clone());
-            let task_count = task_repo.count_by_workflow(workflow_id).await.unwrap_or(0);
-
-            if task_count == 0 {
-                return Err(AppError::validation(
-                    "Cannot advance to EXECUTE: plan has no tasks. Add tasks to the plan first.",
-                ));
-            }
+            // #8: propagate DB errors instead of coercing to 0.
+            let task_count = TaskRepo::new(pool.clone())
+                .count_by_workflow(workflow_id)
+                .await
+                .map_err(|e| AppError::database(format!("Failed to count tasks: {}", e)))?;
+            require_plan_tasks(task_count)?;
         }
         // EXECUTE → VERIFY: Verify at least one task completed
         (WorkflowState::Execute, WorkflowState::Verify) => {
-            let task_repo = TaskRepo::new(pool.clone());
-            let done_count = task_repo
+            // #8: propagate DB errors instead of coercing to 0.
+            let done_count = TaskRepo::new(pool.clone())
                 .count_done_by_workflow(workflow_id)
                 .await
-                .unwrap_or(0);
-
-            if done_count == 0 {
-                return Err(AppError::validation(
-                    "Cannot advance to VERIFY: no tasks completed. Execute tasks first.",
-                ));
-            }
+                .map_err(|e| AppError::database(format!("Failed to count done tasks: {}", e)))?;
+            require_completed_tasks(done_count)?;
         }
         // Other transitions have no prerequisites
         _ => {}
+    }
+    Ok(())
+}
+
+/// Pure prerequisite decision for the ANALYZE-to-PLAN artifact requirement.
+fn require_analysis_artifacts(doc_count: i64, mem_count: i64) -> Result<()> {
+    if doc_count == 0 && mem_count == 0 {
+        return Err(AppError::validation(
+            "Cannot advance to PLAN: no analysis artifacts found. Run analysis first.",
+        ));
+    }
+    Ok(())
+}
+
+/// Pure prerequisite decision for the tasks requirement of PLAN → EXECUTE.
+fn require_plan_tasks(task_count: i64) -> Result<()> {
+    if task_count == 0 {
+        return Err(AppError::validation(
+            "Cannot advance to EXECUTE: plan has no tasks. Add tasks to the plan first.",
+        ));
+    }
+    Ok(())
+}
+
+/// Pure prerequisite decision for EXECUTE → VERIFY.
+fn require_completed_tasks(done_count: i64) -> Result<()> {
+    if done_count == 0 {
+        return Err(AppError::validation(
+            "Cannot advance to VERIFY: no tasks completed. Execute tasks first.",
+        ));
     }
     Ok(())
 }
@@ -751,53 +768,39 @@ mod tests {
     // These tests verify the prerequisite check logic without requiring database
 
     #[test]
-    fn test_prerequisites_analyze_to_plan_requires_artifacts() {
-        // This test validates the logic that ANALYZE → PLAN requires artifacts
-        // The actual implementation checks doc_count == 0 && mem_count == 0
-        let doc_count = 0;
-        let mem_count = 0;
-        let has_artifacts = doc_count > 0 || mem_count > 0;
-        assert!(!has_artifacts, "Should fail when no artifacts exist");
-
-        // With artifacts
-        let doc_count = 1;
-        let mem_count = 0;
-        let has_artifacts = doc_count > 0 || mem_count > 0;
-        assert!(has_artifacts, "Should pass when artifacts exist");
+    fn test_prereq_analyze_to_plan_requires_artifacts() {
+        // Real call into the extracted pure decision fn (previously these tests
+        // re-implemented the boolean inline and never touched the real code).
+        assert!(require_analysis_artifacts(0, 0).is_err());
+        assert!(require_analysis_artifacts(1, 0).is_ok());
+        assert!(require_analysis_artifacts(0, 3).is_ok());
+        assert!(require_analysis_artifacts(2, 5).is_ok());
     }
 
     #[test]
-    fn test_prerequisites_plan_to_execute_requires_plan() {
-        // This test validates the logic that PLAN → EXECUTE requires a plan
-        let plan_exists = true;
-        assert!(plan_exists, "Should fail when no plan exists");
-
-        let plan_exists = false;
-        assert!(!plan_exists, "Should pass when plan exists");
+    fn test_prereq_plan_to_execute_requires_tasks() {
+        assert!(require_plan_tasks(0).is_err());
+        assert!(require_plan_tasks(1).is_ok());
+        assert!(require_plan_tasks(42).is_ok());
     }
 
     #[test]
-    fn test_prerequisites_plan_to_execute_requires_tasks() {
-        // This test validates the logic that PLAN → EXECUTE requires tasks
-        let task_count = 0;
-        let has_tasks = task_count > 0;
-        assert!(!has_tasks, "Should fail when no tasks exist");
-
-        let task_count = 1;
-        let has_tasks = task_count > 0;
-        assert!(has_tasks, "Should pass when tasks exist");
+    fn test_prereq_execute_to_verify_requires_done_tasks() {
+        assert!(require_completed_tasks(0).is_err());
+        assert!(require_completed_tasks(1).is_ok());
     }
 
     #[test]
-    fn test_prerequisites_execute_to_verify_requires_done_tasks() {
-        // This test validates the logic that EXECUTE → VERIFY requires done tasks
-        let done_count = 0;
-        let has_done_tasks = done_count > 0;
-        assert!(!has_done_tasks, "Should fail when no tasks are done");
-
-        let done_count = 1;
-        let has_done_tasks = done_count > 0;
-        assert!(has_done_tasks, "Should pass when at least one task is done");
+    fn test_prereq_error_messages_are_descriptive() {
+        // The DB-error propagation fix (#8) must not change the user-facing
+        // validation messages — only surface DB errors honestly instead of
+        // coercing them into validation failures.
+        let e = require_analysis_artifacts(0, 0).unwrap_err().to_string();
+        assert!(e.contains("no analysis artifacts") && e.contains("Run analysis first"));
+        let e = require_plan_tasks(0).unwrap_err().to_string();
+        assert!(e.contains("no tasks"));
+        let e = require_completed_tasks(0).unwrap_err().to_string();
+        assert!(e.contains("no tasks completed"));
     }
 
     #[test]
