@@ -927,6 +927,17 @@ pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
 
     sqlite::init_sqlite().map_err(|e| format!("SQLite init failed: {}", e))?;
 
+    // PostgreSQL: eagerly init the pool at startup so the stdio→PG mirror is
+    // live when the first tool call runs. Without this the standalone
+    // `masday-mcp` binary (this entry point) never warms the pool, so every
+    // `direct_pg::*` mirror silently no-ops — the cold-pool bug where the
+    // standalone server mirrors nothing to PG. Mirrors `run_local`; no-op when
+    // PG isn't configured. Tracing is suppressed above (NoSubscriber), so this
+    // stays silent on stdout (which carries JSON-RPC).
+    if pg::is_configured() {
+        let _ = pg::get_pool_wait(std::time::Duration::from_secs(5)).await;
+    }
+
     let registry = build_stdio_registry();
 
     let mut server = JsonRpcServer::new(registry);
