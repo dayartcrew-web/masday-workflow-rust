@@ -85,13 +85,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test ${{ env.CARGO_FLAGS }} --test '*'
-        continue-on-error: true
 
       - name: Run benchmarks
         env:
           DATABASE_URL: postgresql://masday:masday_dev_password@localhost:54331/masday
         run: cargo test ${{ env.CARGO_FLAGS }} --test benchmarks --release
-        continue-on-error: true
 
   clippy:
     name: Clippy
@@ -156,7 +154,6 @@ jobs:
 
       - name: Run cargo audit
         run: cargo audit
-        continue-on-error: true
 
   build:
     name: Build
@@ -241,6 +238,16 @@ jobs:
 
           if [ "${{ needs.build.result }}" != "success" ]; then
             echo "::error::Build failed"
+            exit 1
+          fi
+
+          if [ "${{ needs.audit.result }}" != "success" ]; then
+            echo "::error::Security audit failed (cargo audit found vulnerabilities)"
+            exit 1
+          fi
+
+          if [ "${{ needs.docs.result }}" != "success" ]; then
+            echo "::error::Docs build failed"
             exit 1
           fi
 
