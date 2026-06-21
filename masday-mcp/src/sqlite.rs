@@ -106,7 +106,9 @@ fn backfill_embeddings(conn: &Connection) {
 
 /// Maximum number of timestamped backups to keep. Older extras are deleted on
 /// every backup, so the directory self-cleans even from legacy clutter.
-const BACKUP_KEEP: usize = 5;
+/// Backups only ever happen on a pending schema migration (rare), so keeping
+/// just one (the pre-migration state of the most recent migration) is enough.
+const BACKUP_KEEP: usize = 1;
 
 /// Filename prefix for timestamped backups (`data.db.backup.YYYYMMDD-HHMMSS`).
 const BACKUP_PREFIX: &str = "data.db.backup.";
@@ -966,16 +968,12 @@ mod tests {
         prune_old_backups(dir);
         let remaining = list_backups(dir);
         assert_eq!(remaining.len(), BACKUP_KEEP);
-        let names: Vec<String> = remaining
-            .iter()
-            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        for kept_i in 3..=7u64 {
-            assert!(
-                names.contains(&format!("data.db.backup.{kept_i}")),
-                "expected newest backup {kept_i} to survive, got {names:?}"
-            );
-        }
+        // With BACKUP_KEEP=1, only the single newest (i=7) survives.
+        assert_eq!(
+            remaining[0].0.file_name().unwrap().to_string_lossy(),
+            "data.db.backup.7",
+            "only the newest backup must survive"
+        );
     }
 
     #[test]
