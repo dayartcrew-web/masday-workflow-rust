@@ -30,7 +30,7 @@ pub fn sync_agents_to_project(
         let target_dir = platform.project_agents_dir(project_dir);
 
         // OpenCode: if the global agent dir already exists, the user manages
-        // opencode globally — don't pollute the project with .opencode/agents.
+        // opencode globally — don't pollute the project with .opencode/agent.
         if *platform == Platform::OpenCode {
             if let Some(global) = platform.global_agents_dir() {
                 if global.exists() {
@@ -39,7 +39,7 @@ pub fn sync_agents_to_project(
                         .filter(|(n, _)| n.starts_with("masday-") && n.ends_with(".md"))
                         .count();
                     report.warnings.push(format!(
-                        "opencode global agent dir exists ({}); skipping project .opencode/agents",
+                        "opencode global agent dir exists ({}); skipping project .opencode/agent",
                         global.display()
                     ));
                     reports.push(report);
@@ -200,8 +200,8 @@ mod tests {
         assert!(report.copied == 0, "no agents should be copied");
         assert!(report.skipped > 0, "agents should be counted as skipped");
         assert!(
-            !project_dir.join(".opencode/agents").exists(),
-            "project .opencode/agents must NOT be created when global dir exists"
+            !project_dir.join(".opencode/agent").exists(),
+            "project .opencode/agent must NOT be created when global dir exists"
         );
         assert!(
             !report.warnings.is_empty(),

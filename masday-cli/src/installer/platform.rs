@@ -33,7 +33,7 @@ impl Platform {
             Platform::ClaudeDesktop => project_dir.join(".claude/agents"),
             Platform::GeminiCli => project_dir.join(".gemini/agents"),
             Platform::VsCodeCopilot => project_dir.join(".agents"),
-            Platform::OpenCode => project_dir.join(".opencode/agents"),
+            Platform::OpenCode => project_dir.join(".opencode/agent"),
             Platform::Cursor => project_dir.join(".cursor/rules"),
             Platform::Windsurf => project_dir.join(".windsurf/rules"),
             Platform::Codex => project_dir.join(".codex/agents"),
@@ -263,6 +263,18 @@ mod tests {
         assert!(
             dir.ends_with(".config/opencode/agent"),
             "expected singular `.config/opencode/agent`, got {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn test_opencode_project_agents_dir_is_singular() {
+        // opencode's real PROJECT agent dir is also `agent` (singular),
+        // not `agents` — a plural project dir is not read by opencode.
+        let dir = Platform::OpenCode.project_agents_dir(Path::new("/tmp/proj"));
+        assert!(
+            dir.ends_with(".opencode/agent"),
+            "expected singular `.opencode/agent`, got {}",
             dir.display()
         );
     }
