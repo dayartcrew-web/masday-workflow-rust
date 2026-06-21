@@ -95,10 +95,12 @@ async fn get_latest_review(
     let workflow_id = params.workflow_id.as_deref().unwrap_or("");
 
     if task_id.is_empty() || workflow_id.is_empty() {
-        return Ok(Json(serde_json::json!({
-            "review": null,
-            "message": "workflow_id and task_id query parameters are required"
-        })));
+        // #10: bad input (missing required query params) must be a 400, not a
+        // 200 with a "message" body — a 200 hides the error from clients that
+        // branch on status code.
+        return Err(ApiError(masday_core::AppError::Validation(
+            "workflow_id and task_id query parameters are required".into(),
+        )));
     }
 
     let repo = masday_db::repos::ReviewRepo::new(state.pool.clone());
