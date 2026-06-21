@@ -110,7 +110,7 @@ async fn validate_parallel(
         .unwrap_or("");
 
     // Reuse completion validation for parallel — same logic applies
-    let valid = policy_result_to_valid(
+    let mut valid = policy_result_to_valid(
         masday_service::PolicyService::validate_completion(
             &state.pool,
             session_key,
@@ -120,11 +120,36 @@ async fn validate_parallel(
         .await,
     )?;
 
-    Ok(Json(serde_json::json!({
+    // When the single task is already valid, additionally require every
+    // parallel_branch in the workflow to be DONE before green-lighting.
+    let mut reason: Option<String> = None;
+    let mut pending_branches: Option<i64> = None;
+    if valid && !workflow_id.is_empty() {
+        let branches = masday_db::repos::BranchRepo::new(state.pool.clone())
+            .list_branches(workflow_id)
+            .await
+            .unwrap_or_default();
+        let pending = branches.iter().filter(|b| b.status != "DONE").count() as i64;
+        if pending > 0 {
+            valid = false;
+            reason = Some(format!("{pending} parallel branch(es) not yet DONE"));
+            pending_branches = Some(pending);
+        }
+    }
+
+    let mut body = serde_json::json!({
         "valid": valid,
         "workflow_id": workflow_id,
         "task_id": task_id
-    })))
+    });
+    if let Some(r) = reason {
+        body["reason"] = serde_json::json!(r);
+    }
+    if let Some(p) = pending_branches {
+        body["parallel_branches_pending"] = serde_json::json!(p);
+    }
+
+    Ok(Json(body))
 }
 
 async fn detect_drift(Path(workflow_id): Path<String>, Json(payload): Json<Value>) -> Json<Value> {

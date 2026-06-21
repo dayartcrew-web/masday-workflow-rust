@@ -3743,15 +3743,36 @@ pub async fn policy_validate_completion(
 pub async fn policy_validate_parallel_completion(
     args: Value,
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    // Mirror the HTTP route: `validate_parallel` (routes/policy.rs) reuses the
-    // same single-task completion validation ("Reuse completion validation for
-    // parallel — same logic applies" → PolicyService::validate_completion). The
-    // former stdio stub ignored every arg and returned `{"valid": true}`, so a
-    // caller could "complete" a parallel branch whose task was still RUNNING /
-    // review-pending / non-terminal. Delegating keeps stdio and HTTP in
-    // lockstep with zero duplicated logic. Both tools advertise the identical
-    // schema (`session_key`, `workflow_id`, `task_id`).
-    policy_validate_completion(args).await
+    // Extract workflow_id before delegating: `policy_validate_completion`
+    // takes `args` by value and moves it.
+    let workflow_id = args["workflow_id"].as_str().unwrap_or("").to_string();
+
+    // Step 1 — delegate the single-task completion check (review gate,
+    // terminal status, all-workflow-tasks-terminal). This mirrors the HTTP
+    // `validate_parallel` route's reuse of PolicyService::validate_completion.
+    let mut result = policy_validate_completion(args).await?;
+
+    // Step 2 — only enforce the parallel-branch gate when the single task is
+    // already valid. If the task itself is not completable there is nothing to
+    // add; surface that reason first. When the task IS valid, additionally
+    // require every parallel_branch in the workflow to be DONE.
+    if result.get("valid").and_then(|v| v.as_bool()) == Some(true) && !workflow_id.is_empty() {
+        let conn = crate::sqlite::conn();
+        let pending: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM parallel_branches WHERE workflow_id=?1 AND status!='DONE'",
+                params![workflow_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if pending > 0 {
+            result["valid"] = json!(false);
+            result["reason"] = json!(format!("{pending} parallel branch(es) not yet DONE"));
+            result["parallel_branches_pending"] = json!(pending);
+        }
+    }
+
+    Ok(result)
 }
 
 pub async fn policy_detect_scope_drift(
@@ -6172,6 +6193,104 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("requires review but none found"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_parallel_completion_blocks_on_pending_branch() {
+        let _guard = TestDbGuard::new();
+
+        // Regression: validate_parallel_completion must verify every
+        // parallel_branch in the workflow is DONE before returning valid=true.
+        // A valid single task with an ACTIVE branch must be blocked.
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+            // Task DONE, no review requirement → single-task check passes.
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_id, &plan_id, "task1", "DONE", 0],
+            )
+            .unwrap();
+            // One ACTIVE parallel branch → must block.
+            conn.execute(
+                "INSERT INTO parallel_branches (id, workflow_id, task_id, branch_key, role, status, input, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,'ACTIVE',?6,?7,?8)",
+                params![
+                    uuid::Uuid::new_v4().to_string(),
+                    &wf_id,
+                    &task_id,
+                    "branch-A",
+                    "worker",
+                    "{}",
+                    chrono::Utc::now().to_rfc3339(),
+                    chrono::Utc::now().to_rfc3339(),
+                ],
+            )
+            .unwrap();
+        }
+
+        let result = policy_validate_parallel_completion(json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id
+        }))
+        .await;
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert_eq!(val["valid"], false);
+        assert!(val["reason"]
+            .as_str()
+            .unwrap()
+            .contains("parallel branch(es) not yet DONE"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_parallel_completion_passes_when_no_branches() {
+        let _guard = TestDbGuard::new();
+
+        // No parallel_branches rows → valid stays as the single-task result.
+        let wf_id = uuid::Uuid::new_v4().to_string();
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let task_id = uuid::Uuid::new_v4().to_string();
+
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, ?3)",
+                params![&wf_id, "test-workflow", "EXECUTE"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, status, summary, content, created_by_agent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![&plan_id, &wf_id, 1, "DONE", "test plan", "{}", "test-agent"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status, requires_tdd) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![&task_id, &wf_id, &plan_id, "task1", "DONE", 0],
+            )
+            .unwrap();
+        }
+
+        let result = policy_validate_parallel_completion(json!({
+            "workflow_id": &wf_id,
+            "task_id": &task_id
+        }))
+        .await
+        .unwrap();
+        // No review required, no branches → valid unchanged (true).
+        assert_eq!(result["valid"], true);
     }
 
     #[test]
