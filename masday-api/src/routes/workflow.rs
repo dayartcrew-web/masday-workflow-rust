@@ -512,13 +512,23 @@ async fn mark_synthesis_ready(
 ) -> Result<Json<Value>, ApiError> {
     // Validate workflow exists
     let _ = masday_service::WorkflowService::get_workflow(&state.pool, &id).await?;
-    let session_key = payload
-        .get("session_key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    Ok(Json(
-        serde_json::json!({"session_key": session_key, "synthesis_ready": true}),
-    ))
+    let (session_key, patch) = build_session_patch(
+        &id,
+        payload.get("session_key").and_then(|v| v.as_str()),
+        serde_json::json!({"synthesis_ready": true}),
+    );
+    // Persist the flag to the session_states row (upsert keyed by session_key)
+    let repo = masday_db::repos::session_repo::SessionRepo::new(state.pool.clone());
+    let updated = repo.patch_state(&session_key, patch).await.map_err(|e| {
+        ApiError(masday_core::AppError::Internal(format!(
+            "Failed to persist synthesis_ready: {}",
+            e
+        )))
+    })?;
+    Ok(Json(serde_json::json!({
+        "session_key": session_key,
+        "synthesis_ready": updated.synthesis_ready,
+    })))
 }
 
 async fn mark_verification_ready(
@@ -528,13 +538,22 @@ async fn mark_verification_ready(
 ) -> Result<Json<Value>, ApiError> {
     // Validate workflow exists
     let _ = masday_service::WorkflowService::get_workflow(&state.pool, &id).await?;
-    let session_key = payload
-        .get("session_key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    Ok(Json(
-        serde_json::json!({"session_key": session_key, "verification_ready": true}),
-    ))
+    let (session_key, patch) = build_session_patch(
+        &id,
+        payload.get("session_key").and_then(|v| v.as_str()),
+        serde_json::json!({"verification_ready": true}),
+    );
+    let repo = masday_db::repos::session_repo::SessionRepo::new(state.pool.clone());
+    let updated = repo.patch_state(&session_key, patch).await.map_err(|e| {
+        ApiError(masday_core::AppError::Internal(format!(
+            "Failed to persist verification_ready: {}",
+            e
+        )))
+    })?;
+    Ok(Json(serde_json::json!({
+        "session_key": session_key,
+        "verification_ready": updated.verification_ready,
+    })))
 }
 
 async fn set_execution_mode(
@@ -544,17 +563,48 @@ async fn set_execution_mode(
 ) -> Result<Json<Value>, ApiError> {
     // Validate workflow exists
     let _ = masday_service::WorkflowService::get_workflow(&state.pool, &id).await?;
-    let session_key = payload
-        .get("session_key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
     let mode = payload
         .get("mode")
         .and_then(|v| v.as_str())
         .unwrap_or("sequential");
-    Ok(Json(
-        serde_json::json!({"session_key": session_key, "execution_mode": mode}),
-    ))
+    let (session_key, patch) = build_session_patch(
+        &id,
+        payload.get("session_key").and_then(|v| v.as_str()),
+        serde_json::json!({"execution_mode": mode}),
+    );
+    let repo = masday_db::repos::session_repo::SessionRepo::new(state.pool.clone());
+    let updated = repo.patch_state(&session_key, patch).await.map_err(|e| {
+        ApiError(masday_core::AppError::Internal(format!(
+            "Failed to persist execution_mode: {}",
+            e
+        )))
+    })?;
+    Ok(Json(serde_json::json!({
+        "session_key": session_key,
+        "execution_mode": updated.execution_mode,
+    })))
+}
+
+/// Resolve the effective session_key (falling back to a workflow-scoped
+/// synthetic key when the caller omits one) and build a session_states upsert
+/// patch that carries both the requested field updates and `workflow_id` so a
+/// fresh row is associated with the right workflow.
+fn build_session_patch(
+    workflow_id: &str,
+    session_key: Option<&str>,
+    mut fields: Value,
+) -> (String, Value) {
+    let key = session_key
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("wf:{}", workflow_id));
+    if let Some(obj) = fields.as_object_mut() {
+        obj.insert(
+            "workflow_id".to_string(),
+            Value::String(workflow_id.to_string()),
+        );
+    }
+    (key, fields)
 }
 
 async fn get_current_task(
@@ -566,5 +616,47 @@ async fn get_current_task(
     match current {
         Some(t) => Ok(Json(serde_json::json!(t))),
         None => Ok(Json(serde_json::json!(null))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_session_patch_carries_field_and_workflow_id() {
+        let (key, patch) = build_session_patch(
+            "wf-123",
+            Some("sess-abc"),
+            serde_json::json!({"synthesis_ready": true}),
+        );
+        assert_eq!(key, "sess-abc");
+        assert_eq!(patch["workflow_id"], "wf-123");
+        assert_eq!(patch["synthesis_ready"], true);
+    }
+
+    #[test]
+    fn build_session_patch_falls_back_to_workflow_scoped_key() {
+        // When the caller omits session_key, the upsert must still target a stable row.
+        let (key, patch) = build_session_patch(
+            "wf-456",
+            None,
+            serde_json::json!({"execution_mode": "parallel"}),
+        );
+        assert_eq!(key, "wf:wf-456");
+        assert_eq!(patch["workflow_id"], "wf-456");
+        assert_eq!(patch["execution_mode"], "parallel");
+    }
+
+    #[test]
+    fn build_session_patch_treats_empty_key_as_missing() {
+        let (key, patch) = build_session_patch(
+            "wf-789",
+            Some(""),
+            serde_json::json!({"verification_ready": true}),
+        );
+        assert_eq!(key, "wf:wf-789");
+        assert_eq!(patch["workflow_id"], "wf-789");
+        assert_eq!(patch["verification_ready"], true);
     }
 }
