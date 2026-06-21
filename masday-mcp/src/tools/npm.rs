@@ -9,6 +9,12 @@ pub async fn npm_install(args: Value) -> Result<Value, Box<dyn std::error::Error
     let output = if let Some(pkgs) = packages {
         let pkg_names: Vec<&str> = pkgs.iter().filter_map(|v| v.as_str()).collect();
 
+        // Each package is a bare positional to `pnpm add`; reject dash-leading
+        // names up front (defense-in-depth alongside the `--` separator below).
+        for p in &pkg_names {
+            crate::tools::cmd::reject_flag_like(p, "package")?;
+        }
+
         if pkg_names.is_empty() {
             let mut cmd = tokio::process::Command::new("pnpm");
             cmd.args(["install"]);
@@ -41,6 +47,10 @@ pub async fn npm_run(args: Value) -> Result<Value, Box<dyn std::error::Error + S
         .get("script")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'script' argument")?;
+
+    // `script` is a bare positional to `pnpm run`; reject a dash-leading value
+    // up front (defense-in-depth alongside the `--` separator below).
+    crate::tools::cmd::reject_flag_like(script, "script")?;
 
     let mut cmd = tokio::process::Command::new("pnpm");
     cmd.args(["run", "--", script]);

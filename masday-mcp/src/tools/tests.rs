@@ -6,13 +6,22 @@ use serde_json::Value;
 pub async fn tests_run(args: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let pattern = args.get("pattern").and_then(|v| v.as_str());
 
+    // A test filter pattern is a bare positional to `cargo`/`pnpm test`, so a
+    // value starting with `-` would be parsed as a flag (e.g. "--release").
+    // Reject it up front; legitimate test names never start with `-`.
+    if let Some(p) = pattern {
+        crate::tools::cmd::reject_flag_like(p, "pattern")?;
+    }
+
     // Check if we're in a Rust project (Cargo.toml exists) or npm project (package.json exists)
     let is_rust = tokio::fs::metadata("Cargo.toml").await.is_ok();
     let is_npm = tokio::fs::metadata("package.json").await.is_ok();
 
     let output = if is_rust {
+        // `--` separates cargo/pnpm options from the test-name filter, so even a
+        // (already-rejected) dash-leading pattern could not inject a flag.
         let cmd_args = if let Some(p) = pattern {
-            vec!["test", p]
+            vec!["test", "--", p]
         } else {
             vec!["test"]
         };
@@ -22,7 +31,7 @@ pub async fn tests_run(args: Value) -> Result<Value, Box<dyn std::error::Error +
         crate::tools::cmd::run(&mut cmd).await
     } else if is_npm {
         let cmd_args = if let Some(p) = pattern {
-            vec!["test", p]
+            vec!["test", "--", p]
         } else {
             vec!["test"]
         };

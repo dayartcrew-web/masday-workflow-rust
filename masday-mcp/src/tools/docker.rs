@@ -35,6 +35,11 @@ pub async fn docker_run(args: Value) -> Result<Value, Box<dyn std::error::Error 
         .and_then(|v| v.as_str())
         .ok_or("Missing 'image' argument")?;
 
+    // `image` is a bare positional to `docker run`; reject a dash-leading value
+    // up front (defense-in-depth alongside the `--` separator below; a clear
+    // error beats docker's opaque "invalid reference format").
+    crate::tools::cmd::reject_flag_like(image, "image")?;
+
     let mut cmd = tokio::process::Command::new("docker");
     cmd.args(["run", "--", image]);
     let output = crate::tools::cmd::run(&mut cmd)
