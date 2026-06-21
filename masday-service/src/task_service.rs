@@ -702,11 +702,17 @@ impl TaskService {
                     }
                 }
                 Err(e) => {
+                    // #11: a failed transition used to be warn!+break, after
+                    // which this fn returned Ok(()) — swallowing the failure.
+                    // That stranded the workflow in EXECUTE/VERIFY (all tasks
+                    // done but never reaching DONE) while the complete_task
+                    // caller saw success. Propagate the error so the caller
+                    // knows the auto-transition did not reach DONE.
                     warn!(
-                        "Failed to transition workflow {} to {:?}: {}",
+                        "Failed to auto-transition workflow {} to {:?}: {}",
                         workflow_id, target, e
                     );
-                    break;
+                    return Err(e);
                 }
             }
         }
