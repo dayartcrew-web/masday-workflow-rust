@@ -1304,6 +1304,34 @@ pub async fn workflow_delete(
         .as_str()
         .ok_or_else(|| err("missing workflow_id"))?;
 
+    // `PRAGMA foreign_keys=OFF` (sqlite.rs) means the ON DELETE CASCADE declared
+    // on the child tables is NOT enforced on SQLite — a bare `DELETE FROM
+    // workflows` would orphan every child row (tasks/plans/reviews/sessions/
+    // branches/logs/memories/...). PG (fire-and-forget below) cascades via real
+    // FKs; this stdio path must delete children explicitly. The workflow row is
+    // deleted LAST so a mid-cascade failure leaves the workflow retryable rather
+    // than orphaning its children. Tables WITHOUT a workflow_id column
+    // (graph_*, episodic_memories, llm_provider_configs, token_usage, code_chunks)
+    // are intentionally untouched. Table names are compile-time literals (no user
+    // input reaches the SQL string); only `id` is bound as a parameter.
+    for table in [
+        "task_progress_logs",
+        "review_decisions",
+        "retrieval_logs",
+        "workflow_reminders",
+        "parallel_branches",
+        "session_states",
+        "context_documents",
+        "memories",
+        "tasks",
+        "plans",
+    ] {
+        conn.execute(
+            &format!("DELETE FROM {table} WHERE workflow_id=?1"),
+            params![id],
+        )
+        .map_err(err)?;
+    }
     conn.execute("DELETE FROM workflows WHERE id=?1", params![id])
         .map_err(err)?;
 
@@ -7269,5 +7297,94 @@ mod tests {
             updated_at, stale_ts,
             "save_progress must bump tasks.updated_at or the stuck-task detector false-positives"
         );
+    }
+
+    #[tokio::test]
+    async fn test_workflow_delete_cascades_children() {
+        // Regression: `PRAGMA foreign_keys=OFF` means the ON DELETE CASCADE on
+        // child tables is NOT enforced, so a bare `DELETE FROM workflows`
+        // orphaned every child (tasks/plans/reviews/logs/sessions/memories/
+        // reminders). workflow_delete must now delete all workflow_id-keyed
+        // children. The shared test DB accumulates across tests, so every count
+        // assertion is scoped to THIS workflow's unique id.
+        let _guard = TestDbGuard::new();
+        let wf = uuid::Uuid::new_v4().to_string();
+        let plan = uuid::Uuid::new_v4().to_string();
+        let task = uuid::Uuid::new_v4().to_string();
+        {
+            let conn = crate::sqlite::conn();
+            conn.execute(
+                "INSERT INTO workflows (id, name, status) VALUES (?1, ?2, 'EXECUTE')",
+                params![&wf, "wf"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO plans (id, workflow_id, version, summary, created_by_agent) VALUES (?1, ?2, 1, 'p', 'a')",
+                params![&plan, &wf],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO tasks (id, workflow_id, plan_id, title, status) VALUES (?1, ?2, ?3, 't', 'DONE')",
+                params![&task, &wf, &plan],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO review_decisions (id, workflow_id, task_id, reviewer_agent, decision) VALUES (?1, ?2, ?3, 'a', 'APPROVED')",
+                params![uuid::Uuid::new_v4().to_string(), &wf, &task],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO task_progress_logs (id, workflow_id, task_id, agent_name, progress_note) VALUES (?1, ?2, ?3, 'a', 'note')",
+                params![uuid::Uuid::new_v4().to_string(), &wf, &task],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO session_states (id, session_key, workflow_id) VALUES (?1, ?2, ?3)",
+                params![uuid::Uuid::new_v4().to_string(), format!("sess-{wf}"), &wf],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO memories (id, workflow_id, memory_type, content, created_by_agent) VALUES (?1, ?2, 'fact', 'c', 'a')",
+                params![uuid::Uuid::new_v4().to_string(), &wf],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO workflow_reminders (id, workflow_id, reminder_type) VALUES (?1, ?2, 'STUCK')",
+                params![uuid::Uuid::new_v4().to_string(), &wf],
+            )
+            .unwrap();
+        }
+
+        workflow_delete(json!({ "workflow_id": &wf }))
+            .await
+            .expect("delete succeeds");
+
+        let conn = crate::sqlite::conn();
+        for table in [
+            "tasks",
+            "plans",
+            "review_decisions",
+            "task_progress_logs",
+            "session_states",
+            "memories",
+            "workflow_reminders",
+        ] {
+            let n: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE workflow_id=?1"),
+                    params![&wf],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 0, "workflow_delete orphaned rows in {table}");
+        }
+        let wf_present: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflows WHERE id=?1",
+                params![&wf],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(wf_present, 0, "workflow row itself must be deleted");
     }
 }
