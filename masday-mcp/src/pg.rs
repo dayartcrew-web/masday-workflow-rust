@@ -20,12 +20,34 @@ static PG_INIT_STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Embedded migration SQL — included at compile time from masday-db.
 /// Each file is run independently; statement splitting happens per-file.
+///
+/// NOTE on 004_drop_task_id_fks: intentionally NOT embedded. PG `001` defines
+/// every `task_id` column as plain `TEXT` (no `REFERENCES tasks(id)` FK), so
+/// there is nothing for 004 to drop — it is a no-op against this schema.
+/// Additionally its `DO $$ ... END $$;` body contains inner lines ending in
+/// `;` (e.g. `EXECUTE ...;`, `END LOOP;`) which the line-based splitter below
+/// would fragment into invalid statements. The masday-db full migration set
+/// still includes 004 for any DB that ran an older 001 with those FKs.
 const MIGRATION_SQL: &[(&str, &str)] = &[
     (
         "001_initial_schema",
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../masday-db/migrations/001_initial_schema.sql"
+        )),
+    ),
+    (
+        "002_add_missing_columns",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../masday-db/migrations/002_add_missing_columns.sql"
+        )),
+    ),
+    (
+        "003_indexed_files",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../masday-db/migrations/003_indexed_files.sql"
         )),
     ),
     (
@@ -330,4 +352,38 @@ pub async fn pool_status() -> Value {
             "sync": if use_pg { "async" } else { "disabled" }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The embedded migration set must run in numeric order and cover the
+    /// schema the stdio→PG sync path touches. 002 (current_plan_id /
+    /// current_task_id) and 003 (indexed_files) are required because PG `001`
+    /// lacks them and `workflow_repo` references those columns. 004 is
+    /// intentionally excluded (no task_id FKs in `001`; see MIGRATION_SQL
+    /// note). Guards against re-introducing the 001-only gap.
+    #[test]
+    fn migration_set_is_complete_and_ordered() {
+        let names: Vec<&str> = MIGRATION_SQL.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            names,
+            vec![
+                "001_initial_schema",
+                "002_add_missing_columns",
+                "003_indexed_files",
+                "005_code_chunks_pgvector",
+            ],
+            "embedded migrations must be present and in order"
+        );
+        assert!(
+            !names.iter().any(|n| n.contains("004")),
+            "004 must stay excluded (redundant: 001 has no task_id FKs; DO $$ breaks splitter)"
+        );
+        // Every embedded migration must carry non-empty SQL (include_str! worked).
+        for (name, sql) in MIGRATION_SQL {
+            assert!(!sql.trim().is_empty(), "{name} embedded empty SQL");
+        }
+    }
 }
