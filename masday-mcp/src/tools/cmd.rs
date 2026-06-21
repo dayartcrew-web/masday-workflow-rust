@@ -32,6 +32,31 @@ pub fn truncate_output(s: &str) -> String {
     format!("{}\n…[truncated: original {} bytes]", &s[..end], s.len())
 }
 
+/// Reject a user-supplied CLI argument that looks like a flag.
+///
+/// These MCP tools invoke CLIs (`docker`, `cargo`, `pnpm`) via `Command::new`
+/// (exec, not a shell), so there is **no shell injection**. The residual risk
+/// is *flag injection*: a user value passed as a **bare positional** — i.e.
+/// placed after a subcommand rather than bound by a value-taking option such
+/// as `-m`/`-t` — is parsed by the underlying CLI as an option when it starts
+/// with `-`. For example `docker_run { image: "--privileged" }` would run
+/// `docker run --privileged`, and `npm_run { script: "--version" }` would run
+/// `pnpm --version`. None of the values guarded here (image, script name,
+/// package name, test pattern) legitimately starts with `-`, so reject such
+/// inputs up front. (Value-taking option arguments — `git_commit -m <msg>`,
+/// `docker_build -t <tag>` — are NOT vectors: the option binds the next token
+/// as its value regardless of a leading dash, and commit messages legitimately
+/// begin with `-`.)
+pub fn reject_flag_like(value: &str, field: &str) -> Result<(), String> {
+    if value.starts_with('-') {
+        Err(format!(
+            "{field} must not start with '-' (would be parsed as a CLI flag): got {value:?}"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,5 +90,32 @@ mod tests {
         let truncated = truncate_output(&s);
         // Should not cut in the middle of the UTF-8 character
         assert!(!truncated.contains('�'));
+    }
+
+    #[test]
+    fn test_reject_flag_like_accepts_plain_values() {
+        assert!(reject_flag_like("nginx:latest", "image").is_ok());
+        assert!(reject_flag_like("build", "script").is_ok());
+        assert!(reject_flag_like("react", "package").is_ok());
+        // Empty string is not flag-like (emptiness is the caller's concern).
+        assert!(reject_flag_like("", "image").is_ok());
+    }
+
+    #[test]
+    fn test_reject_flag_like_rejects_leading_dash() {
+        // Single dash — the classic flag-injection payload.
+        let err = reject_flag_like("-privileged", "image").unwrap_err();
+        assert!(err.contains("image"));
+        assert!(
+            err.contains("flag"),
+            "err should explain flag injection: {err}"
+        );
+
+        // Double dash — e.g. would-be `docker run --privileged` / `pnpm --version`.
+        let err = reject_flag_like("--privileged", "image").unwrap_err();
+        assert!(err.contains("flag"));
+
+        // A value-looking string is still rejected when it starts with '-'.
+        assert!(reject_flag_like("-x", "package").is_err());
     }
 }
