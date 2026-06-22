@@ -93,19 +93,33 @@ function estimateContext(data) {
       else return null;
     }
 
-    const files = fs.readdirSync(sessionDir).filter(f => f.endsWith(".jsonl"));
-    if (files.length === 0) return null;
-
+    // Pin to the CURRENT session's JSONL — files are named {session_id}.jsonl.
+    // Picking "latest modified" leaks another session's usage into a new session
+    // (e.g. a stale high % from a previous session until the new one is written).
+    // On a brand-new session the file may not exist yet on the first render: return
+    // null (no bar) rather than fall back to a different session — this is the reset.
+    const sessionFile = path.join(sessionDir, `${currentSessionId}.jsonl`);
     let latest = null;
     let latestMtime = 0;
-    for (const f of files) {
-      try {
-        const fp = path.join(sessionDir, f);
-        const stat = fs.statSync(fp);
-        if (stat.mtimeMs > latestMtime) { latestMtime = stat.mtimeMs; latest = fp; }
-      } catch {}
+    if (fs.existsSync(sessionFile)) {
+      latest = sessionFile;
+      latestMtime = fs.statSync(sessionFile).mtimeMs;
+    } else {
+      // cwd-derived dir doesn't have it (cwd slug mismatch / first render): search all
+      // project dirs for the current session_id before giving up.
+      const dirs = fs.readdirSync(projectsDir).filter(d => {
+        try { return fs.statSync(path.join(projectsDir, d)).isDirectory(); } catch { return false; }
+      });
+      for (const d of dirs) {
+        const candidate = path.join(projectsDir, d, `${currentSessionId}.jsonl`);
+        if (fs.existsSync(candidate)) {
+          latest = candidate;
+          latestMtime = fs.statSync(candidate).mtimeMs;
+          break;
+        }
+      }
     }
-    if (!latest) return null;
+    if (!latest) return null;  // current session has no JSONL yet → reset (no stale bar)
 
     const fileAge = (Date.now() - latestMtime) / 1000;
     if (fileAge > 60) return null;
