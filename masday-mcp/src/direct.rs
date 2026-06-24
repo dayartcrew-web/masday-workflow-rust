@@ -4280,12 +4280,23 @@ pub async fn memory_create_entities(
             .unwrap_or_default();
         let props = json!({"observations": observations}).to_string();
 
-        conn.execute(
-            "INSERT INTO graph_nodes (id, node_type, name, properties, created_at) VALUES (?1,?2,?3,?4,?5)",
-            params![id, entity_type, name, &props, &t],
-        ).map_err(|e| err(e))?;
+        // Upsert on (name): re-declaring an entity updates its type/properties
+        // instead of failing the UNIQUE constraint. RETURNING id yields the
+        // persisted id (new on insert, existing on conflict).
+        let actual_id: String = conn
+            .query_row(
+                "INSERT INTO graph_nodes (id, node_type, name, properties, created_at) \
+                 VALUES (?1,?2,?3,?4,?5) \
+                 ON CONFLICT(name) DO UPDATE SET \
+                   node_type = excluded.node_type, \
+                   properties = excluded.properties \
+                 RETURNING id",
+                params![id, entity_type, name, &props, &t],
+                |row| row.get(0),
+            )
+            .map_err(|e| err(e))?;
 
-        created.push(json!({"id": id, "name": name, "entityType": entity_type}));
+        created.push(json!({"id": actual_id, "name": name, "entityType": entity_type}));
     }
 
     Ok(json!({"entities": created}))
@@ -4519,17 +4530,32 @@ pub async fn capability_scaffold_mcp_server(
         return Err(format!("project_root does not exist: {}", project_root).into());
     }
 
-    // 4. Target dir = {project_root}/{name}; refuse to clobber existing work.
+    // 4. Target dir = {project_root}/{name}. Allow scaffolding into an *empty*
+    //    existing directory (common when a user pre-creates the folder), but
+    //    refuse to clobber a non-empty directory or a file — that looks like
+    //    real work we must not overwrite.
     let target = root_path.join(name);
     if target.exists() {
-        return Err(format!(
-            "cannot scaffold: directory already exists at {} (refusing to overwrite; \
-             choose a different name or remove the directory first)",
-            target.display()
-        )
-        .into());
+        if !target.is_dir() {
+            return Err(format!(
+                "cannot scaffold: a file already exists at {} (refusing to overwrite)",
+                target.display()
+            )
+            .into());
+        }
+        let is_empty = target.read_dir().map_err(err)?.next().is_none();
+        if !is_empty {
+            return Err(format!(
+                "cannot scaffold: directory exists and is not empty at {} (refusing to overwrite; \
+                 choose a different name, empty the directory, or remove it first)",
+                target.display()
+            )
+            .into());
+        }
+        // Empty existing dir — fall through and scaffold into it.
+    } else {
+        std::fs::create_dir_all(&target).map_err(err)?;
     }
-    std::fs::create_dir_all(&target).map_err(err)?;
 
     // 5. Write files (package.json + index.ts + tsconfig.json + README.md).
     let package_json = scaffold_mcp_package_json(name, description);
@@ -5628,6 +5654,96 @@ mod tests {
         for (i, (v1, v2)) in vec1.iter().zip(vec2.iter()).enumerate() {
             assert_eq!(v1, v2, "Vectors differ at index {}", i);
         }
+    }
+
+    #[tokio::test]
+    async fn test_memory_create_entities_upsert_idempotent() {
+        // Re-declaring an entity with the same name must UPDATE (upsert), not
+        // fail the graph_nodes.name UNIQUE constraint.
+        let _guard = TestDbGuard::new();
+        let name = format!("dup-entity-{}", uuid::Uuid::new_v4());
+        let args = json!({
+            "entities": [{
+                "name": name,
+                "entityType": "concept",
+                "observations": ["first"]
+            }]
+        });
+
+        let r1 = memory_create_entities(args).await;
+        assert!(r1.is_ok(), "first create failed: {:?}", r1);
+        let id1 = r1.unwrap()["entities"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Second call with the SAME name — previously hard-errored (UNIQUE).
+        let args2 = json!({
+            "entities": [{
+                "name": name,
+                "entityType": "concept",
+                "observations": ["second"]
+            }]
+        });
+        let r2 = memory_create_entities(args2).await;
+        assert!(r2.is_ok(), "upsert (re-declare) failed: {:?}", r2);
+        let id2 = r2.unwrap()["entities"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Upsert preserves the existing row's id.
+        assert_eq!(id1, id2, "upsert should keep the existing id");
+
+        // Exactly one row for that name (no duplicate).
+        {
+            let conn = crate::sqlite::conn();
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM graph_nodes WHERE name = ?1",
+                    params![&name],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                count, 1,
+                "expected exactly one row after upsert, got {}",
+                count
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_scaffold_mcp_server_empty_dir_ok_nonempty_refused() {
+        // An empty pre-existing target dir should be scaffolded INTO (not
+        // refused); a non-empty dir (real work) must still be refused.
+        let root = tempfile::TempDir::new().unwrap();
+        let name = format!("mcp-test-{}", uuid::Uuid::new_v4().simple());
+
+        // 1. Pre-create an EMPTY target dir -> scaffold succeeds.
+        std::fs::create_dir_all(root.path().join(&name)).unwrap();
+        let args = json!({
+            "project_root": root.path().to_str().unwrap(),
+            "name": name,
+            "description": "test server"
+        });
+        let res = capability_scaffold_mcp_server(args).await;
+        assert!(res.is_ok(), "scaffold into empty dir failed: {:?}", res);
+        assert!(root.path().join(&name).join("package.json").exists());
+
+        // 2. Non-empty dir -> refused (do not clobber real work).
+        let name2 = format!("mcp-test2-{}", uuid::Uuid::new_v4().simple());
+        let dir2 = root.path().join(&name2);
+        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::write(dir2.join("preexisting.txt"), "real work").unwrap();
+        let args2 = json!({
+            "project_root": root.path().to_str().unwrap(),
+            "name": name2,
+            "description": "test server"
+        });
+        let res2 = capability_scaffold_mcp_server(args2).await;
+        assert!(res2.is_err(), "non-empty dir should be refused");
+        assert!(res2.unwrap_err().to_string().contains("not empty"));
     }
 
     #[tokio::test]

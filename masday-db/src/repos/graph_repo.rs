@@ -31,9 +31,15 @@ impl GraphRepo {
         // Serialize properties to serde_json::Value for jsonb column
         let props_value: Option<serde_json::Value> = node.properties.clone();
 
+        // Upsert on (name): re-declaring an entity updates its type/properties
+        // instead of failing the UNIQUE constraint. Id and created_at of the
+        // existing row are preserved on conflict.
         let query = r#"
             INSERT INTO graph_nodes (id, node_type, name, properties, created_at)
             VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (name) DO UPDATE SET
+                node_type = EXCLUDED.node_type,
+                properties = EXCLUDED.properties
             RETURNING *
         "#;
 
