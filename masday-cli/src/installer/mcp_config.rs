@@ -40,6 +40,10 @@ pub fn generate_mcp_config(
         Platform::Codex => {
             write_codex_config(&project_config_path, config)?;
         }
+        // zcode MCP config writing is intentionally a no-op: zcode's
+        // `~/.zcode/cli/config.json` mcpServers schema is unverified, and agents
+        // sync separately. Never write a half-correct mcpServers block here.
+        Platform::Zcode => {}
     }
 
     // 2. Also write to global config if available
@@ -83,6 +87,9 @@ pub fn remove_mcp_config(platform: &Platform, project_dir: &Path) -> Result<()> 
         | Platform::Codex => {
             remove_server_from_json(&config_path, "masday")?;
         }
+        // masday never writes zcode's config.json (see generate_mcp_config), so
+        // do NOT delete the user's zcode config on uninstall.
+        Platform::Zcode => {}
         _ => {
             if config_path.exists() {
                 std::fs::remove_file(&config_path)

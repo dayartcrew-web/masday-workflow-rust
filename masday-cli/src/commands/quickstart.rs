@@ -1404,6 +1404,9 @@ pub fn detect_active_platforms_from_home() -> Vec<Platform> {
         if home.join(".codex").exists() {
             platforms.push(Platform::Codex);
         }
+        if home.join(".zcode").exists() {
+            platforms.push(Platform::Zcode);
+        }
     }
 
     platforms

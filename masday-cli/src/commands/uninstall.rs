@@ -179,6 +179,7 @@ fn resolve_platforms(platform_arg: &Option<String>, project_dir: &Path) -> Resul
             "cursor" => Ok(vec![Platform::Cursor]),
             "windsurf" => Ok(vec![Platform::Windsurf]),
             "codex" => Ok(vec![Platform::Codex]),
+            "zcode" => Ok(vec![Platform::Zcode]),
             _ => Ok(all_platforms()),
         }
     } else {
