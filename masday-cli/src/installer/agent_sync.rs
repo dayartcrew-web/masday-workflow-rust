@@ -191,11 +191,15 @@ fn frontmatter_inline_value(line: &str) -> String {
 ///   dropped, since they aren't valid keys).
 /// - `model:` — Claude aliases (`sonnet`/`opus`/`haiku`) are not valid opencode
 ///   model ids → `inherit` (the session model). Full provider ids (`a/b`) kept.
-/// - `name:` dropped (opencode derives the agent id from the filename).
+/// - `name:` kept verbatim — opencode's `Info` schema REQUIRES `name`
+///   (`Schema.String`). Stock agents usually omit it (the id is derived from the
+///   filename), but an explicit `name:` is accepted and overrides, so we keep it.
 /// - `mode: subagent` injected if absent (every non-primary opencode agent sets
 ///   this; without it the agent would register as a primary agent).
-/// - `description:` (incl. multi-line `>` folded scalars) preserved verbatim,
-///   and any other unknown keys preserved verbatim.
+/// - `description:` flattened to a single plain inline string — opencode uses
+///   plain strings (0/125 stock agents use folded `>` / literal `|` scalars), so
+///   a folded `description: >` body is space-joined into one line. Other keys
+///   are preserved verbatim.
 ///
 /// Applied ONLY for `Platform::OpenCode` at sync time — all other platforms
 /// receive the original Claude-format file unchanged.
@@ -251,8 +255,25 @@ pub fn transform_opencode_frontmatter(content: &str) -> String {
     for (key, block) in &entries {
         match key.as_str() {
             "description" => {
-                for l in block {
-                    out.push(l.to_string());
+                let head_val = frontmatter_inline_value(block[0]);
+                let is_block_scalar =
+                    head_val.is_empty() || head_val.starts_with('>') || head_val.starts_with('|');
+                if is_block_scalar && block.len() > 1 {
+                    // opencode wants a plain inline string (0/125 stock agents use
+                    // folded `>` / literal `|` scalars). Flatten the indented body
+                    // into one line (folded semantics: join continuation lines on a
+                    // single space).
+                    let joined = block[1..]
+                        .iter()
+                        .map(|l| l.trim())
+                        .filter(|l| !l.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    out.push(format!("description: {}", joined));
+                } else {
+                    for l in block {
+                        out.push(l.to_string());
+                    }
                 }
                 desc_end = Some(out.len());
             }
@@ -303,7 +324,12 @@ pub fn transform_opencode_frontmatter(content: &str) -> String {
                 }
             }
             "name" => {
-                // dropped — opencode derives the agent id from the filename
+                // opencode's `Info` schema REQUIRES `name` (`Schema.String`).
+                // Stock agents usually omit it (id derived from filename), but an
+                // explicit `name:` is accepted and overrides — keep verbatim.
+                for l in block {
+                    out.push(l.to_string());
+                }
             }
             _ => {
                 for l in block {
@@ -494,24 +520,61 @@ mod tests {
     }
 
     #[test]
-    fn test_opencode_drops_name_key() {
+    fn test_opencode_keeps_name_key() {
         let out = transform_opencode_frontmatter(claude_agent_doc());
-        // No top-level `name:` line (opencode uses the filename as the id).
+        // opencode's Info schema REQUIRES `name`; keep it (don't drop).
+        let fm: Vec<&str> = out
+            .lines()
+            .skip(1)
+            .take_while(|l| l.trim() != "---")
+            .collect();
         assert!(
-            !out.lines()
-                .take_while(|l| l.trim() != "---")
-                .any(|l| l.starts_with("name:")),
-            "`name:` should be dropped from opencode frontmatter: {}",
+            fm.iter().any(|l| l.starts_with("name:")),
+            "`name:` should be kept in opencode frontmatter: {}",
             out
         );
     }
 
     #[test]
-    fn test_opencode_preserves_multiline_description_body() {
+    fn test_opencode_flattens_folded_description() {
         let out = transform_opencode_frontmatter(claude_agent_doc());
+        // Folded `description: >` must become a single plain inline string.
         assert!(
-            out.contains("Git operations specialist. Handles branches, commits, and merges."),
-            "multi-line description body must be preserved: {}",
+            !out.contains("description: >"),
+            "folded `>` indicator must be removed: {}",
+            out
+        );
+        assert!(
+            out.contains(
+                "description: Git operations specialist. Handles branches, commits, and merges."
+            ),
+            "folded body must be flattened to one line: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn test_opencode_flattens_multiline_folded_to_one_line() {
+        // A folded scalar spanning several lines must join into a single line.
+        let doc = "---\n\
+                   name: masday-x\n\
+                   description: >\n\
+                   \x20 First sentence here.\n\
+                   \x20 Second sentence here.\n\
+                   \x20 Third sentence here.\n\
+                   model: sonnet\n\
+                   ---\n";
+        let out = transform_opencode_frontmatter(doc);
+        assert!(
+            !out.contains("description: >"),
+            "folded `>` indicator must be removed: {}",
+            out
+        );
+        assert!(
+            out.contains(
+                "description: First sentence here. Second sentence here. Third sentence here."
+            ),
+            "multi-line folded body must be space-joined into one line: {}",
             out
         );
     }
@@ -573,17 +636,31 @@ mod tests {
                 continue;
             }
             let content = fs::read_to_string(entry.path()).unwrap();
+            // Frontmatter body = lines between the opening `---` and the next one
+            // (skip(1) past the opening fence; take_while stops at the closing one).
+            let fm: Vec<&str> = content
+                .lines()
+                .skip(1)
+                .take_while(|l| l.trim() != "---")
+                .collect();
             assert!(
-                !content
-                    .lines()
-                    .take_while(|l| l.trim() != "---")
-                    .any(|l| l.trim() == "- Read"),
+                !fm.iter().any(|l| l.trim() == "- Read"),
                 "{} still contains array-style tools",
                 name
             );
             assert!(
                 content.contains("mode: subagent"),
                 "{} missing mode: subagent",
+                name
+            );
+            assert!(
+                fm.iter().any(|l| l.starts_with("name:")),
+                "{} missing required name:",
+                name
+            );
+            assert!(
+                !content.contains("description: >"),
+                "{} still uses folded description: >",
                 name
             );
             // Either has a tools record, or no tools at all — never an array.
