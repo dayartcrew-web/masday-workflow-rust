@@ -244,7 +244,7 @@ fn register_workflow_tools(r: &mut ToolRegistry) {
         r,
         "workflow_createParallelBranches",
         "Create parallel branches. branches is an array of objects: [{\"task_id\": \"...\", \"branch_key\": \"...\", \"role\": \"...\"}]",
-        schema!("workflow_id", "[]branches"),
+        schema!("workflow_id", "[]branches?"),
         w::workflow_create_parallel_branches
     );
     reg!(
@@ -1240,7 +1240,7 @@ fn register_workflow_tools_stdio(r: &mut ToolRegistry) {
         r,
         "workflow_createParallelBranches",
         "Create parallel branches. branches is an array of objects: [{\"task_id\": \"...\", \"branch_key\": \"...\", \"role\": \"...\"}]",
-        schema!("workflow_id", "[]branches"),
+        schema!("workflow_id", "[]branches?"),
         d::workflow_create_parallel_branches
     );
     reg!(

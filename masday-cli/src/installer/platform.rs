@@ -11,6 +11,7 @@ pub enum Platform {
     Cursor,
     Windsurf,
     Codex,
+    Zcode,
 }
 
 impl Platform {
@@ -24,6 +25,7 @@ impl Platform {
             Platform::Cursor => "cursor",
             Platform::Windsurf => "windsurf",
             Platform::Codex => "codex",
+            Platform::Zcode => "zcode",
         }
     }
 
@@ -37,6 +39,9 @@ impl Platform {
             Platform::Cursor => project_dir.join(".cursor/rules"),
             Platform::Windsurf => project_dir.join(".windsurf/rules"),
             Platform::Codex => project_dir.join(".codex/agents"),
+            // zcode reads `<project>/.zcode/cli/agents/*.md` (getWorkspaceGlmCliAgentRoot
+            // in zcode-server.cjs = join(workspace, ".zcode/cli", "agents")).
+            Platform::Zcode => project_dir.join(".zcode/cli/agents"),
         }
     }
 
@@ -50,6 +55,7 @@ impl Platform {
             Platform::Cursor => project_dir.join(".cursor/skills"),
             Platform::Windsurf => project_dir.join(".windsurf/skills"),
             Platform::Codex => project_dir.join(".codex/skills"),
+            Platform::Zcode => project_dir.join(".zcode/skills"),
         }
     }
 
@@ -63,6 +69,8 @@ impl Platform {
             Platform::Cursor => None, // Cursor uses .cursor/rules/ project-level only
             Platform::Windsurf => None, // No agent folder
             Platform::Codex => Some(home::home_dir()?.join(".codex/agents")),
+            // zcode reads global agents from `~/.zcode/cli/agents` (getUserGlmCliAgentRoot).
+            Platform::Zcode => Some(home::home_dir()?.join(".zcode/cli/agents")),
         }
     }
 
@@ -77,6 +85,7 @@ impl Platform {
             Platform::Cursor => None,
             Platform::Windsurf => None,
             Platform::Codex => None,
+            Platform::Zcode => Some(home.join(".zcode/skills")),
         }
     }
 
@@ -91,6 +100,7 @@ impl Platform {
             Platform::Cursor => None,
             Platform::Windsurf => None,
             Platform::Codex => None,
+            Platform::Zcode => None,
         }
     }
 
@@ -104,6 +114,7 @@ impl Platform {
             Platform::Cursor => project_dir.join(".cursor/mcp.json"),
             Platform::Windsurf => project_dir.join(".windsurf/mcp.json"),
             Platform::Codex => project_dir.join(".codex/mcp.json"),
+            Platform::Zcode => project_dir.join(".zcode/cli/config.json"),
         }
     }
 
@@ -135,6 +146,8 @@ impl Platform {
                 home::home_dir().map(|h| h.join(".codeium/windsurf/mcp_config.json"))
             }
             Platform::Codex => None, // No global config
+            // zcode's global config (incl. mcpServers) is `~/.zcode/cli/config.json`.
+            Platform::Zcode => home::home_dir().map(|h| h.join(".zcode/cli/config.json")),
         }
     }
 
@@ -154,6 +167,7 @@ pub fn all_platforms() -> Vec<Platform> {
         Platform::Cursor,
         Platform::Windsurf,
         Platform::Codex,
+        Platform::Zcode,
     ]
 }
 
@@ -209,6 +223,9 @@ pub fn detect_active_platforms_from_home() -> Vec<Platform> {
         if home.join(".codex").exists() {
             platforms.push(Platform::Codex);
         }
+        if home.join(".zcode").exists() {
+            platforms.push(Platform::Zcode);
+        }
     }
 
     platforms
@@ -226,6 +243,7 @@ mod tests {
         assert_eq!(Platform::Cursor.name(), "cursor");
         assert_eq!(Platform::Windsurf.name(), "windsurf");
         assert_eq!(Platform::Codex.name(), "codex");
+        assert_eq!(Platform::Zcode.name(), "zcode");
     }
 
     #[test]
@@ -276,6 +294,27 @@ mod tests {
             dir.ends_with(".opencode/agent"),
             "expected singular `.opencode/agent`, got {}",
             dir.display()
+        );
+    }
+
+    #[test]
+    fn test_zcode_agent_dirs() {
+        // zcode reads global agents from `~/.zcode/cli/agents` (getUserGlmCliAgentRoot)
+        // and project agents from `<project>/.zcode/cli/agents` (getWorkspaceGlmCliAgentRoot).
+        let global = Platform::Zcode
+            .global_agents_dir()
+            .expect("zcode should have a global agents dir");
+        assert!(
+            global.ends_with(".zcode/cli/agents"),
+            "expected `~/.zcode/cli/agents`, got {}",
+            global.display()
+        );
+
+        let project = Platform::Zcode.project_agents_dir(Path::new("/tmp/proj"));
+        assert!(
+            project.ends_with(".zcode/cli/agents"),
+            "expected `<project>/.zcode/cli/agents`, got {}",
+            project.display()
         );
     }
 }
