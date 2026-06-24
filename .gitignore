@@ -19,6 +19,8 @@ apps/dashboard/out/
 .continue/
 .gemini/
 .opencode/agent/
+# Legacy plural dir an old masday version wrote to — also local-only, never tracked.
+.opencode/agents/
 
 # Internal planning docs
 /docs/plan-*.md
