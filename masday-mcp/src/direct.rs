@@ -2215,14 +2215,14 @@ pub async fn workflow_create_parallel_branches(
     let wf_id = args["workflow_id"]
         .as_str()
         .ok_or_else(|| err("missing workflow_id"))?;
-    let branches_arr = match args["branches"] {
-        Value::Array(ref arr) => arr.clone(),
-        Value::String(ref s) => serde_json::from_str(s).unwrap_or_default(),
-        _ => return Err(err("missing branches array")),
+    // Tolerate null/missing/empty `branches` — match the HTTP route, which
+    // treats a missing/null array as an empty Vec instead of erroring. A null
+    // array sent by an MCP client must not hard-fail the tool.
+    let branches_arr = match args.get("branches") {
+        Some(Value::Array(arr)) => arr.clone(),
+        Some(Value::String(s)) => serde_json::from_str(s).unwrap_or_default(),
+        _ => vec![],
     };
-    if branches_arr.is_empty() {
-        return Err(err("branches array is empty — provide at least one branch object with task_id, branch_key, role"));
-    }
     let t = now();
     let mut created = Vec::new();
 
