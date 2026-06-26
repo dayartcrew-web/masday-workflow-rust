@@ -469,7 +469,13 @@ async fn main() -> anyhow::Result<()> {
                 force,
                 internal_post_update_sync,
             };
-            masday_cli::commands::update::run(args, &project_dir)?;
+            // update::run uses reqwest::blocking for GitHub release checks.
+            // Running it on the async runtime thread panics ("Cannot drop a
+            // runtime ... dropped from within an asynchronous context"), so run
+            // it on a blocking thread instead.
+            let pd = project_dir.clone();
+            tokio::task::spawn_blocking(move || masday_cli::commands::update::run(args, &pd))
+                .await??;
         }
         Commands::Embed { action } => {
             masday_cli::commands::embed::run(action)?;
