@@ -4,6 +4,19 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
+/// Whether a platform can load masday's SKILL.md skill files. Codex/Cursor/
+/// Windsurf don't support the Claude-style SKILL.md format: Codex's loader
+/// requires YAML frontmatter (`---`) that masday's body-only skills lack, and
+/// Cursor/Windsurf have no skills-directory concept. Skipping them avoids
+/// writing invalid/unreadable files (e.g. "missing YAML frontmatter" errors).
+/// Mirrors `platform_supports_agent_files` in agent_sync.rs.
+fn platform_supports_skill_files(platform: &Platform) -> bool {
+    !matches!(
+        platform,
+        Platform::Codex | Platform::Cursor | Platform::Windsurf
+    )
+}
+
 pub struct SyncReport {
     pub platform: String,
     pub copied: usize,
@@ -26,6 +39,22 @@ pub fn sync_skills_to_project(
             skipped: 0,
             warnings: Vec::new(),
         };
+
+        // Codex/Cursor/Windsurf can't load masday's body-only SKILL.md (Codex's
+        // loader rejects files missing `---` frontmatter). Skip them instead of
+        // writing invalid files.
+        if !platform_supports_skill_files(platform) {
+            report.skipped = skill_names
+                .iter()
+                .filter(|n| n.starts_with("masday-"))
+                .count();
+            report.warnings.push(format!(
+                "{} does not support the SKILL.md format; skipped skill sync",
+                platform.name()
+            ));
+            reports.push(report);
+            continue;
+        }
 
         let target_dir = platform.project_skills_dir(project_dir);
 
@@ -236,6 +265,34 @@ mod tests {
         assert!(!reports.is_empty());
         let report = &reports[0];
         assert_eq!(report.platform, "claude-code");
+    }
+
+    #[test]
+    fn test_sync_skills_skips_codex_no_skill_files_written() {
+        // Codex can't load masday's body-only SKILL.md (its loader requires `---`
+        // frontmatter). Skill sync must skip Codex and write no skill files.
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+
+        let platforms = vec![Platform::Codex];
+        let reports = sync_skills_to_project(project_dir, &platforms, true).unwrap();
+
+        let report = &reports[0];
+        assert_eq!(report.platform, "codex");
+        assert_eq!(report.copied, 0, "codex must not copy any skills");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("SKILL.md format")),
+            "expected a SKILL.md-format skip warning, got: {:?}",
+            report.warnings
+        );
+        // No .codex/skills directory should be created.
+        assert!(
+            !project_dir.join(".codex/skills").exists(),
+            "codex skills dir must not be created"
+        );
     }
 
     #[test]
