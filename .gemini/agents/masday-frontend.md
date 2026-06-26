@@ -7,22 +7,12 @@ description: >
   frontend patterns.
 model: sonnet
 tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
-  - filesystem_read
-  - filesystem_write
-  - filesystem_list
-  - filesystem_stat
-  - npm_run
-  - tests_run
-  - npm_install
-  - git_status
-  - git_diff
-  - semantic-search_code_search
+  - read_file
+  - write_file
+  - replace
+  - run_shell_command
+  - grep_search
+  - glob
 ---
 
 # Frontend Agent
