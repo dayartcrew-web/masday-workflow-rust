@@ -317,6 +317,11 @@ enum Commands {
         /// Force re-install even if already up-to-date
         #[arg(long)]
         force: bool,
+
+        /// Hidden: re-exec the post-install sync only (invoked by the updater
+        /// on the just-installed binary so the sync runs on new code).
+        #[arg(long = "internal-post-update-sync", hide = true)]
+        internal_post_update_sync: bool,
     },
 
     /// Development commands (build from source, local install, serve)
@@ -453,6 +458,7 @@ async fn main() -> anyhow::Result<()> {
             skip_config,
             dry_run,
             force,
+            internal_post_update_sync,
         } => {
             let args = masday_cli::commands::update::UpdateArgs {
                 check,
@@ -461,6 +467,7 @@ async fn main() -> anyhow::Result<()> {
                 skip_config,
                 dry_run,
                 force,
+                internal_post_update_sync,
             };
             masday_cli::commands::update::run(args, &project_dir)?;
         }

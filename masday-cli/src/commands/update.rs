@@ -33,6 +33,11 @@ pub struct UpdateArgs {
     pub dry_run: bool,
     /// Force re-install even if already up-to-date
     pub force: bool,
+    /// Hidden internal flag: re-exec the post-install sync only (no download).
+    /// The updater (the OLD binary) spawns the just-installed binary with this
+    /// flag so the sync runs on the NEW code — the running process can't run
+    /// code that isn't in its own binary yet. See `run_update`.
+    pub internal_post_update_sync: bool,
 }
 
 /// Current version from Cargo.toml
@@ -605,34 +610,54 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
     println!();
     println!("{}", style("Re-syncing configuration...").cyan());
 
-    // Detect platforms from home directory
-    let platforms = quickstart::detect_active_platforms_from_home();
-    let sync_platforms = if platforms.is_empty() {
-        all_platforms() // default to all if none detected
+    // The running process is STILL the old binary. If we just installed a new
+    // one, run the sync via that new binary so it uses CURRENT sync logic
+    // (per-platform transforms, skip rules, …). Otherwise (skip-binary, or the
+    // new binary can't be launched) fall back to an in-process sync on this
+    // binary's code. Without this re-exec, upgrading to a release that ships a
+    // sync-logic change re-syncs with the STALE logic of the pre-update binary
+    // — e.g. the 0.3.84→0.3.87 upgrade re-wrote gemini agents verbatim and
+    // re-created codex skills, undoing the very fixes it delivered.
+    let installed_binary = masday_dir.join("bin").join(if cfg!(windows) {
+        "masday.exe"
     } else {
-        platforms
+        "masday"
+    });
+    let spawned_new = if !args.skip_binary && installed_binary.exists() {
+        println!(
+            "  {} Re-running sync with the updated binary",
+            style("→").cyan()
+        );
+        match std::process::Command::new(&installed_binary)
+            .args(["update", "--internal-post-update-sync"])
+            .status()
+        {
+            Ok(s) if s.success() => true,
+            Ok(s) => {
+                println!(
+                    "  {} Updated-binary sync exited {}; falling back to in-process sync",
+                    style("⚠").yellow(),
+                    s.code()
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "signal".into())
+                );
+                false
+            }
+            Err(e) => {
+                println!(
+                    "  {} Could not launch updated binary ({}); falling back to in-process sync",
+                    style("⚠").yellow(),
+                    e
+                );
+                false
+            }
+        }
+    } else {
+        false
     };
 
-    // Sync agents, skills, hooks (uses embedded templates from binary)
-    quickstart::sync_templates(project_dir, &sync_platforms)?;
-
-    // Re-initialize SQLite (idempotent)
-    quickstart::init_sqlite_database()?;
-
-    // Re-register MCP servers using current binary
-    if let Some(config) = crate::config::MasdayConfig::load() {
-        let api_url = config.api_url.clone();
-        let api_key = config.api_key.clone();
-        let db_url = config.database_url.clone();
-        let mode = config.mode.clone();
-        quickstart::register_mcp_servers(
-            project_dir,
-            &sync_platforms,
-            &api_url,
-            &api_key,
-            db_url.as_deref(),
-            &mode,
-        )?;
+    if !spawned_new {
+        run_post_update_sync(project_dir)?;
     }
 
     // Ensure config.toml is preserved after install
@@ -652,8 +677,59 @@ fn run_update(args: &UpdateArgs, project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Post-install sync: agents, skills, hooks, SQLite, MCP servers.
+///
+/// Extracted from `run_update` so it can run two ways:
+/// - **In-process** — when `--skip-binary` is set (no new binary was
+///   downloaded, so this binary is the one to sync with) or as a fallback when
+///   the new binary can't be launched.
+/// - **Re-execed from the new binary** — the updater (old binary) spawns the
+///   just-installed binary with `--internal-post-update-sync`, which dispatches
+///   here. This guarantees the sync runs on CURRENT code; the running updater
+///   is still the old binary and can't run new sync logic itself.
+pub fn run_post_update_sync(project_dir: &Path) -> Result<()> {
+    let platforms = quickstart::detect_active_platforms_from_home();
+    let sync_platforms = if platforms.is_empty() {
+        all_platforms() // default to all if none detected
+    } else {
+        platforms
+    };
+
+    // Sync agents, skills, hooks (uses embedded templates from this binary).
+    quickstart::sync_templates(project_dir, &sync_platforms)?;
+
+    // Re-initialize SQLite (idempotent).
+    quickstart::init_sqlite_database()?;
+
+    // Re-register MCP servers using current config.
+    if let Some(config) = crate::config::MasdayConfig::load() {
+        let api_url = config.api_url.clone();
+        let api_key = config.api_key.clone();
+        let db_url = config.database_url.clone();
+        let mode = config.mode.clone();
+        quickstart::register_mcp_servers(
+            project_dir,
+            &sync_platforms,
+            &api_url,
+            &api_key,
+            db_url.as_deref(),
+            &mode,
+        )?;
+    }
+
+    Ok(())
+}
+
 /// Run the update command
 pub fn run(args: UpdateArgs, project_dir: &Path) -> Result<()> {
+    // Hidden internal flag: the updater re-execs the just-installed binary with
+    // this to run the post-install sync on NEW code. Short-circuit before any
+    // download/check logic — this invocation only syncs.
+    if args.internal_post_update_sync {
+        run_post_update_sync(project_dir)?;
+        return Ok(());
+    }
+
     // --check only: check for updates and exit
     if args.check {
         run_check(&args)?;
@@ -728,6 +804,10 @@ mod tests {
         assert!(!args.skip_config);
         assert!(!args.dry_run);
         assert!(!args.force);
+        assert!(
+            !args.internal_post_update_sync,
+            "internal flag must default off"
+        );
     }
 
     #[test]
