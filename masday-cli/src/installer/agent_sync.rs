@@ -96,11 +96,15 @@ pub fn sync_agents_to_project(
             }
 
             // opencode needs its own frontmatter shape (tools record, model
-            // id, mode) — transform only for OpenCode; clone as-is otherwise.
+            // id, mode) — transform only for OpenCode; Gemini needs its tools
+            // mapped to valid builtins (see transform_gemini_frontmatter);
+            // clone as-is otherwise.
             let out = if *platform == Platform::OpenCode {
                 transform_opencode_frontmatter(content)
             } else if *platform == Platform::Zcode {
                 transform_zcode_frontmatter(content)
+            } else if *platform == Platform::GeminiCli {
+                transform_gemini_frontmatter(content)
             } else {
                 content.clone()
             };
@@ -177,6 +181,8 @@ pub fn sync_agents_to_global(platforms: &[Platform], force: bool) -> Result<Vec<
                 transform_opencode_frontmatter(content)
             } else if *platform == Platform::Zcode {
                 transform_zcode_frontmatter(content)
+            } else if *platform == Platform::GeminiCli {
+                transform_gemini_frontmatter(content)
             } else {
                 content.clone()
             };
@@ -213,6 +219,42 @@ fn opencode_tool_name(raw: &str) -> Option<&'static str> {
         "bash" | "shell" => Some("bash"),
         "grep" => Some("grep"),
         "glob" => Some("glob"),
+        _ => None,
+    }
+}
+
+/// Map a Claude/standard tool name to a Gemini CLI built-in tool name.
+///
+/// Gemini CLI v0.49 validates each `tools:` entry with `isValidToolName`
+/// (verified against the installed `@google/gemini-cli` bundle's
+/// `localAgentSchema`): a name is valid only if it is a Gemini built-in, a
+/// legacy alias, the literal `*` wildcard, or an MCP name of the shape
+/// `mcp_<server>_<tool>` for a server configured in `mcp_servers`. Claude's
+/// tool names (`Read`/`Write`/`Edit`/`Bash`/`Grep`/`Glob`) and the MCP /
+/// non-builtin names masday lists (`filesystem_read`, `git_status`,
+/// `mcp__masday__workflow_create`, …) are NONE of these — the `mcp__ns__tool`
+/// form masday uses is not Gemini's `mcp_server_tool` shape — so without a
+/// transform every masday agent fails to load in Gemini with
+/// `tools.0..N: Invalid tool name`.
+///
+/// The capability-bearing builtins map to their Gemini equivalents
+/// (`Read`→`read_file`, `Bash`→`run_shell_command`, `Edit`→`replace`, …).
+/// Everything else returns `None` (dropped) — mirroring `opencode_tool_name`:
+/// the MCP tools are only usable if their server is configured in Gemini under
+/// a name the sync can't predict, so emitting them unverified would just
+/// reproduce the load failure.
+fn gemini_tool_name(raw: &str) -> Option<&'static str> {
+    match raw.trim() {
+        "Read" => Some("read_file"),
+        "Write" => Some("write_file"),
+        "Edit" => Some("replace"),
+        "Bash" | "Shell" => Some("run_shell_command"),
+        "Grep" => Some("grep_search"),
+        "Glob" => Some("glob"),
+        "LS" => Some("list_directory"),
+        "TodoWrite" => Some("write_todos"),
+        "EnterPlanMode" => Some("enter_plan_mode"),
+        "ExitPlanMode" => Some("exit_plan_mode"),
         _ => None,
     }
 }
@@ -397,6 +439,137 @@ pub fn transform_opencode_frontmatter(content: &str) -> String {
         }
     }
 
+    out.push("---".to_string());
+
+    // Body (after the closing fence), verbatim.
+    for l in &lines[close + 1..] {
+        out.push(l.to_string());
+    }
+
+    let mut result = out.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
+/// Convert a Claude-Code-format agent `.md`'s frontmatter for Gemini CLI.
+///
+/// Gemini CLI v0.49's `localAgentSchema` (verified against the installed
+/// `@google/gemini-cli` bundle) is `.strict()`: frontmatter may carry only
+/// known keys (`name`, `description`, `display_name`, `tools`, `model`,
+/// `mcp_servers`, `temperature`, `max_turns`, `timeout_mins`, `kind`) and each
+/// `tools:` entry must pass `isValidToolName`. masday's Claude-format agents
+/// satisfy the KEY constraints, but their `tools:` array lists Claude/MCP
+/// names that are not Gemini built-ins, so the whole agent fails to load:
+/// `tools.0..N: Invalid tool name`.
+///
+/// This transform rewrites ONLY the `tools:` block: Claude builtins map to
+/// their Gemini equivalents via `gemini_tool_name`, and every other entry
+/// (MCP / non-builtin names) is dropped. If nothing maps, the `tools:` field is
+/// OMITTED so the agent inherits Gemini's default toolset rather than being
+/// restricted to zero tools. All other frontmatter keys (`name`,
+/// `description`, `model`, …) and the body are preserved verbatim — Gemini
+/// uses a real YAML parser, so a folded `description: >` is valid, and
+/// `model: sonnet` is an accepted optional string (it only affects model
+/// resolution at invoke time, never load validity).
+///
+/// Applied ONLY for `Platform::GeminiCli` at sync time.
+pub fn transform_gemini_frontmatter(content: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+
+    if lines.is_empty() || lines[0].trim() != "---" {
+        return content.to_string();
+    }
+    let close = match lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, l)| l.trim() == "---")
+    {
+        Some((i, _)) => i,
+        None => return content.to_string(), // no closing fence → leave untouched
+    };
+
+    let fm: Vec<&str> = lines[1..close].to_vec();
+
+    // Ordered (key, block_lines) entries — same line-based parser as the
+    // opencode/zcode transforms (no YAML crate). A top-level key line has no
+    // leading indentation and contains `:`; its value spans the following
+    // indented lines.
+    let mut entries: Vec<(String, Vec<&str>)> = Vec::new();
+    let mut i = 0;
+    while i < fm.len() {
+        let line = fm[i];
+        let indented = line.starts_with(' ') || line.starts_with('\t');
+        if !indented && line.contains(':') {
+            let key = line.split(':').next().unwrap_or("").trim().to_string();
+            let mut block = vec![line];
+            let mut j = i + 1;
+            while j < fm.len() && (fm[j].starts_with(' ') || fm[j].starts_with('\t')) {
+                block.push(fm[j]);
+                j += 1;
+            }
+            entries.push((key, block));
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Rebuild verbatim, rewriting ONLY the `tools:` block. Unlike the
+    // opencode/zcode transforms we deliberately do NOT reorder keys: Gemini
+    // accepts the existing frontmatter shape (real YAML parser, `.strict()`
+    // only rejects unknown KEYS, which masday agents don't have), so the only
+    // invalid content is the `tools:` values. Touching nothing else minimizes
+    // risk.
+    let mut out: Vec<String> = vec!["---".to_string()];
+    for (key, block) in &entries {
+        if key != "tools" {
+            for l in block {
+                out.push(l.to_string());
+            }
+            continue;
+        }
+
+        // Collect array items (`- Name`). If none are found (inline value,
+        // record, or no items) the block is already safe for Gemini — keep it
+        // verbatim.
+        let items: Vec<String> = block
+            .iter()
+            .skip(1)
+            .filter_map(|l| {
+                let t = l.trim();
+                t.strip_prefix("- ")
+                    .map(|s| s.trim().to_string())
+                    .or_else(|| t.strip_prefix('-').map(|s| s.trim().to_string()))
+            })
+            .collect();
+        if items.is_empty() {
+            for l in block {
+                out.push(l.to_string());
+            }
+            continue;
+        }
+
+        let mut mapped: Vec<&'static str> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for n in items {
+            if let Some(m) = gemini_tool_name(&n) {
+                if seen.insert(m) {
+                    mapped.push(m);
+                }
+            }
+        }
+        if !mapped.is_empty() {
+            out.push("tools:".to_string());
+            for m in mapped {
+                out.push(format!("  - {}", m));
+            }
+        }
+        // If nothing mapped, OMIT `tools:` entirely → the agent inherits the
+        // default toolset instead of being restricted to zero tools.
+    }
     out.push("---".to_string());
 
     // Body (after the closing fence), verbatim.
@@ -877,6 +1050,182 @@ mod tests {
     }
 
     // --- transform_zcode_frontmatter tests ---
+
+    // --- transform_gemini_frontmatter tests ---
+
+    #[test]
+    fn test_gemini_maps_builtin_tools_and_drops_mcp() {
+        let out = transform_gemini_frontmatter(claude_agent_doc());
+        // Claude builtins map to Gemini builtins (verified names).
+        assert!(out.contains("- read_file"), "Read must map: {}", out);
+        assert!(
+            out.contains("- run_shell_command"),
+            "Bash must map: {}",
+            out
+        );
+        assert!(out.contains("- grep_search"), "Grep must map: {}", out);
+        assert!(out.contains("- glob"), "Glob must map: {}", out);
+        // MCP / non-builtin names must NOT leak (they fail isValidToolName).
+        assert!(
+            !out.contains("- Read") && !out.contains("- Bash"),
+            "Claude tool name leaked: {}",
+            out
+        );
+        assert!(
+            !out.contains("git_status") && !out.contains("github_pr_create"),
+            "MCP tool leaked: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn test_gemini_preserves_other_keys_verbatim() {
+        let out = transform_gemini_frontmatter(claude_agent_doc());
+        // name / model kept verbatim; Gemini uses a real YAML parser so the
+        // folded description stays (it is NOT flattened, unlike opencode/zcode).
+        let fm: Vec<&str> = out
+            .lines()
+            .skip(1)
+            .take_while(|l| l.trim() != "---")
+            .collect();
+        assert!(
+            fm.iter().any(|l| l.starts_with("name:")),
+            "name lost: {}",
+            out
+        );
+        assert!(
+            fm.iter().any(|l| l.starts_with("model: sonnet")),
+            "model must be preserved verbatim: {}",
+            out
+        );
+        assert!(
+            fm.iter().any(|l| l.starts_with("description: >")),
+            "folded description must be preserved as-is: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn test_gemini_drops_tools_when_only_mcp_listed() {
+        // If the agent lists only MCP/non-builtin tools, the transform must
+        // OMIT `tools:` (inherit the default toolset) rather than emit an
+        // empty/restrictive array.
+        let doc = "---\n\
+                   name: masday-x\n\
+                   description: only mcp tools\n\
+                   tools:\n\
+                   \x20 - filesystem_read\n\
+                   \x20 - mcp__masday__workflow_create\n\
+                   ---\nbody\n";
+        let out = transform_gemini_frontmatter(doc);
+        assert!(
+            !out.contains("tools:"),
+            "tools must be omitted when nothing maps: {}",
+            out
+        );
+        assert!(
+            !out.contains("filesystem_read") && !out.contains("mcp__masday"),
+            "MCP names must not leak: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn test_gemini_preserves_readonly_toolset() {
+        // A read-only-ish agent (Read/Grep/Glob/Bash) keeps exactly those
+        // capabilities — no over-granting via a wildcard.
+        let doc = "---\n\
+                   name: masday-reviewer\n\
+                   description: reviewer\n\
+                   tools:\n\
+                   \x20 - Read\n\
+                   \x20 - Grep\n\
+                   \x20 - Glob\n\
+                   \x20 - Bash\n\
+                   ---\nbody\n";
+        let out = transform_gemini_frontmatter(doc);
+        assert!(out.contains("- read_file"));
+        assert!(out.contains("- grep_search"));
+        assert!(out.contains("- glob"));
+        assert!(out.contains("- run_shell_command"));
+        // No write/edit/grant leak.
+        assert!(!out.contains("- write_file"));
+        assert!(!out.contains("- replace"));
+    }
+
+    #[test]
+    fn test_gemini_preserves_markdown_body_verbatim() {
+        let out = transform_gemini_frontmatter(claude_agent_doc());
+        assert!(out.contains("# Git Operations Agent"));
+        assert!(out.contains("Body stays untouched."));
+    }
+
+    #[test]
+    fn test_gemini_no_frontmatter_left_untouched() {
+        let doc = "# Just markdown\nno frontmatter here\n";
+        assert_eq!(transform_gemini_frontmatter(doc), doc);
+    }
+
+    #[test]
+    fn test_sync_agents_writes_gemini_valid_tool_names() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+
+        let platforms = vec![Platform::GeminiCli];
+        let reports = sync_agents_to_project(project_dir, &platforms, true).unwrap();
+
+        let report = &reports[0];
+        assert_eq!(report.platform, "gemini");
+        assert!(report.copied > 0, "at least one agent should be written");
+
+        let gemini_dir = project_dir.join(".gemini/agents");
+        let mut checked = 0;
+        // The full set of names isValidToolName accepts for masday agents:
+        // builtins (verified in @google/gemini-cli bundle) + the `*` wildcard.
+        // Anything else is what currently breaks Gemini load.
+        let valid = [
+            "read_file",
+            "write_file",
+            "replace",
+            "run_shell_command",
+            "grep_search",
+            "glob",
+            "list_directory",
+            "read_many_files",
+            "write_todos",
+            "enter_plan_mode",
+            "exit_plan_mode",
+            "ask_user",
+            "invoke_agent",
+            "web_search",
+            "web_fetch",
+            "*",
+        ];
+        for entry in fs::read_dir(&gemini_dir).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with("masday-") || !name.ends_with(".md") {
+                continue;
+            }
+            let content = fs::read_to_string(entry.path()).unwrap();
+            let fm: Vec<&str> = content
+                .lines()
+                .skip(1)
+                .take_while(|l| l.trim() != "---")
+                .collect();
+            for l in fm.iter().filter(|l| l.trim_start().starts_with("- ")) {
+                let tool = l.trim_start().strip_prefix("- ").unwrap().trim();
+                assert!(
+                    valid.contains(&tool),
+                    "{}: emitted invalid Gemini tool name {:?}",
+                    name,
+                    tool
+                );
+            }
+            checked += 1;
+        }
+        assert!(checked > 0, "expected at least one masday agent written");
+    }
 
     #[test]
     fn test_zcode_emits_quoted_name_description_and_color() {
